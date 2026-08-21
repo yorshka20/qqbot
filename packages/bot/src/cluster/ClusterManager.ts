@@ -183,6 +183,10 @@ export class ClusterManager {
 
     this.started = true;
     logger.info('[ClusterManager] Agent Cluster started');
+
+    if (this.config.healthCheck.probeOnStartup) {
+      void this.runStartupProbe();
+    }
   }
 
   /**
@@ -381,6 +385,31 @@ export class ClusterManager {
   }
 
   // ── Private ──
+
+  /**
+   * Fire-and-forget live probe run at startup. `probeWorkerTemplates`
+   * already routes failures through `healthAlertNotifier`; this only adds
+   * a console summary. A probe failure (or notifier failure) must never
+   * destabilize the cluster, so the whole body is wrapped.
+   */
+  private async runStartupProbe(): Promise<void> {
+    try {
+      const results = await this.probeWorkerTemplates();
+      const ok = results.filter((r) => r.ok);
+      const failed = results.filter((r) => !r.ok);
+
+      if (ok.length > 0) {
+        const lines = ok.map((r) => `  ✓ ${r.templateName} [${r.durationMs}ms]`);
+        logger.info(`[ClusterManager] ${ok.length} worker template(s) passed startup probe:\n${lines.join('\n')}`);
+      }
+      if (failed.length > 0) {
+        const lines = failed.map((r) => `  ✗ ${r.templateName}: ${r.reason}`);
+        logger.warn(`[ClusterManager] ${failed.length} worker template(s) failed startup probe:\n${lines.join('\n')}`);
+      }
+    } catch (err) {
+      logger.error('[ClusterManager] Startup probe failed:', err);
+    }
+  }
 
   private registerBackends(): void {
     // Backends are now stateless: per-template command/args/env flow through

@@ -231,6 +231,14 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
       await wireClusterEscalation(clusterManager, config);
       wireClusterTicketWriteback(clusterManager);
 
+      clusterManager.setHealthAlertNotifier(async (failures) => {
+        await adminAlertService.alert({
+          scope: 'ClusterHealth',
+          title: `${failures.length} worker template(s) unavailable`,
+          detail: failures.map((f) => `✗ ${f.templateName}: ${f.reason ?? 'unknown'}`).join('\n'),
+        });
+      });
+
       logger.info('[Bootstrap] Agent Cluster initialized');
     } catch (err) {
       logger.error('[Bootstrap] Failed to initialize Agent Cluster:', err);

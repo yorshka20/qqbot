@@ -634,6 +634,40 @@ worker 在 spawn 后**几秒内**退出、且 stdout 为空或只有一行报错
 > OpenAI 侧还有一个干扰项：`/v1/models` 返回 200 不代表 key 可用于 codex，因为 codex 走的是
 > `/v1/responses`。验证 codex 凭证要打 `/v1/responses`。
 
+### 5.4 Worker 健康检查（Worker health check）
+
+两层检查，静态在前、live probe 在后，避免为已知不可用的模板浪费一次真实付费调用：
+
+1. **静态检查**（`WorkerTemplateHealthCheck.ts`）— 只验证 binary 是否在 PATH 上、必需的
+   环境变量是否存在，不实际起进程。便宜但盲区大：CLI 登录过期、base URL 配错、供应商
+   故障都验证不出来，只有真实任务派发失败时才会暴露。
+2. **live probe**（`WorkerProbe.ts` 的 `probeWorkerTemplates()`）— 对每个 enabled 且通过
+   静态检查的模板，走 `WorkerBackend.spawn()` 的同一条真实路径起一次进程，发送固定
+   prompt（要求原样回复 token `CLUSTER_PROBE_OK`），按回复是否命中判定可用性。**每个
+   enabled 模板消耗一次真实付费调用**；已经在静态检查阶段失败的模板会被跳过，不会
+   重复计费。probe 不接入 ContextHub / WorkerRegistry / TaskRecord，纯粹是无副作用的
+   健康检查，不产生任务记录。
+
+配置项 `cluster.healthCheck`：
+
+```yaml
+cluster:
+  healthCheck:
+    probeOnStartup: true    # 集群启动时自动跑一次 live probe
+    probeTimeout: 45s       # 单个模板的 probe 超时
+```
+
+`probeOnStartup` 为 true 时，`ClusterManager.start()` 在 `this.started = true` 之后**非阻塞**
+地 fire-and-forget 一次 `probeWorkerTemplates()`（`runStartupProbe()`）—— 集群启动不等待
+probe 结果。probe 有失败项时，通过 `AdminAlertService` 把失败列表以私聊消息推给 bot owner；
+`ClusterManager` 本身不直接依赖 QQ/MessageAPI（保持 cluster 模块协议无关，参见
+`ClusterEscalation.ts` 顶部的分层说明），实际投递由 `bootstrap.ts` 通过
+`clusterManager.setHealthAlertNotifier(cb)` 注入。
+
+按需触发同样的 live probe：`/cluster health [template]`（`template` 省略时探测全部 enabled
+模板）。该命令即使集群未 `start()` 也能跑 —— probe 只依赖 config + 已注册的 backend，两者
+在构造函数阶段就绪。
+
 ---
 
 ## 6. 数据持久化
@@ -794,6 +828,7 @@ data: {"file":"src/X.ts","action":"locked","by":"worker-b1c3"}
 /cluster stop [project]        → 停止集群（指定项目或全部）
 /cluster pause / resume        → 暂停/恢复调度
 /cluster task <project> "描述" → 手动提交任务到队列
+/cluster health [template]     → live-probe worker 模板可用性（见 5.4）
 ```
 
 ### 8.2 通知（默认静默，仅关键事件）

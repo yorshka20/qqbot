@@ -9,6 +9,7 @@
  *   /cluster task <project> "desc"    → submit manual task
  *   /cluster ask list                 → list pending hub_ask requests
  *   /cluster ask answer <id> <text>   → answer a pending hub_ask request
+ *   /cluster health [template]        → live-probe worker template availability
  */
 
 import { inject, injectable } from 'tsyringe';
@@ -26,14 +27,14 @@ function textResult(content: string): CommandResult {
 @Command({
   name: 'cluster',
   description: 'Agent Cluster 控制命令',
-  usage: '/cluster [status|start|stop|pause|resume|task]',
+  usage: '/cluster [status|start|stop|pause|resume|task|health]',
   permissions: ['owner'],
 })
 @injectable()
 export class ClusterCommand implements CommandHandler {
   name = 'cluster';
   description = 'Agent Cluster 控制命令';
-  usage = '/cluster [status|start|stop|pause|resume|task]';
+  usage = '/cluster [status|start|stop|pause|resume|task|health]';
 
   constructor(@inject(DITokens.CLUSTER_MANAGER) private clusterManager: ClusterManager) {}
 
@@ -56,10 +57,12 @@ export class ClusterCommand implements CommandHandler {
           return this.handleTask(args.slice(1));
         case 'ask':
           return this.handleAsk(args.slice(1), context);
+        case 'health':
+          return this.handleHealth(args.slice(1));
         default:
           return {
             success: false,
-            error: `未知子命令: ${subcommand}\n用法: /cluster [status|start|stop|pause|resume|task|ask]`,
+            error: `未知子命令: ${subcommand}\n用法: /cluster [status|start|stop|pause|resume|task|ask|health]`,
           };
       }
     } catch (err) {
@@ -193,5 +196,20 @@ export class ClusterCommand implements CommandHandler {
     }
 
     return textResult(`任务已提交: ${task.id}\n项目: ${project}\n描述: ${description}`);
+  }
+
+  private async handleHealth(args: string[]): Promise<CommandResult> {
+    const results = await this.clusterManager.probeWorkerTemplates(args[0] ? { templates: [args[0]] } : undefined);
+    const ok = results.filter((r) => r.ok);
+    const lines = [`Worker 探测: ${ok.length}/${results.length} 可用`];
+    for (const r of results) {
+      const seconds = (r.durationMs / 1000).toFixed(1);
+      if (r.ok) {
+        lines.push(`  ✓ ${r.templateName} (${r.type}, ${seconds}s)`);
+      } else {
+        lines.push(`  ✗ ${r.templateName} (${r.type}): ${(r.reason ?? 'unknown').slice(0, 120)}`);
+      }
+    }
+    return textResult(lines.join('\n'));
   }
 }
