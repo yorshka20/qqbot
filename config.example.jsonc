@@ -1230,6 +1230,17 @@
       "lockTTL": "10m",
       "eventLogMaxSize": 2000
     },
+    // Live worker probe: spawns each enabled worker template with a
+    // trivial prompt and checks the reply, catching expired CLI logins,
+    // wrong base URLs, and provider outages that the static binary/env
+    // check (WorkerTemplateHealthCheck) can't see. Costs one trivial paid
+    // API call per enabled template each time it runs.
+    "healthCheck": {
+      // Run the probe once at cluster startup. Default: true.
+      "probeOnStartup": true,
+      // Per-template probe timeout. Default: "45s".
+      "probeTimeout": "45s"
+    },
     "workerTemplates": {
       "claude-sonnet": {
         "type": "claude-cli",

@@ -56,6 +56,19 @@ export interface ClusterConfig {
     end: string;
     timezone: string;
   };
+
+  /**
+   * Live worker probe settings. Non-optional so downstream code (bootstrap,
+   * the future `/cluster health` command) can read `config.healthCheck.*`
+   * directly instead of threading fallback defaults everywhere the field
+   * is used — `parseClusterConfig` is the single place that owns defaults.
+   */
+  healthCheck: {
+    /** Run `probeWorkerTemplates` once at cluster startup. */
+    probeOnStartup: boolean;
+    /** Per-template probe timeout (ms). */
+    probeTimeout: number;
+  };
 }
 
 export type WorkerBackendType = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'minimax-cli' | 'deepseek-cli';
@@ -195,6 +208,7 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
   const templatesRaw = (r.workerTemplates as Record<string, Record<string, unknown>>) || {};
   const projectsRaw = (r.projects as Record<string, Record<string, unknown>>) || {};
   const notificationsRaw = (r.notifications as Record<string, unknown>) || {};
+  const healthCheckRaw = (r.healthCheck as Record<string, unknown>) || {};
 
   const workerTemplates: Record<string, WorkerTemplateConfig> = {};
   for (const [name, tpl] of Object.entries(templatesRaw)) {
@@ -262,5 +276,12 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
       webui: notificationsRaw.webui as ClusterConfig['notifications']['webui'],
     },
     quietHours: r.quietHours as ClusterConfig['quietHours'],
+    healthCheck: {
+      probeOnStartup: healthCheckRaw.probeOnStartup === undefined ? true : Boolean(healthCheckRaw.probeOnStartup),
+      probeTimeout:
+        typeof healthCheckRaw.probeTimeout === 'string'
+          ? parseDuration(healthCheckRaw.probeTimeout)
+          : (healthCheckRaw.probeTimeout as number) || 45_000,
+    },
   };
 }

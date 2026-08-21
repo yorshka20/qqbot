@@ -21,6 +21,7 @@ import { QueueSource } from './sources/QueueSource';
 import { TodoFileSource } from './sources/TodoFileSource';
 import type { ClusterStatus, HelpRequest, JobRecord, TaskRecord } from './types';
 import { WorkerPool } from './WorkerPool';
+import { probeWorkerTemplates, type WorkerProbeResult } from './WorkerProbe';
 import { checkWorkerTemplateHealth } from './WorkerTemplateHealthCheck';
 
 export class ClusterManager {
@@ -30,6 +31,13 @@ export class ClusterManager {
   private plannerService: PlannerService;
   private queueSources = new Map<string, QueueSource>();
   private started = false;
+  /**
+   * Fires with the failing subset whenever something outside the cluster
+   * module (bootstrap's startup probe, `/cluster health`) wants failures
+   * pushed somewhere. Unset by default — probing works standalone with no
+   * notifier attached.
+   */
+  private healthAlertNotifier: ((failures: WorkerProbeResult[]) => Promise<void>) | null = null;
 
   /**
    * @param ticketsDir Absolute path to the tickets root — forwarded to
@@ -310,6 +318,34 @@ export class ClusterManager {
   attachEscalationNotifier(notify: (request: HelpRequest) => Promise<void> | void): void {
     this.plannerService.setEscalationCallback(notify);
     logger.info('[ClusterManager] Escalation notifier attached');
+  }
+
+  /**
+   * Live-probe worker templates by spawning each one with a trivial prompt
+   * and checking for a fixed response token. Works even when the cluster
+   * hasn't been started — only needs config + registered backends, both
+   * available from the constructor.
+   */
+  async probeWorkerTemplates(opts?: { templates?: string[]; timeoutMs?: number }): Promise<WorkerProbeResult[]> {
+    const results = await probeWorkerTemplates(this.config, (type) => this.workerPool.getBackend(type), opts);
+    const failures = results.filter((r) => !r.ok);
+    if (failures.length > 0 && this.healthAlertNotifier) {
+      try {
+        await this.healthAlertNotifier(failures);
+      } catch (err) {
+        logger.error('[ClusterManager] healthAlertNotifier threw:', err);
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Register a callback for live-probe failures. The cluster module stays
+   * protocol-free (no QQ/MessageAPI imports — see ClusterEscalation.ts);
+   * bootstrap supplies the actual notification delivery.
+   */
+  setHealthAlertNotifier(cb: (failures: WorkerProbeResult[]) => Promise<void>): void {
+    this.healthAlertNotifier = cb;
   }
 
   /**

@@ -10,7 +10,7 @@ import { join, resolve as resolvePath } from 'node:path';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
 import { getRepoRoot } from '@/utils/repoRoot';
-import type { ClusterConfig } from './config';
+import type { ClusterConfig, WorkerBackendType } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { ClusterStatus, TaskRecord, WorkerBackend, WorkerInstance } from './types';
 
@@ -107,6 +107,11 @@ export class WorkerPool {
   registerBackend(backend: WorkerBackend): void {
     this.backends.set(backend.name, backend);
     logger.info(`[WorkerPool] Backend registered: ${backend.name}`);
+  }
+
+  /** Look up a registered backend by type. Used by probeWorkerTemplates. */
+  getBackend(type: WorkerBackendType): WorkerBackend | undefined {
+    return this.backends.get(type);
   }
 
   /**

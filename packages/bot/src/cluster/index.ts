@@ -17,4 +17,6 @@ export type {
   TaskRecord,
   WorkerInstance,
 } from './types';
+export { probeWorkerTemplates } from './WorkerProbe';
+export type { WorkerProbeResult } from './WorkerProbe';
 export { WorkerPool } from './WorkerPool';
