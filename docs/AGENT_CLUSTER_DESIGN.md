@@ -593,6 +593,47 @@ cluster:
     timezone: Asia/Tokyo
 ```
 
+> 实际落地的配置是 `config.d/cluster.jsonc`（JSONC，被 gitignore），上面的 YAML 只是结构示意。
+
+### 5.2 凭证注入
+
+每个 backend 认哪个环境变量是**固定的**，写错变量名不会报配置错误，只会在 spawn
+时以 vendor 的 401 形式暴露：
+
+| 模板 `type` | 认证环境变量 | 备注 |
+|---|---|---|
+| `claude-cli` | `ANTHROPIC_API_KEY` | 模板不写 `env` 时从 `process.env` 继承；也可走 CLI 自身的登录态 |
+| `minimax-cli` | `ANTHROPIC_API_KEY` | backend 另行注入 MiniMax 的 `ANTHROPIC_BASE_URL` |
+| `deepseek-cli` | `ANTHROPIC_AUTH_TOKEN` | **不是** `_API_KEY`，见 `DeepseekBackend.ts` |
+| `codex-cli` | `OPENAI_API_KEY` | 见下方 auth.json 优先级陷阱 |
+| `gemini-cli` | `GEMINI_API_KEY` | 或 `GOOGLE_API_KEY` + project |
+
+`config.d/ai.jsonc` 里 `ai.providers.*` 的 key 与 cluster 模板的 key 是**两套独立配置**，
+不会互相同步。轮换 key 时两边都要改，否则会出现「bot 聊天正常但 worker 全部起不来」。
+
+### 5.3 凭证/模型失效的排查顺序
+
+worker 在 spawn 后**几秒内**退出、且 stdout 为空或只有一行报错时，几乎都是模板参数问题
+而非任务问题。三类根因，按以下顺序排除：
+
+1. **模型名不被 CLI 接受** — `claude --model sonnet-5` 这类不存在的名字会让 CLI 打印
+   "It may not exist or you may not have access to it" 后立刻 exit 1，表现为 2 秒内
+   零输出退出。合法名字有两种写法：短别名（`sonnet` / `opus`）和 API 完整 id
+   （`claude-sonnet-5`），**两者不能混拼**。改模板后用
+   `claude --print --model <name> "ping"` 单独验证一次再投产。
+2. **key 本身失效** — 直接打 vendor 的模型列表端点验证，不要靠 CLI 的报错猜：
+   `curl -s -o /dev/null -w '%{http_code}' https://api.anthropic.com/v1/models -H "x-api-key: $K" -H "anthropic-version: 2023-06-01"`；
+   Gemini 用 `https://generativelanguage.googleapis.com/v1beta/models?key=$K`；
+   OpenAI 用 `https://api.openai.com/v1/models`。
+3. **codex 的 `~/.codex/auth.json` 覆盖环境变量** — 该文件存在且 `auth_mode` 为
+   `"apikey"` 时，codex CLI 用的是文件里的 `OPENAI_API_KEY`，**完全忽略**模板 env 传进去的
+   值。此时模板里的 key 再正确也会 401，且报错回显的 key 尾号与模板里的对不上——这是
+   判定该陷阱的可靠信号。修复方式是 `codex login` 重新认证，或直接改写该文件。
+   注意它同时是用户交互式 `codex` 的凭证，改动会影响手动使用。
+
+> OpenAI 侧还有一个干扰项：`/v1/models` 返回 200 不代表 key 可用于 codex，因为 codex 走的是
+> `/v1/responses`。验证 codex 凭证要打 `/v1/responses`。
+
 ---
 
 ## 6. 数据持久化
