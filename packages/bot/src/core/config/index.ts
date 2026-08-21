@@ -50,6 +50,7 @@ export type {
   DeepSeekProviderConfig,
   DefaultProvidersConfig,
   LocalText2ImageProviderConfig,
+  ModelPricingEntry,
   NovelAIProviderConfig,
   OllamaProviderConfig,
   OpenAIProviderConfig,

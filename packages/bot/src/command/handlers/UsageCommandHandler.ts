@@ -51,9 +51,10 @@ export class UsageCommandHandler implements CommandHandler {
     mine: Awaited<ReturnType<TokenUsageService['getUserDailyBreakdown']>>,
   ): string {
     const fmt = (n: number) => n.toLocaleString('en-US');
+    const fmtCost = (usd: number) => (usd <= 0 ? '' : usd < 0.01 ? ` · $${usd.toFixed(4)}` : ` · $${usd.toFixed(2)}`);
     const lines = [
       `Token 消耗统计 · ${report.date}`,
-      `今日 输入 ${fmt(report.promptTokens)} / 输出 ${fmt(report.completionTokens)} / 总计 ${fmt(report.totalTokens)}`,
+      `今日 输入 ${fmt(report.promptTokens)} / 输出 ${fmt(report.completionTokens)} / 总计 ${fmt(report.totalTokens)}${fmtCost(report.cost)}`,
       '',
       `今日 Top ${TOP_N}：`,
     ];
@@ -63,7 +64,7 @@ export class UsageCommandHandler implements CommandHandler {
       report.topUsers.forEach((u, i) => {
         const name = u.nickname ? `${u.nickname} (${u.userId})` : u.userId;
         lines.push(
-          `  ${i + 1}. ${name} · 输入 ${fmt(u.promptTokens)} / 输出 ${fmt(u.completionTokens)} / 合计 ${fmt(u.totalTokens)}${u.totalImages > 0 ? ` · ${u.totalImages}图` : ''}`,
+          `  ${i + 1}. ${name} · 输入 ${fmt(u.promptTokens)} / 输出 ${fmt(u.completionTokens)} / 合计 ${fmt(u.totalTokens)}${fmtCost(u.cost)}${u.totalImages > 0 ? ` · ${u.totalImages}图` : ''}`,
         );
       });
     }
@@ -72,7 +73,7 @@ export class UsageCommandHandler implements CommandHandler {
       lines.push(
         d.totalTokens === 0 && d.totalImages === 0
           ? `  ${d.date} · 无`
-          : `  ${d.date} · 输入 ${fmt(d.promptTokens)} / 输出 ${fmt(d.completionTokens)} / 合计 ${fmt(d.totalTokens)}${d.totalImages > 0 ? ` · ${d.totalImages}图` : ''}`,
+          : `  ${d.date} · 输入 ${fmt(d.promptTokens)} / 输出 ${fmt(d.completionTokens)} / 合计 ${fmt(d.totalTokens)}${fmtCost(d.cost)}${d.totalImages > 0 ? ` · ${d.totalImages}图` : ''}`,
       );
     }
     return lines.join('\n');

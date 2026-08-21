@@ -6,6 +6,7 @@
 // read time (modest volume; keeps the schema flexible and adapter-agnostic).
 
 import { inject, injectable } from 'tsyringe';
+import { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { TokenUsageRecord } from '@/database/models/types';
@@ -35,6 +36,8 @@ export interface ProviderUsageAgg {
   completionTokens: number;
   totalTokens: number;
   imageCount: number;
+  /** Estimated cost in USD. 0 when pricing is not configured for the model. */
+  cost: number;
 }
 
 export interface UserUsageAgg {
@@ -44,6 +47,7 @@ export interface UserUsageAgg {
   completionTokens: number;
   totalTokens: number;
   totalImages: number;
+  cost: number;
   byProvider: ProviderUsageAgg[];
 }
 
@@ -55,6 +59,7 @@ export interface DailyReport {
   completionTokens: number;
   totalTokens: number;
   totalImages: number;
+  cost: number;
   topUsers: UserUsageAgg[];
 }
 
@@ -64,12 +69,16 @@ export interface DailyUsageAgg {
   completionTokens: number;
   totalTokens: number;
   totalImages: number;
+  cost: number;
   byProvider: ProviderUsageAgg[];
 }
 
 @injectable()
 export class TokenUsageService {
-  constructor(@inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager) {}
+  constructor(
+    @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
+    @inject(DITokens.CONFIG) private config: Config,
+  ) {}
 
   /** YYYY-MM-DD in local timezone, `offsetDays` ago (0 = today). */
   getLocalDate(offsetDays = 0): string {
@@ -146,6 +155,7 @@ export class TokenUsageService {
         completionTokens: byProvider.reduce((s, p) => s + p.completionTokens, 0),
         totalTokens: byProvider.reduce((s, p) => s + p.totalTokens, 0),
         totalImages: byProvider.reduce((s, p) => s + p.imageCount, 0),
+        cost: byProvider.reduce((s, p) => s + p.cost, 0),
         byProvider,
       });
     }
@@ -159,6 +169,7 @@ export class TokenUsageService {
       completionTokens: aggs.reduce((s, u) => s + u.completionTokens, 0),
       totalTokens: aggs.reduce((s, u) => s + u.totalTokens, 0),
       totalImages: aggs.reduce((s, u) => s + u.totalImages, 0),
+      cost: aggs.reduce((s, u) => s + u.cost, 0),
       topUsers: aggs.slice(0, limit),
     };
   }
@@ -176,10 +187,35 @@ export class TokenUsageService {
         completionTokens: byProvider.reduce((s, p) => s + p.completionTokens, 0),
         totalTokens: byProvider.reduce((s, p) => s + p.totalTokens, 0),
         totalImages: byProvider.reduce((s, p) => s + p.imageCount, 0),
+        cost: byProvider.reduce((s, p) => s + p.cost, 0),
         byProvider,
       });
     }
     return out;
+  }
+
+  /** Look up pricing for a model name, supporting trailing-wildcard prefix match. */
+  private getModelPricing(modelName: string | undefined): { input: number; output: number } | undefined {
+    const pricing = this.config.getAIConfig()?.modelPricing;
+    if (!pricing || !modelName) return undefined;
+
+    // Exact match first
+    if (pricing[modelName]) return pricing[modelName];
+
+    // Wildcard prefix match (e.g. "gemini-3.1-flash*" matches "gemini-3.1-flash-image")
+    for (const [pattern, entry] of Object.entries(pricing)) {
+      if (pattern.endsWith('*') && modelName.startsWith(pattern.slice(0, -1))) {
+        return entry;
+      }
+    }
+    return undefined;
+  }
+
+  /** Calculate cost for a single row based on model pricing config. */
+  private calculateRowCost(row: TokenUsageRecord): number {
+    const price = this.getModelPricing(row.model);
+    if (!price) return 0;
+    return (row.promptTokens * price.input + row.completionTokens * price.output) / 1_000_000;
   }
 
   private aggregateByProvider(rows: TokenUsageRecord[]): ProviderUsageAgg[] {
@@ -196,6 +232,7 @@ export class TokenUsageService {
           completionTokens: 0,
           totalTokens: 0,
           imageCount: 0,
+          cost: 0,
         };
         map.set(key, agg);
       }
@@ -204,6 +241,7 @@ export class TokenUsageService {
       agg.completionTokens += row.completionTokens;
       agg.totalTokens += row.totalTokens;
       agg.imageCount += row.imageCount;
+      agg.cost += this.calculateRowCost(row);
     }
     return Array.from(map.values()).sort((a, b) => b.totalTokens - a.totalTokens || b.imageCount - a.imageCount);
   }

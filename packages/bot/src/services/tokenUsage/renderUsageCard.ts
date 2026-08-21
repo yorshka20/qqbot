@@ -38,6 +38,13 @@ function compact(n: number): string {
   return String(n);
 }
 
+function fmtCost(usd: number): string {
+  if (usd <= 0) return '-';
+  if (usd < 0.01) return `$${usd.toFixed(4)}`;
+  if (usd < 1) return `$${usd.toFixed(3)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
 function avatarSrc(userId: string, avatarMap?: Map<string, string>): string {
   return avatarMap?.get(userId) ?? `https://q1.qlogo.cn/g?b=qq&nk=${userId}&s=140`;
 }
@@ -76,6 +83,7 @@ function buildTopRows(top: UserUsageAgg[], avatarMap?: Map<string, string>): str
     .map((u, i) => {
       const name = u.nickname ? esc(u.nickname) : esc(u.userId);
       const imgTag = u.totalImages > 0 ? `<span class="img-tag">${u.totalImages} 图</span>` : '';
+      const costTag = u.cost > 0 ? `<span class="cost-tag">${fmtCost(u.cost)}</span>` : '';
       return `
       <div class="row">
         ${rankBadge(i)}
@@ -83,7 +91,7 @@ function buildTopRows(top: UserUsageAgg[], avatarMap?: Map<string, string>): str
         <div class="row-body">
           <div class="row-head">
             <span class="name">${name}</span>
-            <span class="total">${fmt(u.totalTokens)}<span class="unit"> tok</span></span>
+            <span class="total">${fmt(u.totalTokens)}<span class="unit"> tok</span>${costTag}</span>
           </div>
           ${ratioBar(u.promptTokens, u.completionTokens)}
           <div class="row-meta">
@@ -106,11 +114,13 @@ function buildMineRows(mine: DailyUsageAgg[]): string {
         return `<div class="day"><span class="day-date">${md}</span><span class="day-none">—</span></div>`;
       }
       const img = d.totalImages > 0 ? `<span class="day-img">${d.totalImages}图</span>` : '';
+      const costStr = d.cost > 0 ? `<span class="day-cost">${fmtCost(d.cost)}</span>` : '';
       return `<div class="day">
         <span class="day-date">${md}</span>
         <span class="day-val"><i class="dot dot-in"></i>${fmt(d.promptTokens)}</span>
         <span class="day-val"><i class="dot dot-out"></i>${fmt(d.completionTokens)}</span>
         <span class="day-total">${fmt(d.totalTokens)}</span>
+        ${costStr}
         ${img}
       </div>`;
     })
@@ -120,6 +130,7 @@ function buildMineRows(mine: DailyUsageAgg[]): string {
   const sumOut = mine.reduce((s, d) => s + d.completionTokens, 0);
   const sumTotal = mine.reduce((s, d) => s + d.totalTokens, 0);
   const sumImg = mine.reduce((s, d) => s + d.totalImages, 0);
+  const sumCost = mine.reduce((s, d) => s + d.cost, 0);
 
   return `${rows}
     <div class="day day-sum">
@@ -127,6 +138,7 @@ function buildMineRows(mine: DailyUsageAgg[]): string {
       <span class="day-val"><i class="dot dot-in"></i>${fmt(sumIn)}</span>
       <span class="day-val"><i class="dot dot-out"></i>${fmt(sumOut)}</span>
       <span class="day-total">${fmt(sumTotal)}</span>
+      ${sumCost > 0 ? `<span class="day-cost">${fmtCost(sumCost)}</span>` : ''}
       ${sumImg > 0 ? `<span class="day-img">${sumImg}图</span>` : ''}
     </div>`;
 }
@@ -225,6 +237,8 @@ export function renderUsageCardHTML(data: UsageCardData): string {
   .chip { font-size: 11px; color: #64748b; background: #f1f5f9; border-radius: 7px; padding: 2px 8px; }
   .chip-name { color: #334155; font-weight: 600; }
 
+  .cost-tag { font-size: 12px; font-weight: 600; color: #059669; margin-left: 8px; }
+
   .empty { text-align: center; color: #94a3b8; padding: 24px 0; font-size: 14px; }
 
   /* My recent days */
@@ -236,6 +250,7 @@ export function renderUsageCardHTML(data: UsageCardData): string {
   .day-total { margin-left: auto; font-weight: 700; color: #4338ca; }
   .day-none { color: #cbd5e1; }
   .day-img { color: #be185d; font-size: 11.5px; font-weight: 600; }
+  .day-cost { color: #059669; font-size: 12px; font-weight: 600; }
   .day-sum { background: #eef2ff !important; margin-top: 6px; }
   .day-sum .day-date, .day-sum .day-total { color: #4338ca; }
 
@@ -265,6 +280,11 @@ export function renderUsageCardHTML(data: UsageCardData): string {
             <div class="label">今日总计</div>
             <div class="value">${compact(report.totalTokens)}</div>
             <div class="sub">${report.totalImages > 0 ? `${report.totalImages} 张图片 · ` : ''}${fmt(report.totalTokens)} tokens</div>
+          </div>
+          <div class="stat">
+            <div class="label">预估费用</div>
+            <div class="value">${report.cost > 0 ? fmtCost(report.cost) : '-'}</div>
+            <div class="sub">USD</div>
           </div>
         </div>
       </div>

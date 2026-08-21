@@ -137,6 +137,7 @@ export class GenerationStage implements ReplyStage {
       context.metadata.set('aiUsage', {
         type: 'llm',
         provider: actualProvider,
+        model: r.resolvedModel,
         source: 'reply',
         promptTokens: r.usage.promptTokens,
         completionTokens: r.usage.completionTokens,

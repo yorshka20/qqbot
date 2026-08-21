@@ -147,11 +147,27 @@ export interface AIChatConfig {
   lowEffortProviders?: string[];
 }
 
+/**
+ * Per-model token pricing (USD per 1M tokens).
+ * Keys are model name strings matching the `model` field persisted in TokenUsageRecord.
+ * Glob-style trailing wildcard (`*`) is supported for prefix matching
+ * (e.g. `"gpt-4o*"` covers `gpt-4o`, `gpt-4o-mini`, etc.).
+ */
+export interface ModelPricingEntry {
+  input: number;
+  output: number;
+}
+
 export interface AIConfig {
   // Default providers by capability (llm, vision, text2img, etc.)
   defaultProviders?: DefaultProvidersConfig;
   // Provider configurations
   providers: Record<string, AIProviderConfig>;
+  /**
+   * Per-model token pricing for cost estimation in /usage reports.
+   * Key = model name (or prefix with trailing `*`); value = USD per 1M tokens.
+   */
+  modelPricing?: Record<string, ModelPricingEntry>;
   // Session-level provider overrides (key is sessionId)
   sessionProviders?: Record<string, SessionProviderConfig>;
   // Auto-switch configuration
