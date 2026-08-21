@@ -111,6 +111,7 @@ export class ImageFacadeService {
     return (response) => ({
       type: 'image',
       provider: response.resolvedProviderName ?? providerName ?? 'unknown',
+      model: response.resolvedModel,
       source: 'image',
       imageCount: response.images?.length ?? 0,
     });

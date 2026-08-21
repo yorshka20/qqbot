@@ -113,6 +113,8 @@ export class ImageGenerationService {
     // Convert provider response (with relativePath) to final response (with URL)
     const result = this.convertProviderResponseToFinal(providerResponse);
     result.resolvedProviderName = (provider as { name?: string }).name;
+    result.resolvedModel =
+      options?.model ?? (provider as { getDefaultModel?: () => string | undefined }).getDefaultModel?.();
     return result;
   }
 
@@ -160,6 +162,8 @@ export class ImageGenerationService {
     // Convert provider response (with relativePath) to final response (with URL)
     const result = this.convertProviderResponseToFinal(providerResponse);
     result.resolvedProviderName = (provider as { name?: string }).name;
+    result.resolvedModel =
+      options?.model ?? (provider as { getDefaultModel?: () => string | undefined }).getDefaultModel?.();
     return result;
   }
 }

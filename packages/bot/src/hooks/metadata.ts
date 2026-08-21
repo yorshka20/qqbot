@@ -104,8 +104,10 @@ export interface HookContextMetadata {
   activeProvider?: string;
   /**
    * The model that actually served the current generation, set per tool-use round
-   * from the provider's resolvedModel. Lets mid-loop tools (send_card footer) show
-   * the real model instead of the static config default.
+   * from the response's resolvedModel — stamped centrally by LLMService (provider-
+   * reported model, else the caller-pinned model, else the provider's configured
+   * default) rather than reported by every provider itself. Lets mid-loop tools
+   * (send_card footer) show the real model instead of the static config default.
    */
   activeModel?: string;
   /**
