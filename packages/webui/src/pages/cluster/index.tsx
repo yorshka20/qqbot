@@ -28,6 +28,8 @@ import {
   getClusterStatus,
   getClusterTask,
   getClusterTemplates,
+  killClusterJob,
+  killClusterTask,
   killClusterWorker,
   listClusterEvents,
   listClusterHelpRequests,
@@ -57,7 +59,7 @@ import { ClusterCard } from './components/ClusterCard';
 import { HelpRequestRow } from './components/HelpRequestRow';
 import { HistoryModal } from './components/HistoryModal';
 import { JobRow } from './components/JobRow';
-import { KillWorkerDialog } from './components/KillWorkerDialog';
+import { KillConfirmDialog } from './components/KillConfirmDialog';
 import { TaskOutputModal } from './components/TaskOutputModal';
 import { WorkerBlock } from './components/WorkerBlock';
 import { CLUSTER_CARD_BODY_SCROLL, formatClusterEventSummary } from './utils';
@@ -90,7 +92,7 @@ export function ClusterPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
 
   const [openTask, setOpenTask] = useState<ClusterTask | null>(null);
-  const [killConfirmId, setKillConfirmId] = useState<string | null>(null);
+  const [killConfirm, setKillConfirm] = useState<{ kind: 'worker' | 'task' | 'job'; id: string } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const sseUrl = useMemo(() => `${getClusterApiBase()}/stream`, []);
@@ -438,7 +440,13 @@ export function ClusterPage() {
                 ) : (
                   <div className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
                     {jobs.map((j) => (
-                      <JobRow key={j.id} job={j} onTaskClick={setOpenTask} />
+                      <JobRow
+                        key={j.id}
+                        job={j}
+                        onTaskClick={setOpenTask}
+                        onKillJob={(id) => setKillConfirm({ kind: 'job', id })}
+                        onKillTask={(id) => setKillConfirm({ kind: 'task', id })}
+                      />
                     ))}
                   </div>
                 )}
@@ -474,7 +482,7 @@ export function ClusterPage() {
                             key={w.workerId}
                             w={w}
                             onOpenTaskOutput={openTaskOutput}
-                            onRequestKill={setKillConfirmId}
+                            onRequestKill={(id) => setKillConfirm({ kind: 'worker', id })}
                           />
                         ))}
                       </>
@@ -490,7 +498,7 @@ export function ClusterPage() {
                             key={w.workerId}
                             w={w}
                             onOpenTaskOutput={openTaskOutput}
-                            onRequestKill={setKillConfirmId}
+                            onRequestKill={(id) => setKillConfirm({ kind: 'worker', id })}
                           />
                         ))}
                       </>
@@ -564,7 +572,7 @@ export function ClusterPage() {
                             <summary className="cursor-pointer text-[10px] text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 select-none">
                               Raw payload
                             </summary>
-                            <pre className="mt-1 p-2 rounded-md bg-zinc-100 dark:bg-zinc-950 text-[10px] leading-relaxed text-zinc-700 dark:text-zinc-300 overflow-x-auto whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                            <pre className="mt-1 p-2 rounded-md bg-zinc-100 dark:bg-zinc-950 text-[10px] leading-relaxed text-zinc-700 dark:text-zinc-300 overflow-x-auto whitespace-pre-wrap break-all max-h-64 overflow-y-auto">
                               {JSON.stringify(ev.data, null, 2)}
                             </pre>
                           </details>
@@ -611,19 +619,30 @@ export function ClusterPage() {
 
       <HistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} onTaskClick={setOpenTask} />
 
-      {killConfirmId && (
-        <KillWorkerDialog
-          workerId={killConfirmId}
-          isOrphan={(() => {
-            const w = workers?.find((x) => x.workerId === killConfirmId);
-            return !!w && w.status !== 'running' && w.status !== 'active' && w.status !== 'exited';
+      {killConfirm && (
+        <KillConfirmDialog
+          kind={killConfirm.kind}
+          id={killConfirm.id}
+          note={(() => {
+            if (killConfirm.kind !== 'worker') return undefined;
+            const w = workers?.find((x) => x.workerId === killConfirm.id);
+            const isOrphan = !!w && w.status !== 'running' && w.status !== 'active' && w.status !== 'exited';
+            return isOrphan
+              ? 'No live process found for this worker. Confirming marks the orphan registration as exited so the UI reflects reality.'
+              : undefined;
           })()}
-          onCancel={() => setKillConfirmId(null)}
+          onCancel={() => setKillConfirm(null)}
           onConfirm={async () => {
-            const id = killConfirmId;
-            setKillConfirmId(null);
+            const confirm = killConfirm;
+            setKillConfirm(null);
             try {
-              await killClusterWorker(id);
+              if (confirm.kind === 'worker') {
+                await killClusterWorker(confirm.id);
+              } else if (confirm.kind === 'task') {
+                await killClusterTask(confirm.id);
+              } else {
+                await killClusterJob(confirm.id);
+              }
               await refresh();
             } catch (err) {
               setError(err instanceof Error ? err.message : String(err));

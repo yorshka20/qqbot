@@ -1,4 +1,4 @@
-import { GitBranch } from 'lucide-react';
+import { GitBranch, Skull } from 'lucide-react';
 import type { ClusterTask } from '../../../types';
 import { formatTimestamp } from '../utils';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
@@ -30,6 +30,8 @@ export function orderTasksAsTree(tasks: ClusterTask[]): Array<{ task: ClusterTas
   return out;
 }
 
+const KILLABLE_STATUSES = new Set(['pending', 'claimed', 'running']);
+
 /**
  * One row of the indented task tree. Click the row to open TaskOutputModal
  * with full details — no inline expansion (avoid nested scrolling inside
@@ -39,40 +41,57 @@ export function TaskTreeRow({
   task,
   depth,
   onClick,
+  onKill,
 }: {
   task: ClusterTask;
   depth: number;
   onClick: (task: ClusterTask) => void;
+  onKill?: (taskId: string) => void;
 }) {
   const preview = task.diffSummary || task.error || '';
+  const killable = onKill && KILLABLE_STATUSES.has(task.status);
 
   return (
-    <button
-      type="button"
+    <div
       style={{ marginLeft: depth * 20 }}
-      onClick={() => onClick(task)}
-      className="w-full text-left rounded border border-zinc-200 dark:border-zinc-700 px-2 py-1 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition-colors"
+      className="w-full flex items-stretch rounded border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition-colors"
     >
-      <div className="flex items-center gap-2">
-        {depth > 0 && <GitBranch className="w-3 h-3 text-zinc-400 shrink-0" />}
-        <div className="font-mono text-xs text-zinc-600 dark:text-zinc-300 shrink-0">{task.id.slice(0, 8)}</div>
-        <ClusterStatusBadge status={task.status} />
-        {task.workerTemplate && (
-          <div className="text-xs font-mono text-zinc-500 dark:text-zinc-400 shrink-0">{task.workerTemplate}</div>
+      <button type="button" onClick={() => onClick(task)} className="flex-1 min-w-0 text-left px-2 py-1">
+        <div className="flex items-center gap-2">
+          {depth > 0 && <GitBranch className="w-3 h-3 text-zinc-400 shrink-0" />}
+          <div className="font-mono text-xs text-zinc-600 dark:text-zinc-300 shrink-0">{task.id.slice(0, 8)}</div>
+          <ClusterStatusBadge status={task.status} />
+          {task.workerTemplate && (
+            <div className="text-xs font-mono text-zinc-500 dark:text-zinc-400 shrink-0">{task.workerTemplate}</div>
+          )}
+          <div className="flex-1 min-w-0" />
+          <div className="text-xs text-zinc-400 dark:text-zinc-500 shrink-0 tabular-nums">
+            {formatTimestamp(task.completedAt ?? task.createdAt)}
+          </div>
+        </div>
+        {preview && (
+          <div
+            className={`mt-1 text-xs truncate ${task.error ? 'text-red-600 dark:text-red-400' : 'text-zinc-600 dark:text-zinc-400'}`}
+          >
+            {preview.slice(0, 160)}
+            {preview.length > 160 ? '…' : ''}
+          </div>
         )}
-        <div className="flex-1 min-w-0" />
-        <div className="text-xs text-zinc-400 dark:text-zinc-500 shrink-0 tabular-nums">
-          {formatTimestamp(task.completedAt ?? task.createdAt)}
-        </div>
-      </div>
-      {preview && (
-        <div
-          className={`mt-1 text-xs truncate ${task.error ? 'text-red-600 dark:text-red-400' : 'text-zinc-600 dark:text-zinc-400'}`}
+      </button>
+      {killable && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onKill?.(task.id);
+          }}
+          className="shrink-0 px-2 flex items-center justify-center text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+          aria-label="Kill task"
+          title="Kill task"
         >
-          {preview.slice(0, 160)}
-          {preview.length > 160 ? '…' : ''}
-        </div>
+          <Skull className="w-3.5 h-3.5" />
+        </button>
       )}
-    </button>
+    </div>
   );
 }

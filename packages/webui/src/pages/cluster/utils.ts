@@ -104,6 +104,8 @@ export function statusBadgeClass(status: string): string {
       return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300';
     case 'failed':
       return 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300';
+    case 'cancelled':
+      return 'bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300';
     case 'running':
     case 'in_progress':
       return 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300';

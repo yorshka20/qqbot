@@ -717,6 +717,38 @@ export async function killClusterWorker(workerId: string): Promise<{ killed: boo
   return res.json() as Promise<{ killed: boolean }>;
 }
 
+export async function killClusterTask(
+  taskId: string,
+  reason?: string,
+): Promise<{ cancelled: boolean; taskId: string; cascadedChildren: number }> {
+  const res = await fetch(`${clusterApiBase()}/tasks/${encodeURIComponent(taskId)}/kill`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Kill task failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ cancelled: boolean; taskId: string; cascadedChildren: number }>;
+}
+
+export async function killClusterJob(
+  jobId: string,
+  reason?: string,
+): Promise<{ cancelled: boolean; jobId: string; cancelledTasks: number }> {
+  const res = await fetch(`${clusterApiBase()}/jobs/${encodeURIComponent(jobId)}/kill`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Kill job failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ cancelled: boolean; jobId: string; cancelledTasks: number }>;
+}
+
 export async function answerClusterHelpRequest(
   askId: string,
   input: { answer: string; answeredBy?: string },

@@ -427,6 +427,10 @@ export interface ClusterTask {
    * task tree (one level of indentation: planner row → child rows).
    */
   parentTaskId?: string;
+  /** Full char length of the worker's in-memory stdout; set by the job-detail route. */
+  outputBytes?: number;
+  /** True when `output` is a tail slice rather than the whole buffer. */
+  outputTruncated?: boolean;
 }
 
 export interface ClusterEventEntry {

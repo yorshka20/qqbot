@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import { ChevronDown, ChevronRight, FileCode, Loader2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, FileCode, Loader2, WrapText, X } from 'lucide-react';
 import { marked } from 'marked';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -26,8 +26,9 @@ function tryParseFilesModified(raw: string): string[] {
 export function TaskOutputModal({ task, onClose }: { task: ClusterTask; onClose: () => void }) {
   const [events, setEvents] = useState<ClusterEventEntry[] | null>(null);
   const [eventsLoading, setEventsLoading] = useState(false);
-  const [outputExpanded, setOutputExpanded] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
+  const [wrap, setWrap] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   // Fetch task events for the report timeline
   const loadEvents = useCallback(async () => {
@@ -57,6 +58,14 @@ export function TaskOutputModal({ task, onClose }: { task: ClusterTask; onClose:
       : []
     : lastReportData?.filesModified;
 
+  const handleCopy = useCallback(() => {
+    if (!task.output) return;
+    navigator.clipboard.writeText(task.output).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [task.output]);
+
   return (
     <Dialog.Root
       open={true}
@@ -66,7 +75,7 @@ export function TaskOutputModal({ task, onClose }: { task: ClusterTask; onClose:
     >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[80vh] w-[min(90vw,72rem)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl bg-white dark:bg-zinc-800 shadow-2xl flex flex-col focus:outline-none">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 h-[92vh] w-[min(96vw,100rem)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl bg-white dark:bg-zinc-800 shadow-2xl flex flex-col focus:outline-none">
           {/* ── Header ── */}
           <div className="shrink-0 px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center gap-3">
             <Dialog.Title className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
@@ -88,132 +97,157 @@ export function TaskOutputModal({ task, onClose }: { task: ClusterTask; onClose:
             </Dialog.Close>
           </div>
 
-          {/* ── Body ── */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
-            {/* Timestamps */}
-            <div className="grid grid-cols-3 gap-3 text-xs text-zinc-500 dark:text-zinc-400">
-              <div>
-                <div className="font-medium text-zinc-700 dark:text-zinc-300">Created</div>
-                {formatTimestamp(task.createdAt)}
+          {/* ── Body: fixed-width detail pane + full-height output viewer ── */}
+          <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
+            <div className="lg:w-[22rem] lg:shrink-0 min-h-0 overflow-y-auto p-4 space-y-4 lg:border-r border-zinc-200 dark:border-zinc-700">
+              {/* Timestamps */}
+              <div className="grid grid-cols-3 gap-3 text-xs text-zinc-500 dark:text-zinc-400">
+                <div>
+                  <div className="font-medium text-zinc-700 dark:text-zinc-300">Created</div>
+                  {formatTimestamp(task.createdAt)}
+                </div>
+                <div>
+                  <div className="font-medium text-zinc-700 dark:text-zinc-300">Started</div>
+                  {formatTimestamp(task.startedAt)}
+                </div>
+                <div>
+                  <div className="font-medium text-zinc-700 dark:text-zinc-300">Completed</div>
+                  {formatTimestamp(task.completedAt)}
+                </div>
               </div>
-              <div>
-                <div className="font-medium text-zinc-700 dark:text-zinc-300">Started</div>
-                {formatTimestamp(task.startedAt)}
-              </div>
-              <div>
-                <div className="font-medium text-zinc-700 dark:text-zinc-300">Completed</div>
-                {formatTimestamp(task.completedAt)}
-              </div>
-            </div>
 
-            {/* ── Final summary from hub_report (rendered as markdown) ── */}
-            <div>
-              <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1 font-medium">
-                Report Summary
+              {/* ── Final summary from hub_report (rendered as markdown) ── */}
+              <div>
+                <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1 font-medium">
+                  Report Summary
+                </div>
+                {lastSummary ? (
+                  <div
+                    className="text-sm text-zinc-800 dark:text-zinc-100 bg-zinc-50 dark:bg-zinc-900 rounded-lg p-3 border border-zinc-200 dark:border-zinc-700 max-h-[45vh] overflow-y-auto prose prose-sm max-w-none dark:prose-invert prose-table:text-xs prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-table:border-collapse prose-th:border prose-td:border prose-th:border-zinc-200 prose-td:border-zinc-200 dark:prose-th:border-zinc-700 dark:prose-td:border-zinc-700 prose-th:bg-zinc-100 dark:prose-th:bg-zinc-800"
+                    // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted hub_report from our own cluster workers
+                    dangerouslySetInnerHTML={renderMarkdown(lastSummary)}
+                  />
+                ) : (
+                  <div className="text-xs italic text-zinc-400 dark:text-zinc-500 bg-zinc-50 dark:bg-zinc-900 rounded-lg p-3 border border-zinc-200 dark:border-zinc-700">
+                    no report summary
+                  </div>
+                )}
               </div>
-              {lastSummary ? (
-                <div
-                  className="text-sm text-zinc-800 dark:text-zinc-100 bg-zinc-50 dark:bg-zinc-900 rounded-lg p-3 border border-zinc-200 dark:border-zinc-700 max-h-[300px] overflow-y-auto prose prose-sm max-w-none dark:prose-invert prose-table:text-xs prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-table:border-collapse prose-th:border prose-td:border prose-th:border-zinc-200 prose-td:border-zinc-200 dark:prose-th:border-zinc-700 dark:prose-td:border-zinc-700 prose-th:bg-zinc-100 dark:prose-th:bg-zinc-800"
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted hub_report from our own cluster workers
-                  dangerouslySetInnerHTML={renderMarkdown(lastSummary)}
-                />
-              ) : (
-                <div className="text-xs italic text-zinc-400 dark:text-zinc-500 bg-zinc-50 dark:bg-zinc-900 rounded-lg p-3 border border-zinc-200 dark:border-zinc-700">
-                  no report summary
+
+              {/* ── Files modified ── */}
+              <div>
+                <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1 font-medium flex items-center gap-1.5">
+                  <FileCode className="w-3.5 h-3.5" />
+                  Files Modified ({filesModified?.length ?? 0})
+                </div>
+                {filesModified && filesModified.length > 0 ? (
+                  <div className="bg-zinc-50 dark:bg-zinc-900 rounded-lg p-2 border border-zinc-200 dark:border-zinc-700 max-h-[150px] overflow-y-auto">
+                    {filesModified.map((f) => (
+                      <div key={f} className="text-xs font-mono text-zinc-700 dark:text-zinc-300 py-0.5 px-1">
+                        {f}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs italic text-zinc-400 dark:text-zinc-500 bg-zinc-50 dark:bg-zinc-900 rounded-lg p-3 border border-zinc-200 dark:border-zinc-700">
+                    no files modified
+                  </div>
+                )}
+              </div>
+
+              {/* ── Report Timeline ── */}
+              <ReportTimeline events={reportEvents} />
+
+              {eventsLoading && (
+                <div className="flex items-center gap-2 text-xs text-zinc-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Loading report timeline...
+                </div>
+              )}
+
+              {/* ── Error ── */}
+              {task.error && (
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-red-500 dark:text-red-400 mb-1 font-medium">
+                    Error
+                  </div>
+                  <pre className="text-xs whitespace-pre-wrap break-words bg-red-50 dark:bg-red-950/30 p-3 rounded-lg text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900">
+                    {task.error}
+                  </pre>
+                </div>
+              )}
+
+              {/* ── Description (collapsible) ── */}
+              {task.description && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setDescExpanded((v) => !v)}
+                    className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 font-medium hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                  >
+                    {descExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                    Task Description (input prompt)
+                  </button>
+                  {descExpanded && (
+                    <pre className="mt-1 text-xs whitespace-pre-wrap break-words bg-zinc-100 dark:bg-zinc-900 p-3 rounded-lg text-zinc-800 dark:text-zinc-100 max-h-[40vh] overflow-y-auto border border-zinc-200 dark:border-zinc-700">
+                      {task.description}
+                    </pre>
+                  )}
                 </div>
               )}
             </div>
-
-            {/* ── Files modified ── */}
-            <div>
-              <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1 font-medium flex items-center gap-1.5">
-                <FileCode className="w-3.5 h-3.5" />
-                Files Modified ({filesModified?.length ?? 0})
-              </div>
-              {filesModified && filesModified.length > 0 ? (
-                <div className="bg-zinc-50 dark:bg-zinc-900 rounded-lg p-2 border border-zinc-200 dark:border-zinc-700 max-h-[150px] overflow-y-auto">
-                  {filesModified.map((f) => (
-                    <div key={f} className="text-xs font-mono text-zinc-700 dark:text-zinc-300 py-0.5 px-1">
-                      {f}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-xs italic text-zinc-400 dark:text-zinc-500 bg-zinc-50 dark:bg-zinc-900 rounded-lg p-3 border border-zinc-200 dark:border-zinc-700">
-                  no files modified
-                </div>
-              )}
-            </div>
-
-            {/* ── Report Timeline ── */}
-            <ReportTimeline events={reportEvents} />
-
-            {eventsLoading && (
-              <div className="flex items-center gap-2 text-xs text-zinc-400">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Loading report timeline...
-              </div>
-            )}
-
-            {/* ── Error ── */}
-            {task.error && (
-              <div>
-                <div className="text-xs uppercase tracking-wide text-red-500 dark:text-red-400 mb-1 font-medium">
-                  Error
-                </div>
-                <pre className="text-xs whitespace-pre-wrap break-words bg-red-50 dark:bg-red-950/30 p-3 rounded-lg text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900">
-                  {task.error}
-                </pre>
-              </div>
-            )}
 
             {/* ── Live worker output: only while the scheduler still holds stdout in memory; never persisted to DB ── */}
-            {task.output ? (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setOutputExpanded((v) => !v)}
-                  className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 font-medium hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
-                >
-                  {outputExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="shrink-0 px-4 py-2 border-b border-zinc-200 dark:border-zinc-700 flex items-center gap-3 bg-zinc-50 dark:bg-zinc-900/60">
+                <span className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 font-medium">
                   Live worker output
-                  <span className="normal-case tracking-normal font-normal text-zinc-400 dark:text-zinc-500">
-                    ({(task.output.length / 1024).toFixed(1)}KB, not saved)
+                </span>
+                {task.output && (
+                  <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                    {((task.outputBytes ?? task.output.length) / 1024).toFixed(1)}KB
+                    {task.outputTruncated ? ' · truncated' : ''}
                   </span>
-                </button>
-                {outputExpanded && (
-                  <pre className="mt-1 text-xs whitespace-pre-wrap break-words bg-zinc-100 dark:bg-zinc-900 p-3 rounded-lg text-zinc-800 dark:text-zinc-100 max-h-[40vh] overflow-y-auto border border-zinc-200 dark:border-zinc-700">
+                )}
+                <div className="flex-1" />
+                {task.output && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setWrap((v) => !v)}
+                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-xs text-zinc-700 dark:text-zinc-200 transition-colors"
+                    >
+                      <WrapText className="w-3.5 h-3.5" />
+                      {wrap ? 'No-wrap' : 'Wrap'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopy}
+                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-xs text-zinc-700 dark:text-zinc-200 transition-colors"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  </>
+                )}
+              </div>
+              <div className="flex-1 min-h-0 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-3">
+                {task.output ? (
+                  <pre
+                    className={`text-xs leading-relaxed font-mono text-zinc-800 dark:text-zinc-100 ${wrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}`}
+                  >
                     {task.output}
                   </pre>
+                ) : (
+                  (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') && (
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Worker stdout is not stored after the task finishes. Use the report summary and the timeline; live
+                      output was only shown while the task was active.
+                    </div>
+                  )
                 )}
               </div>
-            ) : (
-              (task.status === 'completed' || task.status === 'failed') && (
-                <div className="text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/60 rounded-lg p-3 border border-zinc-200 dark:border-zinc-700">
-                  Worker stdout is not stored after the task finishes. Use the report summary above and the timeline;
-                  live output was only shown while the task was active.
-                </div>
-              )
-            )}
-
-            {/* ── Description (collapsible) ── */}
-            {task.description && (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setDescExpanded((v) => !v)}
-                  className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 font-medium hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
-                >
-                  {descExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                  Task Description (input prompt)
-                </button>
-                {descExpanded && (
-                  <pre className="mt-1 text-xs whitespace-pre-wrap break-words bg-zinc-100 dark:bg-zinc-900 p-3 rounded-lg text-zinc-800 dark:text-zinc-100 max-h-[40vh] overflow-y-auto border border-zinc-200 dark:border-zinc-700">
-                    {task.description}
-                  </pre>
-                )}
-              </div>
-            )}
+            </div>
           </div>
         </Dialog.Content>
       </Dialog.Portal>

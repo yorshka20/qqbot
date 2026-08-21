@@ -40,7 +40,6 @@ export function WorkerDetailModal({ worker, onClose }: WorkerDetailModalProps) {
   const [task, setTask] = useState<ClusterTask | null>(null);
   const [taskLoading, setTaskLoading] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
-  const [outputExpanded, setOutputExpanded] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
 
   useEffect(() => {
@@ -172,19 +171,13 @@ export function WorkerDetailModal({ worker, onClose }: WorkerDetailModalProps) {
 
                 {task.output ? (
                   <div>
-                    <button
-                      type="button"
-                      onClick={() => setOutputExpanded((v) => !v)}
-                      className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
-                    >
-                      {outputExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                      Live output ({(task.output.length / 1024).toFixed(1)}KB, not saved)
-                    </button>
-                    {outputExpanded && (
-                      <pre className="mt-1 text-xs whitespace-pre-wrap break-words bg-zinc-100 dark:bg-zinc-900 p-3 rounded-lg text-zinc-800 dark:text-zinc-100 max-h-[40vh] overflow-y-auto border border-zinc-200 dark:border-zinc-700">
-                        {task.output}
-                      </pre>
-                    )}
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Live output ({((task.outputBytes ?? task.output.length) / 1024).toFixed(1)}KB
+                      {task.outputTruncated ? ', truncated' : ''}, not saved)
+                    </div>
+                    <pre className="mt-1 text-xs whitespace-pre-wrap break-words bg-zinc-100 dark:bg-zinc-900 p-3 rounded-lg text-zinc-800 dark:text-zinc-100 max-h-64 overflow-y-auto border border-zinc-200 dark:border-zinc-700">
+                      {task.output}
+                    </pre>
                   </div>
                 ) : (
                   (task.status === 'completed' || task.status === 'failed') && (
