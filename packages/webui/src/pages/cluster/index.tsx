@@ -1,17 +1,24 @@
 /**
  * Agent Cluster control page (route entry).
  *
- * Layout (single scroll column on small screens, 2-col grid above lg):
- *   - Header: status summary + Start/Stop/Pause/Resume + Refresh
- *   - Submit task card
- *   - Help requests card (with inline answer form — §2.5 round 2)
- *   - Recent jobs card (expandable to show task breakdown)
- *   - Workers card
- *   - Locks card
+ * Layout:
+ *   - Header (resident): title, live status chips, lifecycle controls
+ *     (Start/Stop/Pause/Resume), help-request badge, history audit, refresh.
+ *   - Main area: Recent jobs / Workers as full-height tabs — each tab body is
+ *     the single scroll container, so lists get the whole viewport instead of
+ *     nested card-sized scrollboxes. Both panels stay mounted across tab
+ *     switches to preserve expanded-row state.
+ *   - Control sidebar (resident, collapsible from the tab bar on lg+):
+ *     submit-task form plus the lock billboard. Stacks above the tabs on
+ *     small screens, where the whole body scrolls as one column instead.
+ *   - Events: bottom fold-out drawer with a one-line latest-event preview
+ *     when collapsed.
+ *   - Help requests: right-side drawer that auto-opens when a new request
+ *     arrives; toggled any time from the header badge.
  *
- * Click any task in the Jobs card (or **Task output** on a worker row) to open
- * a modal with the full task record: **Output** is worker CLI stdout; hub_report
- * lines on the worker card are short checkpoints only.
+ * Click any task in the Jobs tab (or **Output** on a worker row) to open a
+ * modal with the full task record: **Output** is worker CLI stdout;
+ * hub_report lines on the worker card are short checkpoints only.
  *
  * Background polling refreshes every 5s; SSE (when cluster.started) just
  * triggers a refresh on push events instead of incrementally updating
@@ -19,15 +26,12 @@
  * are small enough that the extra round-trip is fine.
  */
 
-import { GitBranch, History, Pause, Play, Power, RefreshCw, Send, Square } from 'lucide-react';
+import { GitBranch, HelpCircle, History, PanelRightClose, PanelRightOpen, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  createClusterJob,
-  getClusterProjects,
   getClusterStatus,
   getClusterTask,
-  getClusterTemplates,
   killClusterJob,
   killClusterTask,
   killClusterWorker,
@@ -41,8 +45,6 @@ import {
   startCluster,
   stopCluster,
 } from '../../api';
-import { RegistryProjectSelect } from '../../components/RegistryProjectSelect';
-import { TemplateSelect } from '../../components/TemplateSelect';
 import { getClusterApiBase } from '../../config';
 import type {
   ClusterEventEntry,
@@ -51,18 +53,79 @@ import type {
   ClusterLock,
   ClusterStatus,
   ClusterTask,
-  ClusterTemplatesResponse,
   ClusterWorkerRegistration,
-  ProjectRegistryEntry,
 } from '../../types';
 import { ClusterCard } from './components/ClusterCard';
-import { HelpRequestRow } from './components/HelpRequestRow';
+import { EventsDrawer } from './components/EventsDrawer';
+import { HelpDrawer } from './components/HelpDrawer';
 import { HistoryModal } from './components/HistoryModal';
-import { JobRow } from './components/JobRow';
+import { JobsPanel } from './components/JobsPanel';
 import { KillConfirmDialog } from './components/KillConfirmDialog';
+import { type ClusterLifecycleAction, LifecycleControls } from './components/LifecycleControls';
+import { LocksPanel } from './components/LocksPanel';
+import { SubmitTaskCard } from './components/SubmitTaskCard';
 import { TaskOutputModal } from './components/TaskOutputModal';
-import { WorkerBlock } from './components/WorkerBlock';
-import { CLUSTER_CARD_BODY_SCROLL, formatClusterEventSummary } from './utils';
+import { WorkersPanel } from './components/WorkersPanel';
+
+type ClusterTab = 'jobs' | 'workers';
+
+function StatusChips({ started, status }: { started: boolean | null; status: ClusterStatus | null }) {
+  if (!status) {
+    return <span className="text-xs text-zinc-400 dark:text-zinc-500 font-mono">-</span>;
+  }
+  const state = started === false ? 'stopped' : status.paused ? 'paused' : status.running ? 'running' : 'idle';
+  const dot =
+    state === 'running'
+      ? 'bg-emerald-500'
+      : state === 'paused'
+        ? 'bg-amber-500'
+        : state === 'idle'
+          ? 'bg-blue-400'
+          : 'bg-zinc-400';
+  return (
+    <div className="flex items-center gap-3 text-xs font-mono text-zinc-500 dark:text-zinc-400">
+      <span className="flex items-center gap-1.5">
+        <span className={`w-2 h-2 rounded-full ${dot}`} />
+        {state}
+      </span>
+      <span>workers {status.activeWorkers + status.idleWorkers}</span>
+      <span className="tabular-nums">
+        {status.runningTasks}🏃 {status.pendingTasks}⏳ {status.completedTasks}✓ {status.failedTasks}✗
+      </span>
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  label,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count?: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
+        active
+          ? 'border-zinc-900 dark:border-zinc-100 text-zinc-900 dark:text-zinc-100'
+          : 'border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+      }`}
+    >
+      {label}
+      {typeof count === 'number' && (
+        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300">
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
 
 export function ClusterPage() {
   const [loading, setLoading] = useState(false);
@@ -76,20 +139,10 @@ export function ClusterPage() {
   const [jobs, setJobs] = useState<ClusterJob[] | null>(null);
   const [events, setEvents] = useState<ClusterEventEntry[] | null>(null);
   const [eventTypeFilter, setEventTypeFilter] = useState<string>('');
-  const [templates, setTemplates] = useState<ClusterTemplatesResponse | null>(null);
-  const [projects, setProjects] = useState<ProjectRegistryEntry[]>([]);
 
-  const [project, setProject] = useState('');
-  const [desc, setDesc] = useState('');
-  /**
-   * Explicit template override for the submit form. Empty string = "use
-   * project default" (projectDefaults[project] from the templates
-   * snapshot). We don't auto-update this when `project` changes because
-   * the user may deliberately have picked a non-default template that
-   * applies to any project — resetting on every project change would
-   * throw away their selection.
-   */
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [tab, setTab] = useState<ClusterTab>('jobs');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const [openTask, setOpenTask] = useState<ClusterTask | null>(null);
   const [killConfirm, setKillConfirm] = useState<{ kind: 'worker' | 'task' | 'job'; id: string } | null>(null);
@@ -188,37 +241,25 @@ export function ClusterPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!started) {
-      setTemplates(null);
-      return;
-    }
-    getClusterTemplates()
-      .then(setTemplates)
-      .catch((err) => {
-        console.warn('[ClusterPage] getClusterTemplates failed:', err);
-      });
-  }, [started]);
-
-  // Fetch projects once on mount (always-on endpoint, doesn't require started cluster)
-  const projectInitRef = useRef(false);
-  useEffect(() => {
-    if (projectInitRef.current) return;
-    projectInitRef.current = true;
-    getClusterProjects()
-      .then((resp) => {
-        setProjects(resp.projects);
-        // Auto-select default project
-        if (resp.defaultAlias) {
-          setProject(resp.defaultAlias);
-        } else if (resp.projects.length > 0) {
-          setProject(resp.projects[0].alias);
+  const lifecycle = useCallback(
+    async (action: ClusterLifecycleAction) => {
+      try {
+        if (action === 'start') {
+          await startCluster();
+        } else if (action === 'stop') {
+          await stopCluster();
+        } else if (action === 'pause') {
+          await pauseCluster();
+        } else {
+          await resumeCluster();
         }
-      })
-      .catch((err) => {
-        console.warn('[ClusterPage] getClusterProjects failed:', err);
-      });
-  });
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [refresh],
+  );
 
   useEffect(() => {
     refresh();
@@ -249,371 +290,157 @@ export function ClusterPage() {
     };
   }, [refresh, sseUrl, started]);
 
-  const summary = status
-    ? [
-        `started=${started === null ? '-' : started ? 'true' : 'false'}`,
-        `running=${status.running}`,
-        `paused=${status.paused}`,
-        `workers=${status.activeWorkers + status.idleWorkers}`,
-        `tasks=${status.runningTasks}🏃 ${status.pendingTasks}⏳ ${status.completedTasks}✓ ${status.failedTasks}✗`,
-      ].join(' · ')
-    : '-';
+  // Auto-open the help drawer only when a request id we haven't seen yet
+  // arrives — a manual close stays closed across refreshes until the next
+  // genuinely new request.
+  const seenHelpIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!help) {
+      return;
+    }
+    const hasNew = help.some((h) => !seenHelpIds.current.has(h.id));
+    seenHelpIds.current = new Set(help.map((h) => h.id));
+    if (hasNew && help.length > 0) {
+      setHelpOpen(true);
+    }
+  }, [help]);
+
+  const helpCount = help?.length ?? 0;
 
   return (
     <div className="flex-1 min-h-0 overflow-hidden">
       <div className="h-full flex flex-col">
-        <div className="shrink-0 px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
+        {/* ── Header: resident status + controls ── */}
+        <div className="shrink-0 px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <GitBranch className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />
               <div className="font-semibold">Agent Cluster</div>
             </div>
-            <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">{summary}</div>
+            <StatusChips started={started} status={status} />
             <div className="flex-1" />
+            <LifecycleControls started={started} running={!!status?.running} onAction={lifecycle} />
+            <div className="w-px h-5 bg-zinc-200 dark:bg-zinc-700" />
+            <button
+              type="button"
+              onClick={() => setHelpOpen((o) => !o)}
+              className={`relative px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+                helpCount > 0
+                  ? 'border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                  : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700'
+              }`}
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              Help
+              {helpCount > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-amber-500 text-white">
+                  {helpCount}
+                </span>
+              )}
+            </button>
             <button
               type="button"
               onClick={() => setHistoryOpen(true)}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors flex items-center gap-2"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors flex items-center gap-1.5"
             >
-              <History className="w-4 h-4" />
+              <History className="w-3.5 h-3.5" />
               历史审计
             </button>
             <button
               type="button"
               onClick={() => refresh()}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors flex items-center gap-2"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors flex items-center gap-1.5"
               disabled={loading}
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </button>
           </div>
           {error && <div className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</div>}
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-zinc-100 dark:bg-zinc-900">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ClusterCard
-              title="Controls"
-              right={
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        await startCluster();
-                        await refresh();
-                      } catch (e) {
-                        setError(e instanceof Error ? e.message : String(e));
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors flex items-center gap-2"
-                    disabled={started === true}
-                  >
-                    <Power className="w-4 h-4" />
-                    Start
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        await stopCluster();
-                        await refresh();
-                      } catch (e) {
-                        setError(e instanceof Error ? e.message : String(e));
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors flex items-center gap-2"
-                    disabled={started === false}
-                  >
-                    <Square className="w-4 h-4" />
-                    Stop
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        await pauseCluster();
-                        await refresh();
-                      } catch (e) {
-                        setError(e instanceof Error ? e.message : String(e));
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors flex items-center gap-2"
-                    disabled={!status?.running}
-                  >
-                    <Pause className="w-4 h-4" />
-                    Pause
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        await resumeCluster();
-                        await refresh();
-                      } catch (e) {
-                        setError(e instanceof Error ? e.message : String(e));
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors flex items-center gap-2"
-                    disabled={!status?.running}
-                  >
-                    <Play className="w-4 h-4" />
-                    Resume
-                  </button>
-                </div>
-              }
-            >
-              <div className={`grid grid-cols-1 md:grid-cols-12 gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
-                <div className="md:col-span-3">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Project</div>
-                  <RegistryProjectSelect value={project} onChange={setProject} projects={projects} />
-                </div>
-                <div className="md:col-span-4">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Template</div>
-                  <TemplateSelect
-                    value={selectedTemplate}
-                    onChange={setSelectedTemplate}
-                    templates={templates?.templates ?? []}
-                    disabled={!templates}
-                    defaultLabel={`(default${
-                      templates?.projectDefaults?.[project] ? `: ${templates.projectDefaults[project]}` : ''
-                    })`}
-                  />
-                </div>
-                <div className="md:col-span-12">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Description</div>
-                  <textarea
-                    value={desc}
-                    onChange={(e) => setDesc(e.target.value)}
-                    rows={5}
-                    className="w-full min-h-[120px] px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-mono leading-relaxed resize-y"
-                    placeholder='e.g. "fix type errors in cluster api page"'
-                  />
-                </div>
-                <div className="md:col-span-12 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        if (!project.trim() || !desc.trim()) return;
-                        await createClusterJob({
-                          project: project.trim(),
-                          description: desc.trim(),
-                          workerTemplate: selectedTemplate || undefined,
-                        });
-                        setDesc('');
-                        await refresh();
-                      } catch (err) {
-                        setError(err instanceof Error ? err.message : String(err));
-                      }
-                    }}
-                    className="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:opacity-90 transition-opacity flex items-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    Submit
-                  </button>
-                </div>
-              </div>
+        {/* ── Body: main tabs + control sidebar ── */}
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden bg-zinc-100 dark:bg-zinc-900">
+          {/* Control sidebar — DOM-first so it stacks on top on small screens */}
+          <aside
+            className={`shrink-0 flex flex-col gap-4 p-4 lg:order-last lg:pl-0 lg:w-[24rem] xl:w-[27rem] lg:min-h-0 ${
+              sidebarCollapsed ? 'lg:hidden' : ''
+            }`}
+          >
+            <ClusterCard title="Submit task" className="shrink-0">
+              <SubmitTaskCard started={started} onSubmitted={refresh} />
             </ClusterCard>
-
-            <ClusterCard title="Help requests" count={help?.length}>
-              {!help ? (
-                <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
-              ) : help.length === 0 ? (
-                <div className="text-sm text-zinc-500 dark:text-zinc-400">No pending requests</div>
-              ) : (
-                <div className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
-                  {help.map((h) => (
-                    <HelpRequestRow key={h.id} request={h} onAnswered={refresh} />
-                  ))}
-                </div>
-              )}
+            <ClusterCard title="Locks" count={locks?.length} className="lg:flex-1 lg:min-h-0">
+              <LocksPanel locks={locks} />
             </ClusterCard>
+          </aside>
 
-            <div className="lg:col-span-2">
-              <ClusterCard title="Recent jobs" count={jobs?.length}>
-                {!jobs ? (
-                  <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
-                ) : jobs.length === 0 ? (
-                  <div className="text-sm text-zinc-500 dark:text-zinc-400">No jobs yet — submit one above</div>
-                ) : (
-                  <div className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
-                    {jobs.map((j) => (
-                      <JobRow
-                        key={j.id}
-                        job={j}
-                        onTaskClick={setOpenTask}
-                        onKillJob={(id) => setKillConfirm({ kind: 'job', id })}
-                        onKillTask={(id) => setKillConfirm({ kind: 'task', id })}
-                      />
-                    ))}
-                  </div>
-                )}
-              </ClusterCard>
-            </div>
-
-            <div className="lg:col-span-2 w-full min-w-0">
-              <ClusterCard
-                title="Workers"
+          {/* Main: tab bar + single-scroll tab body */}
+          <main className="flex flex-col lg:flex-1 lg:min-w-0 lg:min-h-0">
+            <div className="shrink-0 sticky top-0 z-20 lg:static bg-white dark:bg-zinc-800 border-y lg:border-t-0 border-zinc-200 dark:border-zinc-700 px-4 flex items-center gap-1">
+              <TabButton
+                active={tab === 'jobs'}
+                onClick={() => setTab('jobs')}
+                label="Recent jobs"
+                count={jobs?.length}
+              />
+              <TabButton
+                active={tab === 'workers'}
+                onClick={() => setTab('workers')}
+                label="Workers"
                 count={workers?.length}
-                right={
-                  workers && workers.length > 0 ? (
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400 font-normal">
-                      active {activeWorkers.length} · exited {oldWorkers.length}
-                    </span>
-                  ) : null
-                }
+              />
+              <div className="flex-1" />
+              {tab === 'workers' && workers && workers.length > 0 && (
+                <span className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
+                  active {activeWorkers.length} · exited {oldWorkers.length}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed((c) => !c)}
+                className="hidden lg:inline-flex p-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                title={sidebarCollapsed ? 'Show control panel' : 'Hide control panel'}
               >
-                {!workers ? (
-                  <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
-                ) : workers.length === 0 ? (
-                  <div className="text-sm text-zinc-500 dark:text-zinc-400">No workers</div>
-                ) : (
-                  <div className="flex flex-col gap-2 max-h-[min(60vh,40rem)] overflow-y-auto overflow-x-hidden overscroll-contain px-0.5">
-                    {/* Active workers first */}
-                    {activeWorkers.length > 0 && (
-                      <>
-                        <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 shrink-0 sticky top-0 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm py-1 z-10">
-                          Active ({activeWorkers.length})
-                        </div>
-                        {activeWorkers.map((w) => (
-                          <WorkerBlock
-                            key={w.workerId}
-                            w={w}
-                            onOpenTaskOutput={openTaskOutput}
-                            onRequestKill={(id) => setKillConfirm({ kind: 'worker', id })}
-                          />
-                        ))}
-                      </>
-                    )}
-                    {/* Exited workers */}
-                    {oldWorkers.length > 0 && (
-                      <>
-                        <div className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 shrink-0 sticky top-0 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm py-1 z-10">
-                          Exited ({oldWorkers.length})
-                        </div>
-                        {oldWorkers.map((w) => (
-                          <WorkerBlock
-                            key={w.workerId}
-                            w={w}
-                            onOpenTaskOutput={openTaskOutput}
-                            onRequestKill={(id) => setKillConfirm({ kind: 'worker', id })}
-                          />
-                        ))}
-                      </>
-                    )}
+                {sidebarCollapsed ? <PanelRightOpen className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
+              </button>
+            </div>
+            <div className="p-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto overscroll-contain">
+              {started === false ? (
+                <div className="py-16 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                  Cluster is not started — press Start in the header to boot the hub.
+                </div>
+              ) : (
+                <>
+                  {/* Both panels stay mounted so expanded rows survive tab switches */}
+                  <div className={tab === 'jobs' ? '' : 'hidden'}>
+                    <JobsPanel
+                      jobs={jobs}
+                      onTaskClick={setOpenTask}
+                      onKillJob={(id) => setKillConfirm({ kind: 'job', id })}
+                      onKillTask={(id) => setKillConfirm({ kind: 'task', id })}
+                    />
                   </div>
-                )}
-              </ClusterCard>
+                  <div className={tab === 'workers' ? '' : 'hidden'}>
+                    <WorkersPanel
+                      workers={workers}
+                      activeWorkers={activeWorkers}
+                      oldWorkers={oldWorkers}
+                      onOpenTaskOutput={openTaskOutput}
+                      onRequestKill={(id) => setKillConfirm({ kind: 'worker', id })}
+                    />
+                  </div>
+                </>
+              )}
             </div>
-
-            <div className="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-              <div className="min-h-0 min-w-0">
-                <ClusterCard
-                  title="Events"
-                  count={events?.length}
-                  right={
-                    <select
-                      value={eventTypeFilter}
-                      onChange={(e) => setEventTypeFilter(e.target.value)}
-                      className="px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs max-w-[140px]"
-                    >
-                      <option value="">All types</option>
-                      <option value="worker_joined">worker_joined</option>
-                      <option value="worker_left">worker_left</option>
-                      <option value="task_completed">task_completed</option>
-                      <option value="task_failed">task_failed</option>
-                      <option value="task_blocked">task_blocked</option>
-                      <option value="worker_progress">worker_progress</option>
-                      <option value="lock_acquired">lock_acquired</option>
-                      <option value="lock_released">lock_released</option>
-                      <option value="help_request">help_request</option>
-                      <option value="message">message</option>
-                    </select>
-                  }
-                >
-                  {!events ? (
-                    <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
-                  ) : events.length === 0 ? (
-                    <div className="text-sm text-zinc-500 dark:text-zinc-400">
-                      No events
-                      {eventTypeFilter && ` matching "${eventTypeFilter}"`}
-                    </div>
-                  ) : (
-                    <div className={`flex flex-col gap-0.5 ${CLUSTER_CARD_BODY_SCROLL}`}>
-                      {events.map((ev) => (
-                        <div
-                          key={`${ev.seq}-${ev.timestamp}`}
-                          className="rounded-lg border border-zinc-100 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/20 px-2 py-2 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
-                        >
-                          <div className="flex items-start gap-2">
-                            <span className="text-zinc-400 dark:text-zinc-500 shrink-0 w-11 tabular-nums">
-                              #{ev.seq}
-                            </span>
-                            <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-zinc-200/90 dark:bg-zinc-700/80 text-[10px] font-mono text-zinc-800 dark:text-zinc-100 max-w-[8.5rem] truncate">
-                              {ev.type}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-zinc-800 dark:text-zinc-100 leading-snug break-words">
-                                {formatClusterEventSummary(ev)}
-                              </div>
-                              {ev.sourceWorkerId ? (
-                                <div className="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono truncate mt-0.5">
-                                  {ev.sourceWorkerId}
-                                </div>
-                              ) : null}
-                            </div>
-                            <time className="text-zinc-400 dark:text-zinc-500 shrink-0 text-[10px] tabular-nums whitespace-nowrap">
-                              {new Date(ev.timestamp).toLocaleTimeString()}
-                            </time>
-                          </div>
-                          <details className="mt-1.5 ml-[3.25rem]">
-                            <summary className="cursor-pointer text-[10px] text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 select-none">
-                              Raw payload
-                            </summary>
-                            <pre className="mt-1 p-2 rounded-md bg-zinc-100 dark:bg-zinc-950 text-[10px] leading-relaxed text-zinc-700 dark:text-zinc-300 overflow-x-auto whitespace-pre-wrap break-all max-h-64 overflow-y-auto">
-                              {JSON.stringify(ev.data, null, 2)}
-                            </pre>
-                          </details>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </ClusterCard>
-              </div>
-              <div className="min-h-0 min-w-0">
-                <ClusterCard title="Locks" count={locks?.length}>
-                  {!locks ? (
-                    <div className="text-sm text-zinc-500 dark:text-zinc-400">-</div>
-                  ) : locks.length === 0 ? (
-                    <div className="text-sm text-zinc-500 dark:text-zinc-400">No active locks</div>
-                  ) : (
-                    <div className={`flex flex-col gap-2 ${CLUSTER_CARD_BODY_SCROLL}`}>
-                      {locks
-                        .slice()
-                        .sort((a, b) => a.filePath.localeCompare(b.filePath))
-                        .map((l) => (
-                          <div
-                            key={l.filePath}
-                            className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-900/30 px-3 py-2"
-                          >
-                            <div className="font-mono text-xs text-zinc-700 dark:text-zinc-200 break-all">
-                              {l.filePath}
-                            </div>
-                            <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                              by {l.workerId} · task {l.taskId ?? '-'}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </ClusterCard>
-              </div>
-            </div>
-          </div>
+          </main>
         </div>
+
+        {/* ── Events: bottom fold-out drawer ── */}
+        <EventsDrawer events={events} typeFilter={eventTypeFilter} onTypeFilterChange={setEventTypeFilter} />
       </div>
+
+      <HelpDrawer open={helpOpen} help={help} onClose={() => setHelpOpen(false)} onAnswered={refresh} />
 
       {openTask && <TaskOutputModal task={openTask} onClose={() => setOpenTask(null)} />}
 

@@ -118,7 +118,7 @@ export function JobRow({
   const killableJob = NON_TERMINAL_JOB_STATUSES.has(job.status);
 
   return (
-    <div className="shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-900/30 overflow-hidden">
+    <div className="shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 overflow-hidden">
       <button
         type="button"
         onClick={toggle}

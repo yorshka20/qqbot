@@ -1,5 +1,6 @@
-import { Clock, FileText, GitBranch, Hash, Skull, Tag, Timer } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, FileText, GitBranch, Hash, Skull, Tag, Timer } from 'lucide-react';
 import { marked } from 'marked';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 import type { ClusterWorkerRegistration } from '../../../types';
 import { useNow } from '../hooks/useNow';
@@ -36,10 +37,28 @@ export function WorkerBlock({
   const hasReport = !!(w.lastReportSummary || w.lastReportNextSteps || w.lastHubReportAt);
   const taskSummary = w.boundTaskSummary ? stripFrontmatter(w.boundTaskSummary) : '';
 
+  // The report summary expands in place instead of scrolling inside the card:
+  // a nested scrollbox here trapped wheel events while scrolling the workers
+  // list. Overflow is only re-measured while collapsed — expanded content
+  // never overflows, and measuring then would drop the collapse button.
+  const [reportExpanded, setReportExpanded] = useState(false);
+  const [reportOverflows, setReportOverflows] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on summary content, measured via ref inside the effect
+  useLayoutEffect(() => {
+    if (reportExpanded) {
+      return;
+    }
+    const el = reportRef.current;
+    if (el) {
+      setReportOverflows(el.scrollHeight > el.clientHeight + 1);
+    }
+  }, [reportExpanded, w.lastReportSummary]);
+
   return (
-    <div className="w-full min-w-0 shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/60 dark:bg-zinc-900/30">
+    <div className="w-full min-w-0 shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
       {/* ── Row 1: Header — full width ── */}
-      <div className="px-3 py-2 flex items-center gap-2 flex-wrap bg-zinc-50/80 dark:bg-zinc-800/40">
+      <div className="px-3 py-2 flex items-center gap-2 flex-wrap bg-zinc-50/80 dark:bg-zinc-700/30">
         <span className="font-mono text-xs font-semibold text-zinc-800 dark:text-zinc-100">{w.workerId}</span>
         {w.role && (
           <span
@@ -144,13 +163,37 @@ export function WorkerBlock({
             )}
           </div>
 
-          {/* Summary — full-width markdown */}
+          {/* Summary — full-width markdown, collapsed to a preview by default */}
           {w.lastReportSummary && (
-            <div
-              className="w-full text-xs text-zinc-700 dark:text-zinc-200 leading-relaxed bg-zinc-50 dark:bg-zinc-800/40 rounded-md px-4 py-3 border border-zinc-100 dark:border-zinc-700/50 max-h-[280px] overflow-y-auto prose prose-xs dark:prose-invert max-w-none prose-table:text-xs prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-table:border-collapse prose-th:border prose-td:border prose-th:border-zinc-300 prose-td:border-zinc-200 dark:prose-th:border-zinc-600 dark:prose-td:border-zinc-700 prose-th:bg-zinc-100 dark:prose-th:bg-zinc-800"
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted hub_report from our own workers
-              dangerouslySetInnerHTML={renderMarkdown(w.lastReportSummary) ?? undefined}
-            />
+            <div>
+              <div
+                ref={reportRef}
+                className={`w-full text-xs text-zinc-700 dark:text-zinc-200 leading-relaxed bg-zinc-50 dark:bg-zinc-900/40 rounded-md px-4 py-3 border border-zinc-100 dark:border-zinc-700/50 prose prose-xs dark:prose-invert max-w-none prose-table:text-xs prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-table:border-collapse prose-th:border prose-td:border prose-th:border-zinc-300 prose-td:border-zinc-200 dark:prose-th:border-zinc-600 dark:prose-td:border-zinc-700 prose-th:bg-zinc-100 dark:prose-th:bg-zinc-800 ${
+                  reportExpanded ? '' : 'max-h-44 overflow-hidden'
+                }`}
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted hub_report from our own workers
+                dangerouslySetInnerHTML={renderMarkdown(w.lastReportSummary) ?? undefined}
+              />
+              {(reportOverflows || reportExpanded) && (
+                <button
+                  type="button"
+                  onClick={() => setReportExpanded((e) => !e)}
+                  className="mt-1 flex items-center gap-0.5 text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  {reportExpanded ? (
+                    <>
+                      <ChevronUp className="w-3 h-3" />
+                      Collapse report
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3 h-3" />
+                      Show full report
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           )}
 
           {/* Next steps */}
