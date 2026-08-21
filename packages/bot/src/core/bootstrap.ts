@@ -23,6 +23,7 @@ import type { MessagePipeline } from '@/conversation/MessagePipeline';
 import type { ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
 import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import { makeSyntheticEvent } from '@/conversation/synthetic';
+import { AdminAlertService } from '@/core/alert';
 import { Bot } from '@/core/Bot';
 import type { ProtocolConfig } from '@/core/config';
 import type { Connection } from '@/core/connection';
@@ -201,6 +202,11 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     registry.register(createToolInstructProducer({ promptManager }));
     logger.info('[Bootstrap] Core prompt producers registered (baseline, model-identity, scene, tool-instruct)');
   }
+
+  // ── Admin alerting (before Agent Cluster so its health probe can resolve it) ──
+  const adminAlertService = new AdminAlertService(config);
+  container.registerInstance(DITokens.ADMIN_ALERT_SERVICE, adminAlertService);
+  adminAlertService.installProcessBoundary();
 
   // ── Agent Cluster (after DB is ready) ──
   if (clusterConfig) {

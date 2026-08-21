@@ -175,6 +175,9 @@ export const DITokens = {
   PROACTIVE_THREAD_PERSISTENCE_SERVICE: defineToken('ProactiveThreadPersistenceService', { required: true }),
   /** Required — registered unconditionally by ConversationInitializer.createWiringServices. */
   THREAD_CONTEXT_COMPRESSION_SERVICE: defineToken('ThreadContextCompressionService', { required: true }),
+
+  // ── Admin alerting (required — registered unconditionally in bootstrap.ts) ──
+  ADMIN_ALERT_SERVICE: defineToken('AdminAlertService', { required: true }),
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];
