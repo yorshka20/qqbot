@@ -88,7 +88,7 @@ export interface WorkerInstance {
 // ── Task / Job types ──
 
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-export type TaskStatus = 'pending' | 'claimed' | 'running' | 'completed' | 'failed' | 'blocked';
+export type TaskStatus = 'pending' | 'claimed' | 'running' | 'completed' | 'failed' | 'blocked' | 'cancelled';
 export type TaskSourceType = 'todo-file' | 'queue' | 'planner';
 
 export interface JobRecord {

@@ -642,8 +642,9 @@ export class ContextHub {
 
   /**
    * Hub side of `hub_wait_task`. Polls `handleQueryTask` every 500ms until
-   * the target task reaches a terminal status (`completed` / `failed`) or
-   * the timeout elapses. Returns the same shape as `hub_query_task`.
+   * the target task reaches a terminal status (`completed` / `failed` /
+   * `cancelled`) or the timeout elapses. Returns the same shape as
+   * `hub_query_task`.
    *
    * Implementation note: this blocks the MCP request handler (which is
    * fine — MCP tool calls are inherently long-running and the SSE
@@ -671,7 +672,7 @@ export class ContextHub {
     // Use handleQueryTask for consistency: same auth checks, same shape.
     while (true) {
       const snapshot = this.handleQueryTask(workerId, { taskId: input.taskId });
-      if (snapshot.status === 'completed' || snapshot.status === 'failed') {
+      if (snapshot.status === 'completed' || snapshot.status === 'failed' || snapshot.status === 'cancelled') {
         return snapshot;
       }
       if (Date.now() >= deadline) {

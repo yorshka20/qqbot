@@ -30,11 +30,13 @@
  *   - POST /api/cluster/pause
  *   - POST /api/cluster/resume
  *   - POST /api/cluster/workers/:id/kill
+ *   - POST /api/cluster/tasks/:id/kill
+ *   - POST /api/cluster/jobs/:id/kill
  *   - POST /api/cluster/help/:id/answer
  */
 
 import type { ClusterManager } from '@/cluster/ClusterManager';
-import type { ClusterEventType, WorkerRegistration } from '@/cluster/types';
+import type { ClusterEventType, TaskRecord, WorkerRegistration } from '@/cluster/types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
@@ -90,6 +92,26 @@ export class ClusterAPIBackend {
         resolvedTaskId,
       };
     });
+  }
+
+  /**
+   * Cap a task's `output` / `description` for the `/jobs/:id` list response.
+   * The WebUI polls that route every 2s while a job row is expanded, so an
+   * unbounded worker stdout would be re-sent in full on every tick; `GET
+   * /tasks/:id` (the single-task audit view) still returns the full record.
+   */
+  private capTaskForList(t: TaskRecord): TaskRecord & { outputBytes?: number; outputTruncated?: boolean } {
+    const OUT_CAP = 16384;
+    const DESC_CAP = 2000;
+    const full = t.output ?? '';
+    return {
+      ...t,
+      description:
+        t.description && t.description.length > DESC_CAP ? `${t.description.slice(0, DESC_CAP)}…` : t.description,
+      output: full.length > OUT_CAP ? full.slice(-OUT_CAP) : t.output || undefined,
+      outputBytes: full.length || undefined,
+      outputTruncated: full.length > OUT_CAP || undefined,
+    };
   }
 
   private resolveClusterManager(): ClusterManager | null {
@@ -267,7 +289,10 @@ export class ClusterAPIBackend {
         if (jobMatch) {
           const job = live.getScheduler().getJob(jobMatch[1]);
           if (!job) return errorResponse('Job not found', 404);
-          const tasks = live.getScheduler().getJobTasks(jobMatch[1]);
+          const tasks = live
+            .getScheduler()
+            .getJobTasks(jobMatch[1])
+            .map((t) => this.capTaskForList(t));
           const workers = live.getHub().workerRegistry.getWorkersByJobId(jobMatch[1]);
           return jsonResponse({ ...job, tasks, workers: this.enrichWorkerRegistrations(live, workers) });
         }
@@ -361,7 +386,7 @@ export class ClusterAPIBackend {
         });
         if (!task) {
           return errorResponse(
-            'Failed to create task (unknown project, unknown workerTemplate, or requirePlannerRole could not resolve a planner template)',
+            'Failed to create task (unknown project, unknown or disabled workerTemplate, or requirePlannerRole could not resolve a planner template)',
             400,
           );
         }
@@ -384,6 +409,30 @@ export class ClusterAPIBackend {
         if (killMatch) {
           const killed = await live.killWorker(killMatch[1]);
           return jsonResponse({ killed });
+        }
+
+        // /tasks/:id/kill
+        const taskKillMatch = subPath.match(/^\/tasks\/([^/]+)\/kill$/);
+        if (taskKillMatch) {
+          const body = (await req.json().catch(() => ({}))) as { reason?: string };
+          const result = await live.getScheduler().cancelTask(taskKillMatch[1], body.reason);
+          if (!result.ok) {
+            if (result.code === 'not_found') return errorResponse('Task not found', 404);
+            return errorResponse(`Task already terminal (status: ${result.status})`, 409);
+          }
+          return jsonResponse({ cancelled: true, taskId: taskKillMatch[1], cascadedChildren: result.cascadedChildren });
+        }
+
+        // /jobs/:id/kill
+        const jobKillMatch = subPath.match(/^\/jobs\/([^/]+)\/kill$/);
+        if (jobKillMatch) {
+          const body = (await req.json().catch(() => ({}))) as { reason?: string };
+          const result = await live.getScheduler().cancelJob(jobKillMatch[1], body.reason);
+          if (!result.ok) {
+            if (result.code === 'not_found') return errorResponse('Job not found', 404);
+            return errorResponse(`Job already terminal (status: ${result.status})`, 409);
+          }
+          return jsonResponse({ cancelled: true, jobId: jobKillMatch[1], cancelledTasks: result.cancelledTasks });
         }
 
         // /help/:id/answer

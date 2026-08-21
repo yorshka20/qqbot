@@ -571,7 +571,7 @@ export class WorkerPool {
 
     if (worker.currentTask) {
       const task = worker.currentTask;
-      const alreadyTerminal = task.status === 'completed' || task.status === 'failed';
+      const alreadyTerminal = task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled';
       if (!alreadyTerminal) {
         task.status = 'failed';
         task.error = reason;
@@ -691,7 +691,10 @@ export class WorkerPool {
       // non-zero exit code (e.g. 143) which would otherwise flip the
       // task back to `failed` here, racing with the fast-path mark.
       // Treat any prior terminal status as authoritative.
-      const alreadyTerminal = worker.currentTask.status === 'completed' || worker.currentTask.status === 'failed';
+      const alreadyTerminal =
+        worker.currentTask.status === 'completed' ||
+        worker.currentTask.status === 'failed' ||
+        worker.currentTask.status === 'cancelled';
       if (!alreadyTerminal) {
         worker.currentTask.status = exitCode === 0 ? 'completed' : 'failed';
         worker.currentTask.completedAt = new Date().toISOString();

@@ -11,7 +11,7 @@ import { randomUUID } from '@/utils/randomUUID';
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { TaskSource } from './sources/TaskSource';
-import type { JobRecord, TaskCandidate, TaskRecord } from './types';
+import type { JobRecord, JobStatus, TaskCandidate, TaskRecord, TaskStatus } from './types';
 import type { WorkerPool } from './WorkerPool';
 
 export class ClusterScheduler {
@@ -97,6 +97,24 @@ export class ClusterScheduler {
    * §2.3 (hub_report wiring) for the full story.
    */
   markTaskCompleted(task: TaskRecord): void {
+    this.finalizeTask(task);
+  }
+
+  /**
+   * Terminal-state sequence shared by every path that moves a task out of
+   * `activeTasks` for good: persist → job-counter update (once) →
+   * activeTasks.delete → cascade-kill children. `markTaskCompleted` and
+   * `cancelTask` both funnel through here so there is exactly one place
+   * that owns the double-count guard below.
+   *
+   * Idempotency model:
+   *   - persistTask: runs every call (SQLite UPSERT; stores summary/error only)
+   *   - job counter update + activeTasks.delete: runs exactly once
+   *
+   * See docs/local/agent-cluster.md Issue D (original Phase 1 bug) and
+   * §2.3 (hub_report wiring) for the full story.
+   */
+  private finalizeTask(task: TaskRecord): void {
     // Always persist — allows the post-exit code path to refresh error/diffSummary
     // after hub_report fired first. Stdout is never written to SQLite.
     this.persistTask(task);
@@ -117,7 +135,7 @@ export class ClusterScheduler {
     if (job && !task.parentTaskId) {
       if (task.status === 'completed') {
         job.tasksCompleted += 1;
-      } else if (task.status === 'failed') {
+      } else if (task.status === 'failed' || task.status === 'cancelled') {
         job.tasksFailed += 1;
       }
       const totalDone = job.tasksCompleted + job.tasksFailed;
@@ -150,6 +168,86 @@ export class ClusterScheduler {
     void this.cascadeKillChildren(task.id).catch((err) => {
       logger.error(`[ClusterScheduler] cascadeKillChildren failed for ${task.id}:`, err);
     });
+  }
+
+  /**
+   * Operator-initiated cancel of a single task. Unlike cascade-kill (which
+   * only fires as a side effect of a parent task terminating), this is the
+   * only way to terminate a task that never got a worker at all — e.g. one
+   * wedged `pending` forever because its resolved template is disabled.
+   */
+  async cancelTask(
+    taskId: string,
+    reason?: string,
+  ): Promise<
+    | { ok: true; cascadedChildren: number }
+    | { ok: false; code: 'not_found' }
+    | { ok: false; code: 'already_terminal'; status: TaskStatus }
+  > {
+    const task = this.findTask(taskId);
+    if (!task) {
+      return { ok: false, code: 'not_found' };
+    }
+    if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
+      return { ok: false, code: 'already_terminal', status: task.status };
+    }
+
+    const cascaded = this.getChildTasks(taskId).filter(
+      (c) => c.status === 'pending' || c.status === 'running' || c.status === 'claimed',
+    ).length;
+
+    task.status = 'cancelled';
+    task.error = reason?.trim() || 'Cancelled by operator';
+    task.completedAt = new Date().toISOString();
+    this.finalizeTask(task);
+
+    if (task.workerId) {
+      try {
+        await this.workerPool.killWorker(task.workerId);
+      } catch (err) {
+        logger.warn(`[ClusterScheduler] cancelTask: failed to kill worker ${task.workerId} for task ${taskId}:`, err);
+      }
+    }
+
+    return { ok: true, cascadedChildren: cascaded };
+  }
+
+  /**
+   * Operator-initiated cancel of every live task in a job. Cancels tasks
+   * one at a time via `cancelTask` (reusing its worker-kill + cascade
+   * logic) rather than duplicating that sequence, then forces the job
+   * itself to `cancelled` — an explicit operator cancel always wins over
+   * whatever terminal status `cancelTask`'s counter path may have already
+   * derived for the job.
+   */
+  async cancelJob(
+    jobId: string,
+    reason?: string,
+  ): Promise<
+    | { ok: true; cancelledTasks: number }
+    | { ok: false; code: 'not_found' }
+    | { ok: false; code: 'already_terminal'; status: JobStatus }
+  > {
+    const job = this.getJob(jobId);
+    if (!job) {
+      return { ok: false, code: 'not_found' };
+    }
+    if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+      return { ok: false, code: 'already_terminal', status: job.status };
+    }
+
+    let cancelledTasks = 0;
+    for (const task of this.getJobTasks(jobId)) {
+      if (task.status !== 'pending' && task.status !== 'claimed' && task.status !== 'running') continue;
+      const result = await this.cancelTask(task.id, reason);
+      if (result.ok) cancelledTasks += 1;
+    }
+
+    job.status = 'cancelled';
+    job.completedAt = new Date().toISOString();
+    this.persistJob(job);
+
+    return { ok: true, cancelledTasks };
   }
 
   /**
@@ -187,7 +285,7 @@ export class ClusterScheduler {
       // never made it past tryDispatch). LockManager is per-workerId so
       // killing the live worker handles its locks; pending children
       // never claimed any locks.
-      child.status = 'failed';
+      child.status = 'cancelled';
       child.error = `Cancelled: parent task ${parentTaskId} terminated`;
       child.completedAt = new Date().toISOString();
       this.persistTask(child);
@@ -285,6 +383,36 @@ export class ClusterScheduler {
           `Available: ${Object.keys(this.config.workerTemplates).join(', ') || '(none)'}`,
       );
       return null;
+    }
+    if (options?.workerTemplate && this.config.workerTemplates[options.workerTemplate].enabled === false) {
+      logger.warn(
+        `[ClusterScheduler] submitTask: workerTemplate "${options.workerTemplate}" is disabled (enabled: false). ` +
+          `Refusing to create an undispatchable task.`,
+      );
+      return null;
+    }
+
+    // Same guard for the no-explicit-template path: resolve the template
+    // exactly as tryDispatch would (task.workerTemplate → workerPreference →
+    // first declared) and reject up front if that resolution lands on a
+    // disabled or missing template, so a submission can never produce a
+    // task that tryDispatch will refuse forever.
+    if (!options?.workerTemplate) {
+      const projectConfig = this.config.projects[project];
+      const resolvedName = projectConfig?.workerPreference || Object.keys(this.config.workerTemplates)[0];
+      if (!resolvedName) {
+        logger.warn(
+          `[ClusterScheduler] submitTask: no workerPreference / workerTemplates configured for project "${project}"`,
+        );
+        return null;
+      }
+      if (this.config.workerTemplates[resolvedName]?.enabled === false) {
+        logger.warn(
+          `[ClusterScheduler] submitTask: resolved workerTemplate "${resolvedName}" (from workerPreference) is disabled ` +
+            `(enabled: false). Refusing to create an undispatchable task — pick a different workerPreference for project "${project}".`,
+        );
+        return null;
+      }
     }
 
     // Phase 3: requirePlannerRole is set by the dispatch caller when a

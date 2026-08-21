@@ -700,7 +700,7 @@ CREATE TABLE cluster_tasks (
   jobId TEXT NOT NULL,
   project TEXT NOT NULL,
   description TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',  -- pending | claimed | running | completed | failed | blocked
+  status TEXT NOT NULL DEFAULT 'pending',  -- pending | claimed | running | completed | failed | blocked | cancelled
   workerId TEXT,
   workerTemplate TEXT,
   source TEXT,                             -- 'todo-file' | 'queue' | 'planner'
@@ -790,6 +790,8 @@ POST /api/cluster/jobs             → 创建 job（手动提交）
 POST /api/cluster/pause            → 暂停调度
 POST /api/cluster/resume           → 恢复调度
 POST /api/cluster/workers/:id/kill → 终止指定 worker
+POST /api/cluster/tasks/:id/kill   → 取消指定 task（未派发到 worker 的任务也可取消）
+POST /api/cluster/jobs/:id/kill    → 取消 job 下所有未终态的 task
 
 POST /api/cluster/help/:id/answer  → 回复 help request（人工介入）
 
