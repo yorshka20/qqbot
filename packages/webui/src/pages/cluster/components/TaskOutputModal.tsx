@@ -76,8 +76,28 @@ export function TaskOutputModal({ task: initialTask, onClose }: { task: ClusterT
   const [wrap, setWrap] = useState(true);
   const [copied, setCopied] = useState(false);
 
+  // The caller's snapshot may come from a list endpoint that caps
+  // description/output for payload size (e.g. /jobs/:id); it is only good
+  // enough for the first paint. Always re-fetch the authoritative record
+  // from /tasks/:id, which returns the full fields.
   useEffect(() => {
     setTask(initialTask);
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await getClusterTask(initialTask.id);
+        const { children, ...next } = raw as ClusterTask & { children?: unknown };
+        void children;
+        if (!cancelled) {
+          setTask(next as ClusterTask);
+        }
+      } catch {
+        // Keep the snapshot; the live poll below retries for active tasks
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [initialTask]);
 
   const live = NON_TERMINAL_STATUSES.has(task.status);
