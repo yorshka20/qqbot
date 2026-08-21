@@ -12,7 +12,7 @@ export { LanPage } from './lan';
 export { LogsPage } from './log';
 export { MemoryStatusPage } from './memory-status';
 export { MomentsPage } from './moments';
-export { PersonaPage } from './PersonaPage';
+export { PersonaPage } from './persona';
 export { QdrantExplorerPage } from './qdrant';
 export { ReportsPage } from './reports';
 export { TicketsPage } from './tickets';
