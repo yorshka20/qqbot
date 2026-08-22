@@ -250,11 +250,11 @@ describe('WhitelistPlugin access control', () => {
         api: {} as never,
         events: {} as never,
       },
-      { name: 'whitelist', enabled: true, config: { groupIds: [304077769] } },
+      { name: 'whitelist', enabled: true, config: { groupIds: [1001] } },
     );
     await plugin.onInit?.();
 
-    const context = makeHookContext({ messageText: '/echo', groupId: 304077769 });
+    const context = makeHookContext({ messageText: '/echo', groupId: 1001 });
     plugin.onMessageReceived(context);
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('whitelistDenied')).toBeUndefined();

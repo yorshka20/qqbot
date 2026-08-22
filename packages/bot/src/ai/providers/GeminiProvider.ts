@@ -539,7 +539,14 @@ export class GeminiProvider
       throw new Error('Invalid response structure');
     }
 
-    const text = (response as { text?: string }).text ?? candidate.content.parts.map((p) => p.text ?? '').join('');
+    // Extract text from the parts rather than the SDK's `response.text` getter: on a
+    // tool-calling round that getter logs "there are non-text parts toolCall,toolResponse
+    // in the response…" on every single call. Thought parts must stay out of the visible
+    // reply — the getter drops them, so anything replacing it has to drop them too.
+    const text = candidate.content.parts
+      .filter((p) => !p.thought)
+      .map((p) => p.text ?? '')
+      .join('');
     const meta = (
       response as {
         usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };

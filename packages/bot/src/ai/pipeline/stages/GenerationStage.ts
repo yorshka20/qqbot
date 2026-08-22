@@ -2,6 +2,7 @@
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import { normalizeSessionForConfig } from '@/core/config/SessionUtils';
 import type { ReasoningEffort } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -105,8 +106,12 @@ export class GenerationStage implements ReplyStage {
     }
     try {
       const configService = getContainer().resolve<ConversationConfigService>(DITokens.CONVERSATION_CONFIG_SERVICE);
-      const sessionType = ctx.hookContext.message.messageType === 'group' ? 'group' : 'user';
-      if (!(await configService.getShowThinking(ctx.sessionId, sessionType))) {
+      // ctx.sessionId is the canonical prefixed id; the config is keyed on the bare one.
+      const { sessionId, sessionType } = normalizeSessionForConfig(
+        ctx.sessionId,
+        ctx.hookContext.message.messageType === 'group' ? 'group' : 'user',
+      );
+      if (!(await configService.getShowThinking(sessionId, sessionType))) {
         return undefined;
       }
     } catch (err) {

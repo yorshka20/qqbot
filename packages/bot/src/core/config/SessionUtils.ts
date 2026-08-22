@@ -40,3 +40,25 @@ export function getSessionType(context: CommandContext): 'user' | 'group' {
   // Private sessions
   return 'user';
 }
+
+/**
+ * Convert a pipeline session id to the form ConversationConfigService is keyed on.
+ *
+ * Pipeline metadata and `ReplyPipelineContext.sessionId` carry the canonical
+ * prefixed id (`"group:111"` / `"user:222"`), while ConversationConfigService and
+ * every `/`-command write through {@link getSessionId}, which is the bare id.
+ * Reading config with a prefixed id silently misses and looks like "the setting
+ * never took effect", so normalize before any getConfig / get* lookup.
+ */
+export function normalizeSessionForConfig(
+  rawSessionId: string,
+  sessionType: 'user' | 'group',
+): { sessionId: string; sessionType: 'user' | 'group' } {
+  if (rawSessionId.startsWith('group:')) {
+    return { sessionId: rawSessionId.slice('group:'.length), sessionType: 'group' };
+  }
+  if (rawSessionId.startsWith('user:')) {
+    return { sessionId: rawSessionId.slice('user:'.length), sessionType: 'user' };
+  }
+  return { sessionId: rawSessionId, sessionType };
+}

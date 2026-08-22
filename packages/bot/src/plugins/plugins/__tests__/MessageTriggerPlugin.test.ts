@@ -296,7 +296,7 @@ describe('MessageTriggerPlugin', () => {
     const plugin = await initPlugin();
     const context = makeHookContext({
       messageText: '/echo',
-      groupId: 304077769,
+      groupId: 1001,
       command: { name: 'echo', args: [] },
     });
     await plugin.onMessagePreprocess(context);

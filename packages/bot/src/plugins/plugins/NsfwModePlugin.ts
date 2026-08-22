@@ -5,7 +5,7 @@ import type { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import type { ProcessStageInterceptor, ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
-import { getSessionId, getSessionType } from '@/core/config/SessionUtils';
+import { getSessionId, getSessionType, normalizeSessionForConfig } from '@/core/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
@@ -99,7 +99,7 @@ export class NsfwModePlugin extends PluginBase {
         // Pipeline metadata uses prefixed sessionId (e.g. "group:111"); ConversationConfigService
         // and /nsfw command use raw id + sessionType (e.g. "111", "group"). Normalize so we read
         // the same config that was written by executeNsfwCommand.
-        const { sessionId, sessionType: resolvedType } = this.normalizeSessionForConfig(rawSessionId, sessionType);
+        const { sessionId, sessionType: resolvedType } = normalizeSessionForConfig(rawSessionId, sessionType);
         const config = await this.conversationConfigService.getConfig(sessionId, resolvedType);
         const intercept = config.nsfw?.mode === true;
         if (intercept) {
@@ -111,7 +111,7 @@ export class NsfwModePlugin extends PluginBase {
         const rawSessionId = ctx.metadata.get('sessionId');
         const sessionType = ctx.metadata.get('sessionType');
         // Support both group and private: sessionType 'user' = private chat, 'group' = group chat
-        const { sessionId, sessionType: resolvedType } = this.normalizeSessionForConfig(rawSessionId, sessionType);
+        const { sessionId, sessionType: resolvedType } = normalizeSessionForConfig(rawSessionId, sessionType);
         const config = await this.conversationConfigService.getConfig(sessionId, resolvedType);
         await this.aiService.generateNsfwReply(ctx, {
           char: config.nsfw?.char ?? '',
@@ -166,18 +166,6 @@ export class NsfwModePlugin extends PluginBase {
    * used by ConversationConfigService and by /nsfw command (SessionUtils), so interceptor and
    * command read/write the same config.
    */
-  private normalizeSessionForConfig(
-    rawSessionId: string,
-    sessionType: 'user' | 'group',
-  ): { sessionId: string; sessionType: 'user' | 'group' } {
-    if (rawSessionId.startsWith('group:')) {
-      return { sessionId: rawSessionId.slice(6), sessionType: 'group' };
-    }
-    if (rawSessionId.startsWith('user:')) {
-      return { sessionId: rawSessionId.slice(5), sessionType: 'user' };
-    }
-    return { sessionId: rawSessionId, sessionType };
-  }
 
   /**
    * Execute /nsfw command: toggle or set on/off, optionally set --char=xxx and --instruct=xxx for prompt {{char}}/{{instruct}}, then reply with confirmation
