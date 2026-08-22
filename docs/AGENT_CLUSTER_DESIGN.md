@@ -33,7 +33,7 @@ QQ Bot 作为调度平台，管理一组持续自主运行的 agent worker。wor
 |---------|------|
 | `ProjectRegistry` | 直接复用，worker 绑定到已注册项目 |
 | `ClaudeCodeService` + `ClaudeToolManager` | 重构为 `ClaudeCliBackend`（WorkerBackend 的一种实现） |
-| `MCPServer` | 现有的 HTTP API server 作为参考，ContextHub 是独立的新 MCP server |
+| `ClaudeCodeApiServer` | 现有的 HTTP API server（非 MCP）作为参考，ContextHub 是独立的新 MCP server |
 | `AgendaService` | 定时触发 Job、daily digest |
 | `TodoWorkerHandler` / `RepeatingTodoWorkerHandler` | 升级为 `TodoFileSource`（TaskSource 实现） |
 | `InternalEventBus` | 集群事件通知复用 |

@@ -5,7 +5,7 @@
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
-import type { ProjectContext } from '@/services/mcpServer/types';
+import type { ProjectContext } from '@/services/claudeCode/types';
 import { logger } from '@/utils/logger';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 

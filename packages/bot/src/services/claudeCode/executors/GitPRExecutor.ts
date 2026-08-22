@@ -2,7 +2,7 @@
 
 import { spawn } from 'bun';
 import { logger } from '@/utils/logger';
-import type { ToolDefinition, ToolExecuteResult } from '../../mcpServer/types';
+import type { ToolDefinition, ToolExecuteResult } from '../types';
 import { BaseToolExecutor } from '../types';
 
 export class GitPRExecutor extends BaseToolExecutor {

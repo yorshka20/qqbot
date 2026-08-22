@@ -23,8 +23,9 @@ This document describes the architecture of the QQ Bot framework, a production-r
 15. [Memory System](#memory-system)
 16. [Database Layer](#database-layer)
 17. [Cluster System](#cluster-system)
-18. [Error Handling](#error-handling)
-19. [Development Workflow](#development-workflow)
+18. [MCP Surfaces](#mcp-surfaces)
+19. [Error Handling](#error-handling)
+20. [Development Workflow](#development-workflow)
 
 ## System Overview
 
@@ -149,7 +150,7 @@ The system is organized into the following layers:
 12. **Context Layer** (`src/context/`): HookContext building, conversation context management
 13. **Database Layer** (`src/database/`): SQLite and MongoDB adapters
 14. **Plugin Layer** (`src/plugins/`): Config-based plugin system
-15. **Services Layer** (`src/services/`): MCP, Claude Code, card rendering, retrieval, static server
+15. **Services Layer** (`src/services/`): MCP client, Claude Code, card rendering, retrieval, static server
 16. **Cluster Layer** (`src/cluster/`): Agent cluster for multi-worker coordination
 17. **Message Layer** (`src/message/`): Message construction, parsing, and caching
 18. **Agenda Layer** (`src/agenda/`): Scheduled and event/message-triggered task execution (`cron` / `once` / `onEvent` / `onMessage` triggers, with optional TTL + fire-budget lifecycle; the LLM can self-register ephemeral tasks via `schedule_task` / `watch_messages` tools)
@@ -719,6 +720,18 @@ Tasks can be fed from:
 ### Worker Protocol
 
 Workers communicate with the hub via MCP tool calls (`hub_claim`, `hub_report`, `hub_sync`, `hub_ask`, `hub_message`). The hub is exposed as an MCP server (`HubMCPServer`).
+
+## MCP Surfaces
+
+Three separate surfaces sit near MCP; only the first two speak the protocol.
+
+| Surface | Direction | Location | Purpose |
+|---|---|---|---|
+| `MCPClient` / `MCPManager` | Bot is the **client** | `src/services/mcp/` | Spawns a stdio MCP server (`mcp-searxng`) and exposes its tools to `SearchService`. Only registered when `mcp.search.provider=searxng` + `mcp.search.mode=mcp`; any other search backend skips it entirely. |
+| `HubMCPServer` | Bot is the **server** | `src/cluster/hub/` | Streamable-HTTP MCP endpoint at `/mcp`, consumed by cluster workers' own CLI MCP clients. |
+| `ClaudeCodeApiServer` | Bot is an **HTTP server** | `src/services/claudeCode/` | Plain REST (`/api/notify`, `/api/send`, `/api/command`, `/api/tools/*`) that a spawned `claude` CLI calls back with curl. **Not MCP** despite the tool-shaped routes. |
+
+The MCP client path is hardwired to SearXNG end to end: `MCPClient.connect()` maps only `SEARXNG_*` env vars, `MCPConfig.server` describes a single server rather than a list, and `SearchService` hardcodes the `searxng_web_search` tool name plus a SearXNG-specific result parser. MCP tools are not bridged into `ToolManager`, so no other feature can consume them without extending all of those layers.
 
 ## Data Flow
 

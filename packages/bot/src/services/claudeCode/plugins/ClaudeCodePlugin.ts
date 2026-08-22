@@ -151,7 +151,7 @@ export class ClaudeCodePlugin extends PluginBase {
     // Resolve project context
     const registry = this.claudeCodeService.getProjectRegistry();
     let workingDirectory: string | undefined;
-    let projectContext: import('@/services/mcpServer/types').ProjectContext | undefined;
+    let projectContext: import('@/services/claudeCode/types').ProjectContext | undefined;
 
     if (registry) {
       const project = registry.resolve(projectIdentifier);

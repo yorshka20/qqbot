@@ -7,9 +7,10 @@
 
 import { type Subprocess, spawn } from 'bun';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { ClaudeCodeServiceConfig } from '@/core/config';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
-import type { ClaudeTask, ClaudeTaskType, MCPServerConfig, ProjectContext, TaskNotification } from '../mcpServer/types';
+import type { ClaudeTask, ClaudeTaskType, ProjectContext, TaskNotification } from './types';
 
 type TaskUpdateCallback = (task: ClaudeTask) => void;
 
@@ -21,7 +22,7 @@ export interface CreateTaskOptions {
 }
 
 export class ClaudeToolManager {
-  private config: MCPServerConfig;
+  private config: ClaudeCodeServiceConfig;
   private tasks = new Map<string, ClaudeTask>();
   private runningProcesses = new Map<string, Subprocess>();
   private taskUpdateCallback: TaskUpdateCallback | null = null;
@@ -34,7 +35,7 @@ export class ClaudeToolManager {
   // Per-task completion resolvers for awaitTaskCompletion()
   private taskCompletionResolvers = new Map<string, (task: ClaudeTask) => void>();
 
-  constructor(config: MCPServerConfig) {
+  constructor(config: ClaudeCodeServiceConfig) {
     this.config = config;
   }
 

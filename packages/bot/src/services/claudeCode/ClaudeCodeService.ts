@@ -1,9 +1,9 @@
 /**
  * Claude Code Service
  *
- * Main service that integrates MCP Server and Claude Task Manager with the bot.
+ * Main service that integrates the HTTP callback API and Claude Task Manager with the bot.
  * Provides a unified interface for:
- * - Starting/stopping the MCP server
+ * - Starting/stopping the callback API server
  * - Triggering Claude Code tasks from bot commands
  * - Sending task results back to users
  */
@@ -11,25 +11,24 @@
 import { spawn } from 'bun';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { ProtocolName } from '@/core/config';
+import type { ClaudeCodeServiceConfig, ProtocolName } from '@/core/config';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
-import { MCPServer } from '../mcpServer/MCPServer';
+import { ClaudeCodeApiServer } from './ClaudeCodeApiServer';
+import { ClaudeToolManager } from './ClaudeToolManager';
+import type { ProjectRegistry } from './ProjectRegistry';
+import { ToolRegistry } from './ToolRegistry';
 import type {
   ClaudeTask,
   ClaudeTaskType,
   ExecuteCommandParams,
   ExecuteCommandResult,
-  MCPServerConfig,
   ProjectContext,
   SendMessageParams,
   ToolDefinition,
   ToolExecuteParams,
   ToolExecuteResult,
-} from '../mcpServer/types';
-import { ClaudeToolManager } from './ClaudeToolManager';
-import type { ProjectRegistry } from './ProjectRegistry';
-import { ToolRegistry } from './ToolRegistry';
+} from './types';
 
 export interface TriggerTaskOptions {
   taskType?: ClaudeTaskType;
@@ -39,8 +38,8 @@ export interface TriggerTaskOptions {
 }
 
 export class ClaudeCodeService {
-  private config: MCPServerConfig;
-  private mcpServer: MCPServer;
+  private config: ClaudeCodeServiceConfig;
+  private apiServer: ClaudeCodeApiServer;
   private taskManager: ClaudeToolManager;
   private toolRegistry: ToolRegistry;
   private messageAPI: MessageAPI | null = null;
@@ -49,9 +48,9 @@ export class ClaudeCodeService {
   private selfId: string | null = null;
   private projectRegistry: ProjectRegistry | null = null;
 
-  constructor(config: MCPServerConfig) {
+  constructor(config: ClaudeCodeServiceConfig) {
     this.config = config;
-    this.mcpServer = new MCPServer(config);
+    this.apiServer = new ClaudeCodeApiServer(config);
     this.taskManager = new ClaudeToolManager(config);
     this.toolRegistry = new ToolRegistry(config.workingDirectory);
     this.botStartTime = Date.now();
@@ -61,17 +60,17 @@ export class ClaudeCodeService {
 
   private setupHandlers(): void {
     // Handle task notifications from Claude Code
-    this.mcpServer.setTaskNotificationHandler((notification) => {
+    this.apiServer.setTaskNotificationHandler((notification) => {
       this.taskManager.handleTaskNotification(notification);
     });
 
     // Handle send message requests from Claude Code
-    this.mcpServer.setSendMessageHandler(async (params) => {
+    this.apiServer.setSendMessageHandler(async (params) => {
       return await this.sendMessage(params);
     });
 
     // Handle bot info requests
-    this.mcpServer.setBotInfoHandler(() => ({
+    this.apiServer.setBotInfoHandler(() => ({
       selfId: this.selfId,
       connectedProtocols: this.connectedProtocols,
       uptime: Date.now() - this.botStartTime,
@@ -87,13 +86,13 @@ export class ClaudeCodeService {
     });
 
     // Handle command execution requests from Claude Code
-    this.mcpServer.setExecuteCommandHandler(async (params) => {
+    this.apiServer.setExecuteCommandHandler(async (params) => {
       return await this.executeCommand(params);
     });
 
     // Handle tool execution requests from Claude Code
     // Inject per-task workingDirectory so tools operate in the correct project
-    this.mcpServer.setExecuteToolHandler(async (params) => {
+    this.apiServer.setExecuteToolHandler(async (params) => {
       let workingDirectory: string | undefined;
       if (params.taskId) {
         const task = this.taskManager.getTask(params.taskId);
@@ -105,7 +104,7 @@ export class ClaudeCodeService {
     });
 
     // Handle tool list requests from Claude Code
-    this.mcpServer.setListToolsHandler(() => {
+    this.apiServer.setListToolsHandler(() => {
       return this.toolRegistry.list();
     });
   }
@@ -150,7 +149,7 @@ export class ClaudeCodeService {
    * Start the service
    */
   async start(): Promise<string> {
-    const url = await this.mcpServer.start();
+    const url = await this.apiServer.start();
     logger.info(`[ClaudeCodeService] Service started. MCP Server URL: ${url}`);
     return url;
   }
@@ -159,7 +158,7 @@ export class ClaudeCodeService {
    * Stop the service
    */
   async stop(): Promise<void> {
-    await this.mcpServer.stop();
+    await this.apiServer.stop();
     logger.info('[ClaudeCodeService] Service stopped');
   }
 
@@ -430,7 +429,7 @@ export class ClaudeCodeService {
    * Get MCP server URL
    */
   getServerUrl(): string {
-    return this.mcpServer.getUrl();
+    return this.apiServer.getUrl();
   }
 
   /**

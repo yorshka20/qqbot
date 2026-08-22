@@ -6,14 +6,13 @@
  */
 
 import { logger } from '@/utils/logger';
-import type { ToolDefinition, ToolExecuteParams, ToolExecuteResult } from '../mcpServer/types';
 import { GitBranchExecutor } from './executors/GitBranchExecutor';
 import { GitCommitExecutor } from './executors/GitCommitExecutor';
 import { GitPRExecutor } from './executors/GitPRExecutor';
 import { ProjectInfoExecutor } from './executors/ProjectInfoExecutor';
 import { QualityCheckExecutor } from './executors/QualityCheckExecutor';
 import { ReadFileExecutor } from './executors/ReadFileExecutor';
-import type { ToolExecutor } from './types';
+import type { ToolDefinition, ToolExecuteParams, ToolExecuteResult, ToolExecutor } from './types';
 
 export class ToolRegistry {
   private tools: Map<string, ToolExecutor> = new Map();

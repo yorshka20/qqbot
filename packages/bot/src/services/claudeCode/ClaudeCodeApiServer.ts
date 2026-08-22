@@ -1,21 +1,23 @@
 /**
- * MCP Server for Claude Code integration
+ * HTTP callback API for the Claude Code integration
  *
  * This server exposes a REST API that Claude Code can call to:
  * 1. Notify the bot of task status (started, progress, completed, failed)
  * 2. Send messages to users/groups via the bot
  * 3. Query bot status and information
  *
- * Uses a simple HTTP REST API for reliability and ease of use.
- * Claude Code can use this via the WebFetch tool or curl commands.
+ * Despite the `/api/tools/*` surface this is plain HTTP REST, not the Model
+ * Context Protocol — the spawned `claude` CLI reaches it with curl/WebFetch.
+ * The repo's actual MCP endpoints are `HubMCPServer` (server side) and
+ * `services/mcp/MCPClient` (client side).
  */
 
+import type { ClaudeCodeServiceConfig } from '@/core/config';
 import { logger } from '@/utils/logger';
 import type {
   BotInfo,
   ExecuteCommandParams,
   ExecuteCommandResult,
-  MCPServerConfig,
   SendMessageParams,
   TaskNotification,
   ToolDefinition,
@@ -33,9 +35,9 @@ type ExecuteCommandHandler = (params: ExecuteCommandParams) => Promise<ExecuteCo
 type ExecuteToolHandler = (params: ToolExecuteParams) => Promise<ToolExecuteResult>;
 type ListToolsHandler = () => ToolDefinition[];
 
-export class MCPServer {
+export class ClaudeCodeApiServer {
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
-  private config: MCPServerConfig;
+  private config: ClaudeCodeServiceConfig;
 
   // Handlers set by the bot
   private onTaskNotification: TaskNotificationHandler | null = null;
@@ -45,7 +47,7 @@ export class MCPServer {
   private onExecuteTool: ExecuteToolHandler | null = null;
   private onListTools: ListToolsHandler | null = null;
 
-  constructor(config: MCPServerConfig) {
+  constructor(config: ClaudeCodeServiceConfig) {
     this.config = config;
   }
 
@@ -92,7 +94,7 @@ export class MCPServer {
   }
 
   /**
-   * Start the MCP server
+   * Start the callback API server
    */
   async start(): Promise<string> {
     const port = this.config.port;
@@ -107,8 +109,8 @@ export class MCPServer {
     });
 
     const baseUrl = `http://${host}:${port}`;
-    logger.info(`[MCPServer] Started on ${baseUrl}`);
-    logger.info(`[MCPServer] API endpoints:`);
+    logger.info(`[ClaudeCodeApiServer] Started on ${baseUrl}`);
+    logger.info(`[ClaudeCodeApiServer] API endpoints:`);
     logger.info(`  POST ${baseUrl}/api/notify  - Notify task status`);
     logger.info(`  POST ${baseUrl}/api/send    - Send message`);
     logger.info(`  POST ${baseUrl}/api/command - Execute bot command`);
@@ -242,7 +244,7 @@ export class MCPServer {
       if (url.pathname === '/' || url.pathname === '/api') {
         return this.jsonResponse(
           {
-            name: 'QQBot MCP Server',
+            name: 'QQBot Claude Code API',
             version: '1.0.0',
             endpoints: {
               'POST /api/notify': {
@@ -291,7 +293,7 @@ export class MCPServer {
 
       return this.jsonResponse({ error: 'Not Found' }, 404, corsHeaders);
     } catch (error) {
-      logger.error('[MCPServer] Request error:', error);
+      logger.error('[ClaudeCodeApiServer] Request error:', error);
       const message = error instanceof Error ? error.message : 'Internal server error';
       return this.jsonResponse({ error: message }, 500, corsHeaders);
     }
@@ -305,13 +307,13 @@ export class MCPServer {
   }
 
   /**
-   * Stop the MCP server
+   * Stop the callback API server
    */
   async stop(): Promise<void> {
     if (this.httpServer) {
       this.httpServer.stop();
       this.httpServer = null;
-      logger.info('[MCPServer] Stopped');
+      logger.info('[ClaudeCodeApiServer] Stopped');
     }
   }
 

@@ -38,9 +38,9 @@ src/services/claudeCode/
 
 ## 一、MCP Server API 扩展
 
-### 需要在 MCPServer.ts 中添加新端点
+### 需要在 ClaudeCodeApiServer.ts 中添加新端点
 
-在 `/src/services/mcpServer/MCPServer.ts` 中添加以下端点：
+在 `/src/services/claudeCode/ClaudeCodeApiServer.ts` 中添加以下端点：
 
 ```
 POST /api/tools/execute    - 执行 tool
@@ -49,7 +49,7 @@ GET  /api/tools/list       - 列出可用 tools
 
 ### 请求/响应类型定义
 
-在 `/src/services/mcpServer/types.ts` 中添加：
+在 `/src/services/claudeCode/types.ts` 中添加：
 
 ```typescript
 // Tool 执行请求
@@ -417,7 +417,7 @@ export interface ToolParameter {
 ```typescript
 // 新增导入
 import { ToolRegistry } from './ToolRegistry';
-import type { ToolExecuteParams, ToolExecuteResult, ToolDefinition } from '../mcpServer/types';
+import type { ToolExecuteParams, ToolExecuteResult, ToolDefinition } from './types';
 
 // 在 constructor 中
 this.toolRegistry = new ToolRegistry(config.workingDirectory);
@@ -480,9 +480,9 @@ export class ToolRegistry {
 
 ---
 
-## 四、MCPServer API 扩展实现
+## 四、ClaudeCodeApiServer API 扩展实现
 
-在 `MCPServer.ts` 的 `handleRequest` 方法中添加：
+在 `ClaudeCodeApiServer.ts` 的 `handleRequest` 方法中添加：
 
 ```typescript
 // POST /api/tools/execute - Execute a tool
@@ -612,8 +612,8 @@ Remember to:
 ### Phase 1: 基础设施
 1. 创建 `src/services/claudeCode/types.ts`
 2. 创建 `src/services/claudeCode/ToolRegistry.ts`
-3. 更新 `src/services/mcpServer/types.ts` 添加 tool 类型
-4. 更新 `src/services/mcpServer/MCPServer.ts` 添加 tool 端点
+3. 更新 `src/services/claudeCode/types.ts` 添加 tool 类型
+4. 更新 `src/services/claudeCode/ClaudeCodeApiServer.ts` 添加 tool 端点
 
 ### Phase 2: 核心 Tools
 5. 实现 `ReadFileExecutor.ts`（基础能力）
@@ -715,7 +715,7 @@ curl -X POST http://localhost:9900/api/tools/execute \
 ## 完成标准
 
 - [ ] 所有 6 个 executor 实现完成
-- [ ] MCPServer API 扩展完成
+- [ ] ClaudeCodeApiServer API 扩展完成
 - [ ] ToolRegistry 实现完成
 - [ ] ClaudeCodeService 集成完成
 - [ ] Prompt template 更新完成
