@@ -85,7 +85,7 @@ async function sandboxImport(specifier: unknown): Promise<unknown> {
     `import('${name}') is not available in execute_code. ` +
       `可 import 的内置模块：${[...IMPORTABLE_BUILTINS].join(', ')}。` +
       'fs/child_process/项目模块/node_modules 不可用（与 bot 同进程，等价于绕过密钥防护）；' +
-      '文件与代码查看请用 tools 里的 read_file / search_code，git/仓库检查用 inspect_repo 工具。',
+      '文件与代码查看请用 tools 里的 read_file / search_code，git/仓库检查用 run_shell 工具。',
   );
 }
 

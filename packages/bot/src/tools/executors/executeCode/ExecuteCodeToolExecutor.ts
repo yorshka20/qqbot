@@ -19,7 +19,7 @@ import { DEFAULT_SANDBOX_CONFIG } from './types';
 沙箱环境规则（写代码前先看，不要试错）：
 - 可用：标准 JS 全局（JSON/Math/Date/RegExp/URL 等）、async/await、\`console.log\`、\`fetch\`、\`tools\` 对象（调用其他工具，如 \`await tools.search({ query: "..." })\`）。
 - 可 \`await import('node:xxx')\` 的内置模块：${[...IMPORTABLE_BUILTINS].join(' / ')}。
-- 不可用：fs、child_process、worker_threads、vm、require、process、Bun、项目内模块与 node_modules 包（沙箱与 bot 同进程，这些等价于绕过密钥防护）。读文件用 tools.read_file，搜代码用 tools.search_code，git/仓库检查用 inspect_repo 工具。`,
+- 不可用：fs、child_process、worker_threads、vm、require、process、Bun、项目内模块与 node_modules 包（沙箱与 bot 同进程，这些等价于绕过密钥防护）。读文件用 tools.read_file，搜代码用 tools.search_code，git/仓库检查用 run_shell 工具。`,
   executor: 'execute_code',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true }, subagent: true },
   parameters: {
