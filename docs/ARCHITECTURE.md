@@ -517,13 +517,13 @@ Text-to-speech is a **bot-core capability** (not part of the LLM stack). It live
 
 The reply pipeline inside `ReplyPipelineOrchestrator` is composed of ordered stages:
 
-1. `ContextResolutionStage` — Resolve conversation session and history
-2. `GateCheckStage` — Run `onMessageBeforeAI` / `onAIGenerationStart` hooks
-3. `HistoryStage` — Load and compress conversation history
-4. `ContextEnrichmentStage` — Attach memory, retrieval results
-5. `PromptAssemblyStage` — Build system + user prompt from templates
-6. `ProviderSelectionStage` — Select LLM provider via `ProviderSelector`
-7. `GenerationStage` — Execute LLM call with tool loop
+1. `GateCheckStage` — Run `onMessageBeforeAI` / `onAIGenerationStart` hooks, whitelist gate (only writer of `ctx.interrupted`)
+2. `ContextResolutionStage` — Resolve referenced (quoted) message, extract images
+3. `HistoryStage` — Load and compress conversation history (episode cache)
+4. `ContextEnrichmentStage` — Attach memory / RAG / glossary / session memo / recent actions
+5. `ProviderSelectionStage` — Select LLM provider, build tool definitions + usage instructions
+6. `PromptAssemblyStage` — Build system + user messages, decide reasoning effort / tool rounds
+7. `GenerationStage` — Execute LLM call with tool loop (retry with provider fallback)
 8. `ResponseDispatchStage` — Fire `onAIGenerationComplete`, dispatch reply
 
 #### Reply delivery contract

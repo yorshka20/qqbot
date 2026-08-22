@@ -1,4 +1,4 @@
-// ToolRunner - executes tool calls for SubAgent using ToolManager executors (no hooks)
+// ToolRunner - executes tool calls for SubAgent through ToolManager.execute
 
 import type { FunctionCall } from '@/ai/types';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
@@ -15,7 +15,10 @@ import type { SubAgentSession, SubAgentType } from './types';
 
 /**
  * Runs a single tool call in SubAgent context.
- * Uses ToolManager.getExecutor().execute() (no ToolManager.execute / no hooks).
+ * Goes through ToolManager.execute, so tool hooks (onToolBeforeExecute /
+ * onToolExecuted) DO fire — on a synthetic hook context whose
+ * `context.metadata` carries `subAgentSessionId`, which is how session-level
+ * hook consumers (e.g. the audit ledger) tell subagent-internal calls apart.
  * Special-cases spawn_subagent via SubAgentManager.
  */
 export interface IToolRunner {

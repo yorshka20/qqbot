@@ -212,6 +212,8 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'activeProvider',
   'activeModel',
   'aiUsage',
+  'agendaChainDepth',
+  'sendMessageCount',
 ];
 
 /**
