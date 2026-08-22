@@ -912,13 +912,16 @@ export class LLMService {
         }
 
         // Append single assistant message with all tool_calls, then all tool result messages.
+        // Keep any text the model emitted alongside the calls — every provider mapper
+        // handles assistant text + tool_calls together, and dropping it would blind the
+        // model to its own words in later rounds.
         // Preserve reasoning_content for thinking models (required by DeepSeek; ignored by others).
         // Stamp the serving provider so a later provider (after mid-loop fallback) can tell
         // foreign tool_calls turns (fold/degrade for signature compatibility) from its own
         // (replay verbatim so the model keeps its first-person action record).
         const assistantMsg: ChatMessage = {
           role: 'assistant',
-          content: '',
+          content: response.text ?? '',
           tool_calls: assistantToolCalls,
           provider: currentProviderName,
         };
