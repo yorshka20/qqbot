@@ -230,7 +230,14 @@ export class ToolManager {
       }
     }
 
-    const shouldExecute = await hookManager.execute('onTaskBeforeExecute', hookContext);
+    // Tool hooks receive an enriched SHALLOW COPY carrying this call's toolCall/result.
+    // Several tool calls of one round run in parallel (Promise.allSettled in
+    // LLMService), so mutating the shared hookContext to pass per-call data would
+    // race and hand handlers a mismatched toolCall/result pair. The copy shares
+    // `metadata` by reference — handlers/executors may mutate metadata, but
+    // top-level fields written on the copy do not propagate.
+    const toolHookContext: HookContext = { ...hookContext, toolCall: call };
+    const shouldExecute = await hookManager.execute('onToolBeforeExecute', toolHookContext);
     if (!shouldExecute) {
       return {
         success: false,
@@ -244,8 +251,8 @@ export class ToolManager {
 
       const result = await executor.execute(call, context);
 
-      hookContext.result = result;
-      await hookManager.execute('onTaskExecuted', hookContext);
+      toolHookContext.result = result;
+      await hookManager.execute('onToolExecuted', toolHookContext);
 
       if (result.success) {
         logger.debug(`[ToolManager] Tool ${toolSpec.name} executed successfully`);

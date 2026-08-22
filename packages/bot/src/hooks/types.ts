@@ -44,7 +44,8 @@ export interface HookContext {
   /** Set when hook is run for a notice event (e.g. onNoticeReceived). */
   notice?: NormalizedNoticeEvent;
   command?: ParsedCommand;
-  task?: ToolCall;
+  /** The tool call being executed; set (on a per-call context copy) by ToolManager.execute for onToolBeforeExecute/onToolExecuted. */
+  toolCall?: ToolCall;
   aiResponse?: string;
   result?: ToolResult | CommandResult;
   error?: Error;

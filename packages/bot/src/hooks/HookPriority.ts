@@ -78,9 +78,8 @@ export const HookPriority: Record<
     EXECUTED: STANDARD_PRIORITIES,
   },
 
-  // Task system hooks
-  TASK: {
-    ANALYZED: STANDARD_PRIORITIES,
+  // Tool system hooks
+  TOOL: {
     BEFORE_EXECUTE: STANDARD_PRIORITIES,
     EXECUTED: STANDARD_PRIORITIES,
   },
@@ -135,15 +134,12 @@ export function getHookPriority(hookName: string, variant: HookPriorityVariant, 
     priority = HookPriority.COMMAND.EXECUTED[variant] ?? HookPriority.COMMAND.EXECUTED.NORMAL;
   }
 
-  // Task hooks
-  if (hookName === 'onTaskAnalyzed') {
-    priority = HookPriority.TASK.ANALYZED[variant] ?? HookPriority.TASK.ANALYZED.NORMAL;
+  // Tool hooks
+  if (hookName === 'onToolBeforeExecute') {
+    priority = HookPriority.TOOL.BEFORE_EXECUTE[variant] ?? HookPriority.TOOL.BEFORE_EXECUTE.NORMAL;
   }
-  if (hookName === 'onTaskBeforeExecute') {
-    priority = HookPriority.TASK.BEFORE_EXECUTE[variant] ?? HookPriority.TASK.BEFORE_EXECUTE.NORMAL;
-  }
-  if (hookName === 'onTaskExecuted') {
-    priority = HookPriority.TASK.EXECUTED[variant] ?? HookPriority.TASK.EXECUTED.NORMAL;
+  if (hookName === 'onToolExecuted') {
+    priority = HookPriority.TOOL.EXECUTED[variant] ?? HookPriority.TOOL.EXECUTED.NORMAL;
   }
 
   // AI hooks

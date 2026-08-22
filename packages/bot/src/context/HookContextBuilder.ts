@@ -24,7 +24,7 @@ export class HookContextBuilder {
   private message?: NormalizedMessageEvent;
   private notice?: NormalizedNoticeEvent;
   private command?: ParsedCommand;
-  private task?: ToolCall;
+  private toolCall?: ToolCall;
   private aiResponse?: string;
   private conversationContext?: ConversationContext;
   private result?: ToolResult | CommandResult;
@@ -71,7 +71,7 @@ export class HookContextBuilder {
     const builder = new HookContextBuilder();
     builder.message = context.message;
     builder.command = context.command;
-    builder.task = context.task;
+    builder.toolCall = context.toolCall;
     builder.aiResponse = context.aiResponse;
     builder.conversationContext = context.context;
     builder.result = context.result;
@@ -176,10 +176,10 @@ export class HookContextBuilder {
   }
 
   /**
-   * Set the task
+   * Set the tool call
    */
-  withTask(task: ToolCall): this {
-    this.task = task;
+  withToolCall(toolCall: ToolCall): this {
+    this.toolCall = toolCall;
     return this;
   }
 
@@ -261,8 +261,8 @@ export class HookContextBuilder {
     if (this.command !== undefined) {
       context.command = this.command;
     }
-    if (this.task !== undefined) {
-      context.task = this.task;
+    if (this.toolCall !== undefined) {
+      context.toolCall = this.toolCall;
     }
     if (this.aiResponse !== undefined) {
       context.aiResponse = this.aiResponse;
