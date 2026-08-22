@@ -129,8 +129,6 @@ export interface NovelAIProviderConfig {
 /** Gemini config per capability: LLM (reply generation) */
 export interface GeminiLLmConfig {
   model: string;
-  /** Model to use when falling back to paid key. If omitted, uses the same `model`. */
-  paidModel?: string;
   temperature?: number;
   maxTokens?: number;
   enableContext?: boolean;
@@ -147,8 +145,6 @@ export interface GeminiLLmConfig {
 /** Gemini config for vision (image understanding) */
 export interface GeminiVisionConfig {
   model: string;
-  /** Model to use when falling back to paid key. If omitted, uses the same `model`. */
-  paidModel?: string;
 }
 
 /** Gemini config for text2img and img2img (t2i / i2i). When set, enables both capabilities. */
@@ -160,10 +156,7 @@ export interface GeminiText2ImgConfig {
 
 export interface GeminiProviderConfig {
   type: 'gemini';
-  /** Free tier API key. Runtime mode switch via GeminiProvider.setKeyMode('free'|'paid'). */
-  apiKeyFree: string;
-  /** Paid tier API key. Runtime mode switch via GeminiProvider.setKeyMode('free'|'paid'). */
-  apiKeyPaid: string;
+  apiKey: string;
   resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/gemini')
   /** When set, enables LLM capability (reply generation). */
   llm?: GeminiLLmConfig;

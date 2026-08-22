@@ -21,18 +21,131 @@ import type { VisionCapability } from '../capabilities/VisionCapability';
 import type {
   AIGenerateOptions,
   AIGenerateResponse,
-  ChatCompletionMessageParam,
   ChatMessage,
-  ChatMessageRoleBase,
+  ContentPart,
   StreamingHandler,
+  ToolDefinition,
 } from '../types';
+import { contentToPlainString } from '../utils/contentUtils';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
+
+/**
+ * Translate the pipeline's reasoning effort into the Responses API `reasoning` param.
+ * `'minimal'` is not an accepted value (only none/low/medium/high/xhigh), so it
+ * clamps up to `'low'` — the smallest valid effort, preserving the latency intent.
+ */
+function mapReasoningEffortToOpenAI(
+  effort: AIGenerateOptions['reasoningEffort'],
+): OpenAI.Responses.ResponseCreateParams['reasoning'] {
+  if (!effort) {
+    return undefined;
+  }
+  return { effort: effort === 'minimal' ? 'low' : effort };
+}
+
+/** Map a ChatMessage's content to Responses input content (text + image parts). */
+function mapContentToResponsesInput(content: ChatMessage['content']): OpenAI.Responses.ResponseInputMessageContentList {
+  if (typeof content === 'string') {
+    return [{ type: 'input_text', text: content }];
+  }
+  const parts: OpenAI.Responses.ResponseInputMessageContentList = [];
+  for (const part of content ?? []) {
+    if (part.type === 'text') {
+      parts.push({ type: 'input_text', text: part.text });
+    } else if (part.type === 'image_url') {
+      parts.push({ type: 'input_image', image_url: part.image_url.url, detail: 'auto' });
+    }
+  }
+  return parts;
+}
+
+/**
+ * Map ChatMessage[] to Responses API input items.
+ *
+ * The Responses API flattens tool use into standalone items rather than nesting it
+ * on the assistant message: an assistant turn's tool calls become `function_call`
+ * items and each result becomes a `function_call_output` item keyed by `call_id`.
+ * A tool result whose id is unknown is dropped — the API rejects a
+ * `function_call_output` with no matching `function_call` in the same input.
+ */
+function mapMessagesToResponsesInput(messages: ChatMessage[]): OpenAI.Responses.ResponseInput {
+  const input: OpenAI.Responses.ResponseInput = [];
+  for (const m of messages) {
+    if (m.role === 'tool') {
+      if (!m.tool_call_id) {
+        continue;
+      }
+      input.push({
+        type: 'function_call_output',
+        call_id: m.tool_call_id,
+        output: typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''),
+      });
+      continue;
+    }
+
+    if (m.role === 'assistant') {
+      const text = typeof m.content === 'string' ? m.content : contentToPlainString(m.content ?? '');
+      if (text) {
+        input.push({ role: 'assistant', content: text });
+      }
+      for (const tc of m.tool_calls ?? []) {
+        input.push({ type: 'function_call', call_id: tc.id, name: tc.name, arguments: tc.arguments });
+      }
+      continue;
+    }
+
+    input.push({ role: m.role === 'system' ? 'system' : 'user', content: mapContentToResponsesInput(m.content) });
+  }
+  return input;
+}
+
+/** Map ToolDefinition[] to Responses API function tools (flat, unlike chat/completions). */
+function mapToolsToResponses(tools: ToolDefinition[]): OpenAI.Responses.FunctionTool[] {
+  return tools.map((t) => ({
+    type: 'function' as const,
+    name: t.name,
+    description: t.description,
+    parameters: (t.parameters ?? { type: 'object', properties: {} }) as Record<string, unknown>,
+    strict: false,
+  }));
+}
+
+/** Extract text, tool calls, and usage from a Responses API result. */
+function parseResponsesOutput(response: OpenAI.Responses.Response): {
+  text: string;
+  functionCalls?: AIGenerateResponse['functionCalls'];
+  usage?: AIGenerateResponse['usage'];
+} {
+  let text = '';
+  const functionCalls: NonNullable<AIGenerateResponse['functionCalls']> = [];
+
+  for (const item of response.output ?? []) {
+    if (item.type === 'message') {
+      for (const part of item.content ?? []) {
+        if (part.type === 'output_text') {
+          text += part.text;
+        }
+      }
+    } else if (item.type === 'function_call') {
+      functionCalls.push({ name: item.name, arguments: item.arguments, toolCallId: item.call_id });
+    }
+  }
+
+  const usage = response.usage
+    ? {
+        promptTokens: response.usage.input_tokens,
+        completionTokens: response.usage.output_tokens,
+        totalTokens: response.usage.total_tokens,
+      }
+    : undefined;
+
+  return { text, usage, ...(functionCalls.length > 0 ? { functionCalls } : {}) };
+}
 
 export interface OpenAIProviderConfig {
   apiKey: string;
   model?: string;
   baseURL?: string;
-  defaultTemperature?: number;
   defaultMaxTokens?: number;
   enableContext?: boolean;
   contextMessageCount?: number;
@@ -104,7 +217,6 @@ export class OpenAIProvider
   getConfig(): Record<string, unknown> {
     return {
       model: this.config.model || 'gpt-3.5-turbo',
-      defaultTemperature: this.config.defaultTemperature || 0.7,
       defaultMaxTokens: this.config.defaultMaxTokens || 2000,
     };
   }
@@ -118,33 +230,55 @@ export class OpenAIProvider
   }
 
   /**
-   * Map ChatMessage[] to OpenAI API format (supports tool role and assistant tool_calls)
+   * Assemble the Responses API input for a request, from either an explicit
+   * `options.messages` array or the legacy history + prompt path.
    */
-  private mapMessagesToOpenAI(messages: ChatMessage[]): ChatCompletionMessageParam[] {
-    return messages.map((m) => {
-      if (m.role === 'tool') {
-        return {
-          role: 'tool' as const,
-          tool_call_id: m.tool_call_id ?? '',
-          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''),
-        };
-      }
-      if (m.role === 'assistant' && m.tool_calls?.length) {
-        return {
-          role: 'assistant' as const,
-          content: m.content ?? '',
-          tool_calls: m.tool_calls.map((tc) => ({
-            id: tc.id,
-            type: 'function' as const,
-            function: { name: tc.name, arguments: tc.arguments },
-          })),
-        };
-      }
-      return {
-        role: m.role as ChatMessageRoleBase,
-        content: m.content ?? '',
-      };
-    }) as ChatCompletionMessageParam[];
+  private async buildResponsesInput(
+    prompt: string,
+    options: AIGenerateOptions | undefined,
+  ): Promise<OpenAI.Responses.ResponseInput> {
+    if (options?.messages?.length) {
+      return mapMessagesToResponsesInput(OpenAIProvider.withSystemPrompt(options.messages, options.systemPrompt));
+    }
+    const history = await this.loadHistory(options);
+    const messages: ChatMessage[] = [];
+    if (options?.systemPrompt) {
+      messages.push({ role: 'system', content: options.systemPrompt });
+    }
+    messages.push(...history);
+    messages.push({ role: 'user', content: prompt });
+    return mapMessagesToResponsesInput(messages);
+  }
+
+  /**
+   * Build a Responses API request. Sampling parameters (temperature, top_p,
+   * frequency/presence penalties) are deliberately not sent: the gpt-5.x reasoning
+   * family rejects them outright ("Unsupported parameter: 'top_p' is not supported
+   * with this model"), and reasoning depth is steered by `reasoning.effort` instead.
+   */
+  private buildResponsesRequest(
+    model: string,
+    input: OpenAI.Responses.ResponseInput,
+    options: AIGenerateOptions | undefined,
+  ): OpenAI.Responses.ResponseCreateParamsNonStreaming {
+    const body: OpenAI.Responses.ResponseCreateParamsNonStreaming = {
+      model,
+      input,
+      max_output_tokens: options?.maxTokens ?? this.config.defaultMaxTokens,
+      store: false,
+    };
+    const reasoning = mapReasoningEffortToOpenAI(options?.reasoningEffort);
+    if (reasoning) {
+      body.reasoning = reasoning;
+    }
+    if (options?.jsonMode) {
+      body.text = { format: { type: 'json_object' } };
+    }
+    if (options?.tools?.length) {
+      body.tools = mapToolsToResponses(options.tools);
+      body.tool_choice = 'auto';
+    }
+    return body;
   }
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
@@ -153,97 +287,23 @@ export class OpenAIProvider
     }
 
     const model = options?.model ?? this.config.model ?? 'gpt-3.5-turbo';
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
 
     try {
       logger.info(`[STATS] [OpenAIProvider] Generating with model: ${model}`);
 
-      let messages: ChatCompletionMessageParam[];
-      if (options?.messages?.length) {
-        messages = this.mapMessagesToOpenAI(OpenAIProvider.withSystemPrompt(options.messages, options.systemPrompt));
-      } else {
-        const history = await this.loadHistory(options);
-        messages = [];
-        if (options?.systemPrompt) {
-          messages.push({ role: 'system', content: options.systemPrompt });
-        }
-        for (const msg of history) {
-          messages.push({
-            role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: msg.content,
-          });
-        }
-        messages.push({
-          role: 'user',
-          content: prompt,
-        });
-      }
+      const input = await this.buildResponsesInput(prompt, options);
+      const response = await this.client.responses.create(this.buildResponsesRequest(model, input, options));
+      const parsed = parseResponsesOutput(response);
 
-      const body: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
-        model,
-        messages,
-        temperature,
-        max_completion_tokens: maxTokens,
-        top_p: options?.topP,
-        frequency_penalty: options?.frequencyPenalty,
-        presence_penalty: options?.presencePenalty,
-        stop: options?.stop,
-      };
-
-      if (options?.jsonMode) {
-        body.response_format = { type: 'json_object' };
-      }
-
-      if (options?.tools?.length) {
-        body.tools = options.tools.map((t) => ({
-          type: 'function' as const,
-          function: {
-            name: t.name,
-            description: t.description,
-            parameters: t.parameters,
-          },
-        }));
-        body.tool_choice = 'auto';
-      }
-
-      const response = await this.client.chat.completions.create(body);
-
-      const msg = response.choices[0]?.message;
-      const text = msg?.content ?? (typeof msg?.content === 'string' ? msg.content : '') ?? '';
-      const usage = response.usage
-        ? {
-            promptTokens: response.usage.prompt_tokens,
-            completionTokens: response.usage.completion_tokens,
-            totalTokens: response.usage.total_tokens,
-          }
-        : undefined;
-
-      const result: AIGenerateResponse = {
-        text,
-        usage,
+      return {
+        text: parsed.text,
+        usage: parsed.usage,
+        functionCalls: parsed.functionCalls,
         metadata: {
           model: response.model,
-          finishReason: response.choices[0]?.finish_reason,
+          finishReason: response.status,
         },
       };
-
-      const toolCalls = msg?.tool_calls;
-      if (toolCalls?.length) {
-        result.functionCalls = [];
-        for (const tc of toolCalls) {
-          const fn = tc.type === 'function' ? tc.function : undefined;
-          if (fn) {
-            result.functionCalls.push({
-              name: fn.name ?? '',
-              arguments: typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
-              toolCallId: tc.id ?? undefined,
-            });
-          }
-        }
-      }
-
-      return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[OpenAIProvider] Generation failed:', err);
@@ -261,68 +321,28 @@ export class OpenAIProvider
     }
 
     const model = options?.model ?? this.config.model ?? 'gpt-3.5-turbo';
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
 
     try {
       logger.info(`[STATS] [OpenAIProvider] Generating stream with model: ${model}`);
 
-      let messages: ChatCompletionMessageParam[];
-      if (options?.messages?.length) {
-        messages = OpenAIProvider.withSystemPrompt(options.messages, options.systemPrompt).map((m) => ({
-          role: m.role,
-          content: m.content,
-        })) as ChatCompletionMessageParam[];
-      } else {
-        const history = await this.loadHistory(options);
-        messages = [];
-        if (options?.systemPrompt) {
-          messages.push({ role: 'system', content: options.systemPrompt });
-        }
-        for (const msg of history) {
-          messages.push({
-            role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: msg.content,
-          });
-        }
-        messages.push({
-          role: 'user',
-          content: prompt,
-        });
-      }
-
-      const streamBody: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
-        model,
-        messages,
-        temperature,
-        max_completion_tokens: maxTokens,
-        top_p: options?.topP,
-        frequency_penalty: options?.frequencyPenalty,
-        presence_penalty: options?.presencePenalty,
-        stop: options?.stop,
+      const input = await this.buildResponsesInput(prompt, options);
+      const stream = await this.client.responses.create({
+        ...this.buildResponsesRequest(model, input, options),
         stream: true,
-      };
-      if (options?.jsonMode) {
-        streamBody.response_format = { type: 'json_object' };
-      }
-      const stream = await this.client.chat.completions.create(streamBody);
+      });
 
       let fullText = '';
       let usage: AIGenerateResponse['usage'] | undefined;
 
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || '';
-        if (content) {
-          fullText += content;
-          handler(content);
-        }
-
-        // Capture usage if available
-        if (chunk.usage) {
+      for await (const event of stream) {
+        if (event.type === 'response.output_text.delta') {
+          fullText += event.delta;
+          handler(event.delta);
+        } else if (event.type === 'response.completed' && event.response.usage) {
           usage = {
-            promptTokens: chunk.usage.prompt_tokens,
-            completionTokens: chunk.usage.completion_tokens,
-            totalTokens: chunk.usage.total_tokens,
+            promptTokens: event.response.usage.input_tokens,
+            completionTokens: event.response.usage.output_tokens,
+            totalTokens: event.response.usage.total_tokens,
           };
         }
       }
@@ -346,38 +366,15 @@ export class OpenAIProvider
       throw new Error('OpenAI client not initialized');
     }
     const model = options?.model ?? this.config.model ?? 'gpt-4-vision-preview';
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
-    const apiMessages = messages.map((m) => ({
-      role: m.role,
-      content:
-        typeof m.content === 'string'
-          ? m.content
-          : (m.content as Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>),
-    })) as ChatCompletionMessageParam[];
-    const response = await this.client.chat.completions.create({
-      model,
-      messages: apiMessages,
-      temperature,
-      max_completion_tokens: maxTokens,
-      top_p: options?.topP,
-      frequency_penalty: options?.frequencyPenalty,
-      presence_penalty: options?.presencePenalty,
-      stop: options?.stop,
-    });
-    const text = response.choices[0]?.message?.content || '';
+    const input = mapMessagesToResponsesInput(messages);
+    const response = await this.client.responses.create(this.buildResponsesRequest(model, input, options));
+    const parsed = parseResponsesOutput(response);
     return {
-      text,
-      usage: response.usage
-        ? {
-            promptTokens: response.usage.prompt_tokens,
-            completionTokens: response.usage.completion_tokens,
-            totalTokens: response.usage.total_tokens,
-          }
-        : undefined,
+      text: parsed.text,
+      usage: parsed.usage,
       metadata: {
         model: response.model,
-        finishReason: response.choices[0]?.finish_reason,
+        finishReason: response.status,
       },
     };
   }
@@ -396,81 +393,22 @@ export class OpenAIProvider
     }
 
     const model = options?.model ?? this.config.model ?? 'gpt-4-vision-preview';
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
 
     try {
       logger.info(`[STATS] [OpenAIProvider] Generating with vision, model: ${model}`);
 
-      // Build content array with text and images
-      const content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [
-        { type: 'text', text: prompt },
-      ];
-
-      // Add images to content
-      for (const image of images) {
-        let imageUrl: string;
-        if (image.url) {
-          imageUrl = image.url;
-        } else if (image.base64) {
-          // Convert base64 to data URL
-          const mimeType = image.mimeType || 'image/jpeg';
-          imageUrl = `data:${mimeType};base64,${image.base64}`;
-        } else if (image.file) {
-          // For file paths, we need to convert to base64 or URL
-          // This is a simplified version - in production, you might want to handle file uploads
-          throw new Error('File path images not directly supported. Please use URL or base64.');
-        } else {
-          throw new Error('Invalid image format. Must provide url, base64, or file.');
-        }
-
-        content.push({
-          type: 'image_url',
-          image_url: { url: imageUrl },
-        });
-      }
-
-      const messages: Array<
-        | { role: 'system'; content: string }
-        | {
-            role: 'user';
-            content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
-          }
-      > = [];
-      if (options?.systemPrompt) {
-        messages.push({ role: 'system', content: options.systemPrompt });
-      }
-      messages.push({
-        role: 'user',
-        content,
-      });
-
-      const response = await this.client.chat.completions.create({
-        model,
-        messages,
-        temperature,
-        max_completion_tokens: maxTokens,
-        top_p: options?.topP,
-        frequency_penalty: options?.frequencyPenalty,
-        presence_penalty: options?.presencePenalty,
-        stop: options?.stop,
-      });
-
-      const text = response.choices[0]?.message?.content || '';
-      const usage = response.usage
-        ? {
-            promptTokens: response.usage.prompt_tokens,
-            completionTokens: response.usage.completion_tokens,
-            totalTokens: response.usage.total_tokens,
-          }
-        : undefined;
+      const messages = OpenAIProvider.buildVisionMessages(prompt, images, options);
+      const response = await this.client.responses.create(
+        this.buildResponsesRequest(model, mapMessagesToResponsesInput(messages), options),
+      );
+      const parsed = parseResponsesOutput(response);
 
       return {
-        text,
-        usage,
+        text: parsed.text,
+        usage: parsed.usage,
         metadata: {
           model: response.model,
-          finishReason: response.choices[0]?.finish_reason,
+          finishReason: response.status,
         },
       };
     } catch (error) {
@@ -478,6 +416,35 @@ export class OpenAIProvider
       logger.error('[OpenAIProvider] Vision generation failed:', err);
       throw err;
     }
+  }
+
+  /** Build a system + user message pair carrying the prompt text and every image as a content part. */
+  private static buildVisionMessages(
+    prompt: string,
+    images: VisionImage[],
+    options: AIGenerateOptions | undefined,
+  ): ChatMessage[] {
+    const content: ContentPart[] = [{ type: 'text', text: prompt }];
+    for (const image of images) {
+      let imageUrl: string;
+      if (image.url) {
+        imageUrl = image.url;
+      } else if (image.base64) {
+        imageUrl = `data:${image.mimeType || 'image/jpeg'};base64,${image.base64}`;
+      } else if (image.file) {
+        throw new Error('File path images not directly supported. Please use URL or base64.');
+      } else {
+        throw new Error('Invalid image format. Must provide url, base64, or file.');
+      }
+      content.push({ type: 'image_url', image_url: { url: imageUrl } });
+    }
+
+    const messages: ChatMessage[] = [];
+    if (options?.systemPrompt) {
+      messages.push({ role: 'system', content: options.systemPrompt });
+    }
+    messages.push({ role: 'user', content });
+    return messages;
   }
 
   /**
@@ -725,80 +692,28 @@ export class OpenAIProvider
     }
 
     const model = options?.model ?? this.config.model ?? 'gpt-4-vision-preview';
-    const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
 
     try {
       logger.info(`[STATS] [OpenAIProvider] Generating stream with vision, model: ${model}`);
 
-      // Build content array with text and images
-      const content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [
-        { type: 'text', text: prompt },
-      ];
-
-      // Add images to content
-      for (const image of images) {
-        let imageUrl: string;
-        if (image.url) {
-          imageUrl = image.url;
-        } else if (image.base64) {
-          const mimeType = image.mimeType || 'image/jpeg';
-          imageUrl = `data:${mimeType};base64,${image.base64}`;
-        } else if (image.file) {
-          throw new Error('File path images not directly supported. Please use URL or base64.');
-        } else {
-          throw new Error('Invalid image format. Must provide url, base64, or file.');
-        }
-
-        content.push({
-          type: 'image_url',
-          image_url: { url: imageUrl },
-        });
-      }
-
-      const messages: Array<
-        | { role: 'system'; content: string }
-        | {
-            role: 'user';
-            content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
-          }
-      > = [];
-      if (options?.systemPrompt) {
-        messages.push({ role: 'system', content: options.systemPrompt });
-      }
-      messages.push({
-        role: 'user',
-        content,
-      });
-
-      const stream = await this.client.chat.completions.create({
-        model,
-        messages,
-        temperature,
-        max_completion_tokens: maxTokens,
-        top_p: options?.topP,
-        frequency_penalty: options?.frequencyPenalty,
-        presence_penalty: options?.presencePenalty,
-        stop: options?.stop,
+      const messages = OpenAIProvider.buildVisionMessages(prompt, images, options);
+      const stream = await this.client.responses.create({
+        ...this.buildResponsesRequest(model, mapMessagesToResponsesInput(messages), options),
         stream: true,
       });
 
       let fullText = '';
       let usage: AIGenerateResponse['usage'] | undefined;
 
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || '';
-        if (content) {
-          fullText += content;
-          handler(content);
-        }
-
-        // Capture usage if available
-        if (chunk.usage) {
+      for await (const event of stream) {
+        if (event.type === 'response.output_text.delta') {
+          fullText += event.delta;
+          handler(event.delta);
+        } else if (event.type === 'response.completed' && event.response.usage) {
           usage = {
-            promptTokens: chunk.usage.prompt_tokens,
-            completionTokens: chunk.usage.completion_tokens,
-            totalTokens: chunk.usage.total_tokens,
+            promptTokens: event.response.usage.input_tokens,
+            completionTokens: event.response.usage.output_tokens,
+            totalTokens: event.response.usage.total_tokens,
           };
         }
       }

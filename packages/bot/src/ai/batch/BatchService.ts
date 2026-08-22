@@ -157,8 +157,7 @@ export class BatchService {
 
       case 'gemini': {
         const config = this.getProviderRawConfig(provider);
-        // Prefer paid key for batch (more reliable), fall back to free
-        const apiKey = (config?.apiKeyPaid as string) || (config?.apiKeyFree as string);
+        const apiKey = config?.apiKey as string | undefined;
         if (!apiKey) throw new Error(`[BatchService] Gemini provider not configured or missing apiKey`);
         const llmConfig = config?.llm as { model?: string } | undefined;
         return new GeminiBatchAdapter(apiKey, llmConfig?.model);

@@ -319,4 +319,158 @@ describe('LLMService resolvedModel stamping', () => {
     const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, undefined, 'mock');
     expect(res.resolvedModel).toBe('gpt-4o-mini');
   });
+
+  describe('generateWithTools reasoningContent', () => {
+    /** Provider that emits reasoning on every round, calling a tool on all but the last. */
+    function createReasoningProvider(toolRounds: number) {
+      let round = 0;
+      return {
+        name: 'mock',
+        getCapabilities: () => ['llm'],
+        isAvailable: () => true,
+        supportsToolUse: true,
+        generate: async (): Promise<AIGenerateResponse> => {
+          round++;
+          if (round <= toolRounds) {
+            return {
+              text: '',
+              reasoningContent: `thinking round ${round}`,
+              functionCalls: [{ name: 'noop', arguments: '{}', toolCallId: `call_${round}` }],
+            };
+          }
+          return { text: 'final answer', reasoningContent: `thinking round ${round}` };
+        },
+      };
+    }
+
+    function createService(provider: unknown) {
+      const aiManager = {
+        getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+        getProvidersForCapability: () => [],
+        getDefaultProvider: () => provider,
+      } as unknown as AIManager;
+      return new LLMService(aiManager, undefined, undefined, {
+        toolUseProviders: ['mock'],
+        fallback: { fallbackOrder: [] },
+      });
+    }
+
+    const tools: ToolDefinition[] = [
+      { name: 'noop', description: 'does nothing', parameters: { type: 'object', properties: {} } },
+    ];
+
+    it('joins reasoning from every tool round, not just the final one', async () => {
+      const service = createService(createReasoningProvider(2));
+      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        toolExecutor: async () => 'ok',
+      });
+
+      expect(res.text).toBe('final answer');
+      expect(res.reasoningContent).toBe('thinking round 1\n\n---\n\nthinking round 2\n\n---\n\nthinking round 3');
+    });
+
+    it('reports each round to onReasoning as it lands, in order', async () => {
+      const service = createService(createReasoningProvider(2));
+      const seen: string[] = [];
+      await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        toolExecutor: async () => {
+          // Records interleaving: a round's thinking must arrive before its tools run.
+          seen.push('<tool>');
+          return 'ok';
+        },
+        onReasoning: async (text) => {
+          seen.push(text);
+        },
+      });
+
+      expect(seen).toEqual([
+        'thinking round 1',
+        '<tool>',
+        'thinking round 2',
+        '<tool>',
+        'thinking round 3',
+      ]);
+    });
+
+    it('reports identical reasoning only once', async () => {
+      let round = 0;
+      const provider = {
+        name: 'mock',
+        getCapabilities: () => ['llm'],
+        isAvailable: () => true,
+        supportsToolUse: true,
+        generate: async (): Promise<AIGenerateResponse> => {
+          round++;
+          // Same thinking text on both rounds — must not be sent twice.
+          return round === 1
+            ? {
+                text: '',
+                reasoningContent: 'same thought',
+                functionCalls: [{ name: 'noop', arguments: '{}', toolCallId: 'c1' }],
+              }
+            : { text: 'done', reasoningContent: 'same thought' };
+        },
+      };
+      const service = createService(provider);
+      const emitted: string[] = [];
+      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        toolExecutor: async () => 'ok',
+        onReasoning: async (text) => {
+          emitted.push(text);
+        },
+      });
+
+      expect(emitted).toEqual(['same thought']);
+      expect(res.reasoningContent).toBe('same thought');
+    });
+
+    it('reports reasoning on the no-tools short-circuit path', async () => {
+      const service = createService(createReasoningProvider(0));
+      const emitted: string[] = [];
+      await service.generateWithTools([{ role: 'user', content: 'hi' }], [], {
+        onReasoning: async (text) => {
+          emitted.push(text);
+        },
+      });
+
+      expect(emitted).toEqual(['thinking round 1']);
+    });
+
+    it('survives an onReasoning callback that throws', async () => {
+      const service = createService(createReasoningProvider(0));
+      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        toolExecutor: async () => 'ok',
+        onReasoning: async () => {
+          throw new Error('send failed');
+        },
+      });
+
+      expect(res.text).toBe('final answer');
+    });
+
+    it('returns the single round of reasoning when no tool is called', async () => {
+      const service = createService(createReasoningProvider(0));
+      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        toolExecutor: async () => 'ok',
+      });
+
+      expect(res.reasoningContent).toBe('thinking round 1');
+    });
+
+    it('leaves reasoningContent undefined for a non-reasoning provider', async () => {
+      const provider = {
+        name: 'mock',
+        getCapabilities: () => ['llm'],
+        isAvailable: () => true,
+        supportsToolUse: true,
+        generate: async (): Promise<AIGenerateResponse> => ({ text: 'plain answer' }),
+      };
+      const service = createService(provider);
+      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        toolExecutor: async () => 'ok',
+      });
+
+      expect(res.reasoningContent).toBeUndefined();
+    });
+  });
 });

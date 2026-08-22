@@ -35,7 +35,6 @@ export class ProviderFactory {
             apiKey: config.apiKey,
             model: config.model,
             baseURL: config.baseURL,
-            defaultTemperature: config.temperature,
             defaultMaxTokens: config.maxTokens,
             enableContext: config.enableContext,
             contextMessageCount: config.contextMessageCount,
@@ -123,8 +122,7 @@ export class ProviderFactory {
           const geminiConfig = config as Extract<AIProviderConfig, { type: 'gemini' }>;
           return new GeminiProvider({
             type: 'gemini',
-            apiKeyFree: geminiConfig.apiKeyFree,
-            apiKeyPaid: geminiConfig.apiKeyPaid,
+            apiKey: geminiConfig.apiKey,
             resourceSavePath: geminiConfig.resourceSavePath,
             llm: geminiConfig.llm,
             vision: geminiConfig.vision,

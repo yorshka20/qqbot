@@ -170,7 +170,7 @@ if (!providerName || !provider) {
   console.error(`Provider not found. Set --provider or config.ai.defaultProviders.llm. Got: ${providerName}`);
   process.exit(1);
 }
-const apiKey = (provider.apiKey ?? provider.apiKeyFree) as string | undefined;
+const apiKey = provider.apiKey as string | undefined;
 const model = provider.model as string | undefined;
 const baseUrl = ((provider.baseUrl ?? provider.baseURL) as string | undefined)?.replace(/\/$/, '');
 if (!apiKey || !model || !baseUrl) {

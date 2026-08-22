@@ -148,7 +148,12 @@ export class LLMService {
       prompt,
       messages: options?.messages,
       tools: options?.tools,
-      response: { text: result.text, functionCalls: result.functionCalls, usage: result.usage },
+      response: {
+        text: result.text,
+        functionCalls: result.functionCalls,
+        usage: result.usage,
+        reasoningContent: result.reasoningContent,
+      },
       sessionId: options?.sessionId,
       turnKey: getCurrentMessageContext()?.logTag,
     };
@@ -720,6 +725,7 @@ export class LLMService {
     // No tools — short-circuit to plain generate.
     if (tools.length === 0) {
       const response = await this.generateFromMessages(messages, options, providerName);
+      await this.emitReasoning(response, options, [], new Set());
       return { ...response, stopReason: 'end_turn' };
     }
 
@@ -763,6 +769,7 @@ export class LLMService {
         logger.warn('[LLMService] No tool-use capable provider available, will proceed without tool use');
         // Proceed without tool use - just generate normally
         const response = await this.generateFromMessages(messages, options, providerName);
+        await this.emitReasoning(response, options, [], new Set());
         // Strip text-based tool calls the model may emit when it sees tool instructions in the prompt
         if (response.text && containsTextToolCalls(response.text)) {
           logger.warn('[LLMService] Stripping text-based tool call blocks from no-tool-use fallback response');
@@ -790,11 +797,18 @@ export class LLMService {
     // the full cost of the tool-augmented generation, not just the final round.
     const accUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
     let sawUsage = false;
+    // Thinking from every round, not just the last: on a tool-using turn the
+    // reasoning that chose the tools is usually the interesting part, and the
+    // final round's `reasoningContent` alone would drop it. Reported per round via
+    // emitReasoning (before that round's tools run) rather than joined at the end.
+    const accReasoning: string[] = [];
+    const seenReasoning = new Set<string>();
 
     while (round < maxRounds) {
       // Generate with tools
       const response = await this.generateMessagesWithToolSupport(currentMessages, tools, options, currentProviderName);
       sawUsage = this.accumulateUsage(accUsage, response.usage) || sawUsage;
+      await this.emitReasoning(response, options, accReasoning, seenReasoning);
 
       // Always use the resolved provider for subsequent rounds (handles internal fallback)
       if (response.resolvedProviderName) {
@@ -813,6 +827,7 @@ export class LLMService {
         return {
           ...response,
           usage: sawUsage ? { ...accUsage } : response.usage,
+          reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
           resolvedProviderName: currentProviderName,
           toolCalls: allToolCalls,
           stopReason: 'end_turn',
@@ -936,6 +951,7 @@ export class LLMService {
         return {
           ...response,
           usage: sawUsage ? { ...accUsage } : response.usage,
+          reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
           toolCalls: allToolCalls,
           stopReason: 'tool_use',
         };
@@ -953,6 +969,7 @@ export class LLMService {
     });
     const finalResponse = await this.generateFromMessages(currentMessages, options, currentProviderName);
     sawUsage = this.accumulateUsage(accUsage, finalResponse.usage) || sawUsage;
+    await this.emitReasoning(finalResponse, options, accReasoning, seenReasoning);
 
     // Strip text-based tool calls from final text — model may still attempt tool calls via text when tools are absent
     if (finalResponse.text && containsDSML(finalResponse.text)) {
@@ -967,10 +984,41 @@ export class LLMService {
     return {
       ...finalResponse,
       usage: sawUsage ? { ...accUsage } : finalResponse.usage,
+      reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
       resolvedProviderName: currentProviderName,
       toolCalls: allToolCalls,
       stopReason: 'max_rounds',
     };
+  }
+
+  /**
+   * Report one round's thinking to the caller as soon as it lands, and record it
+   * for the turn-level total.
+   *
+   * `seen` is what keeps a block from being reported twice: the same response is
+   * reachable by more than one path (a round that also ends the turn), and a
+   * provider may repeat identical reasoning across rounds.
+   */
+  private async emitReasoning(
+    response: AIGenerateResponse,
+    options: ToolUseGenerateOptions | undefined,
+    acc: string[],
+    seen: Set<string>,
+  ): Promise<void> {
+    const text = response.reasoningContent?.trim();
+    if (!text || seen.has(text)) {
+      return;
+    }
+    seen.add(text);
+    acc.push(text);
+    if (!options?.onReasoning) {
+      return;
+    }
+    try {
+      await options.onReasoning(text);
+    } catch (err) {
+      logger.warn('[LLMService] onReasoning callback failed:', err);
+    }
   }
 
   /**

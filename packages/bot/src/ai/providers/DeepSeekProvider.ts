@@ -296,6 +296,10 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         stop: options?.stop,
       };
 
+      if (options?.reasoningEffort) {
+        body.reasoning_effort = options.reasoningEffort;
+      }
+
       // When jsonMode is set, require valid JSON output (single object; for array output use {"result": [...]} in prompt).
       if (options?.jsonMode) {
         body.response_format = { type: 'json_object' };
@@ -418,6 +422,9 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         stop: options?.stop,
         stream: true,
       };
+      if (options?.reasoningEffort) {
+        streamBody.reasoning_effort = options.reasoningEffort;
+      }
       if (options?.jsonMode) {
         streamBody.response_format = { type: 'json_object' };
       }

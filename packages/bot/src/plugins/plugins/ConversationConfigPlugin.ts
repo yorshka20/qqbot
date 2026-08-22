@@ -49,6 +49,8 @@ interface LocationDescription {
 
 const FORWARD_USAGE = '/forward on/off | toggle — 本群是否使用合并转发发送回复（仅群聊）';
 
+const THINK_USAGE = '/think on/off | toggle — 是否把模型的思考过程作为单独消息发出（默认合并转发）';
+
 /**
  * Conversation Config Plugin
  * Manages conversation-level configuration
@@ -111,7 +113,18 @@ export class ConversationConfigPlugin extends PluginBase {
     );
     this.commandManager.register(forwardHandler, this.name);
 
-    logger.info('[ConversationConfigPlugin] Registered /cmd and /forward commands');
+    const thinkHandler = new PluginCommandHandler(
+      'think',
+      THINK_USAGE,
+      THINK_USAGE,
+      async (args: string[], context: CommandContext) => {
+        return await this.executeThinkCommand(args, context);
+      },
+      this.context,
+    );
+    this.commandManager.register(thinkHandler, this.name);
+
+    logger.info('[ConversationConfigPlugin] Registered /cmd, /forward and /think commands');
   }
 
   async onDisable(): Promise<void> {
@@ -120,7 +133,8 @@ export class ConversationConfigPlugin extends PluginBase {
 
     this.commandManager.unregister('cmd', this.name);
     this.commandManager.unregister('forward', this.name);
-    logger.info('[ConversationConfigPlugin] Unregistered /cmd and /forward commands');
+    this.commandManager.unregister('think', this.name);
+    logger.info('[ConversationConfigPlugin] Unregistered /cmd, /forward and /think commands');
   }
 
   /**
@@ -151,6 +165,29 @@ export class ConversationConfigPlugin extends PluginBase {
 
     await this.conversationConfigService.updateConfig(sessionId, sessionType, { useForwardMsg: newValue });
     return this.createSuccessResult(`本群已${newValue ? '开启' : '关闭'}「合并转发」发送回复。`);
+  }
+
+  /**
+   * Execute /think command: toggle sending the model's thinking as a separate message.
+   * Unlike /forward this also applies to private chats — the thinking output is not
+   * tied to the forward-only group flow.
+   */
+  private async executeThinkCommand(args: string[], context: CommandContext): Promise<CommandResult> {
+    const sessionId = getSessionId(context);
+    const sessionType = getSessionType(context);
+    if (!sessionId) {
+      return this.createErrorResult('无法获取当前会话');
+    }
+
+    const current = await this.conversationConfigService.getShowThinking(sessionId, sessionType);
+
+    const sub = args[0]?.toLowerCase();
+    const newValue = sub === 'on' ? true : sub === 'off' ? false : !current;
+
+    await this.conversationConfigService.updateConfig(sessionId, sessionType, { showThinking: newValue });
+    return this.createSuccessResult(
+      newValue ? '已开启「思考过程」输出：推理型模型的思考会作为单独消息发出。' : '已关闭「思考过程」输出。',
+    );
   }
 
   /**

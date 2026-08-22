@@ -35,14 +35,36 @@ import {
 } from '../utils/geminiErrorHandler';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
 
-/** Runtime key mode for Gemini (free vs paid tier). Switch via GeminiProvider.setKeyMode(). */
-export type GeminiKeyMode = 'free' | 'paid';
+/** Flat Part[] payload — simple prompts and vision requests. */
+type GeminiRequestParts = Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>;
+
+/** Content[] payload — multi-turn history, including tool-use rounds. */
+type GeminiRequestContents = Array<{
+  role: string;
+  parts: Array<{
+    text?: string;
+    functionCall?: { name: string; args: Record<string, unknown> };
+    functionResponse?: { name: string; response: Record<string, unknown> };
+    inlineData?: { mimeType: string; data: string };
+    thoughtSignature?: string;
+  }>;
+}>;
+
+interface GeminiGenerateContentOptions {
+  temperature?: number;
+  maxTokens?: number;
+  tools?: ToolDefinition[];
+  systemInstruction?: string;
+  disableThinking?: boolean;
+  reasoningEffort?: AIGenerateOptions['reasoningEffort'];
+  timeoutMs?: number;
+  nativeWebSearch?: boolean;
+}
 
 /**
  * Gemini Provider implementation
  * LLM, vision, video analysis, text2img and img2img via Google Gemini API.
  * Capabilities are enabled by config: llm, vision, text2img each optional and independent.
- * Supports free/paid key modes: set apiKeyFree and apiKeyPaid, then switch at runtime via GeminiProvider.setKeyMode().
  */
 
 export class GeminiProvider
@@ -53,9 +75,7 @@ export class GeminiProvider
   override readonly supportsToolUse = true;
   private config: GeminiProviderConfig;
   private _capabilities: CapabilityType[];
-  /** Cached clients per key so we use the key for current mode; model unchanged. */
-  private clientFree: GoogleGenAI | null = null;
-  private clientPaid: GoogleGenAI | null = null;
+  private client: GoogleGenAI | null = null;
 
   private outputPath = join(getRepoRoot(), 'output', 'gemini');
 
@@ -68,15 +88,6 @@ export class GeminiProvider
    *  network anomalies, so we apply this both via httpOptions.timeout and via an
    *  outer Promise.race guard. Callers may override via AIGenerateOptions.timeout. */
   private static readonly DEFAULT_REQUEST_TIMEOUT_MS = 90_000;
-
-  /** Runtime key mode (free/paid). Default 'free'. Switch via GeminiProvider.setKeyMode(). */
-  private static _keyMode: GeminiKeyMode = 'free';
-  static getKeyMode(): GeminiKeyMode {
-    return GeminiProvider._keyMode;
-  }
-  static setKeyMode(mode: GeminiKeyMode): void {
-    GeminiProvider._keyMode = mode;
-  }
 
   constructor(config: GeminiProviderConfig) {
     super();
@@ -104,29 +115,14 @@ export class GeminiProvider
     // register cleanup function for uploaded temp files.
     this.registryResourceCleanup();
 
-    // Clients are created lazily in getClient() using the key for current mode
-    logger.info('[GeminiProvider] Initialized (free/paid key mode supported)');
+    logger.info('[GeminiProvider] Initialized');
   }
 
-  /** Resolve API key for current runtime mode (free or paid). Model is unchanged. */
-  private getEffectiveApiKey(): string | undefined {
-    const mode = GeminiProvider.getKeyMode();
-    return mode === 'free' ? this.config.apiKeyFree : this.config.apiKeyPaid;
-  }
-
-  /** Return GoogleGenAI client for current key mode; creates and caches per key. */
   private getClient(): GoogleGenAI {
-    const mode = GeminiProvider.getKeyMode();
-    if (mode === 'free') {
-      if (!this.clientFree) {
-        this.clientFree = new GoogleGenAI({ apiKey: this.config.apiKeyFree });
-      }
-      return this.clientFree;
+    if (!this.client) {
+      this.client = new GoogleGenAI({ apiKey: this.config.apiKey });
     }
-    if (!this.clientPaid) {
-      this.clientPaid = new GoogleGenAI({ apiKey: this.config.apiKeyPaid });
-    }
-    return this.clientPaid;
+    return this.client;
   }
 
   /**
@@ -138,46 +134,9 @@ export class GeminiProvider
   }
 
   /**
-   * Execute an async operation with automatic paid-key fallback.
-   * If the current mode is 'free' and the call fails, retry once with the paid key,
-   * then restore the original key mode regardless of the retry outcome.
-   */
-  private async withPaidFallback<T>(fn: (isPaidFallback: boolean) => Promise<T>, forcePaid = false): Promise<T> {
-    // Explicit paid-tier request (e.g. provider wake-word): use the paid key from the
-    // start instead of burning a round-trip on a possibly quota-exhausted free key.
-    if (forcePaid && this.config.apiKeyPaid) {
-      const originalMode = GeminiProvider.getKeyMode();
-      GeminiProvider.setKeyMode('paid');
-      try {
-        return await fn(true);
-      } finally {
-        GeminiProvider.setKeyMode(originalMode);
-      }
-    }
-    try {
-      return await fn(false);
-    } catch (error) {
-      const originalMode = GeminiProvider.getKeyMode();
-      if (originalMode !== 'free' || !this.config.apiKeyPaid) {
-        throw error;
-      }
-      logger.warn(
-        `[GeminiProvider] Free key request failed (${error instanceof Error ? error.message : String(error)}), retrying with paid key...`,
-      );
-      GeminiProvider.setKeyMode('paid');
-      try {
-        return await fn(true);
-      } finally {
-        GeminiProvider.setKeyMode(originalMode);
-        logger.debug(`[GeminiProvider] Restored key mode to '${originalMode}'`);
-      }
-    }
-  }
-
-  /**
    * Race a long-running SDK call against a hard timeout. The @google/genai SDK
    * has been observed to silently hang past httpOptions.timeout; this guard always
-   * fires after timeoutMs and throws so withPaidFallback / LLMService can react.
+   * fires after timeoutMs and throws so LLMService can react.
    */
   private async callWithHardTimeout<T>(fn: () => Promise<T>, timeoutMs: number, label: string): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -209,7 +168,7 @@ export class GeminiProvider
   }
 
   isAvailable(): boolean {
-    return !!this.getEffectiveApiKey();
+    return !!this.config.apiKey;
   }
 
   async checkAvailability(): Promise<boolean> {
@@ -277,6 +236,32 @@ export class GeminiProvider
         `[GeminiProvider] Failed to save image to file: ${error instanceof Error ? error.message : String(error)}`,
       );
       return null;
+    }
+  }
+
+  /**
+   * Translate the pipeline's reasoning effort into Gemini's thinking controls.
+   *
+   * Gemini 3.x models take `thinkingLevel` (an enum); `thinkingBudget` is the older
+   * token-count dial and 0 is the only way to turn thinking off entirely. Returning
+   * undefined leaves `thinkingConfig` unset so the model applies its own default.
+   */
+  private static mapReasoningEffortToThinking(
+    effort: AIGenerateOptions['reasoningEffort'],
+  ): Record<string, unknown> | undefined {
+    switch (effort) {
+      case 'none':
+        return { thinkingBudget: 0 };
+      case 'minimal':
+        return { thinkingLevel: 'MINIMAL' };
+      case 'low':
+        return { thinkingLevel: 'LOW' };
+      case 'medium':
+        return { thinkingLevel: 'MEDIUM' };
+      case 'high':
+        return { thinkingLevel: 'HIGH' };
+      default:
+        return undefined;
     }
   }
 
@@ -461,73 +446,12 @@ export class GeminiProvider
    */
   private async generateContentText(
     model: string,
-    parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>,
-    options?: {
-      temperature?: number;
-      maxTokens?: number;
-      tools?: ToolDefinition[];
-      systemInstruction?: string;
-      paidModel?: string;
-      disableThinking?: boolean;
-      timeoutMs?: number;
-      nativeWebSearch?: boolean;
-      forcePaid?: boolean;
-    },
+    contentsOrParts: GeminiRequestParts | GeminiRequestContents,
+    options?: GeminiGenerateContentOptions,
   ): Promise<{
     text: string;
     usage?: AIGenerateResponse['usage'];
     functionCalls?: AIGenerateResponse['functionCalls'];
-    resolvedModel: string;
-  }>;
-
-  private async generateContentText(
-    model: string,
-    contents: Array<{
-      role: string;
-      parts: Array<{
-        text?: string;
-        functionCall?: { name: string; args: Record<string, unknown> };
-        functionResponse?: { name: string; response: Record<string, unknown> };
-        inlineData?: { mimeType: string; data: string };
-      }>;
-    }>,
-    options?: {
-      temperature?: number;
-      maxTokens?: number;
-      tools?: ToolDefinition[];
-      systemInstruction?: string;
-      paidModel?: string;
-      disableThinking?: boolean;
-      timeoutMs?: number;
-      nativeWebSearch?: boolean;
-      forcePaid?: boolean;
-    },
-  ): Promise<{
-    text: string;
-    usage?: AIGenerateResponse['usage'];
-    functionCalls?: AIGenerateResponse['functionCalls'];
-    resolvedModel: string;
-  }>;
-
-  private async generateContentText(
-    model: string,
-    contentsOrParts: unknown,
-    options?: {
-      temperature?: number;
-      maxTokens?: number;
-      tools?: ToolDefinition[];
-      systemInstruction?: string;
-      paidModel?: string;
-      disableThinking?: boolean;
-      timeoutMs?: number;
-      nativeWebSearch?: boolean;
-      forcePaid?: boolean;
-    },
-  ): Promise<{
-    text: string;
-    usage?: AIGenerateResponse['usage'];
-    functionCalls?: AIGenerateResponse['functionCalls'];
-    resolvedModel: string;
   }> {
     const config: Record<string, unknown> = {
       temperature: options?.temperature ?? 0.7,
@@ -569,7 +493,13 @@ export class GeminiProvider
       // Gemini thinking models require thought_signature on every functionCall part echoed from
       // prior turns. When history contains tool_calls from another provider (no signature), the
       // request would fail with 400 INVALID_ARGUMENT. Disable thinking to avoid the requirement.
+      // Takes precedence over reasoningEffort: the API rejects the request otherwise.
       config.thinkingConfig = { thinkingBudget: 0 };
+    } else {
+      const thinkingConfig = GeminiProvider.mapReasoningEffortToThinking(options?.reasoningEffort);
+      if (thinkingConfig) {
+        config.thinkingConfig = thinkingConfig;
+      }
     }
     // Per-call HTTP timeout. The @google/genai SDK accepts httpOptions.timeout (ms);
     // we also wrap with Promise.race + setTimeout because the SDK has been observed
@@ -579,21 +509,17 @@ export class GeminiProvider
     const timeoutMs = options?.timeoutMs ?? GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS;
     config.httpOptions = { timeout: timeoutMs };
 
-    let resolvedModel = model;
-    const response = await this.withPaidFallback((isPaidFallback) => {
-      resolvedModel = isPaidFallback && options?.paidModel ? options.paidModel : model;
-      return this.callWithHardTimeout(
-        () =>
-          this.getClient().models.generateContent({
-            model: resolvedModel,
-            // The SDK accepts both Part[] and Content[] for contents; cast through unknown to satisfy the union.
-            contents: contentsOrParts as Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'],
-            config,
-          }),
-        timeoutMs,
-        'generateContent',
-      );
-    }, options?.forcePaid);
+    const response = await this.callWithHardTimeout(
+      () =>
+        this.getClient().models.generateContent({
+          model,
+          // The SDK accepts both Part[] and Content[] for contents; cast through unknown to satisfy the union.
+          contents: contentsOrParts as Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'],
+          config,
+        }),
+      timeoutMs,
+      'generateContent',
+    );
 
     const noCandidatesError = handleNoCandidates(response, '');
     if (noCandidatesError) {
@@ -623,10 +549,8 @@ export class GeminiProvider
       text: string;
       usage?: AIGenerateResponse['usage'];
       functionCalls?: AIGenerateResponse['functionCalls'];
-      resolvedModel: string;
     } = {
       text: text ?? '',
-      resolvedModel,
       usage: meta
         ? {
             promptTokens: meta.promptTokenCount ?? 0,
@@ -729,8 +653,6 @@ export class GeminiProvider
       throw new Error('GeminiProvider: llm not configured');
     }
     const model = options?.model ?? this.config.llm.model;
-    // A caller-pinned model suppresses paidModel, so the paid-key retry stays on it.
-    const paidModel = options?.model ? undefined : this.config.llm.paidModel;
     const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens;
     const nativeWebSearch = options?.nativeWebSearch ?? this.config.llm.nativeWebSearch ?? false;
@@ -758,17 +680,16 @@ export class GeminiProvider
         maxTokens,
         tools: options.tools,
         systemInstruction: systemInstruction ?? options.systemPrompt,
-        paidModel,
         disableThinking: hasUnsignedToolCall,
+        reasoningEffort: options.reasoningEffort,
         timeoutMs: options?.timeout,
         nativeWebSearch,
-        forcePaid: options?.preferPaidTier,
       });
       return {
         text: result.text,
         usage: result.usage,
         functionCalls: result.functionCalls,
-        resolvedModel: result.resolvedModel,
+        resolvedModel: model,
       };
     }
 
@@ -788,16 +709,15 @@ export class GeminiProvider
       temperature,
       maxTokens,
       tools: options?.tools,
-      paidModel,
+      reasoningEffort: options?.reasoningEffort,
       timeoutMs: options?.timeout,
       nativeWebSearch,
-      forcePaid: options?.preferPaidTier,
     });
     return {
       text: result.text,
       usage: result.usage,
       functionCalls: result.functionCalls,
-      resolvedModel: result.resolvedModel,
+      resolvedModel: model,
     };
   }
 
@@ -819,7 +739,6 @@ export class GeminiProvider
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
     const model = this.config.vision?.model ?? this.config.llm?.model;
-    const paidModel = this.config.vision?.paidModel ?? this.config.llm?.paidModel;
     if (!model) {
       throw new Error('GeminiProvider: vision not configured (set vision or llm with model)');
     }
@@ -831,12 +750,13 @@ export class GeminiProvider
     contentsParts.push({ text: prompt });
     contentsParts.push(...imageParts);
 
-    return this.generateContentText(model, contentsParts, {
+    const result = await this.generateContentText(model, contentsParts, {
       temperature: options?.temperature ?? 0.7,
       maxTokens: options?.maxTokens,
-      paidModel,
+      reasoningEffort: options?.reasoningEffort,
       timeoutMs: options?.timeout,
     });
+    return { ...result, resolvedModel: model };
   }
 
   async generateStreamWithVision(
@@ -858,7 +778,7 @@ export class GeminiProvider
 
   async generateImage(prompt: string, options?: Text2ImageOptions): Promise<ProviderImageGenerationResponse> {
     if (!this.isAvailable()) {
-      throw new Error('GeminiProvider is not available: apiKeyFree/apiKeyPaid not configured');
+      throw new Error('GeminiProvider is not available: apiKey not configured');
     }
     if (!this.config.text2img) {
       throw new Error('GeminiProvider: text2img not configured');
@@ -873,16 +793,14 @@ export class GeminiProvider
 
       logger.info(`[GeminiProvider] Parameters: model=${model}, size=${width}x${height}`);
 
-      const response = await this.withPaidFallback((_isPaidFallback) =>
-        this.callWithHardTimeout(
-          () =>
-            this.getClient().models.generateContent({
-              model,
-              contents: prompt,
-            }),
-          GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS,
-          'text2img',
-        ),
+      const response = await this.callWithHardTimeout(
+        () =>
+          this.getClient().models.generateContent({
+            model,
+            contents: prompt,
+          }),
+        GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS,
+        'text2img',
       );
 
       logger.debug(`[GeminiProvider] Response received`, response);
@@ -972,7 +890,7 @@ export class GeminiProvider
     options?: Image2ImageOptions,
   ): Promise<ProviderImageGenerationResponse> {
     if (!this.isAvailable()) {
-      throw new Error('GeminiProvider is not available: apiKeyFree/apiKeyPaid not configured');
+      throw new Error('GeminiProvider is not available: apiKey not configured');
     }
     if (!this.config.text2img) {
       throw new Error('GeminiProvider: text2img not configured (required for img2img)');
@@ -1003,16 +921,14 @@ export class GeminiProvider
         inlineData: { mimeType, data },
       }));
 
-      const response = await this.withPaidFallback((_isPaidFallback) =>
-        this.callWithHardTimeout(
-          () =>
-            this.getClient().models.generateContent({
-              model,
-              contents: [{ text: prompt }, ...imageParts],
-            }),
-          GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS,
-          'img2img',
-        ),
+      const response = await this.callWithHardTimeout(
+        () =>
+          this.getClient().models.generateContent({
+            model,
+            contents: [{ text: prompt }, ...imageParts],
+          }),
+        GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS,
+        'img2img',
       );
 
       const noCandidatesError = handleNoCandidates(response, prompt);
@@ -1098,35 +1014,13 @@ export class GeminiProvider
   // ---------- Video File API ----------
 
   /**
-   * Return a single consistent GoogleGenAI client for the entire video file lifecycle
-   * (upload → wait → generate → delete). All operations MUST use the same API key
-   * because Gemini File API files are scoped to the key that uploaded them.
-   *
-   * Prefers paid key (higher rate limits, more reliable for heavy workloads).
-   * Falls back to free key only when paid key is not configured.
-   */
-  private getVideoClient(): GoogleGenAI {
-    if (this.config.apiKeyPaid) {
-      if (!this.clientPaid) {
-        this.clientPaid = new GoogleGenAI({ apiKey: this.config.apiKeyPaid });
-      }
-      return this.clientPaid;
-    }
-    // No paid key — use free key
-    if (!this.clientFree) {
-      this.clientFree = new GoogleGenAI({ apiKey: this.config.apiKeyFree });
-    }
-    return this.clientFree;
-  }
-
-  /**
    * Upload a video buffer to Gemini File API.
    * @param videoBuffer Raw video bytes
    * @param mimeType MIME type of the video (auto-detected from extension if omitted)
    * @returns Uploaded File object (may still be PROCESSING)
    */
   async uploadVideoFile(videoBuffer: Buffer, mimeType = 'video/mp4'): Promise<VideoAnalysisUploadedFile> {
-    return this.getVideoClient().files.upload({
+    return this.getClient().files.upload({
       file: new Blob([new Uint8Array(videoBuffer)], { type: mimeType }),
       config: { mimeType },
     }) as Promise<VideoAnalysisUploadedFile>;
@@ -1144,7 +1038,7 @@ export class GeminiProvider
     timeoutMs = 300_000,
     pollIntervalMs = 10_000,
   ): Promise<VideoAnalysisUploadedFile> {
-    const client = this.getVideoClient();
+    const client = this.getClient();
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const file = (await client.files.get({ name: fileName })) as VideoAnalysisUploadedFile;
@@ -1174,7 +1068,7 @@ export class GeminiProvider
     videoBuffer: Buffer,
     options?: VideoAnalysisOptions,
   ): Promise<VideoAnalysisResult> {
-    const client = this.getVideoClient();
+    const client = this.getClient();
 
     // 1. Upload video
     logger.info('[GeminiProvider] Uploading video to Gemini File API...');
@@ -1233,7 +1127,7 @@ export class GeminiProvider
 
     logger.info('[GeminiProvider] Generating analysis from file URI...');
 
-    const response = await this.getVideoClient().models.generateContent({
+    const response = await this.getClient().models.generateContent({
       model: this.config.videoAnalysisModel ?? 'gemini-2.5-flash',
       contents: [
         {
@@ -1257,7 +1151,7 @@ export class GeminiProvider
    * @param fileName The "files/..." resource name
    */
   async deleteUploadedFile(fileName: string): Promise<void> {
-    await this.getVideoClient().files.delete({ name: fileName });
+    await this.getClient().files.delete({ name: fileName });
     logger.debug(`[GeminiProvider] Deleted uploaded file: ${fileName}`);
   }
 }

@@ -115,6 +115,7 @@ export class ConversationConfigService {
     };
 
     const useForwardMsg = conversationConfig.useForwardMsg ?? false;
+    const showThinking = conversationConfig.showThinking ?? false;
 
     return {
       commands,
@@ -122,6 +123,7 @@ export class ConversationConfigService {
       permissions,
       nsfw,
       useForwardMsg,
+      showThinking,
       providers: conversationConfig.providers,
     };
   }
@@ -132,6 +134,14 @@ export class ConversationConfigService {
   async getUseForwardMsg(sessionId: string, sessionType: SessionType): Promise<boolean> {
     const config = await this.getConfig(sessionId, sessionType);
     return config.useForwardMsg === true;
+  }
+
+  /**
+   * Get whether the model's thinking should also be sent to this session as its own message.
+   */
+  async getShowThinking(sessionId: string, sessionType: SessionType): Promise<boolean> {
+    const config = await this.getConfig(sessionId, sessionType);
+    return config.showThinking === true;
   }
 
   /**
@@ -180,6 +190,10 @@ export class ConversationConfigService {
         partialConfig.useForwardMsg !== undefined
           ? partialConfig.useForwardMsg
           : (existing?.config?.useForwardMsg ?? false),
+      showThinking:
+        partialConfig.showThinking !== undefined
+          ? partialConfig.showThinking
+          : (existing?.config?.showThinking ?? false),
     };
 
     if (existing) {

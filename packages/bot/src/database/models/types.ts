@@ -86,6 +86,8 @@ export interface ConversationConfigData {
   };
   /** When true, send reply as forward message (Milky only). Toggled per group via /forward on|off. */
   useForwardMsg?: boolean;
+  /** When true, also send the model's thinking as its own message. Toggled per session via /think on|off. */
+  showThinking?: boolean;
 }
 
 /**

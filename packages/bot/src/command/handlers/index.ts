@@ -7,7 +7,6 @@ export * from './BuiltinCommandHandler';
 export * from './ClusterCommandHandler';
 export * from './ClusterTicketsSyncCommandHandler';
 export * from './FileCommandHandler';
-export * from './GeminiKeyModeCommandHandler';
 export * from './Gpt2CommandHandler';
 export * from './GroupDedupCommandHandler';
 export * from './HealthCheckCommandHandler';

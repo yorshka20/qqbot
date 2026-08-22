@@ -126,7 +126,7 @@ export class AIService {
         permissionChecker,
       ),
       new PromptAssemblyStage(registry, promptManager, messageAPI, chatConfig),
-      new GenerationStage(llmService, toolManager, hookManager),
+      new GenerationStage(llmService, toolManager, hookManager, messageAPI),
       new ResponseDispatchStage(cardHelper, hookManager),
     ];
     this.replyPipeline = new ReplyPipelineOrchestrator(stages, episodeCacheManager, cardHelper, hookManager);

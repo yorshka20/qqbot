@@ -49,6 +49,8 @@ interface AnthropicMessagesRequestBody {
   system?: AnthropicSystemBlock[];
   tools?: AnthropicTool[];
   tool_choice?: { type: 'auto' | 'any' | 'none' | 'tool'; name?: string };
+  thinking?: { type: 'adaptive' | 'disabled' };
+  output_config?: { effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' };
 }
 
 interface AnthropicStreamRequestBody extends AnthropicMessagesRequestBody {
@@ -114,6 +116,33 @@ const ANTHROPIC_DEFAULT_MODEL = 'claude-3-sonnet-20240229';
 // omitted to default to the model's full output budget). 8192 is the smallest per-model output
 // cap across current Claude models, so it's the largest value safe to send unconditionally.
 const ANTHROPIC_DEFAULT_MAX_TOKENS = 8192;
+/**
+ * Translate the pipeline's reasoning effort into Claude's thinking controls.
+ *
+ * Current Claude models take `output_config.effort` (an enum) and reject the older
+ * `thinking.budget_tokens` with a 400; `thinking: {type:'disabled'}` is the only way
+ * to turn thinking off, and the API accepts it only at effort `high` or below — so
+ * the two fields are never emitted together. `minimal` has no Claude equivalent
+ * below `low`, so it maps there.
+ */
+function mapReasoningEffortToAnthropic(
+  effort: AIGenerateOptions['reasoningEffort'],
+): Pick<AnthropicMessagesRequestBody, 'thinking' | 'output_config'> {
+  switch (effort) {
+    case 'none':
+      return { thinking: { type: 'disabled' } };
+    case 'minimal':
+    case 'low':
+      return { output_config: { effort: 'low' } };
+    case 'medium':
+      return { output_config: { effort: 'medium' } };
+    case 'high':
+      return { output_config: { effort: 'high' } };
+    default:
+      return {};
+  }
+}
+
 const ANTHROPIC_WEB_SEARCH_TOOL_NAME = 'web_search';
 const ANTHROPIC_WEB_SEARCH_TOOL_TYPE = 'web_search_20250305';
 const ANTHROPIC_WEB_SEARCH_MAX_USES = 5;
@@ -284,6 +313,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
           model,
           max_tokens: maxTokens,
           messages,
+          ...mapReasoningEffortToAnthropic(options?.reasoningEffort),
         };
         if (explicitSystem?.length) {
           requestBody.system = explicitSystem;
@@ -360,6 +390,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         max_tokens: maxTokens,
         messages,
         stream: true,
+        ...mapReasoningEffortToAnthropic(options?.reasoningEffort),
       };
       const explicitSystemStream = this.buildAnthropicSystemPrompt(options);
       if (explicitSystemStream?.length) {

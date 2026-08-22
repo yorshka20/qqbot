@@ -100,6 +100,10 @@ export class LLMDumpPlugin extends PluginBase {
       if (entry.prompt) lines.push('### user', '', this.fence(entry.prompt), '');
     }
 
+    if (entry.response.reasoningContent?.trim()) {
+      lines.push('### ⟵ thinking', '', this.fence(entry.response.reasoningContent), '');
+    }
+
     lines.push('### ⟵ output', '');
     const text = entry.response.text ?? '';
     lines.push(text.trim() ? this.fence(text) : '_(no text)_', '');

@@ -172,13 +172,6 @@ export interface AIGenerateOptions {
    * the caller is expected to log its own context line with the meaningful slot value.
    */
   verbosePromptLog?: boolean;
-  /**
-   * Request the provider's paid tier directly, skipping the free tier. For Gemini
-   * this uses the paid key + `llm.paidModel` from the start instead of trying the
-   * (possibly quota-exhausted) free key first. Used for explicit provider wake-words
-   * where the user opted into the premium model. Single-tier providers ignore it.
-   */
-  preferPaidTier?: boolean;
 }
 
 /**
@@ -209,8 +202,8 @@ export interface AIGenerateResponse {
    * at each resolution point (caller-pinned `options.model`, else the provider's
    * configured default) so callers don't have to guess from static config. A provider
    * only needs to set this itself when the model it actually used differs from both
-   * of those — e.g. Gemini swaps to `llm.paidModel` mid-call when the free key is
-   * quota-exhausted — in which case the provider's value wins.
+   * of those — e.g. it picks a per-capability model from its own config — in which
+   * case the provider's value wins.
    */
   resolvedModel?: string;
   /**
@@ -307,6 +300,13 @@ export interface ToolUseGenerateOptions extends AIGenerateOptions {
   // round's tool calls run — lets callers stamp the real model into context for tools
   // that render mid-loop (e.g. send_card footer).
   onProviderResolved?: (info: { providerName: string; model?: string }) => void;
+  /**
+   * Invoked with each round's thinking as soon as that round returns, before its
+   * tool calls run — so a multi-round turn reports its reasoning incrementally
+   * instead of as one blob at the end. Fires at most once per distinct block, and
+   * is awaited so several rounds' output stays in order.
+   */
+  onReasoning?: (text: string) => void | Promise<void>;
 }
 
 /** Tool Use generation response */
@@ -339,6 +339,13 @@ export interface LLMTraceEntry {
     text: string;
     functionCalls?: FunctionCallInfo[];
     usage?: AIGenerateResponse['usage'];
+    /**
+     * Thinking text from reasoning models, recorded unconditionally so the effort
+     * configuration is auditable from the dumps alone — token counts don't show
+     * whether the model actually reasoned. Independent of the `/think` toggle,
+     * which only controls whether it is also sent to the chat.
+     */
+    reasoningContent?: string;
   };
   sessionId?: string;
   /** Correlation key for the originating message turn (log tag, e.g. "msg:ab12cd"). */
