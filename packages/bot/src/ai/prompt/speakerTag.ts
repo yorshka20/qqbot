@@ -45,3 +45,26 @@ export function formatSpeakerTag(identity: SpeakerIdentity): string {
 function stripStructuralChars(value: string): string {
   return value.replace(/[[\]:<>]/g, '').trim();
 }
+
+/**
+ * Build the speaker prefix for a conversation history entry.
+ *
+ * Only user turns get a prefix. The tag exists to tell several humans apart in a
+ * group; the bot's own turn is already marked by `role: 'assistant'`, so tagging it
+ * adds nothing — and misleads: models read the bot's own nick/uid as another
+ * participant ("说话人从 X 变成了 Y，QQ 号不同"), which in a 1:1 chat contradicts the
+ * private-chat rule that consecutive user messages are all the same person.
+ *
+ * Shared by the plain-text assembler and the vision branch, which builds
+ * `ContentPart[]` directly; they previously carried separate copies of this rule.
+ */
+export function buildHistoryEntryPrefix(entry: {
+  isBotReply?: boolean;
+  userId?: string | number;
+  nickname?: string;
+}): string {
+  if (entry.isBotReply) {
+    return '';
+  }
+  return buildSpeakerTag(String(entry.userId ?? ''), entry.nickname);
+}

@@ -2,11 +2,10 @@ import { describe, expect, it } from 'bun:test';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { PromptMessageAssembler } from './PromptMessageAssembler';
 
-const BOT_IDENTITY = { uid: '999', nick: 'bot' };
 
 describe('PromptMessageAssembler', () => {
   it('builds deterministic output for same input', () => {
-    const assembler = new PromptMessageAssembler(BOT_IDENTITY);
+    const assembler = new PromptMessageAssembler();
     const entries: ConversationMessageEntry[] = [
       {
         messageId: '1',
@@ -42,7 +41,7 @@ describe('PromptMessageAssembler', () => {
   });
 
   it('injects fewShotExamples between system messages and history', () => {
-    const assembler = new PromptMessageAssembler(BOT_IDENTITY);
+    const assembler = new PromptMessageAssembler();
     const entries: ConversationMessageEntry[] = [
       {
         messageId: '1',
@@ -78,7 +77,7 @@ describe('PromptMessageAssembler', () => {
   });
 
   it('skips empty fewShotExamples entries', () => {
-    const assembler = new PromptMessageAssembler(BOT_IDENTITY);
+    const assembler = new PromptMessageAssembler();
     const messages = assembler.buildNormalMessages({
       sceneSystem: 'scene',
       fewShotExamples: [
@@ -94,7 +93,7 @@ describe('PromptMessageAssembler', () => {
   });
 
   it('serializes image segments into stable tags', () => {
-    const assembler = new PromptMessageAssembler(BOT_IDENTITY);
+    const assembler = new PromptMessageAssembler();
     const entries: ConversationMessageEntry[] = [
       {
         messageId: '1',
@@ -114,5 +113,40 @@ describe('PromptMessageAssembler', () => {
     });
 
     expect(messages[1].content).toContain('<image_segment id="1:0" summary="img" />');
+  });
+  it('prefixes user turns with a speaker tag but leaves the bot turn untagged', () => {
+    const assembler = new PromptMessageAssembler();
+    const entries: ConversationMessageEntry[] = [
+      {
+        messageId: '1',
+        userId: 1001,
+        nickname: 'Alice',
+        content: 'hello',
+        isBotReply: false,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      {
+        messageId: '2',
+        userId: 0,
+        content: 'hi there',
+        isBotReply: true,
+        createdAt: new Date('2026-01-01T00:00:01.000Z'),
+      },
+    ];
+
+    const messages = assembler.buildNormalMessages({
+      sceneSystem: 'scene',
+      historyEntries: entries,
+      finalUserBlocks: { currentQuery: 'q' },
+    });
+
+    const userTurn = messages.find((m) => m.role === 'user' && String(m.content).includes('hello'));
+    const botTurn = messages.find((m) => m.role === 'assistant');
+
+    expect(userTurn?.content).toBe('[speaker:Alice:1001] hello');
+    // A tag here would read as a third participant and, in a 1:1 chat, contradict
+    // the private-chat rule that consecutive user messages are the same person.
+    expect(botTurn?.content).toBe('hi there');
+    expect(String(botTurn?.content)).not.toContain('[speaker:');
   });
 });

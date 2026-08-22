@@ -9,7 +9,7 @@ import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../../capabilities/types';
 import type { PromptManager } from '../../prompt/PromptManager';
-import { buildSpeakerTag } from '../../prompt/speakerTag';
+import { buildHistoryEntryPrefix, buildSpeakerTag } from '../../prompt/speakerTag';
 import type { ChatMessage, ContentPart } from '../../types';
 import { extractImagesFromSegmentsAsync, normalizeVisionImages } from '../../utils/imageUtils';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
@@ -257,7 +257,7 @@ export class PromptAssemblyStage implements ReplyStage {
       .join('')
       .trim();
     const textContent = textFromSegments || entry.content || '';
-    const prefix = this.entrySpeakerPrefix(entry);
+    const prefix = buildHistoryEntryPrefix(entry);
     const parts: ContentPart[] = [{ type: 'text', text: `${prefix} ${textContent}`.trim() || '(no text)' }];
     for (const img of normalizedImages) {
       const mime = img.mimeType || 'image/jpeg';
@@ -267,18 +267,6 @@ export class PromptAssemblyStage implements ReplyStage {
       }
     }
     return parts;
-  }
-
-  /**
-   * Build the same speaker prefix that {@link PromptMessageAssembler} uses
-   * for plain-text history entries — needed here because the vision branch
-   * builds `ContentPart[]` directly and bypasses the assembler's serializer.
-   */
-  private entrySpeakerPrefix(entry: ConversationMessageEntry): string {
-    if (entry.isBotReply) {
-      return buildSpeakerTag(this.promptManager.botSelfId, this.promptManager.botNickname);
-    }
-    return buildSpeakerTag(String(entry.userId), entry.nickname);
   }
 
   private messageHashCheck(messages: ChatMessage[]) {

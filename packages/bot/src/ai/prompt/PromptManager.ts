@@ -49,7 +49,7 @@ export class PromptManager {
     this.adminUserId = adminUserId ?? '';
     this.botSelfId = botSelfId ?? '';
     this.botNickname = botNickname ?? '';
-    this.messageAssembler = new PromptMessageAssembler({ uid: this.botSelfId, nick: this.botNickname });
+    this.messageAssembler = new PromptMessageAssembler();
 
     this.loadTemplatesFromDirectory();
   }
