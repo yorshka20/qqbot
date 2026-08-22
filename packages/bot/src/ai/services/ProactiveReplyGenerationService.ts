@@ -122,12 +122,9 @@ export class ProactiveReplyGenerationService {
     }
     const tools = getReplySkillDefinitions(this.toolManager, 'qq-group', false, { nativeWebSearchEnabled });
     const toolUsageInstructions = buildSkillUsageInstructions(
-      this.toolManager,
       tools,
       { nativeWebSearchEnabled },
       this.promptManager,
-      'qq-group',
-      false,
       nativeFunctionCalling,
     );
     return { tools, toolUsageInstructions };

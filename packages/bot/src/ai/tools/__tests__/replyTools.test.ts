@@ -11,13 +11,13 @@ import { buildToolUsageInstructions, executeToolCall, getReplyToolDefinitions } 
 /** Minimal stub that renders templates using their actual content for test assertions. */
 const stubPromptManager = {
   render(templateName: string, vars?: Record<string, string>): string {
-    if (templateName === 'llm.tool.no_tools.local') return '当前没有可用技能，请直接回答。';
+    if (templateName === 'llm.tool.no_tools.local') return '当前没有可用工具，请直接回答。';
     if (templateName === 'llm.tool.no_tools.native_search')
-      return '当前没有本地可用技能；若需要查询公开互联网的最新信息，请直接使用 provider 内建搜索，再基于结果回答。';
-    if (templateName === 'llm.tool.note.local') return '先调用技能，再回答。';
+      return '当前没有本地可用工具；若需要查询公开互联网的最新信息，请直接使用 provider 内建搜索，再基于结果回答。';
+    if (templateName === 'llm.tool.note.local') return '先调用工具，再回答。';
     if (templateName === 'llm.tool.note.native_search') return '优先使用 provider 内建搜索。';
     if (templateName === 'llm.tool.usage')
-      return `${vars?.nativeSearchNote ?? ''}\n可用技能列表：\n${vars?.toolList ?? ''}`;
+      return `${vars?.nativeSearchNote ?? ''}\n可用工具列表：\n${vars?.toolList ?? ''}`;
     return '';
   },
 } as unknown as PromptManager;
@@ -151,6 +151,20 @@ describe('replyTools', () => {
       expect(tools.find((t) => t.name === 'search')).toBeDefined();
       expect(tools.find((t) => t.name === 'get_weather')).toBeDefined();
     });
+
+    it('folds whenToUse and examples into the description (native FC has no other channel)', () => {
+      const toolManager = new ToolManager();
+      const [def] = toolManager.toToolDefinitions([getWeatherToolSpec]);
+      expect(def.description).toContain('Get the current weather');
+      expect(def.description).toContain('适用时机：When user asks about weather.');
+      expect(def.description).toContain('示例：北京天气；上海天气怎么样');
+    });
+
+    it('leaves the description bare when whenToUse/examples are absent', () => {
+      const toolManager = new ToolManager();
+      const [def] = toolManager.toToolDefinitions([searchToolSpec]);
+      expect(def.description).toBe('Search the web');
+    });
   });
 
   const analyzeVideoToolSpec: ToolSpec = {
@@ -165,31 +179,13 @@ describe('replyTools', () => {
 
   describe('buildToolUsageInstructions', () => {
     it('returns fallback when tools is empty and nativeWebSearchEnabled is false', () => {
-      const toolManager = new ToolManager();
-      const text = buildToolUsageInstructions(
-        toolManager,
-        [],
-        { nativeWebSearchEnabled: false },
-        stubPromptManager,
-        'qq-private',
-        true,
-        false,
-      );
-      expect(text).toContain('当前没有可用技能');
+      const text = buildToolUsageInstructions([], { nativeWebSearchEnabled: false }, stubPromptManager, false);
+      expect(text).toContain('当前没有可用工具');
       expect(text).not.toContain('内建搜索');
     });
 
     it('returns fallback when tools is empty and nativeWebSearchEnabled is true', () => {
-      const toolManager = new ToolManager();
-      const text = buildToolUsageInstructions(
-        toolManager,
-        [],
-        { nativeWebSearchEnabled: true },
-        stubPromptManager,
-        'qq-private',
-        true,
-        false,
-      );
+      const text = buildToolUsageInstructions([], { nativeWebSearchEnabled: true }, stubPromptManager, false);
       expect(text).toContain('内建搜索');
     });
 
@@ -197,59 +193,36 @@ describe('replyTools', () => {
       const toolManager = new ToolManager();
       toolManager.registerTool(getWeatherToolSpec);
       const tools = getReplyToolDefinitions(toolManager, 'qq-private', true);
-      const text = buildToolUsageInstructions(
-        toolManager,
-        tools,
-        { nativeWebSearchEnabled: false },
-        stubPromptManager,
-        'qq-private',
-        true,
-        false,
-      );
+      const text = buildToolUsageInstructions(tools, { nativeWebSearchEnabled: false }, stubPromptManager, false);
 
       expect(text).toContain('get_weather');
       expect(text).toContain('Get the current weather');
+      // whenToUse/examples reach the catalog through the composed description.
       expect(text).toContain('适用时机');
       expect(text).toContain('When user asks about weather.');
       expect(text).toContain('示例');
       expect(text).toContain('北京天气');
-      expect(text).toContain('可用技能列表');
+      expect(text).toContain('可用工具列表');
     });
 
     it('suppresses toolList and returns only behaviour note when nativeFunctionCalling=true', () => {
       const toolManager = new ToolManager();
       toolManager.registerTool(analyzeVideoToolSpec);
       const tools = getReplyToolDefinitions(toolManager, 'qq-private', true);
-      const text = buildToolUsageInstructions(
-        toolManager,
-        tools,
-        { nativeWebSearchEnabled: false },
-        stubPromptManager,
-        'qq-private',
-        true,
-        true,
-      );
+      const text = buildToolUsageInstructions(tools, { nativeWebSearchEnabled: false }, stubPromptManager, true);
 
       expect(text).not.toContain('analyze_video');
-      expect(text).toBe('先调用技能，再回答。');
+      expect(text).toBe('先调用工具，再回答。');
     });
 
     it('with tools + nativeFunctionCalling=false: toolList still rendered for non-native providers', () => {
       const toolManager = new ToolManager();
       toolManager.registerTool(analyzeVideoToolSpec);
       const tools = getReplyToolDefinitions(toolManager, 'qq-private', true);
-      const text = buildToolUsageInstructions(
-        toolManager,
-        tools,
-        { nativeWebSearchEnabled: false },
-        stubPromptManager,
-        'qq-private',
-        true,
-        false,
-      );
+      const text = buildToolUsageInstructions(tools, { nativeWebSearchEnabled: false }, stubPromptManager, false);
 
       expect(text).toContain('analyze_video');
-      expect(text).toContain('可用技能列表');
+      expect(text).toContain('可用工具列表');
     });
   });
 

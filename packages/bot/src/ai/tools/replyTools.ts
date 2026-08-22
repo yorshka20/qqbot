@@ -70,36 +70,14 @@ export function getReplyToolDefs(
 }
 
 /**
- * Build the tool usage instruction string for prompt injection.
+ * Render ToolDefinition[] as a text catalog for providers WITHOUT native
+ * function calling. Descriptions already carry whenToUse/examples (composed in
+ * ToolManager.toToolDefinitions), so the catalog needs only name + description
+ * + parameters. Shared by the reply flow and the agenda AgentLoop.
  */
-export function buildToolUsageInstructions(
-  toolManager: ToolManager,
-  tools: ToolDefinition[],
-  options: ReplyToolOptions | undefined,
-  promptManager: PromptManager,
-  source: MessageSource,
-  isAdmin: boolean,
-  nativeFunctionCalling: boolean,
-): string {
-  if (tools.length === 0) {
-    return promptManager.render(
-      options?.nativeWebSearchEnabled ? 'llm.tool.no_tools.native_search' : 'llm.tool.no_tools.local',
-    );
-  }
-
-  // Native FC: tools[] schema already conveys catalog. Render only behaviour note.
-  if (nativeFunctionCalling) {
-    return promptManager.render(
-      options?.nativeWebSearchEnabled ? 'llm.tool.note.native_search' : 'llm.tool.note.local',
-    );
-  }
-
-  const specs = selectReplySpecs(toolManager, source, isAdmin, options);
-  const specsByName = new Map<string, ToolSpec>(specs.map((s) => [s.name, s]));
-
-  const toolList = tools
+export function formatToolCatalog(tools: ToolDefinition[]): string {
+  return tools
     .map((tool) => {
-      const spec = specsByName.get(tool.name);
       const required = new Set(tool.parameters.required ?? []);
       const params = Object.entries(tool.parameters.properties ?? {})
         .map(([name, def]) => {
@@ -108,18 +86,38 @@ export function buildToolUsageInstructions(
           return `${name} (${def.type}，${requiredLabel}${enumLabel})${def.description ? `: ${def.description}` : ''}`;
         })
         .join('; ');
-      const usage = spec?.whenToUse?.trim();
-      const examples =
-        spec?.examples && spec.examples.length > 0 ? `\n  示例: ${spec.examples.slice(0, 2).join('；')}` : '';
-      return `- ${tool.name}: ${tool.description}${usage ? `\n  适用时机: ${usage}` : ''}${params ? `\n  参数: ${params}` : ''}${examples}`;
+      return `- ${tool.name}: ${tool.description}${params ? `\n  参数: ${params}` : ''}`;
     })
     .join('\n');
+}
+
+/**
+ * Build the tool usage instruction string for prompt injection.
+ */
+export function buildToolUsageInstructions(
+  tools: ToolDefinition[],
+  options: ReplyToolOptions | undefined,
+  promptManager: PromptManager,
+  nativeFunctionCalling: boolean,
+): string {
+  if (tools.length === 0) {
+    return promptManager.render(
+      options?.nativeWebSearchEnabled ? 'llm.tool.no_tools.native_search' : 'llm.tool.no_tools.local',
+    );
+  }
+
+  // Native FC: tools[] schema already conveys the catalog. Render only behaviour note.
+  if (nativeFunctionCalling) {
+    return promptManager.render(
+      options?.nativeWebSearchEnabled ? 'llm.tool.note.native_search' : 'llm.tool.note.local',
+    );
+  }
 
   const nativeSearchNote = promptManager.render(
     options?.nativeWebSearchEnabled ? 'llm.tool.note.native_search' : 'llm.tool.note.local',
   );
 
-  return promptManager.render('llm.tool.usage', { nativeSearchNote, toolList });
+  return promptManager.render('llm.tool.usage', { nativeSearchNote, toolList: formatToolCatalog(tools) });
 }
 
 /**

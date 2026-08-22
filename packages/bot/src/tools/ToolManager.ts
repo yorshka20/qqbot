@@ -154,6 +154,12 @@ export class ToolManager {
   /**
    * Convert ToolSpec[] to OpenAI-compatible ToolDefinition[] for LLM consumption.
    * Absorbs the logic that was previously in SkillRegistry.
+   *
+   * `whenToUse` and `examples` are folded into the description: a native
+   * function-calling schema has exactly three LLM-visible channels (name /
+   * description / parameters), so usage guidance that lives anywhere else
+   * never reaches the model. The composed description is the single source
+   * for both native schemas and the non-native text catalog.
    */
   toToolDefinitions(specs: ToolSpec[]): ToolDefinition[] {
     return specs.map((spec) => {
@@ -179,9 +185,19 @@ export class ToolManager {
         }
       }
 
+      const descriptionParts = [spec.description];
+      const whenToUse = spec.whenToUse?.trim();
+      if (whenToUse) {
+        descriptionParts.push(`适用时机：${whenToUse}`);
+      }
+      const examples = (spec.examples ?? []).map((e) => e.trim()).filter(Boolean);
+      if (examples.length > 0) {
+        descriptionParts.push(`示例：${examples.slice(0, 2).join('；')}`);
+      }
+
       return {
         name: spec.name,
-        description: spec.description,
+        description: descriptionParts.join('\n'),
         parameters: {
           type: 'object' as const,
           properties,

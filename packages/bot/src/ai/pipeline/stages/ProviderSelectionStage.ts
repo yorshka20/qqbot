@@ -120,12 +120,9 @@ export class ProviderSelectionStage implements ReplyStage {
 
     // Tool usage instructions
     ctx.toolUsageInstructions = buildSkillUsageInstructions(
-      this.toolManager,
       ctx.toolDefinitions,
       { nativeWebSearchEnabled: ctx.effectiveNativeSearchEnabled },
       this.promptManager,
-      source,
-      isAdmin,
       ctx.providerHasFunctionCalling,
     );
     // Mirror into hookContext.metadata so ToolInstructProducer can read it

@@ -7,7 +7,7 @@ import type { PromptManager } from '@/ai';
 import type { AIService } from '@/ai/AIService';
 import type { AIProvider } from '@/ai/base/AIProvider';
 import type { LLMService } from '@/ai/services/LLMService';
-import { executeToolCall } from '@/ai/tools/replyTools';
+import { executeToolCall, formatToolCatalog } from '@/ai/tools/replyTools';
 import type { ChatMessage, ToolDefinition } from '@/ai/types';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
@@ -454,32 +454,7 @@ export class AgentLoop {
       return this.promptManager.render('llm.tool.note.local');
     }
 
-    const replySpecs = this.toolManager.getToolsByScope('reply');
-    const subagentSpecs = this.toolManager.getToolsByScope('subagent');
-    const seen = new Set<string>();
-    const allSpecs = [...replySpecs, ...subagentSpecs].filter((s) => {
-      if (seen.has(s.name)) return false;
-      seen.add(s.name);
-      return true;
-    });
-    const specsByName = new Map(allSpecs.map((s) => [s.name, s]));
-
-    const toolList = tools
-      .map((tool) => {
-        const spec = specsByName.get(tool.name);
-        const required = new Set(tool.parameters.required ?? []);
-        const params = Object.entries(tool.parameters.properties ?? {})
-          .map(([name, def]) => {
-            const requiredLabel = required.has(name) ? '必填' : '可选';
-            return `${name} (${def.type}，${requiredLabel})${def.description ? `: ${def.description}` : ''}`;
-          })
-          .join('; ');
-        const usage = spec?.whenToUse?.trim();
-        return `- ${tool.name}: ${tool.description}${usage ? `\n  适用时机: ${usage}` : ''}${params ? `\n  参数: ${params}` : ''}`;
-      })
-      .join('\n');
-
-    return this.promptManager.render('llm.tool.usage', { nativeSearchNote: '', toolList });
+    return this.promptManager.render('llm.tool.usage', { nativeSearchNote: '', toolList: formatToolCatalog(tools) });
   }
 
   /**
