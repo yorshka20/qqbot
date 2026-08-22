@@ -6,6 +6,7 @@ import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
 import { CardRenderingService } from '@/services/card';
+import { cardDeckToHistoryText } from '@/services/card/cardText';
 import type { CardData } from '@/services/card/cardTypes';
 import { hasSkipCardMarker } from '@/utils/contentMarkers';
 import { logger } from '@/utils/logger';
@@ -41,7 +42,12 @@ export class CardRenderingHelper {
     return { segments: messageBuilder.build(), textForHistory: cardJson };
   }
 
-  /** Render pre-parsed CardData[] → image segments. Skips JSON extraction entirely. */
+  /**
+   * Render pre-parsed CardData[] → image segments. Skips JSON extraction entirely.
+   * `textForHistory` is the deck rendered as readable text (not JSON): it becomes
+   * the persisted "what the bot said" for this turn, which the next turn's LLM
+   * reads back as its own words.
+   */
   async renderParsedCards(
     cards: CardData[],
     providerName?: string,
@@ -51,7 +57,7 @@ export class CardRenderingHelper {
     const base64Image = await this.cardRenderingService.renderCardData(cards, provider, model);
     const messageBuilder = new MessageBuilder();
     messageBuilder.image({ data: base64Image });
-    return { segments: messageBuilder.build(), textForHistory: JSON.stringify(cards) };
+    return { segments: messageBuilder.build(), textForHistory: cardDeckToHistoryText(cards) };
   }
 
   /**
