@@ -6,8 +6,8 @@ import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
 import { CardRenderingService } from '@/services/card';
-import { cardDeckToHistoryText } from '@/services/card/cardText';
-import type { CardData } from '@/services/card/cardTypes';
+import { cardDeckToHistoryText, cardDeckToText } from '@/services/card/cardText';
+import { type CardData, parseCardDeck } from '@/services/card/cardTypes';
 import { hasSkipCardMarker } from '@/utils/contentMarkers';
 import { logger } from '@/utils/logger';
 import { extractExpectedJsonFromLlmText } from '../../utils/llmJsonExtract';
@@ -152,11 +152,24 @@ export class CardRenderingHelper {
     }
   }
 
-  /** Extract human-readable text from card JSON by pulling out text/content fields per card type. */
+  /**
+   * Extract human-readable text from card JSON by pulling out text/content fields
+   * per card type. Valid decks go through the typed serializer (same rendering as
+   * send_card history text); the loose field extraction below is the fallback for
+   * malformed decks that still look card-ish.
+   */
   extractReadableTextFromCardJson(text: string): string {
     try {
       const jsonStr = extractExpectedJsonFromLlmText(text, { expect: 'array' });
       if (!jsonStr) return text;
+
+      try {
+        const deckText = cardDeckToText(parseCardDeck(jsonStr));
+        if (deckText.trim()) return deckText;
+      } catch {
+        // schema validation failed — fall through to loose extraction
+      }
+
       const parsed = JSON.parse(jsonStr);
       if (!Array.isArray(parsed)) return text;
 

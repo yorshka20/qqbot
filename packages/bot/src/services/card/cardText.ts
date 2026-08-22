@@ -10,8 +10,15 @@
 import type { CardData } from './cardTypes';
 
 export function cardDeckToHistoryText(cards: CardData[]): string {
-  const parts = cards.map((card) => cardToText(card)).filter((s) => s.length > 0);
-  return `[卡片]\n${parts.join('\n\n')}`;
+  return `[卡片]\n${cardDeckToText(cards)}`;
+}
+
+/** Deck → plain readable text, no marker. Also used to degrade card JSON that leaked into prose. */
+export function cardDeckToText(cards: CardData[]): string {
+  return cards
+    .map((card) => cardToText(card))
+    .filter((s) => s.length > 0)
+    .join('\n\n');
 }
 
 function cardToText(card: CardData): string {
