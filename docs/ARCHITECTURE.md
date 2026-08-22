@@ -723,13 +723,23 @@ Workers communicate with the hub via MCP tool calls (`hub_claim`, `hub_report`, 
 
 ## MCP Surfaces
 
-Three separate surfaces sit near MCP; only the first two speak the protocol.
+The bot talks MCP on three surfaces — once as a client, twice as a server.
 
 | Surface | Direction | Location | Purpose |
 |---|---|---|---|
 | `SearxngMcpClient` | Bot is the **client** | `src/services/retrieval/searxng/mcp/` | Spawns a stdio MCP server (`mcp-searxng`) and calls its `searxng_web_search` tool. This is not a general MCP client — it is one of SearXNG's two transports, the sibling of `SearXNGClient`'s direct HTTP. |
-| `HubMCPServer` | Bot is the **server** | `src/cluster/hub/` | Streamable-HTTP MCP endpoint at `/mcp`, consumed by cluster workers' own CLI MCP clients. |
-| `ClaudeCodeApiServer` | Bot is an **HTTP server** | `src/services/claudeCode/` | Plain REST (`/api/notify`, `/api/send`, `/api/command`, `/api/tools/*`) that a spawned `claude` CLI calls back with curl. **Not MCP** despite the tool-shaped routes. |
+| `HubMCPServer` | Bot is the **server** | `src/cluster/hub/` | Streamable-HTTP endpoint at `/mcp`, consumed by cluster workers' CLI MCP clients. Caller identity comes from an `X-Worker-Id` header. |
+| `ClaudeCodeMcpServer` | Bot is the **server** | `src/services/claudeCode/` | Streamable-HTTP endpoint at `/mcp` on its own port, consumed by the `claude` CLI that `ClaudeToolManager` spawns. Exposes `bot_notify_task` / `bot_send_message` / `bot_info` / `bot_command` plus the `ToolRegistry` executors. Caller identity comes from an `X-Task-Id` header. |
+
+MCP earns its place only at process boundaries. Inside the bot's own reply
+pipeline the `@Tool()` registry is strictly better — same-process calls need no
+JSON-RPC hop — so pipeline capability is never exposed as MCP. Both server
+surfaces exist because a *foreign* agent runtime (a spawned CLI) needs them.
+
+Neither server authenticates. They bind to the IM host's LAN address because QQ
+permits one logged-in host and LAN clients must reach it, and the deployment is
+a trusted private network. That assumption is load-bearing: adding capability to
+either server widens what any host on that network can do as the bot.
 
 ### Search transports
 

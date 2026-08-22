@@ -1,9 +1,9 @@
 /**
  * Claude Code Service
  *
- * Main service that integrates the HTTP callback API and Claude Task Manager with the bot.
+ * Main service that integrates the MCP tool server and Claude Task Manager with the bot.
  * Provides a unified interface for:
- * - Starting/stopping the callback API server
+ * - Starting/stopping the MCP server
  * - Triggering Claude Code tasks from bot commands
  * - Sending task results back to users
  */
@@ -14,7 +14,7 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ClaudeCodeServiceConfig, ProtocolName } from '@/core/config';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
-import { ClaudeCodeApiServer } from './ClaudeCodeApiServer';
+import { ClaudeCodeMcpServer } from './ClaudeCodeMcpServer';
 import { ClaudeToolManager } from './ClaudeToolManager';
 import type { ProjectRegistry } from './ProjectRegistry';
 import { ToolRegistry } from './ToolRegistry';
@@ -39,7 +39,7 @@ export interface TriggerTaskOptions {
 
 export class ClaudeCodeService {
   private config: ClaudeCodeServiceConfig;
-  private apiServer: ClaudeCodeApiServer;
+  private mcpServer: ClaudeCodeMcpServer;
   private taskManager: ClaudeToolManager;
   private toolRegistry: ToolRegistry;
   private messageAPI: MessageAPI | null = null;
@@ -50,7 +50,7 @@ export class ClaudeCodeService {
 
   constructor(config: ClaudeCodeServiceConfig) {
     this.config = config;
-    this.apiServer = new ClaudeCodeApiServer(config);
+    this.mcpServer = new ClaudeCodeMcpServer(config);
     this.taskManager = new ClaudeToolManager(config);
     this.toolRegistry = new ToolRegistry(config.workingDirectory);
     this.botStartTime = Date.now();
@@ -60,17 +60,17 @@ export class ClaudeCodeService {
 
   private setupHandlers(): void {
     // Handle task notifications from Claude Code
-    this.apiServer.setTaskNotificationHandler((notification) => {
+    this.mcpServer.setTaskNotificationHandler((notification) => {
       this.taskManager.handleTaskNotification(notification);
     });
 
     // Handle send message requests from Claude Code
-    this.apiServer.setSendMessageHandler(async (params) => {
+    this.mcpServer.setSendMessageHandler(async (params) => {
       return await this.sendMessage(params);
     });
 
     // Handle bot info requests
-    this.apiServer.setBotInfoHandler(() => ({
+    this.mcpServer.setBotInfoHandler(() => ({
       selfId: this.selfId,
       connectedProtocols: this.connectedProtocols,
       uptime: Date.now() - this.botStartTime,
@@ -86,13 +86,13 @@ export class ClaudeCodeService {
     });
 
     // Handle command execution requests from Claude Code
-    this.apiServer.setExecuteCommandHandler(async (params) => {
+    this.mcpServer.setExecuteCommandHandler(async (params) => {
       return await this.executeCommand(params);
     });
 
     // Handle tool execution requests from Claude Code
     // Inject per-task workingDirectory so tools operate in the correct project
-    this.apiServer.setExecuteToolHandler(async (params) => {
+    this.mcpServer.setExecuteToolHandler(async (params) => {
       let workingDirectory: string | undefined;
       if (params.taskId) {
         const task = this.taskManager.getTask(params.taskId);
@@ -104,7 +104,7 @@ export class ClaudeCodeService {
     });
 
     // Handle tool list requests from Claude Code
-    this.apiServer.setListToolsHandler(() => {
+    this.mcpServer.setListToolsHandler(() => {
       return this.toolRegistry.list();
     });
   }
@@ -149,8 +149,8 @@ export class ClaudeCodeService {
    * Start the service
    */
   async start(): Promise<string> {
-    const url = await this.apiServer.start();
-    logger.info(`[ClaudeCodeService] Service started. MCP Server URL: ${url}`);
+    const url = await this.mcpServer.start();
+    logger.info(`[ClaudeCodeService] Service started. MCP endpoint: ${this.mcpServer.getMcpUrl()}`);
     return url;
   }
 
@@ -158,7 +158,7 @@ export class ClaudeCodeService {
    * Stop the service
    */
   async stop(): Promise<void> {
-    await this.apiServer.stop();
+    await this.mcpServer.stop();
     logger.info('[ClaudeCodeService] Service stopped');
   }
 
@@ -426,10 +426,10 @@ export class ClaudeCodeService {
   }
 
   /**
-   * Get MCP server URL
+   * Get the MCP endpoint URL (what a CLI's `--mcp-config` must point at).
    */
   getServerUrl(): string {
-    return this.apiServer.getUrl();
+    return this.mcpServer.getMcpUrl();
   }
 
   /**

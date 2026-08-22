@@ -60,102 +60,16 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
-# Reference（按需查阅，不需预读）
+# Reference
 
-<details>
-<summary>进度通知 API</summary>
+Bot-side capabilities are exposed as MCP tools on the `qqbot` server — call
+them directly, no HTTP required. `tools/list` carries each one's schema,
+description and examples, so nothing needs documenting here.
 
-```bash
-# 任务进度
-curl -X POST {{mcpApiUrl}}/api/notify \
-  -H "Content-Type: application/json" \
-  -d '{"taskId":"{{taskId}}","status":"progress","progress":50,"message":"完成了计划阶段"}'
-
-# 发送消息
-curl -X POST {{mcpApiUrl}}/api/send \
-  -H "Content-Type: application/json" \
-  -d '{"target":{"type":"{{targetType}}","id":"{{targetId}}"},"content":"消息内容"}'
-```
-
-</details>
-
-<details>
-<summary>MCP Tools 调用方式</summary>
-
-```bash
-# 查看所有可用 tools
-GET {{mcpApiUrl}}/api/tools/list
-
-# 调用 tool
-POST {{mcpApiUrl}}/api/tools/execute
-Content-Type: application/json
-{
-  "tool": "tool_name",
-  "parameters": { ... },
-  "taskId": "{{taskId}}"
-}
-```
-
-**`git_commit`** — 创建 Git 提交
-
-```json
-{
-  "tool": "git_commit",
-  "parameters": {
-    "message": "feat: add feature",
-    "scope": "module",
-    "body": "可选描述",
-    "files": ["src/file.ts"],
-    "skipHooks": false
-  }
-}
-```
-
-**`git_branch`** — 分支管理（create/switch/list/delete/merge）
-
-```json
-{
-  "tool": "git_branch",
-  "parameters": { "action": "create", "name": "feat/xxx", "from": "main" }
-}
-```
-
-**`git_create_pr`** — 创建 GitHub PR
-
-```json
-{
-  "tool": "git_create_pr",
-  "parameters": {
-    "title": "feat: xxx",
-    "body": "可选描述",
-    "base": "main",
-    "draft": false
-  }
-}
-```
-
-**`quality_check`** — 运行 typecheck / lint / test / build
-
-```json
-{
-  "tool": "quality_check",
-  "parameters": { "checks": ["typecheck", "lint"], "fix": false }
-}
-```
-
-**`project_info`** — 查询：`structure` / `dependencies` / `recent-changes` / `git-status` / `git-log`
-
-```json
-{ "tool": "project_info", "parameters": { "query": "git-status" } }
-```
-
-**`read_file`** — 读取文件
-
-```json
-{
-  "tool": "read_file",
-  "parameters": { "path": "src/index.ts", "startLine": 1, "endLine": 50 }
-}
-```
-
-</details>
+- `bot_notify_task` — report task lifecycle (`started` / `progress` /
+  `completed` / `failed`). The task ID comes from the connection.
+- `bot_send_message` — message the requester mid-task
+  (`targetType={{targetType}}`, `targetId={{targetId}}`).
+- `git_commit` / `git_branch` / `git_create_pr` / `quality_check` /
+  `project_info` / `read_file` — repo helpers that apply this project's
+  conventions.

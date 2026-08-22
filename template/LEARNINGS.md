@@ -50,15 +50,15 @@
 | ClaudeCode | `src/services/claudeCode/` | Claude CLI 任务执行 + MCP Tools |
 | WeChat     | `src/services/wechat/`     | 微信消息同步和处理              |
 | Zhihu      | `src/services/zhihu/`      | 知乎关注动态拉取 + 摘要推送     |
-| MCP        | `src/services/mcp/`        | MCP 客户端管理                  |
+| Retrieval  | `src/services/retrieval/`  | 搜索（含 SearXNG MCP transport）/ RAG / 网页抓取 |
 
 ### ClaudeCode MCP Tools 架构
 
 ```
 ClaudeCodeService
-├── MCPServer              # HTTP API (port 9876)
-│   ├── POST /api/tools/execute  # 执行 tool
-│   └── GET  /api/tools/list     # 列出 tools
+├── ClaudeCodeMcpServer    # MCP over Streamable HTTP (port 9876, /mcp)
+│   ├── bot_notify_task / bot_send_message / bot_info / bot_command
+│   └── ToolRegistry 的 executor 逐个注册为 MCP tool
 └── ToolRegistry           # Tool 注册和执行
     ├── ReadFileExecutor   # 读文件
     ├── ProjectInfoExecutor # 项目信息/git状态

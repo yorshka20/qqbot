@@ -87,39 +87,16 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 ---
 
-<details>
-<summary>进度通知 API（可选）</summary>
+# Reference
 
-```bash
-# 汇报进度
-curl -X POST {{mcpApiUrl}}/api/notify \
-  -H "Content-Type: application/json" \
-  -d '{"taskId":"{{taskId}}","status":"progress","progress":50,"message":"进度描述"}'
+Bot-side capabilities are exposed as MCP tools on the `qqbot` server — call
+them directly, no HTTP required. `tools/list` carries each one's schema,
+description and examples, so nothing needs documenting here.
 
-# 发送消息
-curl -X POST {{mcpApiUrl}}/api/send \
-  -H "Content-Type: application/json" \
-  -d '{"target":{"type":"{{targetType}}","id":"{{targetId}}"},"content":"消息内容"}'
-```
-</details>
-
-<details>
-<summary>MCP Tools 调用方式</summary>
-
-```bash
-# 查看所有可用 tools
-GET {{mcpApiUrl}}/api/tools/list
-
-# 调用 tool
-POST {{mcpApiUrl}}/api/tools/execute
-Content-Type: application/json
-
-{
-  "tool": "tool_name",
-  "parameters": { ... },
-  "taskId": "{{taskId}}"
-}
-```
-
-</details>
-
+- `bot_notify_task` — report task lifecycle (`started` / `progress` /
+  `completed` / `failed`). The task ID comes from the connection.
+- `bot_send_message` — message the requester mid-task
+  (`targetType={{targetType}}`, `targetId={{targetId}}`).
+- `git_commit` / `git_branch` / `git_create_pr` / `quality_check` /
+  `project_info` / `read_file` — repo helpers that apply this project's
+  conventions.

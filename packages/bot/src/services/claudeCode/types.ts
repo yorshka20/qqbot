@@ -105,16 +105,6 @@ export interface ToolParameter {
   default?: unknown;
 }
 
-// Prompt template types
-export interface PromptTemplateVariables {
-  taskId: string;
-  userPrompt: string;
-  workingDirectory: string;
-  mcpApiUrl: string;
-  targetType: 'user' | 'group';
-  targetId: string;
-}
-
 /**
  * Interface for tool executors managed by ToolRegistry
  */

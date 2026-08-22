@@ -524,11 +524,12 @@ export class ClaudeCodePlugin extends PluginBase {
       segments: new MessageBuilder()
         .text(
           `Claude Code 服务信息\n\n` +
-            `服务地址: ${status.serverUrl}\n` +
-            `API 端点:\n` +
-            `  POST /api/notify - 任务状态通知\n` +
-            `  POST /api/send - 发送消息\n` +
-            `  GET /api/info - 获取 Bot 信息\n\n` +
+            `MCP 端点: ${status.serverUrl}\n` +
+            `Bot 工具:\n` +
+            `  bot_notify_task - 任务状态通知\n` +
+            `  bot_send_message - 发送消息\n` +
+            `  bot_info - 获取 Bot 信息\n` +
+            `  bot_command - 维护命令（restart/reload-plugins/status）\n\n` +
             `当前状态:\n` +
             `  待处理任务: ${status.pendingTasks}\n` +
             `  运行中任务: ${status.runningTasks}`,

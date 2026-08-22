@@ -5,6 +5,9 @@
  * Handles task queue, execution, and result collection.
  */
 
+import { writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { type Subprocess, spawn } from 'bun';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { ClaudeCodeServiceConfig } from '@/core/config';
@@ -48,6 +51,29 @@ export class ClaudeToolManager {
   }
 
   /**
+   * Write the `--mcp-config` file pointing the task's CLI at the bot's MCP
+   * endpoint. `X-Task-Id` is sent on every request the CLI's MCP client makes,
+   * which is how `bot_notify_task` knows which task is reporting without
+   * trusting the model to pass an ID.
+   */
+  private async writeMcpConfig(taskId: string): Promise<string> {
+    const host = this.config.host || '127.0.0.1';
+    const mcpConfig = {
+      mcpServers: {
+        qqbot: {
+          type: 'http',
+          url: `http://${host}:${this.config.port}/mcp`,
+          headers: { 'X-Task-Id': taskId },
+        },
+      },
+    };
+
+    const configPath = join(tmpdir(), `claude-code-mcp-${taskId}.json`);
+    await writeFile(configPath, JSON.stringify(mcpConfig, null, 2));
+    return configPath;
+  }
+
+  /**
    * Process prompt template with variables using PromptManager.
    * Dynamically selects template based on task type and project context.
    */
@@ -57,7 +83,6 @@ export class ClaudeToolManager {
       return task.prompt;
     }
 
-    const mcpApiUrl = `http://${this.config.host || '127.0.0.1'}:${this.config.port}`;
     const ctx = task.projectContext;
 
     // Determine template key
@@ -87,7 +112,6 @@ export class ClaudeToolManager {
       taskId: task.id,
       userPrompt: task.prompt,
       workingDirectory: task.workingDirectory || process.cwd(),
-      mcpApiUrl,
       targetType: task.requestedBy.type,
       targetId: task.requestedBy.id,
       projectDescription: ctx?.description || '未知项目',
@@ -257,13 +281,20 @@ export class ClaudeToolManager {
     // Process prompt template with variables
     const processedPrompt = this.processPromptTemplate(task);
 
+    const mcpConfigPath = await this.writeMcpConfig(taskId);
+
     // Build Claude Code command
     // Using --print flag to output result and exit
     // Using --dangerously-skip-permissions to bypass permission prompts (bot can't interact)
-    // Pass task ID via environment so Claude can use notify_task_status
+    //
+    // `--mcp-config=<path>` MUST use the single-arg `=` form: Claude CLI treats
+    // `--mcp-config` as a multi-value option that greedily slurps following
+    // positionals, so the two-arg form would swallow processedPrompt as a
+    // second config path and fail with "MCP config file not found: <prompt>".
     const args = [
       '--print', // Non-interactive mode, print result
       '--dangerously-skip-permissions', // Skip permission prompts
+      `--mcp-config=${mcpConfigPath}`,
       '--output-format',
       'text',
       processedPrompt,
