@@ -26,6 +26,7 @@ export { RagSearchToolExecutor } from './RagSearchToolExecutor';
 export { ReadFileToolExecutor } from './ReadFileToolExecutor';
 export { ReplyToolExecutor } from './ReplyToolExecutor';
 export { ResearchToolExecutor } from './ResearchToolExecutor';
+export { RunShellToolExecutor } from './RunShellToolExecutor';
 export { ScheduleTaskToolExecutor } from './ScheduleTaskToolExecutor';
 export { SearchChatHistoryByUserToolExecutor } from './SearchChatHistoryByUserToolExecutor';
 export { SearchChatHistoryToolExecutor } from './SearchChatHistoryToolExecutor';
