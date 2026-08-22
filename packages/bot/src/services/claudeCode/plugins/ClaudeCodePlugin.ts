@@ -525,7 +525,7 @@ export class ClaudeCodePlugin extends PluginBase {
         .text(
           `Claude Code 服务信息\n\n` +
             `MCP 端点: ${status.serverUrl}\n` +
-            `Bot 工具:\n` +
+            `MCP 工具:\n` +
             `  bot_notify_task - 任务状态通知\n` +
             `  bot_send_message - 发送消息\n` +
             `  bot_info - 获取 Bot 信息\n` +

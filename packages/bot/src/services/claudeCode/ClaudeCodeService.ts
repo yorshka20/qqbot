@@ -17,7 +17,6 @@ import { logger } from '@/utils/logger';
 import { ClaudeCodeMcpServer } from './ClaudeCodeMcpServer';
 import { ClaudeToolManager } from './ClaudeToolManager';
 import type { ProjectRegistry } from './ProjectRegistry';
-import { ToolRegistry } from './ToolRegistry';
 import type {
   ClaudeTask,
   ClaudeTaskType,
@@ -25,9 +24,6 @@ import type {
   ExecuteCommandResult,
   ProjectContext,
   SendMessageParams,
-  ToolDefinition,
-  ToolExecuteParams,
-  ToolExecuteResult,
 } from './types';
 
 export interface TriggerTaskOptions {
@@ -41,7 +37,6 @@ export class ClaudeCodeService {
   private config: ClaudeCodeServiceConfig;
   private mcpServer: ClaudeCodeMcpServer;
   private taskManager: ClaudeToolManager;
-  private toolRegistry: ToolRegistry;
   private messageAPI: MessageAPI | null = null;
   private botStartTime: number;
   private connectedProtocols: ProtocolName[] = [];
@@ -52,7 +47,6 @@ export class ClaudeCodeService {
     this.config = config;
     this.mcpServer = new ClaudeCodeMcpServer(config);
     this.taskManager = new ClaudeToolManager(config);
-    this.toolRegistry = new ToolRegistry(config.workingDirectory);
     this.botStartTime = Date.now();
 
     this.setupHandlers();
@@ -88,24 +82,6 @@ export class ClaudeCodeService {
     // Handle command execution requests from Claude Code
     this.mcpServer.setExecuteCommandHandler(async (params) => {
       return await this.executeCommand(params);
-    });
-
-    // Handle tool execution requests from Claude Code
-    // Inject per-task workingDirectory so tools operate in the correct project
-    this.mcpServer.setExecuteToolHandler(async (params) => {
-      let workingDirectory: string | undefined;
-      if (params.taskId) {
-        const task = this.taskManager.getTask(params.taskId);
-        if (task?.workingDirectory) {
-          workingDirectory = task.workingDirectory;
-        }
-      }
-      return await this.toolRegistry.execute({ ...params, workingDirectory });
-    });
-
-    // Handle tool list requests from Claude Code
-    this.mcpServer.setListToolsHandler(() => {
-      return this.toolRegistry.list();
     });
   }
 
@@ -409,20 +385,6 @@ export class ClaudeCodeService {
         runningTasks: this.taskManager.getRunningTaskCount(),
       },
     };
-  }
-
-  /**
-   * Execute a tool via the tool registry
-   */
-  async executeTool(params: ToolExecuteParams): Promise<ToolExecuteResult> {
-    return this.toolRegistry.execute(params);
-  }
-
-  /**
-   * List available tools
-   */
-  listTools(): ToolDefinition[] {
-    return this.toolRegistry.list();
   }
 
   /**

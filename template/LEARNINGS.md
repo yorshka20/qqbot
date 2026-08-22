@@ -57,15 +57,11 @@
 ```
 ClaudeCodeService
 ├── ClaudeCodeMcpServer    # MCP over Streamable HTTP (port 9876, /mcp)
-│   ├── bot_notify_task / bot_send_message / bot_info / bot_command
-│   └── ToolRegistry 的 executor 逐个注册为 MCP tool
-└── ToolRegistry           # Tool 注册和执行
-    ├── ReadFileExecutor   # 读文件
-    ├── ProjectInfoExecutor # 项目信息/git状态
-    ├── GitCommitExecutor  # git commit
-    ├── QualityCheckExecutor # typecheck/lint/test/build
-    ├── GitBranchExecutor  # 分支管理
-    └── GitPRExecutor      # 创建 PR
+│   ├── bot_notify_task    # 任务生命周期回报
+│   ├── bot_send_message   # 给请求者发消息
+│   ├── bot_info           # bot 运行状态
+│   └── bot_command        # restart / reload-plugins / status
+└── ClaudeToolManager      # 任务队列 + spawn claude CLI（含 --mcp-config 注入）
 ```
 
 ---
@@ -134,11 +130,14 @@ export class MyToolExecutor extends BaseToolExecutor {
 
 **注册方式:** 装饰器 + 在 `src/tools/executors/index.ts` 中 export（确保装饰器在 import 时执行）。
 
-#### ClaudeCode MCP Tool Executor（独立体系）
+#### ClaudeCode MCP Tools（独立体系）
 
-位于 `src/services/claudeCode/`，用于 ClaudeCode MCP Server 暴露的 tools（如 git_commit、quality_check 等），直接执行 shell 命令。
+`src/services/claudeCode/ClaudeCodeMcpServer.ts` 里的 `bot_*` tools，给 spawn 出来的
+Claude Code CLI 用，走 MCP 协议而不是 `@Tool()` 装饰器。
 
-**要点**: 不要把两种 executor 混淆。`@Tool()` 装饰的 executor 是给 AI 对话流使用的 tool，MCP Tool Executor 是给 Claude Code CLI 使用的。
+**要点**: 两套体系不要混淆。`@Tool()` 的 executor 服务 AI 对话流；MCP tools 服务外部
+CLI 进程。后者只暴露 CLI **自己做不到**的事（发 IM 消息、回报任务状态）—— 文件读写、
+git、跑检查一律让 CLI 用自带工具，它读 `CLAUDE.md` 和 `package.json` 比我们硬编码准。
 
 ### 配置访问
 

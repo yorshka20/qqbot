@@ -36,17 +36,7 @@ import type { ClaudeCodeServiceConfig } from '@/core/config';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
 import { getRepoRoot } from '@/utils/repoRoot';
-import type {
-  BotInfo,
-  ExecuteCommandParams,
-  ExecuteCommandResult,
-  SendMessageParams,
-  TaskNotification,
-  ToolDefinition,
-  ToolExecuteParams,
-  ToolExecuteResult,
-  ToolParameter,
-} from './types';
+import type { BotInfo, ExecuteCommandParams, ExecuteCommandResult, SendMessageParams, TaskNotification } from './types';
 
 type TaskNotificationHandler = (notification: TaskNotification) => void;
 type SendMessageHandler = (
@@ -54,8 +44,6 @@ type SendMessageHandler = (
 ) => Promise<{ success: boolean; messageId?: string; error?: string }>;
 type GetBotInfoHandler = () => BotInfo;
 type ExecuteCommandHandler = (params: ExecuteCommandParams) => Promise<ExecuteCommandResult>;
-type ExecuteToolHandler = (params: ToolExecuteParams) => Promise<ToolExecuteResult>;
-type ListToolsHandler = () => ToolDefinition[];
 
 /** Shape of the `extra` parameter we care about — narrowed from the SDK type. */
 interface ToolExtra {
@@ -99,54 +87,6 @@ function loadMcpInstructions(): string {
   }
 }
 
-/**
- * Translate a `ToolDefinition` parameter into a Zod schema.
- *
- * Note the array case: `ToolParameter.enum` constrains the *elements* when
- * `type` is `array` (e.g. `quality_check.checks`), not the value itself.
- */
-function toZodSchema(param: ToolParameter): z.ZodTypeAny {
-  const enumValues = param.enum?.length ? (param.enum as [string, ...string[]]) : null;
-
-  let schema: z.ZodTypeAny;
-  switch (param.type) {
-    case 'string':
-      schema = enumValues ? z.enum(enumValues) : z.string();
-      break;
-    case 'number':
-      schema = z.number();
-      break;
-    case 'boolean':
-      schema = z.boolean();
-      break;
-    case 'array':
-      schema = z.array(enumValues ? z.enum(enumValues) : z.string());
-      break;
-    case 'object':
-      schema = z.record(z.string(), z.unknown());
-      break;
-  }
-
-  schema = schema.describe(param.description);
-  return param.required ? schema : schema.optional();
-}
-
-/**
- * MCP has no `examples` / `whenToUse` fields, so fold them into the
- * description — that guidance previously lived in the prompt template's
- * reference block and would otherwise be lost.
- */
-function buildToolDescription(def: ToolDefinition): string {
-  const parts = [def.description];
-  if (def.whenToUse) {
-    parts.push(`\n\nWhen to use: ${def.whenToUse}`);
-  }
-  if (def.examples?.length) {
-    parts.push(`\n\nExamples:\n${def.examples.map((e) => `- ${e}`).join('\n')}`);
-  }
-  return parts.join('');
-}
-
 interface SessionEntry {
   transport: WebStandardStreamableHTTPServerTransport;
   server: McpServer;
@@ -161,8 +101,6 @@ export class ClaudeCodeMcpServer {
   private onSendMessage: SendMessageHandler | null = null;
   private onGetBotInfo: GetBotInfoHandler | null = null;
   private onExecuteCommand: ExecuteCommandHandler | null = null;
-  private onExecuteTool: ExecuteToolHandler | null = null;
-  private onListTools: ListToolsHandler | null = null;
 
   constructor(private readonly config: ClaudeCodeServiceConfig) {
     this.instructions = loadMcpInstructions();
@@ -182,14 +120,6 @@ export class ClaudeCodeMcpServer {
 
   setExecuteCommandHandler(handler: ExecuteCommandHandler): void {
     this.onExecuteCommand = handler;
-  }
-
-  setExecuteToolHandler(handler: ExecuteToolHandler): void {
-    this.onExecuteTool = handler;
-  }
-
-  setListToolsHandler(handler: ListToolsHandler): void {
-    this.onListTools = handler;
   }
 
   async start(): Promise<string> {
@@ -387,29 +317,6 @@ export class ClaudeCodeMcpServer {
         return result.success ? this.jsonResult(result) : this.errorResult(result.error ?? 'command failed');
       },
     );
-
-    // The bot-side tool executors (git_commit, quality_check, …) become
-    // first-class MCP tools rather than arguments to a dispatch endpoint, so
-    // the CLI discovers them through the protocol's own tools/list.
-    for (const def of this.onListTools?.() ?? []) {
-      const inputSchema: Record<string, z.ZodTypeAny> = {};
-      for (const [name, param] of Object.entries(def.parameters)) {
-        inputSchema[name] = toZodSchema(param);
-      }
-
-      register(def.name, { description: buildToolDescription(def), inputSchema }, async (args, extra) => {
-        if (!this.onExecuteTool) {
-          return this.errorResult('No tool executor registered');
-        }
-        const taskId = this.extractTaskId(extra);
-        const result = await this.onExecuteTool({
-          tool: def.name,
-          parameters: args,
-          ...(taskId ? { taskId } : {}),
-        });
-        return result.success ? this.jsonResult(result) : this.errorResult(result.error ?? 'tool failed');
-      });
-    }
   }
 
   // ── Helpers ──

@@ -152,14 +152,11 @@
 
 # Reference
 
-Bot-side capabilities are exposed as MCP tools on the `qqbot` server — call
-them directly, no HTTP required. `tools/list` carries each one's schema,
-description and examples, so nothing needs documenting here.
+The bot exposes two MCP tools on the `qqbot` server for talking back to the
+person who asked for this work. Everything else — reading, editing, git,
+running checks — use your own built-in tools.
 
 - `bot_notify_task` — report task lifecycle (`started` / `progress` /
   `completed` / `failed`). The task ID comes from the connection.
 - `bot_send_message` — message the requester mid-task
   (`targetType={{targetType}}`, `targetId={{targetId}}`).
-- `git_commit` / `git_branch` / `git_create_pr` / `quality_check` /
-  `project_info` / `read_file` — repo helpers that apply this project's
-  conventions.

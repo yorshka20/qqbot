@@ -26,12 +26,9 @@ Prefer `bot_notify_task` for lifecycle and `bot_send_message` for conversation.
   your own process, so only call it as the very last action of a task that
   explicitly asked for it.
 
-## Repository helpers
+## What this server does not do
 
-`git_commit`, `git_branch`, `git_create_pr`, `quality_check`, `project_info`
-and `read_file` run inside the bot's project registry, which resolves the
-task's project and enforces its allowed base paths. Your own built-in tools
-(Read, Bash, Edit) work on the same working directory and are usually more
-direct — reach for these when you want the bot's conventions applied, such as
-`git_commit`'s project-standard message formatting or `quality_check`'s
-configured typecheck/lint/test commands.
+There are no file, git or build tools here. Use your own built-in tools for
+reading, editing, running commands and git — they are more direct, and the
+project's `CLAUDE.md` plus its `package.json` scripts are the authority on
+which commands this project actually uses.

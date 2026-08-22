@@ -729,7 +729,7 @@ The bot talks MCP on three surfaces — once as a client, twice as a server.
 |---|---|---|---|
 | `SearxngMcpClient` | Bot is the **client** | `src/services/retrieval/searxng/mcp/` | Spawns a stdio MCP server (`mcp-searxng`) and calls its `searxng_web_search` tool. This is not a general MCP client — it is one of SearXNG's two transports, the sibling of `SearXNGClient`'s direct HTTP. |
 | `HubMCPServer` | Bot is the **server** | `src/cluster/hub/` | Streamable-HTTP endpoint at `/mcp`, consumed by cluster workers' CLI MCP clients. Caller identity comes from an `X-Worker-Id` header. |
-| `ClaudeCodeMcpServer` | Bot is the **server** | `src/services/claudeCode/` | Streamable-HTTP endpoint at `/mcp` on its own port, consumed by the `claude` CLI that `ClaudeToolManager` spawns. Exposes `bot_notify_task` / `bot_send_message` / `bot_info` / `bot_command` plus the `ToolRegistry` executors. Caller identity comes from an `X-Task-Id` header. |
+| `ClaudeCodeMcpServer` | Bot is the **server** | `src/services/claudeCode/` | Streamable-HTTP endpoint at `/mcp` on its own port, consumed by the `claude` CLI that `ClaudeToolManager` spawns. Exposes only what the CLI cannot do for itself: `bot_notify_task` / `bot_send_message` (the channel back to the requester) and `bot_info` / `bot_command`. Caller identity comes from an `X-Task-Id` header. |
 
 MCP earns its place only at process boundaries. Inside the bot's own reply
 pipeline the `@Tool()` registry is strictly better — same-process calls need no
