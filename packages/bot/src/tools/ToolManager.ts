@@ -124,12 +124,27 @@ export class ToolManager {
   /**
    * Get tools visible in the given scope.
    * Tools without explicit visibility are not available in any scope.
+   *
+   * `isAdmin` gates the subagent scope the same way {@link filterToolsForReply}
+   * gates the reply scope. Without it, a tool marked `adminOnly` was reachable by
+   * any user through a subagent — the reply-scope check simply does not run there —
+   * which handed non-admins `read_file` / `search_code` / `execute_code`. Defaults
+   * to non-admin so a caller that cannot determine it gets the safe set.
    */
-  getToolsByScope(scope: ToolScope): ToolSpec[] {
+  getToolsByScope(scope: ToolScope, opts?: { isAdmin?: boolean }): ToolSpec[] {
+    const isAdmin = opts?.isAdmin ?? false;
     return this.getAllTools().filter((t) => {
       const vis: ToolVisibility = t.visibility ?? {};
       if (scope === 'reply') return vis.reply !== undefined;
-      if (scope === 'subagent') return vis.subagent === true;
+      if (scope === 'subagent') {
+        if (vis.subagent !== true) return false;
+        // adminOnly is declared on the reply descriptor; treat it as a property of
+        // the tool, not of one scope — a tool too sensitive for a non-admin to call
+        // directly is equally sensitive called from inside a subagent. `reply` is a
+        // `true | ReplyVisibility` union; bare `true` carries no adminOnly flag.
+        const adminOnly = typeof vis.reply === 'object' && vis.reply.adminOnly === true;
+        return isAdmin || !adminOnly;
+      }
       if (scope === 'internal') return vis.internal === true;
       if (scope === 'reflection') return vis.reflection === true;
       return false;

@@ -319,3 +319,47 @@ fn()
     expect(result.returnValue).toBe(42);
   });
 });
+
+describe('CodeSandbox filesystem denial', () => {
+  // execute_code is deliberately given no fs/process capability: Bun.file would
+  // otherwise read anything the bot user can, bypassing FileReadService and its
+  // config.d denial. Shadowing covers the identifiers; the source check covers
+  // import()/.constructor, which no parameter can shadow.
+
+  it('shadows Bun so file reads are impossible', async () => {
+    const sandbox = new CodeSandbox();
+    const result = await sandbox.execute('return typeof Bun;', buildTestGlobals());
+    expect(result.success).toBe(true);
+    expect(result.returnValue).toBe('undefined');
+  });
+
+  it('shadows process, globalThis and require', async () => {
+    const sandbox = new CodeSandbox();
+    const result = await sandbox.execute(
+      'return [typeof process, typeof globalThis, typeof require].join(",");',
+      buildTestGlobals(),
+    );
+    expect(result.returnValue).toBe('undefined,undefined,undefined');
+  });
+
+  it('rejects dynamic import()', async () => {
+    const sandbox = new CodeSandbox();
+    const result = await sandbox.execute('const fs = await import("node:fs"); return 1;', buildTestGlobals());
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('import');
+  });
+
+  it('rejects the .constructor escape that re-derives Function', async () => {
+    const sandbox = new CodeSandbox();
+    const result = await sandbox.execute('return (() => {}).constructor("return Bun")();', buildTestGlobals());
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('constructor');
+  });
+
+  it('still runs ordinary computation', async () => {
+    const sandbox = new CodeSandbox();
+    const result = await sandbox.execute('return [1, 2, 3].map((n) => n * 2).join("-");', buildTestGlobals());
+    expect(result.success).toBe(true);
+    expect(result.returnValue).toBe('2-4-6');
+  });
+});

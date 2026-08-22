@@ -5,8 +5,54 @@ import type { SandboxConfig, SandboxExecutionResult, SandboxGlobals } from './ty
 import { DEFAULT_SANDBOX_CONFIG } from './types';
 
 /**
+ * Names shadowed as `undefined` parameters so the code body cannot reach the
+ * filesystem, the process, or a fresh reference to the real globals.
+ *
+ * Injected globals are function parameters, and a parameter shadows the global of
+ * the same name for the whole body — that is the whole mechanism here. This tool
+ * is deliberately given no filesystem capability: `Bun.file` / `process` would
+ * otherwise read anything the bot user can read, bypassing FileReadService and its
+ * secret-directory denial entirely.
+ */
+const BLOCKED_GLOBALS = [
+  'Bun',
+  'process',
+  'globalThis',
+  'global',
+  'require',
+  'module',
+  'exports',
+  'eval',
+  'Function',
+  'WebAssembly',
+] as const;
+
+/**
+ * Source patterns rejected before execution, for the fs vectors that shadowing
+ * cannot reach:
+ *  - `import(...)` is syntax, not an identifier, so no parameter can shadow it.
+ *  - `.constructor` re-derives Function from any object literal
+ *    (`(()=>{}).constructor('return Bun')()`), sidestepping the `Function` shadow.
+ *
+ * This is defense in depth, not a security boundary: an in-process
+ * `AsyncFunction` cannot be made a true sandbox. It stops the realistic cases
+ * (model-written code reaching for fs) rather than a determined attacker. The
+ * durable protection is keeping secrets out of reach — see
+ * FileReadService.ALWAYS_DENIED_SEGMENTS.
+ */
+const BLOCKED_SOURCE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+  { pattern: /\bimport\s*\(/, reason: 'dynamic import() is not available' },
+  { pattern: /\bimport\s+[\w{*'"]/, reason: 'import statements are not available' },
+  { pattern: /\brequire\s*\(/, reason: 'require() is not available' },
+  { pattern: /\.\s*constructor\b/, reason: 'access to .constructor is not available' },
+  { pattern: /\bprocess\s*\./, reason: 'process is not available' },
+  { pattern: /\bBun\s*\./, reason: 'Bun APIs are not available' },
+];
+
+/**
  * Executes JavaScript code in a controlled environment with:
  * - Injected globals (tools, console, standard utilities)
+ * - No filesystem or process access (see {@link BLOCKED_GLOBALS})
  * - Timeout protection
  * - Output capture
  * - Error handling
@@ -34,6 +80,17 @@ export class CodeSandbox {
    */
   async execute(code: string, globals: SandboxGlobals): Promise<SandboxExecutionResult> {
     const startTime = Date.now();
+
+    const rejection = CodeSandbox.findBlockedSource(code);
+    if (rejection) {
+      logger.warn(`[CodeSandbox] Rejected code: ${rejection}`);
+      return {
+        success: false,
+        consoleOutput: [],
+        error: `${rejection}. execute_code has no filesystem or process access; use the provided tools instead.`,
+        executionTimeMs: Date.now() - startTime,
+      };
+    }
 
     try {
       // Build the async function with injected globals as parameters
@@ -72,8 +129,13 @@ export class CodeSandbox {
    * can reference them directly (e.g. `await tools.search({ query: "test" })`).
    */
   private buildFunction(code: string, globals: SandboxGlobals): () => Promise<unknown> {
-    const paramNames = Object.keys(globals);
-    const paramValues = Object.values(globals);
+    // Blocked names are appended as trailing parameters left undefined, so each one
+    // shadows the real global for the whole body. Injected globals win on collision,
+    // so this can never mask something the tool intends to provide.
+    const provided = Object.keys(globals);
+    const shadowed = BLOCKED_GLOBALS.filter((name) => !provided.includes(name));
+    const paramNames = [...provided, ...shadowed];
+    const paramValues = [...Object.values(globals), ...shadowed.map(() => undefined)];
 
     const wrappedCode = this.addImplicitReturn(code);
 
@@ -83,6 +145,16 @@ export class CodeSandbox {
 
     // Return a thunk that calls the function with the actual global values
     return () => fn(...paramValues);
+  }
+
+  /** Return the rejection reason for disallowed source, or undefined when clean. */
+  private static findBlockedSource(code: string): string | undefined {
+    for (const { pattern, reason } of BLOCKED_SOURCE_PATTERNS) {
+      if (pattern.test(code)) {
+        return reason;
+      }
+    }
+    return undefined;
   }
 
   /**

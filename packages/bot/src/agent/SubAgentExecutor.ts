@@ -1,5 +1,8 @@
 // SubAgent Executor - executes sub-agents with isolated context
 
+import type { PermissionChecker } from '@/command/CommandManager';
+import { getCurrentMessageContext } from '@/context/MessageContextStorage';
+
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, FunctionCall, ToolDefinition, ToolUseGenerateResponse } from '@/ai/types';
@@ -42,9 +45,34 @@ export class SubAgentExecutor {
     private toolManager: ToolManager,
     private toolRunner: IToolRunner,
     private promptManager: PromptManager,
+    private permissionChecker: PermissionChecker,
     private defaultProviderName?: string | string[],
     private defaultModel?: string,
   ) {}
+
+  /**
+   * Admin status of the turn that spawned this subagent, used to gate adminOnly
+   * tools inside the subagent scope.
+   *
+   * Read from the ambient message context rather than threaded through the session:
+   * a subagent always runs inside the async chain of the message that triggered it.
+   * No message context (a background or scheduled run) means no admin — the safe
+   * default. `senderRole` is irrelevant here because the `admin` level resolves
+   * against configured admin/owner ids, not group role.
+   */
+  private isAdminTurn(): boolean {
+    const message = getCurrentMessageContext()?.message;
+    if (!message) {
+      return false;
+    }
+    return this.permissionChecker.checkPermission(
+      message.userId,
+      message.messageType ?? 'private',
+      ['admin'],
+      undefined,
+      message.protocol as string | undefined,
+    );
+  }
 
   /**
    * Resolve a provider name from a string or string[] (random selection).
@@ -145,7 +173,7 @@ export class SubAgentExecutor {
    * Filter tools based on config and depth
    */
   private filterTools(config: SubAgentConfig, depth: number): ToolDefinition[] {
-    const subAgentSpecs = this.toolManager.getToolsByScope('subagent');
+    const subAgentSpecs = this.toolManager.getToolsByScope('subagent', { isAdmin: this.isAdminTurn() });
     let tools = this.toolManager.toToolDefinitions(subAgentSpecs);
 
     // Apply depth restrictions

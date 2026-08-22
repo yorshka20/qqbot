@@ -13,7 +13,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
+import { dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import type { FileReadServiceConfig } from '@/core/config/types/bot';
 import { logger } from '@/utils/logger';
 
@@ -71,6 +71,18 @@ export interface ReadFileBinaryResult {
  * Provides safe file listing, reading, writing, and deletion within project root.
  * Used by ReadFileToolExecutor, DeduplicateFilesToolExecutor, and ls/cat commands.
  */
+/**
+ * Path segments never readable through this service, regardless of config or the
+ * `noCheck` privileged flag.
+ *
+ * `config.d/` holds every provider API key. Leaving this to `filterPaths` alone was
+ * how it stayed readable: that list still named `config.json` from the single-file
+ * era, so the move to `config.d/*.jsonc` silently un-protected the secrets. A
+ * config-driven denylist is also editable and losable, and anything read here can
+ * reach an LLM prompt — so secrets are denied in code, not by configuration.
+ */
+const ALWAYS_DENIED_SEGMENTS = ['config.d'] as const;
+
 export class FileReadService {
   private readonly projectRoot: string;
   private readonly filterPaths: string[];
@@ -87,12 +99,25 @@ export class FileReadService {
    * When noCheck is true, only traversal is checked; filterPaths are skipped (caller must restrict who uses noCheck).
    */
   isPathSafe(resolvedPath: string, rootPath: string = this.projectRoot, noCheck = false): boolean {
+    if (FileReadService.isAlwaysDenied(resolvedPath)) {
+      return false;
+    }
     if (noCheck) {
       return true;
     }
     const rel = relative(rootPath, resolvedPath);
     const withinRoot = (!rel || !rel.startsWith('..')) && !isAbsolute(rel);
     return withinRoot && this.filterPaths.every((filter) => !rel.includes(filter));
+  }
+
+  /**
+   * True when the path touches a hardcoded-secret location. Matches on whole path
+   * segments so a sibling like `config.dist/` is unaffected, and applies to the
+   * directory itself as well as anything under it.
+   */
+  private static isAlwaysDenied(resolvedPath: string): boolean {
+    const segments = resolvedPath.split(sep);
+    return ALWAYS_DENIED_SEGMENTS.some((denied) => segments.includes(denied));
   }
 
   /**
@@ -104,6 +129,11 @@ export class FileReadService {
     const normalized = normalize(userPath).replace(/^(\.\/)+/, '');
     const resolved = noCheck && isAbsolute(normalized) ? resolve(normalized) : resolve(this.projectRoot, normalized);
     const relFromRoot = relative(this.projectRoot, resolved);
+
+    // Secrets are denied before anything else, including the noCheck bypass.
+    if (FileReadService.isAlwaysDenied(resolved)) {
+      return { resolved: '', error: 'unavailable path' };
+    }
 
     // Check for unavailable path per filters (skip when noCheck)
     if (!noCheck && this.filterPaths.some((filter) => resolved.includes(filter))) {

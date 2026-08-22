@@ -97,10 +97,7 @@ export class ConversationConfigPlugin extends PluginBase {
 
     this.commandManager.register(cmdHandler, this.name);
 
-    const registration = this.commandManager.getRegistration('cmd');
-    if (registration) {
-      registration.permissions = ['group_admin', 'group_owner', 'admin'];
-    }
+    this.restrictToAdmin('cmd');
 
     const forwardHandler = new PluginCommandHandler(
       'forward',
@@ -112,6 +109,7 @@ export class ConversationConfigPlugin extends PluginBase {
       this.context,
     );
     this.commandManager.register(forwardHandler, this.name);
+    this.restrictToAdmin('forward');
 
     const thinkHandler = new PluginCommandHandler(
       'think',
@@ -123,8 +121,22 @@ export class ConversationConfigPlugin extends PluginBase {
       this.context,
     );
     this.commandManager.register(thinkHandler, this.name);
+    this.restrictToAdmin('think');
 
     logger.info('[ConversationConfigPlugin] Registered /cmd, /forward and /think commands');
+  }
+
+  /**
+   * Gate a command to admins. `/think` in particular must not be user-accessible:
+   * a reasoning model quotes its prompt while thinking, and the prompt carries the
+   * admin id, the trust/anti-injection rules, other users' memory, and tool output —
+   * so an unrestricted toggle lets any member publish all of it to the group.
+   */
+  private restrictToAdmin(command: string): void {
+    const registration = this.commandManager.getRegistration(command);
+    if (registration) {
+      registration.permissions = ['group_admin', 'group_owner', 'admin'];
+    }
   }
 
   async onDisable(): Promise<void> {

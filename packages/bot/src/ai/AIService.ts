@@ -103,6 +103,7 @@ export class AIService {
       toolManager,
       toolRunner,
       promptManager,
+      permissionChecker,
       subagentConfig?.providerName,
       subagentConfig?.model,
     );

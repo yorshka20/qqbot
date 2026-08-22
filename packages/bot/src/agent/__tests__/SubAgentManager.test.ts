@@ -167,6 +167,9 @@ describe.skipIf(!getIntegrationProvider('doubao'))('SubAgentManager integration 
     mockToolManager,
     mockToolRunner,
     mockPromptManager,
+    // No message context in tests, so isAdminTurn() short-circuits to false and
+    // never reaches this; supplied to satisfy the constructor.
+    { checkPermission: () => false } as unknown as import('@/command/CommandManager').PermissionChecker,
   );
   manager.setExecutor(executor);
 

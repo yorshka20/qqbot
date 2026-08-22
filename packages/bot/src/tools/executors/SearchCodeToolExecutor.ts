@@ -1,6 +1,6 @@
 // SearchCode tool executor — greps bot source code for keywords/patterns
 
-import { join, relative } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import { inject, injectable } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
 import type { FileReadService } from '@/services/file';
@@ -62,9 +62,12 @@ export class SearchCodeToolExecutor extends BaseToolExecutor {
       return this.error('搜索关键词过长（最多 200 字符）', 'Pattern too long');
     }
 
-    // Resolve and validate path
+    // Resolve and validate path. A plain startsWith() on the root is not a
+    // containment check: a sibling directory whose name merely begins with the
+    // project directory's name (…/qqbot-secrets vs …/qqbot) passes it.
     const searchPath = join(PROJECT_ROOT, pathParam);
-    if (!searchPath.startsWith(PROJECT_ROOT)) {
+    const relToRoot = relative(PROJECT_ROOT, searchPath);
+    if (relToRoot.startsWith('..') || isAbsolute(relToRoot)) {
       return this.error('路径不能逃逸出项目根目录', 'Path escapes project root');
     }
 
@@ -73,6 +76,9 @@ export class SearchCodeToolExecutor extends BaseToolExecutor {
         [
           'grep',
           '-rn',
+          // config.d holds provider API keys; excluded so a future --include
+          // change or a stray .json in there can never surface secrets.
+          '--exclude-dir=config.d',
           '--include=*.ts',
           '--include=*.json',
           '-m',
