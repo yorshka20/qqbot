@@ -83,6 +83,11 @@ export interface ReadFileBinaryResult {
  */
 const ALWAYS_DENIED_SEGMENTS = ['config.d'] as const;
 
+/** True for `.env` / `.env.local` style segments — same secret class as config.d. */
+function isEnvFileSegment(segment: string): boolean {
+  return segment === '.env' || segment.startsWith('.env.');
+}
+
 export class FileReadService {
   private readonly projectRoot: string;
   private readonly filterPaths: string[];
@@ -117,15 +122,21 @@ export class FileReadService {
    */
   private static isAlwaysDenied(resolvedPath: string): boolean {
     const segments = resolvedPath.split(sep);
-    return ALWAYS_DENIED_SEGMENTS.some((denied) => segments.includes(denied));
+    return segments.some((s) => (ALWAYS_DENIED_SEGMENTS as readonly string[]).includes(s) || isEnvFileSegment(s));
   }
 
   /**
    * Resolve and validate path. Returns null if invalid or unsafe.
    * Accepts both relative paths (from project root) and absolute paths (within project root).
    * When noCheck is true, filterPaths are skipped (caller must restrict who uses noCheck).
+   *
+   * `allowHidden` opens dot-directories (.git, .github, …) for READ operations —
+   * inspecting the repo legitimately needs them, and the secret classes that used
+   * to hide behind the blanket dot-rule (config.d, .env*) are hard-denied by
+   * segment. WRITE operations must never pass it: writing into a dot-directory
+   * includes .git/hooks/, which is arbitrary code execution on the next commit.
    */
-  resolvePath(userPath: string, noCheck = false): { resolved: string; error?: string } {
+  resolvePath(userPath: string, noCheck = false, allowHidden = false): { resolved: string; error?: string } {
     const normalized = normalize(userPath).replace(/^(\.\/)+/, '');
     const resolved = noCheck && isAbsolute(normalized) ? resolve(normalized) : resolve(this.projectRoot, normalized);
     const relFromRoot = relative(this.projectRoot, resolved);
@@ -140,10 +151,9 @@ export class FileReadService {
       return { resolved: '', error: 'unavailable path' };
     }
 
-    // Also filter any path components that are hidden (starts with .)
-    // e.g. /foo/.bar/file.txt or .env or .gitignore
-    // Skip when noCheck (privileged access)
-    if (!noCheck) {
+    // Hidden path components (starts with .) are refused unless the caller is a
+    // read operation that explicitly opted in (or privileged noCheck access).
+    if (!noCheck && !allowHidden) {
       const relParts = relFromRoot.split(/[\\/]/);
       if (relParts.some((part) => part.startsWith('.') && part.length > 1)) {
         return { resolved: '', error: 'hidden path is not allowed' };
@@ -162,7 +172,7 @@ export class FileReadService {
    * When noCheck is true, filterPaths are skipped (caller must restrict who uses noCheck).
    */
   listDirectory(path: string, noCheck = false): ListDirectoryResult {
-    const { resolved, error } = this.resolvePath(path, noCheck);
+    const { resolved, error } = this.resolvePath(path, noCheck, true);
     if (error) {
       return { success: false, content: '', error };
     }
@@ -241,7 +251,7 @@ export class FileReadService {
    * When noCheck is true, filterPaths and hidden-path checks are skipped (caller must restrict who uses noCheck).
    */
   readFile(path: string, noCheck = false): ReadFileResult {
-    const { resolved, error } = this.resolvePath(path, noCheck);
+    const { resolved, error } = this.resolvePath(path, noCheck, true);
     if (error) {
       return { success: false, content: '', error };
     }
@@ -283,7 +293,7 @@ export class FileReadService {
    * When noCheck is true, filterPaths are skipped (caller must restrict who uses noCheck).
    */
   readFileBinary(path: string, noCheck = false): ReadFileBinaryResult {
-    const { resolved, error } = this.resolvePath(path, noCheck);
+    const { resolved, error } = this.resolvePath(path, noCheck, true);
     if (error) {
       return { success: false, error };
     }
