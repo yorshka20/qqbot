@@ -128,20 +128,16 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
   /**
    * Map ChatMessage[] to DeepSeek/OpenAI API format (supports tool role and assistant tool_calls).
    *
-   * For DeepSeek thinking models, the assistant's `reasoning_content` from the prior turn MUST be
-   * echoed back on the same assistant message, otherwise the API rejects the request with
-   * "The `reasoning_content` in the thinking mode must be passed back to the API.".
-   *
    * When the conversation falls back into DeepSeek mid tool-use (e.g. after Gemini failed in
    * `LLMService.generateWithFallback`), prior `assistant{tool_calls}` turns originate from another
-   * provider and have no `reasoning_content`. DeepSeek thinking models still apply the validation
-   * and reject the request. To eliminate the constraint at the root, fold every unsigned
-   * `assistant{tool_calls}` block (the assistant turn plus its trailing `tool` results) into a
-   * single `user` recap message — DeepSeek then sees only user/tool/system roles in the history
-   * and the thinking-mode validation no longer fires.
+   * provider: their tool_call ids / signatures / reasoning echo-back don't match what DeepSeek
+   * expects, so those turns can be rejected. Foreign turns are therefore folded (see
+   * `foldForeignToolCalls`); DeepSeek's own turns are replayed verbatim — including turns where
+   * the model produced no reasoning_content that round (verified against the live API: the
+   * thinking mode accepts an assistant tool_calls turn without reasoning_content).
    */
   private mapMessagesToApi(messages: ChatMessage[]): Array<Record<string, unknown>> {
-    const folded = DeepSeekProvider.foldUnsignedToolCalls(messages);
+    const folded = DeepSeekProvider.foldForeignToolCalls(messages);
     return folded.map((m) => {
       if (m.role === 'tool') {
         return {
@@ -183,24 +179,35 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
   }
 
   /**
-   * Collapse cross-provider tool-use history into user recap messages.
-   *
-   * For each `assistant{tool_calls}` turn lacking `reasoning_content`, fold the assistant turn
-   * and its consecutive trailing `tool` results into one `user` message so DeepSeek's thinking
-   * mode does not require `reasoning_content` echo-back. Same-provider DeepSeek turns (which
-   * already carry `reasoning_content`) pass through untouched.
+   * True when an `assistant{tool_calls}` turn originates from another provider and must not be
+   * replayed verbatim to DeepSeek (foreign tool_call ids / missing reasoning echo-back can fail
+   * validation). The provenance stamp (`provider`, set by LLMService) is authoritative; turns
+   * without a stamp fall back to the missing-reasoning heuristic.
    */
-  private static foldUnsignedToolCalls(messages: ChatMessage[]): ChatMessage[] {
-    const hasUnsigned = messages.some(
-      (m) => m.role === 'assistant' && (m.tool_calls?.length ?? 0) > 0 && !m.reasoning_content,
-    );
-    if (!hasUnsigned) return messages;
+  private static isForeignToolCallTurn(m: ChatMessage): boolean {
+    if (m.role !== 'assistant' || (m.tool_calls?.length ?? 0) === 0) return false;
+    if (m.provider) return m.provider !== 'deepseek';
+    return !m.reasoning_content;
+  }
+
+  /**
+   * Collapse foreign (cross-provider) tool-use turns into assistant-voice recap messages.
+   *
+   * Each foreign `assistant{tool_calls}` turn plus its consecutive trailing `tool` results
+   * becomes one plain `assistant` text message. The role MUST stay assistant and the recap MUST
+   * stay first-person: these are the bot's own past actions, and demoting them to a user-voice
+   * recap makes the model burn reasoning tokens reconstructing "what did I actually do, in what
+   * order". Plain assistant text turns carry no tool_calls, so no provider-specific signature /
+   * echo-back validation applies. DeepSeek's own turns pass through untouched.
+   */
+  private static foldForeignToolCalls(messages: ChatMessage[]): ChatMessage[] {
+    if (!messages.some((m) => DeepSeekProvider.isForeignToolCallTurn(m))) return messages;
 
     const result: ChatMessage[] = [];
     let i = 0;
     while (i < messages.length) {
       const m = messages[i];
-      if (m.role === 'assistant' && (m.tool_calls?.length ?? 0) > 0 && !m.reasoning_content) {
+      if (DeepSeekProvider.isForeignToolCallTurn(m)) {
         const toolCalls = m.tool_calls ?? [];
         // Index trailing tool results that belong to this assistant turn (consecutive tool messages).
         const resultsByCallId = new Map<string, string>();
@@ -212,20 +219,20 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
           if (id) resultsByCallId.set(id, text);
           j++;
         }
-        const lines: string[] = ['[Prior tool calls — folded from cross-provider history]'];
+        const lines: string[] = ['（我在本轮早些时候执行过以下工具调用，原始记录如下）'];
         const assistantText = contentToPlainString(m.content).trim();
         if (assistantText) {
-          lines.push(`assistant: ${assistantText}`);
+          lines.push(assistantText);
         }
         for (const tc of toolCalls) {
           const argsText = typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments ?? {});
-          lines.push(`call ${tc.name}(${argsText})`);
+          lines.push(`我调用了 ${tc.name}(${argsText})`);
           const r = resultsByCallId.get(tc.id);
           if (r !== undefined) {
-            lines.push(`-> ${r}`);
+            lines.push(`→ 结果：${r}`);
           }
         }
-        result.push({ role: 'user', content: lines.join('\n') });
+        result.push({ role: 'assistant', content: lines.join('\n') });
         i = j;
         continue;
       }
