@@ -1,6 +1,7 @@
 // MCP Initializer - initializes MCP system
 
 import type { Config } from '@/core/config';
+import type { MCPConfig } from '@/core/config/types/mcp';
 import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 import { MCPManager } from './MCPManager';
@@ -8,6 +9,7 @@ import { reapOrphanedMcpChildren } from './mcpChildReaper';
 
 export interface MCPSystem {
   mcpManager: MCPManager;
+  mcpConfig: MCPConfig;
 }
 
 /**
@@ -18,18 +20,29 @@ export class MCPInitializer {
   /**
    * Initialize MCP system
    * @param config - Bot configuration
-   * @returns Initialized MCP system
+   * @returns Initialized MCP system, or null when search does not route through MCP
    */
   static initialize(config: Config): MCPSystem | null {
     const mcpConfig = config.getMCPConfig();
 
-    if (!mcpConfig || !mcpConfig.enabled) {
+    if (!mcpConfig?.enabled) {
       logger.info('[MCPInitializer] MCP is not enabled in configuration');
       return null;
     }
 
     if (!mcpConfig.server.enabled) {
       logger.info('[MCPInitializer] MCP server mode is disabled, using direct API mode');
+      return null;
+    }
+
+    // SearXNG search is the only consumer of these tools, and it only calls
+    // them under provider=searxng + mode=mcp. Registering a client outside
+    // that combination spawns a stdio child that nothing can ever call.
+    const provider = mcpConfig.search.provider ?? 'searxng';
+    if (provider !== 'searxng' || mcpConfig.search.mode !== 'mcp') {
+      logger.info(
+        `[MCPInitializer] Search does not route through MCP (provider=${provider}, mode=${mcpConfig.search.mode}), skipping MCP client`,
+      );
       return null;
     }
 
@@ -41,23 +54,20 @@ export class MCPInitializer {
 
     return {
       mcpManager,
+      mcpConfig,
     };
   }
 
   /**
    * Connect to MCP servers
    * @param mcpSystem - MCP system from initialize
-   * @param config - Bot configuration
    */
-  static async connectServers(mcpSystem: MCPSystem | null, config: Config): Promise<void> {
+  static async connectServers(mcpSystem: MCPSystem | null): Promise<void> {
     if (!mcpSystem) {
       return;
     }
 
-    const mcpConfig = config.getMCPConfig();
-    if (!mcpConfig || !mcpConfig.enabled || !mcpConfig.server.enabled) {
-      return;
-    }
+    const { mcpManager, mcpConfig } = mcpSystem;
 
     try {
       // Reclaim any subtree leaked by a previous SIGKILL'd bot before
@@ -65,7 +75,7 @@ export class MCPInitializer {
       reapOrphanedMcpChildren(mcpConfig.server.package || 'mcp-searxng');
 
       // Register searxng MCP server
-      await mcpSystem.mcpManager.registerClient('searxng', mcpConfig);
+      await mcpManager.registerClient('searxng', mcpConfig);
       logger.info('[MCPInitializer] MCP servers connected successfully');
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));

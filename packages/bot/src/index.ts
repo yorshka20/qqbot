@@ -90,7 +90,7 @@ async function main() {
 
     // Connect to MCP servers
     if (mcpSystem) {
-      await MCPInitializer.connectServers(mcpSystem, config);
+      await MCPInitializer.connectServers(mcpSystem);
       MCPInitializer.updateRetrievalService(mcpSystem, retrievalService);
     }
 

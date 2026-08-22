@@ -654,7 +654,7 @@ class DebugCLI {
 
     // Connect to MCP servers (if enabled)
     if (mcpSystem) {
-      await MCPInitializer.connectServers(mcpSystem, this.config);
+      await MCPInitializer.connectServers(mcpSystem);
       MCPInitializer.updateRetrievalService(mcpSystem, retrievalService);
     }
 
@@ -736,7 +736,7 @@ class DebugCLI {
 
     // Connect to MCP servers (after bot is started)
     if (mcpSystem) {
-      await MCPInitializer.connectServers(mcpSystem, this.config);
+      await MCPInitializer.connectServers(mcpSystem);
       MCPInitializer.updateRetrievalService(mcpSystem, retrievalService);
     }
 
