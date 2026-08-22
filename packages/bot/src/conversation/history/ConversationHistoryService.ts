@@ -111,23 +111,44 @@ export class ConversationHistoryService {
     protocol: ProtocolName,
     options?: { botUserId?: number; messageSeq?: number; subtext?: string; replyTags?: string[] },
   ): Promise<void> {
+    const { groupIdNum } = normalizeGroupId(groupId);
+    await this.appendBotMessageToSession({ sessionType: 'group', targetId: groupIdNum }, content, protocol, options);
+  }
+
+  /**
+   * Persist one outbound bot message into session history (group or private).
+   * Invariant: every message the bot actually delivers to a chat must land in
+   * history through this method (or the onMessageSent reply path) — otherwise
+   * the next turn's LLM sees a conversation missing its own sent messages and
+   * wastes reasoning reconstructing what it said. Callers include the proactive
+   * flow and mid-loop sending tools (send_message / generate_image).
+   */
+  async appendBotMessageToSession(
+    target: { sessionType: 'group' | 'user'; targetId: string | number },
+    content: string,
+    protocol: ProtocolName,
+    options?: { botUserId?: number; messageSeq?: number; subtext?: string; replyTags?: string[]; viaTool?: string },
+  ): Promise<void> {
     const adapter = this.databaseManager.getAdapter();
     if (!adapter?.isConnected()) {
       return;
     }
-    const { sessionId, groupIdNum } = normalizeGroupId(groupId);
+    const { sessionType } = target;
+    const isGroup = sessionType === 'group';
+    const targetIdNum = Number(target.targetId);
+    const sessionId = isGroup ? normalizeGroupId(target.targetId).sessionId : `user:${targetIdNum}`;
     const botUserId = options?.botUserId ?? 0;
     try {
       const conversations = adapter.getModel('conversations');
       let conversation: Conversation | null = await conversations.findOne({
         sessionId,
-        sessionType: 'group',
+        sessionType,
       });
       const now = new Date();
       if (!conversation) {
         conversation = await conversations.create({
           sessionId,
-          sessionType: 'group',
+          sessionType,
           messageCount: 0,
           lastMessageAt: now,
           metadata: {},
@@ -145,11 +166,14 @@ export class ConversationHistoryService {
       if (Array.isArray(options?.replyTags) && options.replyTags.length > 0) {
         metadata.replyTags = options.replyTags;
       }
+      if (typeof options?.viaTool === 'string' && options.viaTool.length > 0) {
+        metadata.viaTool = options.viaTool;
+      }
       await messages.create({
         conversationId: conversation.id,
         userId: botUserId,
-        messageType: 'group',
-        groupId: groupIdNum,
+        messageType: isGroup ? 'group' : 'private',
+        groupId: isGroup ? targetIdNum : undefined,
         content,
         protocol,
         messageSeq,
@@ -162,7 +186,7 @@ export class ConversationHistoryService {
       });
     } catch (error) {
       const err = error instanceof Error ? error : error;
-      logger.warn('[ConversationHistoryService] Failed to append bot reply to group:', err);
+      logger.warn('[ConversationHistoryService] Failed to append bot message to session:', err);
     }
   }
 

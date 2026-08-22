@@ -19,6 +19,8 @@ import { inject, injectable } from 'tsyringe';
 import type { AIService, Image2ImageOptions, Text2ImageOptions } from '@/ai';
 import { extractImagesFromMessageAndReply, visionImageToString } from '@/ai/utils/imageUtils';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { ConversationHistoryService } from '@/conversation/history';
+import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
@@ -148,16 +150,44 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
     }
 
     const segments = buildMessageFromResponse(response, '[GenerateImageToolExecutor]').build();
-    await this.messageAPI.sendFromContext(segments, hookContext.message, 60000);
+    const sendResult = await this.messageAPI.sendFromContext(segments, hookContext.message, 60000);
 
     const mode = sourceImages.length > 0 ? `图生图（参考${sourceImages.length}张）` : '文生图';
     logger.info(
       `[GenerateImageToolExecutor] Sent ${response.images.length} image(s) | provider=${providerName} | mode=${mode}`,
     );
 
+    // This send bypasses SendSystem/onMessageSent — persist explicitly so the
+    // conversation history keeps a record of the delivered image (as text).
+    await this.persistSentImage(hookContext, prompt, mode, sendResult.message_seq);
+
     return this.success(
       `已用 ${providerKey} 完成${mode}并把图片发给用户了。你只需补一句简短自然的说明即可，不要重复描述画面内容。`,
       { provider: providerKey, mode, sourceImageCount: sourceImages.length, imageCount: response.images.length },
+    );
+  }
+
+  private async persistSentImage(
+    hookContext: NonNullable<ToolExecutionContext['hookContext']>,
+    prompt: string,
+    mode: string,
+    messageSeq?: number,
+  ): Promise<void> {
+    const message = hookContext.message;
+    const isGroup = message.messageType === 'group';
+    const targetId = isGroup ? message.groupId : message.userId;
+    if (targetId == null) return;
+    const historyService = getContainer().resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
+    const botSelfId = Number(hookContext.metadata.get('botSelfId'));
+    await historyService.appendBotMessageToSession(
+      { sessionType: isGroup ? 'group' : 'user', targetId },
+      `[已发送AI生成图片｜${mode}] ${prompt}`,
+      message.protocol,
+      {
+        botUserId: Number.isNaN(botSelfId) ? 0 : botSelfId,
+        messageSeq,
+        viaTool: 'generate_image',
+      },
     );
   }
 

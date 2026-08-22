@@ -1,8 +1,10 @@
 import { injectable } from 'tsyringe';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { ConversationHistoryService } from '@/conversation/history';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -50,20 +52,53 @@ export class SendMessageToolExecutor extends BaseToolExecutor {
     const maxSends = config.getAgendaLlmLimits().maxSendsPerRun;
     const sent = hookContext.metadata.get('sendMessageCount') ?? 0;
     if (sent >= maxSends) {
-      return this.error(`本轮已发送 ${sent} 条消息，达到上限，请把剩余内容放进最终回复`, 'send limit reached');
+      return this.error(
+        `send_message 已达本次回复的发送上限（${maxSends} 条）。剩余内容请直接输出为最终回复文本（会被发送），或调用 end_turn 结束本轮`,
+        'send limit reached',
+      );
     }
 
     try {
       // Target comes from the conversation context, never from LLM parameters —
       // this tool must not be able to send into arbitrary chats.
       const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-      await messageAPI.sendFromContext(content, hookContext.message);
+      const sendResult = await messageAPI.sendFromContext(content, hookContext.message);
       hookContext.metadata.set('sendMessageCount', sent + 1);
-      return this.success(`已发送（本轮第 ${sent + 1}/${maxSends} 条）`, { content });
+      await this.persistSentMessage(hookContext, content, sendResult.message_seq);
+      return this.success(
+        `已发送（这是你本次回复中通过 send_message 发出的第 ${sent + 1} 条，上限 ${maxSends} 条；该额度只计 send_message，卡片与最终文本回复不占用）`,
+        { content },
+      );
     } catch (err) {
       logger.error('[SendMessageToolExecutor] send failed:', err);
       const msg = err instanceof Error ? err.message : String(err);
       return this.error(`发送失败：${msg}`, msg);
     }
+  }
+
+  /**
+   * Persist the sent message into session history. This send bypasses
+   * SendSystem/onMessageSent, so without an explicit write the conversation
+   * history would omit it and the next turn's LLM would see its own delivered
+   * messages missing. Failure is non-fatal — the message already reached the
+   * user; history is best-effort (appendBotMessageToSession catches internally).
+   */
+  private async persistSentMessage(hookContext: HookContext, content: string, messageSeq?: number): Promise<void> {
+    const message = hookContext.message;
+    const isGroup = message.messageType === 'group';
+    const targetId = isGroup ? message.groupId : message.userId;
+    if (targetId == null) return;
+    const historyService = getContainer().resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
+    const botSelfId = Number(hookContext.metadata.get('botSelfId'));
+    await historyService.appendBotMessageToSession(
+      { sessionType: isGroup ? 'group' : 'user', targetId },
+      content,
+      message.protocol,
+      {
+        botUserId: Number.isNaN(botSelfId) ? 0 : botSelfId,
+        messageSeq,
+        viaTool: 'send_message',
+      },
+    );
   }
 }
