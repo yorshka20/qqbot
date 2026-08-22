@@ -45,7 +45,6 @@ function makeContext(source = 'qq-private'): ReplyPipelineContext {
     userMessageOverride: undefined,
     messageImages: [],
     taskResultImages: [],
-    taskResultsSummary: '',
     historyEntries: [],
     sessionId: 'test-session',
     episodeKey: 'ep-1',

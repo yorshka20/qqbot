@@ -80,6 +80,29 @@ export class PromptMessageAssembler {
       params.historyEntries,
       params.finalUserBlocks,
       params.fewShotExamples,
+    ).messages;
+  }
+
+  /**
+   * Like {@link buildNormalMessages}, but also returns each history entry's index
+   * in the produced messages array (-1 when the entry serialized to nothing and
+   * was skipped). Callers that rewrite history messages in place (e.g. vision
+   * ContentPart injection) MUST use this mapping — deriving indices from a fixed
+   * system-message count breaks when baseSystem is empty or entries are skipped.
+   */
+  buildNormalMessagesWithIndex(params: {
+    baseSystem?: string;
+    sceneSystem: string;
+    fewShotExamples?: FewShotExample[];
+    historyEntries: ConversationMessageEntry[];
+    finalUserBlocks: FinalUserBlocks;
+  }): { messages: ChatMessage[]; historyMessageIndices: number[] } {
+    return this.buildMessagesCore(
+      params.baseSystem,
+      params.sceneSystem,
+      params.historyEntries,
+      params.finalUserBlocks,
+      params.fewShotExamples,
     );
   }
 
@@ -89,7 +112,8 @@ export class PromptMessageAssembler {
     historyEntries: ConversationMessageEntry[];
     finalUserBlocks: FinalUserBlocks;
   }): ChatMessage[] {
-    return this.buildMessagesCore(params.baseSystem, params.sceneSystem, params.historyEntries, params.finalUserBlocks);
+    return this.buildMessagesCore(params.baseSystem, params.sceneSystem, params.historyEntries, params.finalUserBlocks)
+      .messages;
   }
 
   buildTaskAnalyzeMessages(params: {
@@ -100,7 +124,7 @@ export class PromptMessageAssembler {
   }): ChatMessage[] {
     return this.buildMessagesCore(params.baseSystem, params.sceneSystem, params.historyEntries, {
       currentQuery: params.currentQuery,
-    });
+    }).messages;
   }
 
   serializeForFingerprint(messages: ChatMessage[]): string {
@@ -113,7 +137,7 @@ export class PromptMessageAssembler {
     historyEntries: ConversationMessageEntry[],
     finalUserBlocks: FinalUserBlocks,
     fewShotExamples?: FewShotExample[],
-  ): ChatMessage[] {
+  ): { messages: ChatMessage[]; historyMessageIndices: number[] } {
     const messages: ChatMessage[] = [];
     if (baseSystem?.trim()) {
       messages.push({ role: 'system', content: this.normalize(baseSystem) });
@@ -132,9 +156,16 @@ export class PromptMessageAssembler {
       }
     }
 
+    // Entries that serialize to nothing are skipped, so history position i does
+    // NOT map to a fixed message offset — record the real index per entry.
+    const historyMessageIndices: number[] = [];
     for (const entry of historyEntries) {
       const content = this.serializeEntry(entry);
-      if (!content) continue;
+      if (!content) {
+        historyMessageIndices.push(-1);
+        continue;
+      }
+      historyMessageIndices.push(messages.length);
       messages.push({
         role: entry.isBotReply ? 'assistant' : 'user',
         content,
@@ -145,7 +176,7 @@ export class PromptMessageAssembler {
       role: 'user',
       content: this.buildFinalUserContent(finalUserBlocks),
     });
-    return messages;
+    return { messages, historyMessageIndices };
   }
 
   private buildFinalUserContent(blocks: FinalUserBlocks): string {

@@ -145,6 +145,12 @@ export interface AIChatConfig {
    * `toolReasoningEffort`).
    */
   lowEffortProviders?: string[];
+  /**
+   * Max tool-calling rounds per reply generation (one round = one LLM call
+   * that may execute several parallel tool calls). Past the cap the loop
+   * forces a final text-only generation. Default 15.
+   */
+  maxToolRounds?: number;
 }
 
 /**

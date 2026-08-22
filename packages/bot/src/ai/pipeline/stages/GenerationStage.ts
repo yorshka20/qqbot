@@ -29,6 +29,7 @@ interface GenerationPipelineParams {
     sessionId: string;
     reasoningEffort: ReasoningEffort;
     episodeKey?: string;
+    maxToolRounds: number;
   };
   toolDefinitions: ToolDefinition[];
   selectedProviderName: string | undefined;
@@ -41,6 +42,8 @@ interface GenerationPipelineParams {
 interface GenerationPipelineResult {
   response: AIGenerateResponse;
   actualProvider: string | undefined;
+  /** True when the model ended the turn via the end_turn tool. */
+  endTurnRequested: boolean;
 }
 
 /**
@@ -80,9 +83,10 @@ export class GenerationStage implements ReplyStage {
 
     ctx.responseText = result.response.text;
     ctx.actualProvider = result.actualProvider;
+    ctx.endTurnRequested = result.endTurnRequested;
 
     logger.debug(
-      `[GenerationStage] LLM response received | responseLength=${result.response.text.length} | actualProvider=${result.actualProvider ?? 'default'} | cardSent=${ctx.hookContext.metadata.get('cardSent') ?? false}`,
+      `[GenerationStage] LLM response received | responseLength=${result.response.text.length} | actualProvider=${result.actualProvider ?? 'default'} | cardSent=${ctx.hookContext.metadata.get('cardSent') ?? false} | endTurn=${result.endTurnRequested}`,
     );
   }
 
@@ -167,6 +171,11 @@ export class GenerationStage implements ReplyStage {
       params;
 
     // Reset per-attempt so retries with fallback providers start clean.
+    // `cardSent`/`cardSendFailedReason` describe a QUEUED (not yet sent) card that a
+    // retry replaces wholesale, so they reset. `sendMessageCount` is deliberately NOT
+    // reset: send_message pushes real messages to the chat immediately, so the budget
+    // must span every attempt of this run — resetting it would let a flaky provider
+    // multiply the per-turn send cap by the retry count.
     context.metadata.delete('cardSent');
     context.metadata.delete('cardSendFailedReason');
 
@@ -193,7 +202,7 @@ export class GenerationStage implements ReplyStage {
       {
         temperature: genOptions.temperature,
         maxTokens: genOptions.maxTokens,
-        maxToolRounds: 4,
+        maxToolRounds: genOptions.maxToolRounds,
         sessionId: genOptions.sessionId,
         reasoningEffort: genOptions.reasoningEffort,
         nativeWebSearch: effectiveNativeSearchEnabled,
@@ -226,6 +235,7 @@ export class GenerationStage implements ReplyStage {
     return {
       response: { text: r.text, resolvedProviderName: r.resolvedProviderName },
       actualProvider,
+      endTurnRequested: r.stopReason === 'end_turn_tool',
     };
   }
 

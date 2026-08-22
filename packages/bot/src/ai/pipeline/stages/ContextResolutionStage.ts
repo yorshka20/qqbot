@@ -1,4 +1,4 @@
-// Context resolution stage — resolve referenced messages, extract images, build task summaries.
+// Context resolution stage — resolve referenced messages and extract images.
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { DatabaseManager } from '@/database/DatabaseManager';
@@ -10,9 +10,8 @@ import type { ReplyStage } from '../types';
 
 /**
  * Pipeline stage 2: context resolution.
- * Resolves the referenced (quoted) message for text injection, extracts images from
- * both the current message and the referenced message for vision provider use,
- * and builds a summary of task execution results.
+ * Resolves the referenced (quoted) message for text injection and extracts images
+ * from both the current message and the referenced message for vision provider use.
  */
 export class ContextResolutionStage implements ReplyStage {
   readonly name = 'context-resolution';
@@ -65,9 +64,6 @@ export class ContextResolutionStage implements ReplyStage {
     } catch (err) {
       logger.warn('[ContextResolutionStage] Failed to extract message images, continuing without vision:', err);
     }
-
-    // Build task results summary
-    ctx.taskResultsSummary = this.buildToolResultsSummary(taskResults);
   }
 
   private extractToolResultImages(taskResults: Map<string, ToolResult>): string[] {
@@ -78,17 +74,5 @@ export class ContextResolutionStage implements ReplyStage {
       }
     }
     return images;
-  }
-
-  private buildToolResultsSummary(taskResults: Map<string, ToolResult>): string {
-    const summaries: string[] = [];
-    for (const [taskType, result] of taskResults.entries()) {
-      if (result.success) {
-        summaries.push(`Task ${taskType}: ${result.reply}`);
-      } else {
-        summaries.push(`Task ${taskType}: Execution failed - ${result.error}`);
-      }
-    }
-    return summaries.join('\n\n');
   }
 }

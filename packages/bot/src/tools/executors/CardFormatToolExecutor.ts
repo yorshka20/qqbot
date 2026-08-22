@@ -15,7 +15,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   name: 'send_card',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
   description:
-    '把回复渲染成卡片图片发送。**任何**带可视化结构（列表、步骤、对比、问答、数据、知识点、引用、多段落讲解）的回复都应优先用它——卡片让信息一眼可读，远胜纯文本堆砌或一长串句子。调用此工具即完成发送，不要在后续 message 再输出内容。',
+    '把回复渲染成卡片图片发送。**任何**带可视化结构（列表、步骤、对比、问答、数据、知识点、引用、多段落讲解）的回复都应优先用它——卡片让信息一眼可读，远胜纯文本堆砌或一长串句子。调用后卡片即进入发送队列；之后若无需补充，调用 end_turn 结束本轮；若需要补充说明，直接输出文本（会作为卡片后的追加消息发送）。',
   whenToUse:
     '回复包含以下任一信号时调用：(a) 两条以上的列表/要点/步骤；(b) 概念解释、知识科普、教程；(c) 多维度对比；(d) 问答形式；(e) 引用 + 自己的话；(f) 任何"如果用纯文本，读者要费力扫描"的内容。不需要凑字数——3 条要点也值得卡片。**不**适合的只有：单句寒暄、口语化短回应、命令调用、一两句话能说完的简单事实。',
   examples: [
@@ -107,7 +107,9 @@ export class CardFormatToolExecutor extends BaseToolExecutor {
         cardHelper.setCardReplyOnContext(context.hookContext, result.segments, result.textForHistory);
         context.hookContext.metadata.set('cardSent', true);
       }
-      return this.success('卡片已渲染并入列发送');
+      return this.success(
+        '卡片已渲染并进入发送队列。若无需补充内容，请调用 end_turn 结束本轮；若还有要补充的话，直接输出文本即可（会作为卡片后的追加消息发送）。不要重复卡片里已有的内容。',
+      );
     } catch (e) {
       const msg = (e as Error).message;
       logger.error(`[CardFormatToolExecutor] 卡片渲染失败: ${msg}`);

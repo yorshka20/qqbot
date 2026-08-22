@@ -260,10 +260,12 @@ export class AgentLoop {
    * Resolve the outgoing message from a generated reply. Mirrors the normal reply
    * pipeline's ResponseDispatchStage:
    *   Path 1: a tool (send_card) already rendered the card into hookContext.reply —
-   *           ship those segments; the LLM's trailing prose is meta-commentary, not output.
+   *           ship those segments; trailing prose, if any, is appended after the card
+   *           (delivery contract: the model's final text is always sent).
    *   Path 2: the reply text itself is card-shaped (card JSON / markdown) — render it.
    *   Path 3: plain text.
-   * Returns null when there is nothing to send.
+   * Returns null when there is nothing to send (including an explicit end_turn with
+   * no trailing text).
    */
   private async resolveOutgoing(
     reply: GeneratedReply,
@@ -273,7 +275,9 @@ export class AgentLoop {
 
     const queued = hookContext?.reply?.segments;
     if (hookContext?.metadata.get('cardSent') === true && queued?.length) {
-      return { message: queued, isCard: true, length: queued.length };
+      const followUp = stripSkipCardMarker(text).trim();
+      const message: MessageSegment[] = followUp ? [...queued, { type: 'text', data: { text: followUp } }] : queued;
+      return { message, isCard: true, length: message.length };
     }
 
     const cardSegments = await this.tryRenderCard(text, contextId);

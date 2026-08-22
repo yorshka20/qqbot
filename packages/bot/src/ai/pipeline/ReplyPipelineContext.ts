@@ -24,7 +24,6 @@ export class ReplyPipelineContext {
   userMessageOverride: string | undefined;
   messageImages: VisionImage[] = [];
   taskResultImages: string[] = [];
-  taskResultsSummary = '';
 
   // --- HistoryStage ---
   historyEntries: ConversationMessageEntry[] = [];
@@ -58,11 +57,14 @@ export class ReplyPipelineContext {
     sessionId: string;
     reasoningEffort: ReasoningEffort;
     episodeKey?: string;
+    maxToolRounds: number;
   } | null = null;
 
   // --- GenerationStage ---
   responseText = '';
   actualProvider: string | undefined;
+  /** True when the model ended the turn via the end_turn tool (nothing more to send). */
+  endTurnRequested = false;
 
   // --- Control ---
   /** When true the pipeline loop stops immediately. */

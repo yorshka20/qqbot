@@ -170,6 +170,11 @@ export async function executeToolCall(
   // (the bug that left research subagent output invisible to the main agent).
   const baseResult: unknown = result.reply ? result.reply : (result.data ?? '');
 
+  // Loop-control sentinel: end_turn terminates the agentic loop after this round.
+  if (result.endTurn) {
+    return { __endTurn: true, result: baseResult };
+  }
+
   // When tool returns multimodal content (e.g. images), wrap with sentinel so LLMService
   // can inject ContentPart[] into the conversation for vision providers.
   if (result.contentParts?.length) {

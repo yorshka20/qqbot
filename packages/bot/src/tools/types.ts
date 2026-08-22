@@ -149,6 +149,13 @@ export interface ToolResult {
    * These are injected as a user message with ContentPart[] so all providers can see them.
    */
   contentParts?: ContentPart[];
+  /**
+   * Loop-control signal: when true, the agentic tool loop ends after this round
+   * instead of asking the model for another response. Set by the `end_turn` tool.
+   * This is the model's explicit "I have nothing more to send" — without it the
+   * only loop exit is emitting final text, which conflates content with control.
+   */
+  endTurn?: boolean;
 }
 
 /**

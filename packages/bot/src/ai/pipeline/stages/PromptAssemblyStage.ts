@@ -39,6 +39,7 @@ const DEFAULT_TOOL_REASONING: ReasoningEffort = 'medium';
 const DEFAULT_QUICK_REASONING: ReasoningEffort = 'minimal';
 const DEFAULT_REPLY_MODE_PROVIDERS = ['deepseek', 'openai', 'gemini'];
 const DEFAULT_LOW_EFFORT_PROVIDERS = ['doubao'];
+const DEFAULT_MAX_TOOL_ROUNDS = 15;
 
 export class PromptAssemblyStage implements ReplyStage {
   readonly name = 'prompt-assembly';
@@ -48,6 +49,7 @@ export class PromptAssemblyStage implements ReplyStage {
   private readonly quickReasoning: ReasoningEffort;
   private readonly replyModeProviders: Set<string>;
   private readonly lowEffortProviders: Set<string>;
+  private readonly maxToolRounds: number;
 
   constructor(
     private registry: PromptInjectionRegistry,
@@ -60,6 +62,7 @@ export class PromptAssemblyStage implements ReplyStage {
     this.quickReasoning = chatConfig?.quickReasoningEffort ?? DEFAULT_QUICK_REASONING;
     this.replyModeProviders = new Set(chatConfig?.replyModeProviders ?? DEFAULT_REPLY_MODE_PROVIDERS);
     this.lowEffortProviders = new Set(chatConfig?.lowEffortProviders ?? DEFAULT_LOW_EFFORT_PROVIDERS);
+    this.maxToolRounds = Math.max(1, chatConfig?.maxToolRounds ?? DEFAULT_MAX_TOOL_ROUNDS);
   }
 
   /** Shared assembler held by PromptManager — single instance for the whole AI service. */
@@ -124,7 +127,7 @@ export class PromptAssemblyStage implements ReplyStage {
       currentQuery: frameCurrentQuery,
     };
 
-    const messages = this.messageAssembler.buildNormalMessages({
+    const { messages, historyMessageIndices } = this.messageAssembler.buildNormalMessagesWithIndex({
       baseSystem: baseSystemPrompt,
       sceneSystem: sceneSystemPrompt,
       historyEntries: ctx.historyEntries,
@@ -135,7 +138,6 @@ export class PromptAssemblyStage implements ReplyStage {
     if (ctx.providerHasVision && ctx.historyEntries.length > 0) {
       const getResourceUrl = (resourceId: string) =>
         this.messageAPI.getResourceTempUrl(resourceId, hookContext.message);
-      const systemCount = 2; // baseSystem + sceneSystem
       for (let i = 0; i < ctx.historyEntries.length; i++) {
         const entry = ctx.historyEntries[i];
         const hasImage = entry.segments?.some((s) => s.type === 'image');
@@ -152,8 +154,8 @@ export class PromptAssemblyStage implements ReplyStage {
             maxSize: 5 * 1024 * 1024,
           });
           const parts = this.buildContentPartsForEntry(entry, normalized);
-          const msgIndex = systemCount + i;
-          if (msgIndex < messages.length) {
+          const msgIndex = historyMessageIndices[i];
+          if (msgIndex >= 0 && msgIndex < messages.length) {
             messages[msgIndex] = { ...messages[msgIndex], content: parts };
           }
         } catch (err) {
@@ -237,6 +239,7 @@ export class PromptAssemblyStage implements ReplyStage {
       sessionId: ctx.sessionId,
       reasoningEffort,
       episodeKey: ctx.episodeKey,
+      maxToolRounds: this.maxToolRounds,
     };
 
     // Debug log

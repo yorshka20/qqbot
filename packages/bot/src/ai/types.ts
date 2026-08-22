@@ -83,6 +83,16 @@ export interface ChatMessage {
    * ignore this field.
    */
   reasoning_content?: string;
+  /**
+   * Name of the provider that produced this assistant turn (set for assistant
+   * turns carrying tool_calls). Providers use it to tell their own turns from
+   * foreign ones after a mid-loop fallback: foreign tool_calls turns can fail
+   * signature/echo-back validation (DeepSeek reasoning_content, Gemini
+   * thought_signature) and must be folded or degraded, while same-provider
+   * turns must be replayed verbatim so the model keeps its first-person view
+   * of what it did.
+   */
+  provider?: string;
 }
 
 /**
@@ -315,7 +325,14 @@ export interface ToolUseGenerateOptions extends AIGenerateOptions {
 /** Tool Use generation response */
 export interface ToolUseGenerateResponse extends AIGenerateResponse {
   toolCalls?: ToolResult[]; // All tool calls made during generation
-  stopReason?: 'end_turn' | 'tool_use' | 'max_rounds'; // Why generation stopped
+  /**
+   * Why generation stopped:
+   * - 'end_turn': model produced a response with no tool calls (the normal exit)
+   * - 'end_turn_tool': model called the `end_turn` tool to end the turn explicitly
+   * - 'tool_use': tool calls returned to the caller (no executor was supplied)
+   * - 'max_rounds': round cap hit; a forced final text generation was appended
+   */
+  stopReason?: 'end_turn' | 'end_turn_tool' | 'tool_use' | 'max_rounds';
 }
 
 /**

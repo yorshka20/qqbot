@@ -72,7 +72,7 @@ afterEach(() => {
 
 describe('ResponseDispatchStage', () => {
   describe('Path 1: cardSent=true', () => {
-    it('skips markdown render and returns early when cardSent is true', async () => {
+    it('ships the queued card, appends trailing text as follow-up, fires onAIGenerationComplete', async () => {
       const hookContext = makeHookContext({ cardSent: true });
       const cardHelper = makeCardHelper();
       const hookManager = makeHookManager();
@@ -82,7 +82,57 @@ describe('ResponseDispatchStage', () => {
       await stage.execute(ctx);
 
       expect(cardHelper.renderMarkdownDirect).not.toHaveBeenCalled();
-      expect(hookManager.execute).not.toHaveBeenCalled();
+      expect(hookManager.execute).toHaveBeenCalledWith('onAIGenerationComplete', hookContext);
+      // Delivery contract: final text after send_card is appended, never dropped.
+      const texts = hookContext.reply?.segments.filter((s) => s.type === 'text') ?? [];
+      expect(texts.length).toBe(1);
+      expect((texts[0] as { data: { text: string } }).data.text).toBe('some text');
+    });
+
+    it('ships the card alone when there is no trailing text', async () => {
+      const hookContext = makeHookContext({ cardSent: true });
+      const cardHelper = makeCardHelper();
+      const hookManager = makeHookManager();
+      const stage = new ResponseDispatchStage(cardHelper, hookManager);
+      const ctx = makePipelineContext('', hookContext);
+
+      await stage.execute(ctx);
+
+      expect(hookManager.execute).toHaveBeenCalledWith('onAIGenerationComplete', hookContext);
+      expect(hookContext.reply?.segments.length ?? 0).toBe(0);
+    });
+  });
+
+  describe('Path 0: end_turn with no trailing text', () => {
+    it('queues no reply and fires onAIGenerationComplete', async () => {
+      const hookContext = makeHookContext();
+      const cardHelper = makeCardHelper();
+      const hookManager = makeHookManager();
+      const stage = new ResponseDispatchStage(cardHelper, hookManager);
+      const ctx = makePipelineContext('', hookContext);
+      ctx.endTurnRequested = true;
+
+      await stage.execute(ctx);
+
+      expect(hookManager.execute).toHaveBeenCalledWith('onAIGenerationComplete', hookContext);
+      expect(hookContext.reply?.segments.length ?? 0).toBe(0);
+      expect(cardHelper.renderMarkdownDirect).not.toHaveBeenCalled();
+    });
+
+    it('end_turn with trailing text still ships the text (Path 3)', async () => {
+      const hookContext = makeHookContext();
+      const cardHelper = makeCardHelper();
+      const hookManager = makeHookManager();
+      const stage = new ResponseDispatchStage(cardHelper, hookManager);
+      const ctx = makePipelineContext('closing words', hookContext);
+      ctx.endTurnRequested = true;
+
+      await stage.execute(ctx);
+
+      expect(hookManager.execute).toHaveBeenCalledWith('onAIGenerationComplete', hookContext);
+      const texts = hookContext.reply?.segments.filter((s) => s.type === 'text') ?? [];
+      expect(texts.length).toBe(1);
+      expect((texts[0] as { data: { text: string } }).data.text).toBe('closing words');
     });
   });
 

@@ -682,12 +682,17 @@
     //     `reasoningEffort`.
     //   • Everyone else (e.g. `anthropic`): always run at `reasoningEffort`
     //     regardless of routing. Premium providers stay at full quality.
+    //
+    // `maxToolRounds`: max tool-calling rounds per reply generation (one round =
+    // one LLM call that may run several parallel tool calls). Past the cap the
+    // loop forces a final text-only answer. Default 15.
     // "chat": {
     //   "reasoningEffort": "medium",
     //   "toolReasoningEffort": "medium",
     //   "quickReasoningEffort": "minimal",
     //   "replyModeProviders": ["deepseek", "openai", "gemini"],
-    //   "lowEffortProviders": ["doubao"]
+    //   "lowEffortProviders": ["doubao"],
+    //   "maxToolRounds": 15
     // },
     // Task-specific provider overrides (optional)
     // Override provider for specific internal LLM tasks

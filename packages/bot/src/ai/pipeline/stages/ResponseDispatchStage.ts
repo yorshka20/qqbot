@@ -14,7 +14,10 @@ import type { ReplyStage } from '../types';
  * Pipeline stage 8: response dispatch.
  * Routes the LLM response to the appropriate output path:
  *
- * Path 1: send_card executor already rendered and queued the card (cardSent=true)
+ * Path 0: end_turn with no trailing text → no reply at all (explicit silent finish).
+ * Path 1: send_card executor already rendered and queued the card (cardSent=true).
+ *         Trailing text, if any, is appended after the card — the delivery contract
+ *         promises the model that final text is ALWAYS sent, so nothing is dropped.
  * Path 1.5: send_card was called but rendering failed (cardSendFailedReason set) → fall through to Path 2
  * Path 2a: Long + markdown-formatted text → render as markdown card image.
  * Path 2b: Long + plain prose → force sendAsForward (override group config) and ship
@@ -24,7 +27,7 @@ import type { ReplyStage } from '../types';
  * Path 3: Plain text reply — uses ctx.responseText (never outputs failed/repaired JSON).
  *         ReplyPrepareSystem reads explicitSendAsForward set in Path 2b.
  *
- * Fires `onAIGenerationComplete` hook and appends task result images when present.
+ * Fires `onAIGenerationComplete` hook on EVERY path and appends task result images when present.
  */
 export class ResponseDispatchStage implements ReplyStage {
   readonly name = 'response-dispatch';
@@ -39,9 +42,28 @@ export class ResponseDispatchStage implements ReplyStage {
     const cardSent = hookContext.metadata.get('cardSent') === true;
     const cardSendFailedReason = hookContext.metadata.get('cardSendFailedReason') as string | undefined;
 
-    // Path 1: send_card executor already rendered and queued the card
+    // Path 1: send_card executor already rendered and queued the card.
+    // Trailing text is a deliberate follow-up under the delivery contract — append it.
     if (cardSent) {
+      const followUp = this.sanitizeFinalText(ctx.responseText);
+      if (followUp) {
+        setReplyWithSegments(hookContext, [{ type: 'text', data: { text: followUp } }], 'ai');
+        // Keep the history text complete: card text + follow-up, so the next turn
+        // sees everything that was actually delivered.
+        const replyMeta = hookContext.reply?.metadata;
+        if (replyMeta?.cardTextForHistory) {
+          replyMeta.cardTextForHistory = `${replyMeta.cardTextForHistory}\n\n${followUp}`;
+        }
+      }
+      await this.hookManager.execute('onAIGenerationComplete', hookContext);
       this.appendToolResultImages(ctx);
+      return;
+    }
+
+    // Path 0: explicit end_turn with nothing left to say → no reply queued at all.
+    if (ctx.endTurnRequested && !ctx.responseText.trim()) {
+      logger.info('[ResponseDispatchStage] Path 0: end_turn with no trailing text — no reply');
+      await this.hookManager.execute('onAIGenerationComplete', hookContext);
       return;
     }
 
@@ -83,19 +105,25 @@ export class ResponseDispatchStage implements ReplyStage {
 
     // Path 3: plain prose — always use ctx.responseText (original LLM prose), never output failed JSON
     await this.hookManager.execute('onAIGenerationComplete', hookContext);
-    let finalText = ctx.responseText;
+    replaceReply(hookContext, this.sanitizeFinalText(ctx.responseText), 'ai');
+  }
+
+  /**
+   * Scrub LLM final text before delivery: strip leaked text-based tool call blocks,
+   * and degrade raw card-deck JSON to readable markdown (hard constraint: never send
+   * raw card JSON to the user).
+   */
+  private sanitizeFinalText(text: string): string {
+    let finalText = text;
     if (containsTextToolCalls(finalText)) {
       logger.warn('[ResponseDispatchStage] Stripping leaked text-based tool call blocks from final reply');
       finalText = stripTextToolCalls(finalText);
     }
-    // Hard constraint: never send raw card-deck-style JSON to user. If responseText
-    // *looks* like a card JSON array (LLM output JSON-as-text instead of using send_card),
-    // degrade to readable markdown extracted from the deck.
     if (this.looksLikeCardDeckJson(finalText)) {
-      logger.warn('[ResponseDispatchStage] Path 3 received card-deck-like JSON; extracting readable text');
+      logger.warn('[ResponseDispatchStage] Final text is card-deck-like JSON; extracting readable text');
       finalText = this.cardHelper.extractReadableTextFromCardJson(finalText);
     }
-    replaceReply(hookContext, finalText, 'ai');
+    return finalText.trim();
   }
 
   /**

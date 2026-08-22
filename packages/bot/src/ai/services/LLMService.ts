@@ -850,6 +850,9 @@ export class LLMService {
 
         // Collect vision content parts from tool results (e.g. fetch_image)
         const pendingVisionParts: ContentPart[] = [];
+        // Set when a tool signalled end-of-turn (end_turn): finish this round's
+        // bookkeeping, then exit the loop without asking the model for more.
+        let endTurnRequested = false;
 
         for (let idx = 0; idx < executionResults.length; idx++) {
           const settlement = executionResults[idx];
@@ -869,6 +872,13 @@ export class LLMService {
 
           if (settlement.status === 'fulfilled') {
             let toolResult = settlement.value.result;
+
+            // Extract loop-control sentinel from wrapped tool results (end_turn)
+            if (toolResult && typeof toolResult === 'object' && '__endTurn' in (toolResult as object)) {
+              const wrapped = toolResult as { __endTurn: boolean; result: unknown };
+              endTurnRequested = endTurnRequested || wrapped.__endTurn;
+              toolResult = wrapped.result;
+            }
 
             // Extract vision content parts from wrapped tool results
             if (toolResult && typeof toolResult === 'object' && '__contentParts' in (toolResult as object)) {
@@ -903,10 +913,14 @@ export class LLMService {
 
         // Append single assistant message with all tool_calls, then all tool result messages.
         // Preserve reasoning_content for thinking models (required by DeepSeek; ignored by others).
+        // Stamp the serving provider so a later provider (after mid-loop fallback) can tell
+        // foreign tool_calls turns (fold/degrade for signature compatibility) from its own
+        // (replay verbatim so the model keeps its first-person action record).
         const assistantMsg: ChatMessage = {
           role: 'assistant',
           content: '',
           tool_calls: assistantToolCalls,
+          provider: currentProviderName,
         };
         if (response.reasoningContent) {
           assistantMsg.reasoning_content = response.reasoningContent;
@@ -945,6 +959,22 @@ export class LLMService {
 
         if (calls.length > 1) {
           logger.info(`[LLMService] Executed ${calls.length} parallel tool calls in round ${round + 1}`);
+        }
+
+        // A tool declared the turn over (end_turn): exit without another LLM call.
+        // Any text the model emitted alongside the tool calls still flows out via
+        // `text` — the dispatcher decides delivery; nothing is silently dropped here.
+        if (endTurnRequested) {
+          logger.info(`[LLMService] end_turn called in round ${round + 1}, ending turn`);
+          return {
+            ...response,
+            text: response.text ?? '',
+            usage: sawUsage ? { ...accUsage } : response.usage,
+            reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
+            resolvedProviderName: currentProviderName,
+            toolCalls: allToolCalls,
+            stopReason: 'end_turn_tool',
+          };
         }
       } else {
         // No executor provided, return the function call for external handling
