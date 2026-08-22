@@ -21,6 +21,9 @@ export interface ToolHooks {
   /**
    * Hook: onToolExecuted
    * Triggered after a tool call completes; `context.result` carries the ToolResult.
+   * Notification-only and fired DETACHED: the pipeline does not wait for it, its
+   * return value is ignored, and handlers must not mutate state that the current
+   * run reads (write to next-turn stores like the audit ledger instead).
    */
   onToolExecuted?(context: HookContext): HookResult;
 

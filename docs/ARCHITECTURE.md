@@ -420,7 +420,7 @@ Extended hooks are declared by subsystems at runtime:
 | `onAIGenerationStart` | GateCheckStage | After gate passes, before LLM call |
 | `onAIGenerationComplete` | ResponseDispatchStage | After LLM response is ready (fires on every dispatch path, including card) |
 | `onToolBeforeExecute` | ToolManager | Before a tool call executes (context copy carries `toolCall`) |
-| `onToolExecuted` | ToolManager | After a tool call completes (context copy carries `toolCall` + `result`) |
+| `onToolExecuted` | ToolManager | After a tool call completes (context copy carries `toolCall` + `result`); notification-only, fired detached — the pipeline does not wait |
 | `onNoticeReceived` | EventInitializer | When a notice event is routed |
 
 ### HookManager.ts

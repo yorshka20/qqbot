@@ -251,8 +251,14 @@ export class ToolManager {
 
       const result = await executor.execute(call, context);
 
+      // Notification-only hook, fired detached: nothing consumes its return value
+      // and no same-run consumer depends on its side effects, so awaiting it would
+      // add every handler's latency to every tool call for no benefit. Handlers
+      // must treat it as an after-the-fact event (see ToolHooks.onToolExecuted).
       toolHookContext.result = result;
-      await hookManager.execute('onToolExecuted', toolHookContext);
+      void hookManager
+        .execute('onToolExecuted', toolHookContext)
+        .catch((err) => logger.warn('[ToolManager] onToolExecuted hook failed (non-fatal):', err));
 
       if (result.success) {
         logger.debug(`[ToolManager] Tool ${toolSpec.name} executed successfully`);
