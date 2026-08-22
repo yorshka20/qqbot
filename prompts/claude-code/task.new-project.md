@@ -89,11 +89,4 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 # Reference
 
-The bot exposes two MCP tools on the `qqbot` server for talking back to the
-person who asked for this work. Everything else — reading, editing, git,
-running checks — use your own built-in tools.
-
-- `bot_notify_task` — report task lifecycle (`started` / `progress` /
-  `completed` / `failed`). The task ID comes from the connection.
-- `bot_send_message` — message the requester mid-task
-  (`targetType={{targetType}}`, `targetId={{targetId}}`).
+`bot_send_message` 的收件人：`targetType={{targetType}}` `targetId={{targetId}}`。

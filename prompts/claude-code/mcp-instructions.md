@@ -25,10 +25,3 @@ Prefer `bot_notify_task` for lifecycle and `bot_send_message` for conversation.
 - `bot_command` — `reload-plugins` / `status` / `restart`. `restart` will kill
   your own process, so only call it as the very last action of a task that
   explicitly asked for it.
-
-## What this server does not do
-
-There are no file, git or build tools here. Use your own built-in tools for
-reading, editing, running commands and git — they are more direct, and the
-project's `CLAUDE.md` plus its `package.json` scripts are the authority on
-which commands this project actually uses.
