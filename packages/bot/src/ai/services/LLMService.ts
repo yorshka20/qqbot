@@ -725,7 +725,7 @@ export class LLMService {
     // No tools — short-circuit to plain generate.
     if (tools.length === 0) {
       const response = await this.generateFromMessages(messages, options, providerName);
-      await this.emitReasoning(response, options, [], new Set());
+      await this.emitReasoning(response, options, [], new Set(), providerName);
       return { ...response, stopReason: 'end_turn' };
     }
 
@@ -769,7 +769,7 @@ export class LLMService {
         logger.warn('[LLMService] No tool-use capable provider available, will proceed without tool use');
         // Proceed without tool use - just generate normally
         const response = await this.generateFromMessages(messages, options, providerName);
-        await this.emitReasoning(response, options, [], new Set());
+        await this.emitReasoning(response, options, [], new Set(), providerName);
         // Strip text-based tool calls the model may emit when it sees tool instructions in the prompt
         if (response.text && containsTextToolCalls(response.text)) {
           logger.warn('[LLMService] Stripping text-based tool call blocks from no-tool-use fallback response');
@@ -808,7 +808,7 @@ export class LLMService {
       // Generate with tools
       const response = await this.generateMessagesWithToolSupport(currentMessages, tools, options, currentProviderName);
       sawUsage = this.accumulateUsage(accUsage, response.usage) || sawUsage;
-      await this.emitReasoning(response, options, accReasoning, seenReasoning);
+      await this.emitReasoning(response, options, accReasoning, seenReasoning, currentProviderName);
 
       // Always use the resolved provider for subsequent rounds (handles internal fallback)
       if (response.resolvedProviderName) {
@@ -969,7 +969,7 @@ export class LLMService {
     });
     const finalResponse = await this.generateFromMessages(currentMessages, options, currentProviderName);
     sawUsage = this.accumulateUsage(accUsage, finalResponse.usage) || sawUsage;
-    await this.emitReasoning(finalResponse, options, accReasoning, seenReasoning);
+    await this.emitReasoning(finalResponse, options, accReasoning, seenReasoning, currentProviderName);
 
     // Strip text-based tool calls from final text — model may still attempt tool calls via text when tools are absent
     if (finalResponse.text && containsDSML(finalResponse.text)) {
@@ -1004,6 +1004,7 @@ export class LLMService {
     options: ToolUseGenerateOptions | undefined,
     acc: string[],
     seen: Set<string>,
+    provider: string | undefined,
   ): Promise<void> {
     const text = response.reasoningContent?.trim();
     if (!text || seen.has(text)) {
@@ -1015,7 +1016,7 @@ export class LLMService {
       return;
     }
     try {
-      await options.onReasoning(text);
+      await options.onReasoning(text, response.resolvedProviderName ?? provider);
     } catch (err) {
       logger.warn('[LLMService] onReasoning callback failed:', err);
     }

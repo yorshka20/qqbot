@@ -34,7 +34,7 @@ interface GenerationPipelineParams {
   selectedProviderName: string | undefined;
   effectiveNativeSearchEnabled: boolean;
   /** Set only when `/think` is on for this session; each tool round's thinking is sent as it lands. */
-  onReasoning?: (text: string) => Promise<void>;
+  onReasoning?: (text: string, provider: string | undefined) => Promise<void>;
 }
 
 /** Result of the LLM generation pipeline (attempt / retry). */
@@ -100,7 +100,7 @@ export class GenerationStage implements ReplyStage {
    */
   private async createThinkingSender(
     ctx: ReplyPipelineContext,
-  ): Promise<((text: string) => Promise<void>) | undefined> {
+  ): Promise<((text: string, provider: string | undefined) => Promise<void>) | undefined> {
     if (!ctx.sessionId) {
       return undefined;
     }
@@ -119,13 +119,10 @@ export class GenerationStage implements ReplyStage {
       return undefined;
     }
 
-    let round = 0;
-    return async (text: string) => {
-      round++;
-      // Read the provider per round: a mid-turn fallback changes who is answering.
-      const provider =
-        (ctx.hookContext.metadata.get('activeProvider') as string | undefined) ?? ctx.selectedProviderName;
-      await this.sendThinking(ctx.hookContext, text, round, provider);
+    // LLMService passes the provider that served each round — the metadata copy is
+    // not yet updated when a round's thinking fires.
+    return async (text: string, provider: string | undefined) => {
+      await this.sendThinking(ctx.hookContext, text, provider ?? ctx.selectedProviderName);
     };
   }
 
@@ -133,18 +130,14 @@ export class GenerationStage implements ReplyStage {
    * Send one round's thinking as its own message. Failures are swallowed: thinking
    * is diagnostic output and losing it must never cost the user their actual reply.
    */
-  private async sendThinking(
-    context: HookContext,
-    text: string,
-    round: number,
-    provider: string | undefined,
-  ): Promise<void> {
+  private async sendThinking(context: HookContext, text: string, provider: string | undefined): Promise<void> {
     try {
       const body =
         text.length > MAX_THINKING_CHARS
           ? `${text.slice(0, MAX_THINKING_CHARS)}\n…（已截断，完整内容见 llm-dump）`
           : text;
-      const segments = new MessageBuilder().text(`💭 思考 #${round}（${provider ?? 'unknown'}）\n\n${body}`).build();
+      const header = provider ? `💭 思考（${provider}）` : '💭 思考';
+      const segments = new MessageBuilder().text(`${header}\n\n${body}`).build();
       const botSelfId = Number(context.metadata.get('botSelfId'));
 
       if (!Number.isNaN(botSelfId) && botSelfId > 0) {
@@ -156,9 +149,9 @@ export class GenerationStage implements ReplyStage {
         // delivers the thinking rather than dropping it.
         await this.messageAPI.sendFromContext(segments, context.message, 30_000);
       }
-      logger.debug(`[GenerationStage] Sent thinking #${round} (${text.length} chars)`);
+      logger.debug(`[GenerationStage] Sent thinking (${text.length} chars, provider=${provider ?? 'unknown'})`);
     } catch (err) {
-      logger.warn(`[GenerationStage] Failed to send thinking #${round}:`, err);
+      logger.warn('[GenerationStage] Failed to send thinking:', err);
     }
   }
 

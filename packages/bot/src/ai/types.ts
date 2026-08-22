@@ -305,8 +305,11 @@ export interface ToolUseGenerateOptions extends AIGenerateOptions {
    * tool calls run — so a multi-round turn reports its reasoning incrementally
    * instead of as one blob at the end. Fires at most once per distinct block, and
    * is awaited so several rounds' output stays in order.
+   *
+   * `provider` is the one that actually served that round, passed explicitly because
+   * a mid-turn fallback changes it and the caller cannot read it from context yet.
    */
-  onReasoning?: (text: string) => void | Promise<void>;
+  onReasoning?: (text: string, provider: string | undefined) => void | Promise<void>;
 }
 
 /** Tool Use generation response */
