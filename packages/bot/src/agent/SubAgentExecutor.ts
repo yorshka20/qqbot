@@ -1,11 +1,10 @@
 // SubAgent Executor - executes sub-agents with isolated context
 
-import type { PermissionChecker } from '@/command/CommandManager';
-import { getCurrentMessageContext } from '@/context/MessageContextStorage';
-
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, FunctionCall, ToolDefinition, ToolUseGenerateResponse } from '@/ai/types';
+import type { PermissionChecker } from '@/command/CommandManager';
+import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import type { SubAgentManager } from './SubAgentManager';

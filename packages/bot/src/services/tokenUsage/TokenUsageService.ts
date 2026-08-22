@@ -6,7 +6,7 @@
 // read time (modest volume; keeps the schema flexible and adapter-agnostic).
 
 import { inject, injectable } from 'tsyringe';
-import { Config } from '@/core/config';
+import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { TokenUsageRecord } from '@/database/models/types';

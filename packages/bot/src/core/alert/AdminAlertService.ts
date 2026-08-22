@@ -37,8 +37,7 @@ export class AdminAlertService {
 
   async alert(a: AdminAlert): Promise<void> {
     try {
-      const errorMessage =
-        a.error instanceof Error ? a.error.message : a.error !== undefined ? String(a.error) : '';
+      const errorMessage = a.error instanceof Error ? a.error.message : a.error !== undefined ? String(a.error) : '';
       const dedupeKey = `${a.scope}|${a.title}|${errorMessage}`;
       const now = Date.now();
 

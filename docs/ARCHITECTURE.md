@@ -418,9 +418,9 @@ Extended hooks are declared by subsystems at runtime:
 | `onCommandExecuted` | CommandSystem | After command handler runs |
 | `onMessageBeforeAI` | GateCheckStage | Before the AI generation gate |
 | `onAIGenerationStart` | GateCheckStage | After gate passes, before LLM call |
-| `onAIGenerationComplete` | ResponseDispatchStage | After LLM response is ready |
-| `onTaskBeforeExecute` | ToolManager | Before a tool call executes |
-| `onTaskExecuted` | ToolManager | After a tool call completes |
+| `onAIGenerationComplete` | ResponseDispatchStage | After LLM response is ready (fires on every dispatch path, including card) |
+| `onToolBeforeExecute` | ToolManager | Before a tool call executes (context copy carries `toolCall`) |
+| `onToolExecuted` | ToolManager | After a tool call completes (context copy carries `toolCall` + `result`) |
 | `onNoticeReceived` | EventInitializer | When a notice event is routed |
 
 ### HookManager.ts
@@ -526,6 +526,29 @@ The reply pipeline inside `ReplyPipelineOrchestrator` is composed of ordered sta
 7. `GenerationStage` — Execute LLM call with tool loop
 8. `ResponseDispatchStage` — Fire `onAIGenerationComplete`, dispatch reply
 
+#### Reply delivery contract
+
+The reply-stage agentic loop separates content from control. The model has four
+delivery actions with non-overlapping semantics:
+
+- **Final text output** — always delivered (long structured text may auto-render
+  as a card image). After `send_card`, trailing text is appended as a follow-up
+  after the card instead of being dropped.
+- **`send_message`** — immediate pre-notice before slow tool calls, capped per
+  run (`agenda.llmLimits.maxSendsPerRun`, shared across provider-fallback
+  retries because the sends are real). Each send is persisted into conversation
+  history via `ConversationHistoryService.appendBotMessageToSession`.
+- **`send_card`** — renders a card image and queues it on the context
+  (`cardSent`); history stores the deck as readable text (`cardDeckToHistoryText`),
+  never raw JSON.
+- **`end_turn`** — explicit "nothing more to send". The tool sets
+  `ToolResult.endTurn`, which `LLMService.generateWithTools` turns into
+  stopReason `end_turn_tool` — the loop exits without demanding another model
+  response. With no trailing text, `ResponseDispatchStage` queues no reply at
+  all (Path 0).
+
+Tool rounds are capped by `ai.chat.maxToolRounds` (default 15).
+
 ### AI Providers
 
 Multi-provider support is handled by `AIManager` + `ProviderRouter`:
@@ -580,7 +603,7 @@ export class SearchExecutor implements ToolExecutor {
 ### ToolManager
 
 - `autoRegisterTools()`: Discovers all `@Tool()` decorated classes and registers them
-- `executeTool(call, context, hookManager)`: Execute a tool, firing `onTaskBeforeExecute` / `onTaskExecuted` hooks
+- `executeTool(call, context, hookManager)`: Execute a tool, firing `onToolBeforeExecute` / `onToolExecuted` hooks
 - Executors are created on-demand via DI (`tsyringe`)
 
 ### Plugin-registered tools
@@ -597,7 +620,7 @@ The bot maintains three distinct memory stores that divide responsibility by wri
 
 | Piece | Writer | Scope | Lifetime | Purpose |
 |---|---|---|---|---|
-| `AuditEventStore` (audit log) | Bot auto-hook (COMPLETE stage) | Per-session | ~45min in-mem | Factual "what I just did" ledger — reply / silence / tool actions |
+| `AuditEventStore` (audit log) | Bot auto-hooks (`onMessageComplete` for reply/silence, `onToolExecuted` for tool calls) | Per-session | ~45min in-mem, time-pruned only (no item cap) | Factual "what I just did" ledger — reply / silence / tool actions |
 | `MemoryService` / `memory_note` tool | LLM (extract pipeline + explicit tool) | Per group / per user | Long-term (file-backed under `memoryDir`) | Who the user IS / their preferences / group rules |
 | `SessionMemoStore` / `session_memo` tool | LLM (via tool at reply stage) | Per-session | TTL or pinned; persisted to SQLite when available, in-memory otherwise | What the bot chose to remember for the next few turns/sessions (positions, temporary agreements, upcoming events) |
 
