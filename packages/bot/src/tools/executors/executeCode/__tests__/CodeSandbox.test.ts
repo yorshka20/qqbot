@@ -342,11 +342,39 @@ describe('CodeSandbox filesystem denial', () => {
     expect(result.returnValue).toBe('undefined,undefined,undefined');
   });
 
-  it('rejects dynamic import()', async () => {
+  it('rejects import() of fs and exec-capable builtins', async () => {
     const sandbox = new CodeSandbox();
-    const result = await sandbox.execute('const fs = await import("node:fs"); return 1;', buildTestGlobals());
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('import');
+    for (const mod of ['node:fs', 'fs', 'node:child_process', 'node:worker_threads', 'node:vm', 'bun']) {
+      const result = await sandbox.execute(`const m = await import("${mod}"); return 1;`, buildTestGlobals());
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('is not available');
+    }
+  });
+
+  it('rejects import() of node_modules and project modules (same-process DI escape)', async () => {
+    const sandbox = new CodeSandbox();
+    for (const mod of ['tsyringe', './packages/bot/src/core/config', '@/core/config']) {
+      const result = await sandbox.execute(`const m = await import("${mod}"); return 1;`, buildTestGlobals());
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('is not available');
+    }
+  });
+
+  it('allows import() of pure-computation builtins', async () => {
+    const sandbox = new CodeSandbox();
+    const result = await sandbox.execute(
+      'const { createHash } = await import("node:crypto"); return createHash("sha256").update("x").digest("hex").slice(0, 8);',
+      buildTestGlobals(),
+    );
+    expect(result.success).toBe(true);
+    expect(result.returnValue).toBe('2d711642');
+
+    const pathResult = await sandbox.execute(
+      'const path = await import("path"); return path.join("a", "b");',
+      buildTestGlobals(),
+    );
+    expect(pathResult.success).toBe(true);
+    expect(pathResult.returnValue).toBe('a/b');
   });
 
   it('rejects the .constructor escape that re-derives Function', async () => {

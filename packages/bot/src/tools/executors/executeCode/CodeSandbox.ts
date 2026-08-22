@@ -28,9 +28,8 @@ const BLOCKED_GLOBALS = [
 ] as const;
 
 /**
- * Source patterns rejected before execution, for the fs vectors that shadowing
+ * Source patterns rejected before execution, for the escape vectors that shadowing
  * cannot reach:
- *  - `import(...)` is syntax, not an identifier, so no parameter can shadow it.
  *  - `.constructor` re-derives Function from any object literal
  *    (`(()=>{}).constructor('return Bun')()`), sidestepping the `Function` shadow.
  *
@@ -41,13 +40,54 @@ const BLOCKED_GLOBALS = [
  * FileReadService.ALWAYS_DENIED_SEGMENTS.
  */
 const BLOCKED_SOURCE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
-  { pattern: /\bimport\s*\(/, reason: 'dynamic import() is not available' },
-  { pattern: /\bimport\s+[\w{*'"]/, reason: 'import statements are not available' },
+  { pattern: /\bimport\s+[\w{*'"]/, reason: 'import statements are not available (use await import(...) instead)' },
   { pattern: /\brequire\s*\(/, reason: 'require() is not available' },
   { pattern: /\.\s*constructor\b/, reason: 'access to .constructor is not available' },
   { pattern: /\bprocess\s*\./, reason: 'process is not available' },
   { pattern: /\bBun\s*\./, reason: 'Bun APIs are not available' },
 ];
+
+/**
+ * Node builtins reachable through `import(...)` inside the sandbox. Pure-computation
+ * modules only. The line that must hold: the sandbox runs IN the bot process, so any
+ * module that grants ambient authority is a full escape —
+ *  - fs / child_process / worker_threads / vm / module: filesystem or exec, bypassing
+ *    FileReadService's secret denial outright;
+ *  - project files and node_modules: they execute unshadowed in-process — e.g.
+ *    tsyringe resolves the live DI container, whose Config carries every API key.
+ * Everything else about import stays open; adding a pure builtin here is cheap.
+ */
+export const IMPORTABLE_BUILTINS = new Set([
+  'assert',
+  'buffer',
+  'crypto',
+  'events',
+  'os',
+  'path',
+  'punycode',
+  'querystring',
+  'stream',
+  'string_decoder',
+  'timers',
+  'url',
+  'util',
+  'zlib',
+]);
+
+/** import() gate injected as `__sandboxImport` (source is rewritten to call it). */
+async function sandboxImport(specifier: unknown): Promise<unknown> {
+  const name = String(specifier);
+  const bare = name.startsWith('node:') ? name.slice(5) : name;
+  if (IMPORTABLE_BUILTINS.has(bare)) {
+    return import(`node:${bare}`);
+  }
+  throw new Error(
+    `import('${name}') is not available in execute_code. ` +
+      `可 import 的内置模块：${[...IMPORTABLE_BUILTINS].join(', ')}。` +
+      'fs/child_process/项目模块/node_modules 不可用（与 bot 同进程，等价于绕过密钥防护）；' +
+      '文件与代码查看请用 tools 里的 read_file / search_code，git/仓库检查用 inspect_repo 工具。',
+  );
+}
 
 /**
  * Executes JavaScript code in a controlled environment with:
@@ -134,10 +174,15 @@ export class CodeSandbox {
     // so this can never mask something the tool intends to provide.
     const provided = Object.keys(globals);
     const shadowed = BLOCKED_GLOBALS.filter((name) => !provided.includes(name));
-    const paramNames = [...provided, ...shadowed];
-    const paramValues = [...Object.values(globals), ...shadowed.map(() => undefined)];
+    const paramNames = [...provided, ...shadowed, '__sandboxImport'];
+    const paramValues = [...Object.values(globals), ...shadowed.map(() => undefined), sandboxImport];
 
-    const wrappedCode = this.addImplicitReturn(code);
+    // `import(...)` is syntax, not an identifier — it cannot be shadowed, so the
+    // source is rewritten to route through the allowlist gate instead. May touch
+    // the rare string literal containing "import(", which is acceptable noise.
+    const gatedCode = code.replace(/\bimport\s*\(/g, '__sandboxImport(');
+
+    const wrappedCode = this.addImplicitReturn(gatedCode);
 
     // Create AsyncFunction with globals as named parameters
     const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
