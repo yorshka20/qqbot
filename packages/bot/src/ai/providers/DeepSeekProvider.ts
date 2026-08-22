@@ -219,7 +219,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
           if (id) resultsByCallId.set(id, text);
           j++;
         }
-        const lines: string[] = ['（我在本轮早些时候执行过以下工具调用，原始记录如下）'];
+        const lines: string[] = ['（我在本次回复过程中早些时候执行过以下工具调用，原始记录如下）'];
         const assistantText = contentToPlainString(m.content).trim();
         if (assistantText) {
           lines.push(assistantText);

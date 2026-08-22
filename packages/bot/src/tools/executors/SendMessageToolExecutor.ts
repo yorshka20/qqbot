@@ -53,7 +53,7 @@ export class SendMessageToolExecutor extends BaseToolExecutor {
     const sent = hookContext.metadata.get('sendMessageCount') ?? 0;
     if (sent >= maxSends) {
       return this.error(
-        `send_message 已达本次回复的发送上限（${maxSends} 条）。剩余内容请直接输出为最终回复文本（会被发送），或调用 end_turn 结束本轮`,
+        `send_message 已达本次回复的发送上限（${maxSends} 条）。剩余内容请直接输出为最终回复文本（会被发送），或调用 end_turn 结束本次回复`,
         'send limit reached',
       );
     }
