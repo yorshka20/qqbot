@@ -150,7 +150,7 @@ The system is organized into the following layers:
 12. **Context Layer** (`src/context/`): HookContext building, conversation context management
 13. **Database Layer** (`src/database/`): SQLite and MongoDB adapters
 14. **Plugin Layer** (`src/plugins/`): Config-based plugin system
-15. **Services Layer** (`src/services/`): MCP client, Claude Code, card rendering, retrieval, static server
+15. **Services Layer** (`src/services/`): Claude Code, card rendering, retrieval (search/RAG/fetch), TTS, static server
 16. **Cluster Layer** (`src/cluster/`): Agent cluster for multi-worker coordination
 17. **Message Layer** (`src/message/`): Message construction, parsing, and caching
 18. **Agenda Layer** (`src/agenda/`): Scheduled and event/message-triggered task execution (`cron` / `once` / `onEvent` / `onMessage` triggers, with optional TTL + fire-budget lifecycle; the LLM can self-register ephemeral tasks via `schedule_task` / `watch_messages` tools)
@@ -200,7 +200,7 @@ Single source of truth for application initialization order. Both `src/index.ts`
 **Initialization sequence:**
 ```
 Config → APIClient → PromptInitializer → PluginInitializer (factory) →
-MCPInitializer → HealthCheckManager → RetrievalService → StaticServer →
+HealthCheckManager → RetrievalService → StaticServer →
 ProjectRegistry → ClaudeCodeInitializer → ConversationInitializer →
 ClusterManager → EventInitializer → ServiceRegistry.verify() →
 ProtocolAdapterInitializer → PluginInitializer.loadPlugins() →
@@ -727,11 +727,27 @@ Three separate surfaces sit near MCP; only the first two speak the protocol.
 
 | Surface | Direction | Location | Purpose |
 |---|---|---|---|
-| `MCPClient` / `MCPManager` | Bot is the **client** | `src/services/mcp/` | Spawns a stdio MCP server (`mcp-searxng`) and exposes its tools to `SearchService`. Only registered when `mcp.search.provider=searxng` + `mcp.search.mode=mcp`; any other search backend skips it entirely. |
+| `SearxngMcpClient` | Bot is the **client** | `src/services/retrieval/searxng/mcp/` | Spawns a stdio MCP server (`mcp-searxng`) and calls its `searxng_web_search` tool. This is not a general MCP client — it is one of SearXNG's two transports, the sibling of `SearXNGClient`'s direct HTTP. |
 | `HubMCPServer` | Bot is the **server** | `src/cluster/hub/` | Streamable-HTTP MCP endpoint at `/mcp`, consumed by cluster workers' own CLI MCP clients. |
 | `ClaudeCodeApiServer` | Bot is an **HTTP server** | `src/services/claudeCode/` | Plain REST (`/api/notify`, `/api/send`, `/api/command`, `/api/tools/*`) that a spawned `claude` CLI calls back with curl. **Not MCP** despite the tool-shaped routes. |
 
-The MCP client path is hardwired to SearXNG end to end: `MCPClient.connect()` maps only `SEARXNG_*` env vars, `MCPConfig.server` describes a single server rather than a list, and `SearchService` hardcodes the `searxng_web_search` tool name plus a SearXNG-specific result parser. MCP tools are not bridged into `ToolManager`, so no other feature can consume them without extending all of those layers.
+### Search transports
+
+`SearchService` owns all three search transports and picks one from
+`mcp.search.provider` + `mcp.search.mode`: `SerperClient` (provider=serper),
+`SearXNGClient` (searxng + direct), or `SearxngMcpClient` (searxng + mcp).
+The first two are usable on construction; the MCP one spawns a child process and
+performs a handshake, so it is connected separately via
+`RetrievalService.connectSearchTransports()` after the DI graph is up. Keeping
+the choice in one constructor is deliberate — when the MCP transport was built
+outside the service and injected back in, the gate drifted out of sync with the
+provider/mode it was supposed to follow.
+
+There is deliberately no generic MCP-client layer. The tool name, the result
+parser, and the `SEARXNG_*` env mapping are all SearXNG-specific, and MCP tools
+are never bridged into `ToolManager`, so nothing else in the bot can consume
+them. Adding a second MCP server means designing that layer against a real
+second use case rather than reusing this one.
 
 ## Data Flow
 
@@ -912,7 +928,7 @@ qqbot/
 │   ├── message/         # MessageBuilder, MessageParser, MessageCache
 │   ├── plugins/         # Plugin system, PluginBase, built-in plugins
 │   ├── protocol/        # Protocol adapters (Milky, OneBot11, Satori, Discord)
-│   ├── services/        # MCP, ClaudeCode, card rendering, retrieval
+│   ├── services/        # ClaudeCode, card rendering, retrieval, TTS
 │   ├── tools/           # Tool system with @Tool() decorator
 │   ├── utils/           # Logger, error handling, shared utilities
 │   └── index.ts         # Entry point

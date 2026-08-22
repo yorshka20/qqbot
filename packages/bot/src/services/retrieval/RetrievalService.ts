@@ -7,7 +7,6 @@ import type { RAGConfig } from '@/core/config/types/rag';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HealthCheckManager } from '@/core/health';
-import type { MCPManager } from '@/services/mcp';
 import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { PageContentFetchService } from './fetch';
@@ -50,8 +49,17 @@ export class RetrievalService {
     this.searchService.registerHealthCheck();
   }
 
-  setMCPManager(mcpManager: MCPManager): void {
-    this.searchService.setMCPManager(mcpManager);
+  /**
+   * Connect search transports that need I/O (currently the SearXNG MCP stdio
+   * child). Call once after the DI graph is up; the constructor only builds
+   * clients that are usable without a handshake.
+   */
+  async connectSearchTransports(): Promise<void> {
+    await this.searchService.connectTransports();
+  }
+
+  async disconnectSearchTransports(): Promise<void> {
+    await this.searchService.disconnectTransports();
   }
 
   // --- Search (delegate to SearchService) ---

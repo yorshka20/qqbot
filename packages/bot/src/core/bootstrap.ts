@@ -4,8 +4,8 @@
 // this function so that the initialization sequence can never drift between them.
 //
 // Only steps that require live network I/O are left to callers:
-//   bot.start(), MCPInitializer.connectServers(), ClaudeCodeInitializer.start(),
-//   and process signal handlers.
+//   bot.start(), retrievalService.connectSearchTransports(),
+//   ClaudeCodeInitializer.start(), and process signal handlers.
 
 import { AvatarService } from '@qqbot/avatar';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
@@ -50,8 +50,6 @@ import { DanmakuStore } from '@/services/bilibili/live/DanmakuStore';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
 import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
-import type { MCPSystem } from '@/services/mcp/MCPInitializer';
-import { MCPInitializer } from '@/services/mcp/MCPInitializer';
 import { RetrievalService } from '@/services/retrieval';
 import { initStaticServer } from '@/services/staticServer';
 import { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
@@ -68,7 +66,6 @@ import '@/integrations/avatar/plugins';
 
 export interface BootstrapResult {
   bot: Bot;
-  mcpSystem: MCPSystem | null;
   claudeCodeService: ClaudeCodeService | null;
   clusterManager: ClusterManager | null;
   conversationComponents: ConversationComponents;
@@ -88,8 +85,8 @@ export interface BootstrapResult {
  *   Protocol adapter registration → Plugin load
  *
  * Callers only need to handle actual connections afterwards:
- *   bot.start(), MCPInitializer.connectServers(), ClaudeCodeInitializer.start(),
- *   and process signal handlers.
+ *   bot.start(), retrievalService.connectSearchTransports(),
+ *   ClaudeCodeInitializer.start(), and process signal handlers.
  */
 export interface BootstrapOptions {
   /**
@@ -128,9 +125,6 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
 
   // ── Plugin factory registration (must run BEFORE ConversationInitializer) ──
   PluginInitializer.initialize(config);
-
-  // ── MCP system (sync init only, no server connections) ──
-  const mcpSystem = MCPInitializer.initialize(config);
 
   // ── Health + Retrieval ──
   const healthCheckManager = new HealthCheckManager();
@@ -496,7 +490,6 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
 
   return {
     bot,
-    mcpSystem,
     claudeCodeService,
     clusterManager,
     conversationComponents,

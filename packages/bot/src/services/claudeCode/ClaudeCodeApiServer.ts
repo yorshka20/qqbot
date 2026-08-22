@@ -9,7 +9,7 @@
  * Despite the `/api/tools/*` surface this is plain HTTP REST, not the Model
  * Context Protocol — the spawned `claude` CLI reaches it with curl/WebFetch.
  * The repo's actual MCP endpoints are `HubMCPServer` (server side) and
- * `services/mcp/MCPClient` (client side).
+ * `retrieval/searxng/mcp/SearxngMcpClient` (client side).
  */
 
 import type { ClaudeCodeServiceConfig } from '@/core/config';

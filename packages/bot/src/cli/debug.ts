@@ -21,7 +21,6 @@ import { EventInitializer } from '../events/EventInitializer';
 import type { NormalizedEvent, NormalizedMessageEvent } from '../events/types';
 import { PluginInitializer } from '../plugins/PluginInitializer';
 import { ProtocolAdapterInitializer } from '../protocol/ProtocolAdapterInitializer';
-import { MCPInitializer } from '../services/mcp/MCPInitializer';
 import { RetrievalService } from '../services/retrieval';
 import { initStaticServer } from '../services/staticServer';
 import type { ToolManager } from '../tools';
@@ -596,9 +595,6 @@ class DebugCLI {
     this.apiClient.registerAdapter('milky', mockAdapter);
     this.printInfo('✓ Mock protocol adapter registered');
 
-    // Initialize MCP system (if enabled)
-    const mcpSystem = MCPInitializer.initialize(this.config);
-
     // Create HealthCheckManager and retrieval service (services must be created and injected)
     const healthCheckManager = new HealthCheckManager();
     const mcpConfig = this.config.getMCPConfig();
@@ -652,11 +648,8 @@ class DebugCLI {
     this.printInfo('Initializing plugin system...');
     this.pluginManager = getContainer().resolve(DITokens.PLUGIN_MANAGER);
 
-    // Connect to MCP servers (if enabled)
-    if (mcpSystem) {
-      await MCPInitializer.connectServers(mcpSystem);
-      MCPInitializer.updateRetrievalService(mcpSystem, retrievalService);
-    }
+    // Bring up search transports that need I/O (SearXNG MCP stdio child)
+    await retrievalService.connectSearchTransports();
 
     // Load plugins
     await PluginInitializer.loadPlugins(this.config);
@@ -670,9 +663,6 @@ class DebugCLI {
     this.printInfo('Initializing in Real Mode (with connections)...');
 
     const connectionManager = this.bot.getConnectionManager();
-
-    // Initialize MCP system (if enabled)
-    const mcpSystem = MCPInitializer.initialize(this.config);
 
     // Create HealthCheckManager and retrieval service (services must be created and injected)
     const healthCheckManager = new HealthCheckManager();
@@ -734,11 +724,8 @@ class DebugCLI {
     this.printInfo('Starting bot...');
     await this.bot.start();
 
-    // Connect to MCP servers (after bot is started)
-    if (mcpSystem) {
-      await MCPInitializer.connectServers(mcpSystem);
-      MCPInitializer.updateRetrievalService(mcpSystem, retrievalService);
-    }
+    // Bring up search transports that need I/O (SearXNG MCP stdio child)
+    await retrievalService.connectSearchTransports();
 
     // Load plugins after bot is started
     await PluginInitializer.loadPlugins(this.config);

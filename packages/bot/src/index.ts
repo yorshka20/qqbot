@@ -8,8 +8,7 @@ import { getContainer } from './core/DIContainer';
 import { DITokens } from './core/DITokens';
 import { initLanRelay } from './lan';
 import { ClaudeCodeInitializer } from './services/claudeCode';
-import { MCPInitializer } from './services/mcp/MCPInitializer';
-import { killAllMcpChildren } from './services/mcp/mcpChildReaper';
+import { killAllMcpChildren } from './services/retrieval/searxng/mcp/childReaper';
 import { stopStaticServer } from './services/staticServer';
 import type { ResourceCleanupService } from './services/video';
 import { logger } from './utils/logger';
@@ -22,7 +21,6 @@ async function main() {
     const configPath = process.env.CONFIG_PATH;
     const {
       bot,
-      mcpSystem,
       claudeCodeService,
       clusterManager,
       conversationComponents,
@@ -88,11 +86,8 @@ async function main() {
     }
     const lanRelayHandle = await initLanRelay({ config, eventRouter, messageAPI, rawDb });
 
-    // Connect to MCP servers
-    if (mcpSystem) {
-      await MCPInitializer.connectServers(mcpSystem);
-      MCPInitializer.updateRetrievalService(mcpSystem, retrievalService);
-    }
+    // Bring up search transports that need I/O (SearXNG MCP stdio child)
+    await retrievalService.connectSearchTransports();
 
     // Start Claude Code service (non-fatal if port is in use)
     if (claudeCodeService) {
@@ -143,7 +138,7 @@ async function main() {
       await ClaudeCodeInitializer.stop(claudeCodeService);
       await bot.stop();
       eventRouter.destroy();
-      await MCPInitializer.disconnectServers(mcpSystem);
+      await retrievalService.disconnectSearchTransports();
       await conversationComponents.databaseManager.close();
       process.exit(0);
     };

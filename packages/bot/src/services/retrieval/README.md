@@ -32,7 +32,7 @@ retrieval/
 ### Modes
 
 - **Direct**: Uses `SearXNGClient` to call the SearXNG HTTP API directly.
-- **MCP**: Uses `MCPManager.callTool('searxng_web_search', ...)` when MCP is enabled. Falls back to direct mode if the tool is unavailable.
+- **MCP**: Uses `SearxngMcpClient` (`searxng/mcp/`) to call the `searxng_web_search` tool over an MCP stdio child process. Search is skipped when the tool is unavailable.
 
 ### Features
 
@@ -127,7 +127,7 @@ RAG is configured under `rag` in `BotConfig`:
 
 - **Token**: `RETRIEVAL_SERVICE`
 - **Registration**: `registerRetrievalService(mcpConfig, ragConfig)` in `ServiceRegistry`
-- **Post-init**: `setMCPManager(mcpManager)` is called after MCP is initialized so search can use MCP mode when configured.
+- **Post-init**: `connectSearchTransports()` is awaited once after the DI graph is up, so the MCP transport (which spawns a child process and handshakes) becomes usable. HTTP-based transports need no such step.
 
 ---
 

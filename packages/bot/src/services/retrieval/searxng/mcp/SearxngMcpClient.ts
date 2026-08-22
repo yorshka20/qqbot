@@ -1,32 +1,40 @@
-// MCP Client - wraps official MCP SDK
+// SearXNG search over the MCP stdio transport (the alternative to SearXNGClient's direct HTTP).
 
 import { Client } from '@modelcontextprotocol/sdk/client';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { MCPConfig, MCPRuntime } from '@/core/config/types/mcp';
 import { logger } from '@/utils/logger';
-import { killMcpChild, registerMcpChild } from './mcpChildReaper';
+import { killMcpChild, reapOrphanedMcpChildren, registerMcpChild } from './childReaper';
 import type { MCPTool, MCPToolCallResult } from './types';
 
-export class MCPClient {
+export class SearxngMcpClient {
   private client: Client | null = null;
   private transport: StdioClientTransport | null = null;
-  private isConnected = false;
   private childPid: number | null = null;
+  private tools = new Map<string, MCPTool>();
 
-  /**
-   * Connect to MCP server
-   */
-  async connect(config: MCPConfig): Promise<void> {
+  constructor(private readonly config: MCPConfig) {}
+
+  private get isConnected(): boolean {
+    return this.client !== null;
+  }
+
+  async connect(): Promise<void> {
     if (this.isConnected) {
-      logger.warn('[MCPClient] Already connected, disconnecting first...');
+      logger.warn('[SearxngMcpClient] Already connected, disconnecting first...');
       await this.disconnect();
     }
 
-    try {
-      // Build command and arguments based on runtime
-      const { command, args } = this.getRuntimeCommand(config.server.runtime, config.server.package || 'mcp-searxng');
+    const config = this.config;
+    const packageName = config.server.package || 'mcp-searxng';
 
-      // Build environment variables
+    try {
+      // Reclaim any subtree leaked by a previous SIGKILL'd bot before spawning
+      // a fresh one (see reapOrphanedMcpChildren for why).
+      reapOrphanedMcpChildren(packageName);
+
+      const { command, args } = this.getRuntimeCommand(config.server.runtime, packageName);
+
       const env: Record<string, string> = {
         SEARXNG_URL: config.searxng.url,
         ...(config.searxng.authUsername && {
@@ -41,7 +49,6 @@ export class MCPClient {
         ...process.env, // Preserve existing environment variables
       };
 
-      // Set proxy environment variables if configured
       if (config.searxng.proxy?.http) {
         env.HTTP_PROXY = config.searxng.proxy.http;
       }
@@ -49,7 +56,7 @@ export class MCPClient {
         env.HTTPS_PROXY = config.searxng.proxy.https;
       }
 
-      logger.debug(`[MCPClient] Connecting to MCP server: ${command} ${args.join(' ')}`);
+      logger.debug(`[SearxngMcpClient] Connecting to MCP server: ${command} ${args.join(' ')}`);
 
       this.transport = new StdioClientTransport({
         command,
@@ -68,7 +75,6 @@ export class MCPClient {
       );
 
       await this.client.connect(this.transport);
-      this.isConnected = true;
 
       // `bunx -y <pkg>` spawns a subtree the SDK's close() does not fully
       // reap. Track the root pid so the bot can kill the whole tree
@@ -78,93 +84,83 @@ export class MCPClient {
         registerMcpChild(this.childPid);
       }
 
-      logger.info('[MCPClient] MCP server connected successfully');
+      for (const tool of await this.listTools()) {
+        this.tools.set(tool.name, tool);
+      }
+
+      logger.info(`[SearxngMcpClient] Connected with ${this.tools.size} tools`);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error('[MCPClient] Failed to connect to MCP server:', err);
-      this.isConnected = false;
-      throw err;
-    }
-  }
-
-  /**
-   * Disconnect from MCP server
-   */
-  async disconnect(): Promise<void> {
-    if (this.client) {
-      try {
-        await this.client.close();
-        logger.info('[MCPClient] MCP server disconnected');
-      } catch (error) {
-        logger.warn('[MCPClient] Error during disconnect:', error);
-      }
-      // SDK close() only signals the direct child (bunx); kill the full
-      // subtree so the node grandchild cannot survive as an orphan.
-      if (this.childPid != null) {
-        await killMcpChild(this.childPid);
-        this.childPid = null;
-      }
+      logger.error('[SearxngMcpClient] Failed to connect:', err);
       this.client = null;
       this.transport = null;
-      this.isConnected = false;
-    }
-  }
-
-  /**
-   * List available tools from MCP server
-   */
-  async listTools(): Promise<MCPTool[]> {
-    if (!this.client || !this.isConnected) {
-      throw new Error('MCP client not connected');
-    }
-
-    try {
-      const tools = await this.client.listTools();
-      return tools.tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema as MCPTool['inputSchema'],
-      }));
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      logger.error('[MCPClient] Failed to list tools:', err);
       throw err;
     }
   }
 
-  /**
-   * Call a tool on MCP server
-   */
-  async callTool(name: string, arguments_: Record<string, unknown>): Promise<MCPToolCallResult> {
-    if (!this.client || !this.isConnected) {
-      throw new Error('MCP client not connected');
+  async disconnect(): Promise<void> {
+    if (!this.client) {
+      return;
     }
 
     try {
-      logger.debug(`[MCPClient] Calling tool: ${name} with arguments:`, arguments_);
+      await this.client.close();
+      logger.info('[SearxngMcpClient] Disconnected');
+    } catch (error) {
+      logger.warn('[SearxngMcpClient] Error during disconnect:', error);
+    }
+
+    // SDK close() only signals the direct child (bunx); kill the full subtree
+    // so the node grandchild cannot survive as an orphan.
+    if (this.childPid != null) {
+      await killMcpChild(this.childPid);
+      this.childPid = null;
+    }
+    this.client = null;
+    this.transport = null;
+    this.tools.clear();
+  }
+
+  hasTool(name: string): boolean {
+    return this.tools.has(name);
+  }
+
+  async callTool(name: string, arguments_: Record<string, unknown>): Promise<MCPToolCallResult> {
+    if (!this.client) {
+      throw new Error('SearxngMcpClient not connected');
+    }
+
+    try {
+      logger.debug(`[SearxngMcpClient] Calling tool: ${name} with arguments:`, arguments_);
       const result = await this.client.callTool({
         name,
         arguments: arguments_,
       });
 
-      // Convert result to our format
-      const content = result.content || [];
-      const isError = result.isError ?? false;
-
       return {
-        content: content as MCPToolCallResult['content'],
-        isError: isError as boolean,
+        content: (result.content || []) as MCPToolCallResult['content'],
+        isError: (result.isError ?? false) as boolean,
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error(`[MCPClient] Failed to call tool ${name}:`, err);
+      logger.error(`[SearxngMcpClient] Failed to call tool ${name}:`, err);
       throw err;
     }
   }
 
-  /**
-   * Get runtime command and arguments
-   */
+  private async listTools(): Promise<MCPTool[]> {
+    if (!this.client) {
+      throw new Error('SearxngMcpClient not connected');
+    }
+
+    const tools = await this.client.listTools();
+    return tools.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema as MCPTool['inputSchema'],
+    }));
+  }
+
   private getRuntimeCommand(runtime: MCPRuntime, packageName: string): { command: string; args: string[] } {
     switch (runtime) {
       case 'bunx':
@@ -185,12 +181,5 @@ export class MCPClient {
       default:
         throw new Error(`Unsupported runtime: ${runtime}`);
     }
-  }
-
-  /**
-   * Check if client is connected
-   */
-  getConnected(): boolean {
-    return this.isConnected;
   }
 }

@@ -5,15 +5,18 @@ import type { LLMService } from '@/ai/services/LLMService';
 import { parseSearchDecision as parseSearchDecisionShared } from '@/ai/utils/llmJsonExtract';
 import type { MCPConfig } from '@/core/config/types/mcp';
 import type { HealthCheckManager } from '@/core/health';
-import type { MCPManager } from '@/services/mcp';
 import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { PageContentFetchService } from '../fetch';
 import type { FilterAndRefineOptions, FilterRefineResult } from '../searchFilterRefine';
 import { parseFilterRefineResponse } from '../searchFilterRefine';
 import { SerperClient } from '../serper/SerperClient';
+import { SearxngMcpClient } from './mcp/SearxngMcpClient';
 import { SearXNGClient } from './SearXNGClient';
 import type { SearchOptions, SearchResult } from './types';
+
+/** The only tool this service consumes from the SearXNG MCP server. */
+const SEARXNG_MCP_TOOL = 'searxng_web_search';
 
 /** Max filter-refine rounds (avoid infinite loop). */
 export const FILTER_REFINE_MAX_ROUNDS = 2;
@@ -32,7 +35,7 @@ export interface SearchServiceOptions {
 export class SearchService {
   private searxngClient: SearXNGClient | null = null;
   private serperClient: SerperClient | null = null;
-  private mcpManager: MCPManager | null = null;
+  private searxngMcpClient: SearxngMcpClient | null = null;
   private config: MCPConfig | null = null;
   private maxResults: number;
 
@@ -60,8 +63,26 @@ export class SearchService {
       } else if (config.search.mode === 'direct') {
         this.searxngClient = new SearXNGClient(config.searxng);
         logger.info('[SearchService] Initialized with SearXNG provider (Direct mode)');
+      } else if (config.server.enabled) {
+        this.searxngMcpClient = new SearxngMcpClient(config);
+        logger.info('[SearchService] Initialized with SearXNG provider (MCP mode)');
+      } else {
+        logger.warn('[SearchService] search.mode=mcp but mcp.server.enabled is false; search will be disabled');
       }
     }
+  }
+
+  /**
+   * Bring up transports that need I/O to become usable. Separate from the
+   * constructor because the MCP transport spawns a child process and performs
+   * a protocol handshake; the HTTP-based clients are ready on construction.
+   */
+  async connectTransports(): Promise<void> {
+    await this.searxngMcpClient?.connect();
+  }
+
+  async disconnectTransports(): Promise<void> {
+    await this.searxngMcpClient?.disconnect();
   }
 
   getPageContentFetchService(): PageContentFetchService {
@@ -138,11 +159,6 @@ export class SearchService {
     }
   }
 
-  setMCPManager(mcpManager: MCPManager): void {
-    this.mcpManager = mcpManager;
-    logger.info('[SearchService] MCP manager set, MCP mode available');
-  }
-
   async search(query: string, options?: SearchOptions): Promise<SearchResult[]> {
     if (!this.config || !this.config.enabled) {
       logger.warn('[SearchService] Search is not enabled or configured');
@@ -184,41 +200,26 @@ export class SearchService {
         }
         results = await this.searxngClient.webSearch(query, mergedOptions);
       } else if (searchMode === 'mcp') {
-        if (!this.mcpManager) {
-          logger.warn('[SearchService] MCP manager not initialized, skipping search');
+        if (!this.searxngMcpClient?.hasTool(SEARXNG_MCP_TOOL)) {
+          logger.warn(`[SearchService] MCP tool ${SEARXNG_MCP_TOOL} is unavailable, skipping search`);
           return [];
         }
-        const toolName = 'searxng_web_search';
-        if (!this.mcpManager.hasTool(toolName)) {
-          logger.warn(`[SearchService] Tool ${toolName} not found, falling back to direct mode`);
-          if (this.searxngClient) {
-            if (this.healthCheckManager && !(await this.healthCheckManager.isServiceHealthy('SearXNG'))) {
-              logger.warn('[SearchService] SearXNG service is not available, skipping search');
-              return [];
-            }
-            results = await this.searxngClient.webSearch(query, mergedOptions);
-          } else {
-            logger.warn('[SearchService] MCP tool not available and SearXNG client not initialized, skipping search');
-            return [];
-          }
-        } else {
-          try {
-            const toolResult = await this.mcpManager.callTool(toolName, {
-              query,
-              pageno: mergedOptions.pageno ?? 1,
-              ...(mergedOptions.timeRange && { time_range: mergedOptions.timeRange }),
-              ...(mergedOptions.language && { language: mergedOptions.language }),
-              ...(mergedOptions.engines && { engines: mergedOptions.engines }),
-              ...(mergedOptions.safesearch !== undefined && { safesearch: mergedOptions.safesearch }),
-            });
-            const resultText = toolResult.content[0]?.text || '';
-            results = this.parseMCPSearchResults(resultText);
-          } catch (error) {
-            logger.warn(
-              `[SearchService] MCP tool call failed: ${error instanceof Error ? error.message : String(error)}, skipping search`,
-            );
-            return [];
-          }
+        try {
+          const toolResult = await this.searxngMcpClient.callTool(SEARXNG_MCP_TOOL, {
+            query,
+            pageno: mergedOptions.pageno ?? 1,
+            ...(mergedOptions.timeRange && { time_range: mergedOptions.timeRange }),
+            ...(mergedOptions.language && { language: mergedOptions.language }),
+            ...(mergedOptions.engines && { engines: mergedOptions.engines }),
+            ...(mergedOptions.safesearch !== undefined && { safesearch: mergedOptions.safesearch }),
+          });
+          const resultText = toolResult.content[0]?.text || '';
+          results = this.parseMCPSearchResults(resultText);
+        } catch (error) {
+          logger.warn(
+            `[SearchService] MCP tool call failed: ${error instanceof Error ? error.message : String(error)}, skipping search`,
+          );
+          return [];
         }
       }
 
