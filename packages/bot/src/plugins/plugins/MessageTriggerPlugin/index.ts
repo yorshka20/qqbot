@@ -113,8 +113,8 @@ export class MessageTriggerPlugin extends PluginBase {
   }
 
   /**
-   * One-shot LLM check: whether the user message (which matched a provider prefix or color nickname) clearly invites a reply.
-   * Uses generateLite with config ai.taskProviders.lite when set.
+   * One-shot LLM check: whether a message opening with a provider name is addressed to the bot
+   * rather than merely mentioning the model. Uses generateLite with config ai.taskProviders.lite when set.
    * @returns true to allow reply, false to skip (fail closed on error or unrecognized response).
    */
   private async checkPrefixInvitation(messageText: string): Promise<boolean> {
@@ -127,13 +127,9 @@ export class MessageTriggerPlugin extends PluginBase {
       const providerAliasMap = Object.entries(aliasMap)
         .map(([alias, provider]) => `${alias}→${provider}`)
         .join('；');
-      const nicknameMap = Object.entries(ProviderRouter.getNicknameAliasMap())
-        .map(([nickname, provider]) => `${nickname}→${provider ?? '默认模型'}`)
-        .join('；');
       const prompt = this.promptManager.render('analysis.prefix_invitation', {
         messageText,
         providerAliasMap,
-        nicknameMap,
       });
       // Budget must cover hidden reasoning, not just the true/false token. A reasoning
       // lite model (e.g. Groq gpt-oss, which rejects none/minimal effort and always
@@ -245,8 +241,10 @@ export class MessageTriggerPlugin extends PluginBase {
       return true;
     }
 
-    // Provider-name prefix: one-shot LLM confirmation to avoid wasting tokens
-    if (isProviderNameTrigger) {
+    // Only a bare provider name at the start is ambiguous — people talk *about* models by name all
+    // the time. Color nicknames are names given to the bot itself, so using one is already an
+    // unambiguous address and needs no confirmation.
+    if (providerRouteResult.triggerKind === 'prefix') {
       const shouldReply = await this.checkPrefixInvitation(strippedText);
       if (!shouldReply) {
         logger.debug('[MessageTriggerPlugin] Prefix-invitation check said no reply');

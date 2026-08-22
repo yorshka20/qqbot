@@ -575,9 +575,50 @@ describe('MessageTriggerPlugin', () => {
     );
     await plugin.onInit?.();
 
-    const context = makeHookContext({ messageText: 'claude' });
+    const context = makeHookContext({ messageText: 'claude 的 api 又涨价了' });
     await plugin.onMessagePreprocess(context);
     expect(context.metadata.get('postProcessOnly')).toBe(true);
     expect(context.metadata.get('replyTriggerType')).toBeUndefined();
+  });
+
+  it('skips the prefix-invitation check for color-nickname triggers', async () => {
+    const container = getContainer();
+    const promptManager = new PromptManager();
+    promptManager.registerTemplate({
+      name: 'analysis.prefix_invitation',
+      namespace: 'analysis',
+      content: '{{messageText}}',
+    });
+    container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
+    container.registerInstance(
+      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      { getGroupPreferenceKeys: () => [], isGroupSuppressed: () => false },
+      { allowOverride: true },
+    );
+    container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
+    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(false), {
+      allowOverride: true,
+    });
+    container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
+    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
+
+    const plugin = new MessageTriggerPlugin({
+      name: 'messageTrigger',
+      version: 'test',
+      description: 'test',
+    });
+    plugin.loadConfig(
+      {
+        api: {} as never,
+        events: {} as never,
+      },
+      { name: 'messageTrigger', enabled: true, config: {} },
+    );
+    await plugin.onInit?.();
+
+    const context = makeHookContext({ messageText: '高手大肥鱼宝宝，还是你省钱' });
+    await plugin.onMessagePreprocess(context);
+    expect(context.metadata.get('postProcessOnly')).toBeUndefined();
+    expect(context.metadata.get('replyTriggerType')).toBe('providerName');
   });
 });
