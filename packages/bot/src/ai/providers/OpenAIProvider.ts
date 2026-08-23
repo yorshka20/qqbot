@@ -33,6 +33,10 @@ import { ResourceDownloader } from '../utils/ResourceDownloader';
  * Translate the pipeline's reasoning effort into the Responses API `reasoning` param.
  * `'minimal'` is not an accepted value (only none/low/medium/high/xhigh), so it
  * clamps up to `'low'` — the smallest valid effort, preserving the latency intent.
+ *
+ * When reasoning is on, `summary: 'auto'` asks the API to return reasoning-summary
+ * items in the output, which parseResponsesOutput normalizes into reasoningContent
+ * (the raw chain of thought is never returned by the Responses API).
  */
 function mapReasoningEffortToOpenAI(
   effort: AIGenerateOptions['reasoningEffort'],
@@ -40,7 +44,10 @@ function mapReasoningEffortToOpenAI(
   if (!effort) {
     return undefined;
   }
-  return { effort: effort === 'minimal' ? 'low' : effort };
+  if (effort === 'none') {
+    return { effort: 'none' };
+  }
+  return { effort: effort === 'minimal' ? 'low' : effort, summary: 'auto' };
 }
 
 /** Map a ChatMessage's content to Responses input content (text + image parts). */
@@ -110,14 +117,16 @@ function mapToolsToResponses(tools: ToolDefinition[]): OpenAI.Responses.Function
   }));
 }
 
-/** Extract text, tool calls, and usage from a Responses API result. */
+/** Extract text, tool calls, reasoning summaries, and usage from a Responses API result. */
 function parseResponsesOutput(response: OpenAI.Responses.Response): {
   text: string;
   functionCalls?: AIGenerateResponse['functionCalls'];
   usage?: AIGenerateResponse['usage'];
+  reasoningContent?: string;
 } {
   let text = '';
   const functionCalls: NonNullable<AIGenerateResponse['functionCalls']> = [];
+  const reasoningParts: string[] = [];
 
   for (const item of response.output ?? []) {
     if (item.type === 'message') {
@@ -128,6 +137,14 @@ function parseResponsesOutput(response: OpenAI.Responses.Response): {
       }
     } else if (item.type === 'function_call') {
       functionCalls.push({ name: item.name, arguments: item.arguments, toolCallId: item.call_id });
+    } else if (item.type === 'reasoning') {
+      // Hosted models return summaries (requested via reasoning.summary); `content`
+      // carries raw reasoning_text only on models that expose it — take whichever exists.
+      const parts = item.summary?.length ? item.summary.map((s) => s.text) : (item.content ?? []).map((c) => c.text);
+      const chunk = parts.join('\n').trim();
+      if (chunk) {
+        reasoningParts.push(chunk);
+      }
     }
   }
 
@@ -139,7 +156,12 @@ function parseResponsesOutput(response: OpenAI.Responses.Response): {
       }
     : undefined;
 
-  return { text, usage, ...(functionCalls.length > 0 ? { functionCalls } : {}) };
+  return {
+    text,
+    usage,
+    reasoningContent: reasoningParts.length > 0 ? reasoningParts.join('\n\n') : undefined,
+    ...(functionCalls.length > 0 ? { functionCalls } : {}),
+  };
 }
 
 export interface OpenAIProviderConfig {
@@ -299,6 +321,7 @@ export class OpenAIProvider
         text: parsed.text,
         usage: parsed.usage,
         functionCalls: parsed.functionCalls,
+        reasoningContent: parsed.reasoningContent,
         metadata: {
           model: response.model,
           finishReason: response.status,
@@ -333,23 +356,28 @@ export class OpenAIProvider
 
       let fullText = '';
       let usage: AIGenerateResponse['usage'] | undefined;
+      let reasoningContent: string | undefined;
 
       for await (const event of stream) {
         if (event.type === 'response.output_text.delta') {
           fullText += event.delta;
           handler(event.delta);
-        } else if (event.type === 'response.completed' && event.response.usage) {
-          usage = {
-            promptTokens: event.response.usage.input_tokens,
-            completionTokens: event.response.usage.output_tokens,
-            totalTokens: event.response.usage.total_tokens,
-          };
+        } else if (event.type === 'response.completed') {
+          if (event.response.usage) {
+            usage = {
+              promptTokens: event.response.usage.input_tokens,
+              completionTokens: event.response.usage.output_tokens,
+              totalTokens: event.response.usage.total_tokens,
+            };
+          }
+          reasoningContent = parseResponsesOutput(event.response).reasoningContent;
         }
       }
 
       return {
         text: fullText,
         usage,
+        reasoningContent,
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
@@ -372,6 +400,7 @@ export class OpenAIProvider
     return {
       text: parsed.text,
       usage: parsed.usage,
+      reasoningContent: parsed.reasoningContent,
       metadata: {
         model: response.model,
         finishReason: response.status,
@@ -406,6 +435,7 @@ export class OpenAIProvider
       return {
         text: parsed.text,
         usage: parsed.usage,
+        reasoningContent: parsed.reasoningContent,
         metadata: {
           model: response.model,
           finishReason: response.status,
@@ -704,23 +734,28 @@ export class OpenAIProvider
 
       let fullText = '';
       let usage: AIGenerateResponse['usage'] | undefined;
+      let reasoningContent: string | undefined;
 
       for await (const event of stream) {
         if (event.type === 'response.output_text.delta') {
           fullText += event.delta;
           handler(event.delta);
-        } else if (event.type === 'response.completed' && event.response.usage) {
-          usage = {
-            promptTokens: event.response.usage.input_tokens,
-            completionTokens: event.response.usage.output_tokens,
-            totalTokens: event.response.usage.total_tokens,
-          };
+        } else if (event.type === 'response.completed') {
+          if (event.response.usage) {
+            usage = {
+              promptTokens: event.response.usage.input_tokens,
+              completionTokens: event.response.usage.output_tokens,
+              totalTokens: event.response.usage.total_tokens,
+            };
+          }
+          reasoningContent = parseResponsesOutput(event.response).reasoningContent;
         }
       }
 
       return {
         text: fullText,
         usage,
+        reasoningContent,
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');

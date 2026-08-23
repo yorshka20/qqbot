@@ -244,7 +244,8 @@ export class GeminiProvider
    *
    * Gemini 3.x models take `thinkingLevel` (an enum); `thinkingBudget` is the older
    * token-count dial and 0 is the only way to turn thinking off entirely. Returning
-   * undefined leaves `thinkingConfig` unset so the model applies its own default.
+   * undefined leaves the thinking level unset so the model applies its own default
+   * (the caller still sets `includeThoughts` on the config when thinking is on).
    */
   private static mapReasoningEffortToThinking(
     effort: AIGenerateOptions['reasoningEffort'],
@@ -452,6 +453,7 @@ export class GeminiProvider
     text: string;
     usage?: AIGenerateResponse['usage'];
     functionCalls?: AIGenerateResponse['functionCalls'];
+    reasoningContent?: string;
   }> {
     const config: Record<string, unknown> = {
       temperature: options?.temperature ?? 0.7,
@@ -497,9 +499,10 @@ export class GeminiProvider
       config.thinkingConfig = { thinkingBudget: 0 };
     } else {
       const thinkingConfig = GeminiProvider.mapReasoningEffortToThinking(options?.reasoningEffort);
-      if (thinkingConfig) {
-        config.thinkingConfig = thinkingConfig;
-      }
+      // includeThoughts asks the API to return thought-summary parts (part.thought === true) so
+      // they can be normalized into reasoningContent; it does not change how much the model thinks.
+      config.thinkingConfig =
+        thinkingConfig?.thinkingBudget === 0 ? thinkingConfig : { ...thinkingConfig, includeThoughts: true };
     }
     // Per-call HTTP timeout. The @google/genai SDK accepts httpOptions.timeout (ms);
     // we also wrap with Promise.race + setTimeout because the SDK has been observed
@@ -542,11 +545,17 @@ export class GeminiProvider
     // Extract text from the parts rather than the SDK's `response.text` getter: on a
     // tool-calling round that getter logs "there are non-text parts toolCall,toolResponse
     // in the response…" on every single call. Thought parts must stay out of the visible
-    // reply — the getter drops them, so anything replacing it has to drop them too.
+    // reply — the getter drops them, so anything replacing it has to drop them too;
+    // they are surfaced separately as reasoningContent.
     const text = candidate.content.parts
       .filter((p) => !p.thought)
       .map((p) => p.text ?? '')
       .join('');
+    const reasoningText = candidate.content.parts
+      .filter((p) => p.thought)
+      .map((p) => p.text ?? '')
+      .join('')
+      .trim();
     const meta = (
       response as {
         usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
@@ -556,8 +565,10 @@ export class GeminiProvider
       text: string;
       usage?: AIGenerateResponse['usage'];
       functionCalls?: AIGenerateResponse['functionCalls'];
+      reasoningContent?: string;
     } = {
       text: text ?? '',
+      reasoningContent: reasoningText || undefined,
       usage: meta
         ? {
             promptTokens: meta.promptTokenCount ?? 0,
@@ -696,6 +707,7 @@ export class GeminiProvider
         text: result.text,
         usage: result.usage,
         functionCalls: result.functionCalls,
+        reasoningContent: result.reasoningContent,
         resolvedModel: model,
       };
     }
@@ -724,6 +736,7 @@ export class GeminiProvider
       text: result.text,
       usage: result.usage,
       functionCalls: result.functionCalls,
+      reasoningContent: result.reasoningContent,
       resolvedModel: model,
     };
   }

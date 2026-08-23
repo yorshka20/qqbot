@@ -49,7 +49,7 @@ interface AnthropicMessagesRequestBody {
   system?: AnthropicSystemBlock[];
   tools?: AnthropicTool[];
   tool_choice?: { type: 'auto' | 'any' | 'none' | 'tool'; name?: string };
-  thinking?: { type: 'adaptive' | 'disabled' };
+  thinking?: { type: 'adaptive' | 'disabled'; display?: 'summarized' | 'omitted' };
   output_config?: { effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' };
 }
 
@@ -73,7 +73,7 @@ interface AnthropicMessagesResponse {
 
 interface AnthropicStreamChunk {
   type: string;
-  delta?: { text?: string };
+  delta?: { text?: string; thinking?: string };
   usage?: { input_tokens: number; output_tokens: number };
 }
 
@@ -93,11 +93,13 @@ type AnthropicToolResultBlock = {
   content: string | AnthropicTextBlock[];
   is_error?: boolean;
 };
+type AnthropicThinkingBlock = { type: 'thinking'; thinking: string; signature?: string };
 type AnthropicContentBlock =
   | AnthropicTextBlock
   | AnthropicImageBlock
   | AnthropicToolUseBlock
-  | AnthropicToolResultBlock;
+  | AnthropicToolResultBlock
+  | AnthropicThinkingBlock;
 type AnthropicContent = string | AnthropicContentBlock[];
 type AnthropicClientTool = {
   name: string;
@@ -122,9 +124,16 @@ const ANTHROPIC_DEFAULT_MAX_TOKENS = 8192;
  * Current Claude models take `output_config.effort` (an enum) and reject the older
  * `thinking.budget_tokens` with a 400; `thinking: {type:'disabled'}` is the only way
  * to turn thinking off, and the API accepts it only at effort `high` or below — so
- * the two fields are never emitted together. `minimal` has no Claude equivalent
- * below `low`, so it maps there.
+ * `disabled` and `output_config` are never emitted together. `minimal` has no Claude
+ * equivalent below `low`, so it maps there.
+ *
+ * Whenever thinking is on, `display: 'summarized'` is requested: the API default is
+ * `omitted`, under which thinking blocks arrive with an empty `thinking` field, so
+ * without it there is nothing to normalize into `reasoningContent`. `display` only
+ * controls visibility — thinking depth and billing are unchanged.
  */
+const ANTHROPIC_ADAPTIVE_THINKING = { type: 'adaptive', display: 'summarized' } as const;
+
 function mapReasoningEffortToAnthropic(
   effort: AIGenerateOptions['reasoningEffort'],
 ): Pick<AnthropicMessagesRequestBody, 'thinking' | 'output_config'> {
@@ -133,13 +142,13 @@ function mapReasoningEffortToAnthropic(
       return { thinking: { type: 'disabled' } };
     case 'minimal':
     case 'low':
-      return { output_config: { effort: 'low' } };
+      return { thinking: ANTHROPIC_ADAPTIVE_THINKING, output_config: { effort: 'low' } };
     case 'medium':
-      return { output_config: { effort: 'medium' } };
+      return { thinking: ANTHROPIC_ADAPTIVE_THINKING, output_config: { effort: 'medium' } };
     case 'high':
-      return { output_config: { effort: 'high' } };
+      return { thinking: ANTHROPIC_ADAPTIVE_THINKING, output_config: { effort: 'high' } };
     default:
-      return {};
+      return { thinking: ANTHROPIC_ADAPTIVE_THINKING };
   }
 }
 
@@ -171,6 +180,15 @@ function extractAnthropicText(blocks: AnthropicContentBlock[]): string {
     .map((block) => block.text)
     .join('\n')
     .trim();
+}
+
+function extractAnthropicReasoning(blocks: AnthropicContentBlock[]): string | undefined {
+  const text = blocks
+    .filter((block): block is AnthropicThinkingBlock => block.type === 'thinking')
+    .map((block) => block.thinking)
+    .join('\n\n')
+    .trim();
+  return text || undefined;
 }
 
 /** Convert our ChatMessage content (string | ContentPart[]) to Anthropic message content. */
@@ -307,6 +325,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       const tools = this.buildAnthropicTools(options);
       const explicitSystem = this.buildAnthropicSystemPrompt(options);
       let data: AnthropicMessagesResponse | null = null;
+      const reasoningParts: string[] = [];
 
       for (let continuation = 0; continuation <= ANTHROPIC_PAUSE_TURN_MAX_CONTINUATIONS; continuation++) {
         const requestBody: AnthropicMessagesRequestBody = {
@@ -324,6 +343,10 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         }
 
         data = await this.httpClient.post<AnthropicMessagesResponse>('/messages', requestBody);
+        const reasoning = extractAnthropicReasoning(data.content);
+        if (reasoning) {
+          reasoningParts.push(reasoning);
+        }
         if (data.stop_reason !== 'pause_turn') {
           break;
         }
@@ -347,6 +370,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       const result: AIGenerateResponse = {
         text,
         usage,
+        reasoningContent: reasoningParts.length > 0 ? reasoningParts.join('\n\n') : undefined,
         metadata: {
           model: data.model,
         },
@@ -409,6 +433,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       const reader = stream.getReader();
       const decoder = new TextDecoder();
       let fullText = '';
+      let fullReasoning = '';
       let usage: AIGenerateResponse['usage'] | undefined;
 
       try {
@@ -438,6 +463,10 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
                 handler(parsed.delta.text);
               }
 
+              if (parsed.type === 'content_block_delta' && parsed.delta?.thinking) {
+                fullReasoning += parsed.delta.thinking;
+              }
+
               if (parsed.type === 'message_stop' && parsed.usage) {
                 usage = {
                   promptTokens: parsed.usage.input_tokens,
@@ -457,6 +486,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       return {
         text: fullText,
         usage,
+        reasoningContent: fullReasoning.trim() || undefined,
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');

@@ -25,18 +25,21 @@ function baseConfig(): GeminiProviderConfig {
 
 interface RecordedCall {
   model: string;
-  thinkingConfig?: { thinkingLevel?: string; thinkingBudget?: number };
+  thinkingConfig?: { thinkingLevel?: string; thinkingBudget?: number; includeThoughts?: boolean };
 }
 
 /** Stub getClient() to record each generateContent call. */
-function installFakeClient(provider: GeminiProvider): RecordedCall[] {
+function installFakeClient(
+  provider: GeminiProvider,
+  responseParts: Array<{ text?: string; thought?: boolean }> = [{ text: 'hi' }],
+): RecordedCall[] {
   const calls: RecordedCall[] = [];
   const fakeClient = {
     models: {
       generateContent: async (req: { model: string; config?: { thinkingConfig?: RecordedCall['thinkingConfig'] } }) => {
         calls.push({ model: req.model, thinkingConfig: req.config?.thinkingConfig });
         return {
-          candidates: [{ content: { parts: [{ text: 'hi' }] }, finishReason: 'STOP' }],
+          candidates: [{ content: { parts: responseParts }, finishReason: 'STOP' }],
           text: 'hi',
           usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 },
         };
@@ -86,10 +89,10 @@ describe('GeminiProvider reasoning effort → thinkingConfig', () => {
 
   const cases: Array<[NonNullable<AIGenerateOptions['reasoningEffort']>, RecordedCall['thinkingConfig']]> = [
     ['none', { thinkingBudget: 0 }],
-    ['minimal', { thinkingLevel: 'MINIMAL' }],
-    ['low', { thinkingLevel: 'LOW' }],
-    ['medium', { thinkingLevel: 'MEDIUM' }],
-    ['high', { thinkingLevel: 'HIGH' }],
+    ['minimal', { thinkingLevel: 'MINIMAL', includeThoughts: true }],
+    ['low', { thinkingLevel: 'LOW', includeThoughts: true }],
+    ['medium', { thinkingLevel: 'MEDIUM', includeThoughts: true }],
+    ['high', { thinkingLevel: 'HIGH', includeThoughts: true }],
   ];
 
   for (const [effort, expected] of cases) {
@@ -103,13 +106,13 @@ describe('GeminiProvider reasoning effort → thinkingConfig', () => {
     });
   }
 
-  it('omits thinkingConfig when no effort is requested, leaving the model default', async () => {
+  it('requests only thought summaries when no effort is given, leaving the thinking level to the model', async () => {
     const provider = new GeminiProvider(baseConfig());
     const calls = installFakeClient(provider);
 
     await provider.generate('hi', promptOpts);
 
-    expect(calls[0].thinkingConfig).toBeUndefined();
+    expect(calls[0].thinkingConfig).toEqual({ includeThoughts: true });
   });
 
   it('unsigned tool_calls in history force thinking off, overriding the requested effort', async () => {
@@ -132,5 +135,35 @@ describe('GeminiProvider reasoning effort → thinkingConfig', () => {
     });
 
     expect(calls[0].thinkingConfig).toEqual({ thinkingBudget: 0 });
+  });
+});
+
+describe('GeminiProvider thought parts → reasoningContent', () => {
+  beforeEach(() => {
+    container.register(DITokens.RESOURCE_CLEANUP_SERVICE, {
+      useValue: { registerFileCleanup: () => {} },
+    });
+  });
+
+  it('splits thought parts into reasoningContent and keeps them out of text', async () => {
+    const provider = new GeminiProvider(baseConfig());
+    installFakeClient(provider, [
+      { text: 'pondering…', thought: true },
+      { text: 'hello' },
+    ]);
+
+    const res = await provider.generate('hi', promptOpts);
+
+    expect(res.text).toBe('hello');
+    expect(res.reasoningContent).toBe('pondering…');
+  });
+
+  it('leaves reasoningContent undefined when the response has no thought parts', async () => {
+    const provider = new GeminiProvider(baseConfig());
+    installFakeClient(provider);
+
+    const res = await provider.generate('hi', promptOpts);
+
+    expect(res.reasoningContent).toBeUndefined();
   });
 });

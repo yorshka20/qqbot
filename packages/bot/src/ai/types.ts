@@ -217,7 +217,10 @@ export interface AIGenerateResponse {
    */
   resolvedModel?: string;
   /**
-   * Raw reasoning_content returned by thinking/reasoning models (DeepSeek v4 thinking, Doubao, Minimax, etc.).
+   * The model's reasoning/thinking for this response, normalized by each provider from its own
+   * API shape (DeepSeek `reasoning_content`, Anthropic `thinking` blocks, Gemini thought parts,
+   * OpenAI Responses reasoning summaries, …). Providers own this normalization — the pipeline
+   * consumes only this field and must never parse provider-specific reasoning shapes.
    * Must be echoed back on the assistant message in subsequent tool-use rounds for DeepSeek, or the API
    * will reject the request with "reasoning_content must be passed back". Other providers ignore it.
    */
