@@ -14,6 +14,7 @@ import { createBaselineProducer } from '@/ai/prompt/producers/BaselineProducer';
 import { createModelIdentityProducer } from '@/ai/prompt/producers/ModelIdentityProducer';
 import { createSceneProducer } from '@/ai/prompt/producers/SceneProducer';
 import { createToolInstructProducer } from '@/ai/prompt/producers/ToolInstructProducer';
+import { createVoiceReplyProducer } from '@/ai/prompt/producers/VoiceReplyProducer';
 import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
 import { AuditEventStore } from '@/conversation/audit/AuditEventStore';
@@ -57,6 +58,9 @@ import { FishAudioProvider } from '@/services/tts/providers/FishAudioProvider';
 import { SovitsProvider } from '@/services/tts/providers/SovitsProvider';
 import { TTSManager } from '@/services/tts/TTSManager';
 import type { TTSProvider } from '@/services/tts/TTSProvider';
+import { resolveVoiceReplyConfig } from '@/services/tts/voiceReplyConfig';
+import { registerSpeakTool } from '@/tools/executors/SpeakToolExecutor';
+import type { ToolManager } from '@/tools/ToolManager';
 import { logger, setMessageLogFilter } from '@/utils/logger';
 import { registerConnectionClass } from './connection/ConnectionManager';
 
@@ -349,6 +353,26 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
             );
           });
       }
+    }
+    // ── LLM voice channel (`speak` tool + its prompt default) ──
+    // Registered here, not in ToolInitializer: the tool's voice enum and cue
+    // vocabulary are facts about the provider registered just above. The
+    // returned predicate is the tool's live availability gate; the prompt
+    // fragment shares it, so neither can outlive the backend's health.
+    const voiceReplyLimits = resolveVoiceReplyConfig(config.getTTSConfig()?.voiceReply);
+    const voiceReplyAvailable = registerSpeakTool({
+      toolManager: container.resolve<ToolManager>(DITokens.TOOL_MANAGER),
+      ttsManager,
+      limits: voiceReplyLimits,
+    });
+    if (voiceReplyAvailable) {
+      container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY).register(
+        createVoiceReplyProducer({
+          promptManager: container.resolve<PromptManager>(DITokens.PROMPT_MANAGER),
+          limits: voiceReplyLimits,
+          isAvailable: voiceReplyAvailable,
+        }),
+      );
     }
   } catch (err) {
     logger.warn('[Bootstrap] TTS provider registry init failed (non-fatal):', err);

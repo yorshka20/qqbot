@@ -2,7 +2,30 @@ import { singleton } from 'tsyringe';
 import type { HealthCheckManager } from '@/core/health';
 import { TtsProviderHealthAdapter } from '@/core/health/TtsProviderHealthAdapter';
 import { HealthStatus } from '@/core/health/types';
-import type { TTSProvider } from './TTSProvider';
+import { logger } from '@/utils/logger';
+import type { SynthesisResult, TTSProvider, TTSSynthesizeOptions } from './TTSProvider';
+
+/** A synthesis request routed by the manager rather than aimed at one provider. */
+export interface TTSSynthesizeRequest extends TTSSynthesizeOptions {
+  /** Preferred provider name; the manager default is used when omitted. */
+  provider?: string;
+  /**
+   * Restrict selection *and* fallback to backends that interpret inline cues.
+   * Callers whose text carries delivery cues must set this: falling back to a
+   * cue-less backend would deliver the words with the direction silently
+   * dropped, which is a different message, not a degraded one.
+   */
+  requireInlineCues?: boolean;
+}
+
+export interface TTSSynthesisOutcome {
+  result: SynthesisResult;
+  /** Provider that actually produced the audio. */
+  provider: TTSProvider;
+  /** True when the audio came from something other than the requested/default provider. */
+  usedFallback: boolean;
+  requestedProvider?: string;
+}
 
 /**
  * Registry + routing for bot-level TTS backends.
@@ -54,6 +77,11 @@ export class TTSManager {
       }
     }
     return this.getFirstUsableProviderSync(this.defaultName ? [this.defaultName] : []);
+  }
+
+  /** Configured default provider name, regardless of its current health. */
+  getDefaultName(): string | null {
+    return this.defaultName;
   }
 
   setDefault(name: string): void {
@@ -124,38 +152,127 @@ export class TTSManager {
     return true;
   }
 
-  async resolveProvider(preferredName?: string): Promise<{
+  /**
+   * Pick a provider for a request. `filter` narrows the eligible set to
+   * backends that can honor the request (e.g. cue support) — it applies to the
+   * preferred provider as well as to the fallback search, so an ineligible
+   * preference is never used just because it happens to be healthy.
+   */
+  async resolveProvider(
+    preferredName?: string,
+    opts?: { filter?: (provider: TTSProvider) => boolean },
+  ): Promise<{
     provider: TTSProvider | null;
     usedFallback: boolean;
     requestedProvider?: string;
   }> {
+    const filter = opts?.filter;
     if (preferredName) {
       const preferred = this.registry.get(preferredName);
       if (!preferred) {
         return { provider: null, usedFallback: false, requestedProvider: preferredName };
       }
-      if (await this.checkProviderHealth(preferredName)) {
+      if ((!filter || filter(preferred)) && (await this.checkProviderHealth(preferredName))) {
         return { provider: preferred, usedFallback: false, requestedProvider: preferredName };
       }
-      const fallback = await this.findFirstHealthyProvider([preferredName]);
+      const fallback = await this.findFirstHealthyProvider([preferredName], filter);
       return { provider: fallback, usedFallback: fallback !== null, requestedProvider: preferredName };
     }
 
     if (this.defaultName) {
       const defaultProvider = this.registry.get(this.defaultName);
-      if (defaultProvider && (await this.checkProviderHealth(this.defaultName))) {
+      if (
+        defaultProvider &&
+        (!filter || filter(defaultProvider)) &&
+        (await this.checkProviderHealth(this.defaultName))
+      ) {
         return { provider: defaultProvider, usedFallback: false };
       }
-      const fallback = await this.findFirstHealthyProvider([this.defaultName]);
+      const fallback = await this.findFirstHealthyProvider([this.defaultName], filter);
       return { provider: fallback, usedFallback: fallback !== null };
     }
 
-    const fallback = await this.findFirstHealthyProvider();
+    const fallback = await this.findFirstHealthyProvider([], filter);
     return { provider: fallback, usedFallback: false };
   }
 
-  async getFallbackProvider(excludeNames: string[]): Promise<TTSProvider | null> {
-    return this.findFirstHealthyProvider(excludeNames);
+  async getFallbackProvider(
+    excludeNames: string[],
+    filter?: (provider: TTSProvider) => boolean,
+  ): Promise<TTSProvider | null> {
+    return this.findFirstHealthyProvider(excludeNames, filter);
+  }
+
+  /** Whether a registered provider is configured and currently believed healthy. */
+  isProviderUsable(name: string): boolean {
+    const provider = this.registry.get(name);
+    return provider ? this.isProviderUsableSync(provider) : false;
+  }
+
+  /**
+   * Synthesize through the healthiest suitable provider, retrying once on a
+   * different provider if the chosen one fails at runtime. Every caller needs
+   * this same resolve → synthesize → mark-unhealthy → retry sequence, so it
+   * lives here instead of being re-implemented per call site.
+   *
+   * Throws when no provider can produce audio; the last error is propagated.
+   */
+  async synthesize(text: string, req: TTSSynthesizeRequest = {}): Promise<TTSSynthesisOutcome> {
+    const { provider: preferredName, requireInlineCues, ...opts } = req;
+    const filter = requireInlineCues ? (p: TTSProvider) => p.capabilities.inlineCues !== 'none' : undefined;
+    const resolved = await this.resolveProvider(preferredName, { filter });
+    const primary = resolved.provider;
+    if (!primary) {
+      throw new Error(
+        preferredName && !this.registry.has(preferredName)
+          ? `TTS provider "${preferredName}" is not registered`
+          : requireInlineCues
+            ? 'No healthy TTS provider with inline-cue support is available'
+            : 'No healthy TTS provider is available',
+      );
+    }
+
+    try {
+      const result = await primary.synthesize(text, opts);
+      this.markProviderHealthy(primary.name);
+      return {
+        result,
+        provider: primary,
+        usedFallback: resolved.usedFallback,
+        requestedProvider: resolved.requestedProvider,
+      };
+    } catch (primaryError) {
+      this.markProviderUnhealthy(
+        primary.name,
+        primaryError instanceof Error ? primaryError.message : String(primaryError),
+      );
+      const fallback = await this.getFallbackProvider([primary.name], filter);
+      if (!fallback) {
+        throw primaryError;
+      }
+      logger.warn(
+        `[TTSManager] Provider "${primary.name}" synthesis failed, retrying with fallback "${fallback.name}"`,
+        primaryError,
+      );
+      const result = await fallback.synthesize(text, { ...opts, voice: this.adaptVoice(opts.voice, fallback) });
+      this.markProviderHealthy(fallback.name);
+      return { result, provider: fallback, usedFallback: true, requestedProvider: resolved.requestedProvider };
+    }
+  }
+
+  /** Drop a voice name the target provider does not know, so it uses its own default. */
+  private adaptVoice(voice: string | undefined, provider: TTSProvider): string | undefined {
+    if (!voice || !provider.listVoices) {
+      return voice;
+    }
+    const voices = provider.listVoices();
+    if (voices.length === 0 || voices.includes(voice)) {
+      return voice;
+    }
+    logger.warn(
+      `[TTSManager] Voice "${voice}" not supported by "${provider.name}", falling back to that provider's default voice`,
+    );
+    return undefined;
   }
 
   markProviderHealthy(name: string): void {
@@ -233,9 +350,12 @@ export class TTSManager {
     return null;
   }
 
-  private async findFirstHealthyProvider(excludeNames: string[] = []): Promise<TTSProvider | null> {
+  private async findFirstHealthyProvider(
+    excludeNames: string[] = [],
+    filter?: (provider: TTSProvider) => boolean,
+  ): Promise<TTSProvider | null> {
     const excluded = new Set(excludeNames);
-    const candidates = [...this.registry.values()].filter((p) => !excluded.has(p.name));
+    const candidates = [...this.registry.values()].filter((p) => !excluded.has(p.name) && (!filter || filter(p)));
     if (candidates.length === 0) {
       return null;
     }

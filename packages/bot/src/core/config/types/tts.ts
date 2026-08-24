@@ -14,6 +14,8 @@
 // handler, avatar SpeechService) reads only from `TTSManager` — never
 // directly from this config blob.
 
+import type { VoiceReplyConfig } from '@/services/tts/voiceReplyConfig';
+
 export interface TTSProviderConfig {
   /** Discriminator: picks which concrete provider class to instantiate. */
   type: 'fish-audio' | 'sovits' | string;
@@ -24,6 +26,8 @@ export interface TTSProviderConfig {
 
 export interface TTSConfig {
   // ── Multi-provider shape ──
+  /** LLM-facing voice channel (the `speak` tool). See `voiceReplyConfig.ts` for defaults. */
+  voiceReply?: VoiceReplyConfig;
   /** Provider name (matches `providers[].name`) used when callers don't pass `--provider`. */
   defaultProvider?: string;
   providers?: TTSProviderConfig[];

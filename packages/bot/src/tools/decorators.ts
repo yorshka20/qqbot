@@ -14,6 +14,8 @@ export interface ToolOptions {
   examples?: string[];
   triggerKeywords?: string[];
   whenToUse?: string;
+  /** See {@link ToolSpec.available} — runtime gate for a tool backed by a service. */
+  available?: () => boolean;
 }
 
 /**
@@ -93,5 +95,6 @@ export function metadataToToolSpec(metadata: ToolMetadata): ToolSpec {
     examples: metadata.examples,
     triggerKeywords: metadata.triggerKeywords,
     whenToUse: metadata.whenToUse,
+    available: metadata.available,
   };
 }

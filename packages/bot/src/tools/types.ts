@@ -105,6 +105,21 @@ export interface ToolSpec {
 
   /** Detailed guidance for AI on when to use this tool */
   whenToUse?: string;
+
+  /**
+   * Runtime availability gate for tools backed by an external service, checked
+   * every time a catalog is built (so recovery re-adds the tool by itself).
+   *
+   * A tool declares its dependency here instead of being registered and
+   * unregistered as that service's health flips: registration then stays a
+   * statement about configuration, and health stays a per-request question.
+   * The alternative — re-registering on every health transition — makes the
+   * catalog a cache of health that can go stale in either direction.
+   *
+   * Omitted = always available. Must be cheap and synchronous (it runs per
+   * request); read a cached health flag, never probe.
+   */
+  available?: () => boolean;
 }
 
 /**

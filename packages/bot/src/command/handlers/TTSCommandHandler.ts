@@ -5,7 +5,6 @@ import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { MessageUtils } from '@/message/MessageUtils';
 import type { TTSManager } from '@/services/tts/TTSManager';
-import type { SynthesisResult, TTSProvider } from '@/services/tts/TTSProvider';
 import { uploadFileBuffer } from '@/utils/fileUpload';
 import { logger } from '@/utils/logger';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
@@ -160,39 +159,9 @@ export class TTSCommandHandler implements CommandHandler {
         `[TTSCommandHandler] Synthesizing via provider="${provider.name}" voice="${voice ?? '(default)'}" text="${text.substring(0, 50)}..."`,
       );
 
-      // ── Synthesize with automatic fallback on runtime failure ──
-      let selectedProvider: TTSProvider = provider;
-      let selectedVoice = voice;
-      let result: SynthesisResult;
-      try {
-        result = await selectedProvider.synthesize(text, { voice: selectedVoice });
-        this.ttsManager.markProviderHealthy(selectedProvider.name);
-      } catch (primaryError) {
-        this.ttsManager.markProviderUnhealthy(
-          selectedProvider.name,
-          primaryError instanceof Error ? primaryError.message : String(primaryError),
-        );
-        const fallback = await this.ttsManager.getFallbackProvider([selectedProvider.name]);
-        if (!fallback) {
-          throw primaryError;
-        }
-        logger.warn(
-          `[TTSCommandHandler] Provider "${selectedProvider.name}" synthesis failed, retrying with fallback "${fallback.name}"`,
-          primaryError,
-        );
-        if (selectedVoice && fallback.listVoices) {
-          const fallbackVoices = fallback.listVoices();
-          if (fallbackVoices.length > 0 && !fallbackVoices.includes(selectedVoice)) {
-            logger.warn(
-              `[TTSCommandHandler] Voice "${selectedVoice}" not supported by fallback "${fallback.name}", using provider default voice`,
-            );
-            selectedVoice = undefined;
-          }
-        }
-        result = await fallback.synthesize(text, { voice: selectedVoice });
-        this.ttsManager.markProviderHealthy(fallback.name);
-        selectedProvider = fallback;
-      }
+      // Runtime failures and the voice-compat check on retry are handled by the manager.
+      const outcome = await this.ttsManager.synthesize(text, { voice, provider: provider.name });
+      const result = outcome.result;
       const audioBuffer = Buffer.from(result.bytes);
       const format = result.mime === 'audio/wav' ? 'wav' : 'mp3';
 

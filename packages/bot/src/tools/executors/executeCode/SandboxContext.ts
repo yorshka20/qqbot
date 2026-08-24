@@ -1,7 +1,7 @@
 // SandboxContext - builds the execution environment for user code
 
 import { logger } from '@/utils/logger';
-import type { ToolManager } from '../../ToolManager';
+import { ToolManager } from '../../ToolManager';
 import type { ToolExecutionContext, ToolExecutor, ToolResult } from '../../types';
 import type { SandboxConfig, SandboxConsole, SandboxGlobals, SandboxToolFunction, SandboxToolResult } from './types';
 
@@ -85,9 +85,13 @@ export class SandboxContext {
     const functions: SandboxToolFunction[] = [];
 
     for (const spec of toolSpecs) {
-      // Skip internal tools and self (prevent recursion)
+      // Skip internal tools, self (prevent recursion), and tools whose backing
+      // service is currently down.
       const visibility = spec.visibility ?? {};
       if (visibility.internal || (!visibility.reply && !visibility.subagent) || spec.name === 'execute_code') {
+        continue;
+      }
+      if (!ToolManager.isToolAvailable(spec)) {
         continue;
       }
 

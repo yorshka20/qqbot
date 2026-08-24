@@ -1,5 +1,12 @@
 import { logger } from '@/utils/logger';
-import type { SynthesisChunk, SynthesisResult, TTSProvider, TTSSynthesizeOptions } from '../TTSProvider';
+import { renderCues } from '../speechCues';
+import type {
+  SynthesisChunk,
+  SynthesisResult,
+  TTSCapabilities,
+  TTSProvider,
+  TTSSynthesizeOptions,
+} from '../TTSProvider';
 
 export interface SovitsProviderOptions {
   name?: string;
@@ -75,6 +82,9 @@ async function readHttpErrorDetail(response: Response): Promise<string> {
 
 export class SovitsProvider implements TTSProvider {
   readonly name: string;
+  // GPT-SoVITS has no cue vocabulary: an unremoved `[happy]` is read out loud
+  // as three syllables. Speed/volume are fixed by the reference audio.
+  readonly capabilities: TTSCapabilities = { inlineCues: 'none', cueVocabulary: [], prosody: false };
 
   private readonly endpoint: string;
   private readonly bodyTemplate: Record<string, unknown>;
@@ -147,7 +157,7 @@ export class SovitsProvider implements TTSProvider {
 
   async synthesize(text: string, opts?: TTSSynthesizeOptions): Promise<SynthesisResult> {
     const voice = opts?.voice ?? this.defaultVoice;
-    const trimmedText = text.trim();
+    const trimmedText = renderCues(text, this.capabilities.inlineCues).trim();
     const body = substitutePlaceholders(
       { ...this.bodyTemplate, streaming_mode: false, media_type: 'wav' },
       { text: trimmedText, voice },
@@ -187,7 +197,7 @@ export class SovitsProvider implements TTSProvider {
 
     const sampleRate = this.pcmSampleRate;
     const voice = opts?.voice ?? this.defaultVoice;
-    const trimmedText = text.trim();
+    const trimmedText = renderCues(text, this.capabilities.inlineCues).trim();
     const body = substitutePlaceholders(
       { ...this.bodyTemplate, streaming_mode: true, media_type: 'raw' },
       { text: trimmedText, voice },

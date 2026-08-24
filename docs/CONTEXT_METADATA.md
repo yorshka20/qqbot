@@ -168,6 +168,30 @@ These keys are used for command execution and permission checking.
 
 ---
 
+## 6. Per-Run Delivery Quotas
+
+Counters scoped to one LLM generation run. A tool that performs a **real send**
+reads its counter, refuses past the cap, and increments it after the send
+succeeds — so one generation cannot flood the chat.
+
+### `sendMessageCount`
+
+- **Type**: `number | undefined`
+- **Set By**: `SendMessageToolExecutor`
+- **Read By**: `SendMessageToolExecutor`
+- **Purpose**: `send_message` calls so far this run; cap is `agenda.llmLimits.maxSendsPerRun`
+- **Lifecycle**: Absent until the first send; deliberately **not** reset across provider-fallback retries (the sends already happened)
+
+### `voiceReplyCount`
+
+- **Type**: `number | undefined`
+- **Set By**: `SpeakToolExecutor`
+- **Read By**: `SpeakToolExecutor`
+- **Purpose**: `speak` voice messages so far this run; cap is `tts.voiceReply.maxPerReply`
+- **Lifecycle**: Same as above — a delivered voice message is not undone by a retry
+
+---
+
 ## Metadata Flow by Stage
 
 ### RECEIVE Stage

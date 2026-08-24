@@ -924,6 +924,23 @@
   // fish-audio providers array. No migration required for existing configs.
   "tts": {
     "defaultProvider": "fish-audio",
+    // LLM-facing voice channel: registers the `speak` tool at reply stage, so
+    // the reply LLM can answer with a voice message it composed itself —
+    // inline `[happy]` / `[whispering]` / `[laughing]` cues (Fish Audio S2;
+    // S1 uses `(happy)`, GPT-SoVITS has no cue support and the markers are
+    // stripped), an optional voice switch from `voiceMap`, and a speed knob.
+    //
+    // `maxTextLength` counts spoken characters only (cues are free). It and
+    // `maxPerReply` are what keep voice from becoming the default reply mode.
+    // Add `"provider": "<name>"` to synthesize with something other than
+    // `defaultProvider`. `enabled: false` takes the tool away from the LLM
+    // without touching the `/tts` command. Omitting the block keeps the
+    // defaults below.
+    "voiceReply": {
+      "enabled": true,
+      "maxPerReply": 2,
+      "maxTextLength": 120
+    },
     "providers": [
       {
         "type": "fish-audio",

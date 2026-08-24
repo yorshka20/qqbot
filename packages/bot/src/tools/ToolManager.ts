@@ -117,6 +117,21 @@ export class ToolManager {
     return Array.from(this.tools.values());
   }
 
+  /**
+   * Evaluate a tool's `available` gate. A throwing predicate hides the tool
+   * rather than breaking the whole catalog — one misbehaving extension point
+   * must not cost the model every other tool.
+   */
+  static isToolAvailable(spec: ToolSpec): boolean {
+    if (!spec.available) return true;
+    try {
+      return spec.available();
+    } catch (error) {
+      logger.warn(`[ToolManager] availability check for "${spec.name}" threw; treating as unavailable:`, error);
+      return false;
+    }
+  }
+
   getExecutor(name: string): ToolExecutor | null {
     return this.executors.get(name.toLowerCase()) || null;
   }
@@ -134,6 +149,9 @@ export class ToolManager {
   getToolsByScope(scope: ToolScope, opts?: { isAdmin?: boolean }): ToolSpec[] {
     const isAdmin = opts?.isAdmin ?? false;
     return this.getAllTools().filter((t) => {
+      // Dependency gate before the scope checks: a tool whose backing service
+      // is down is unavailable everywhere, not just in one scope.
+      if (!ToolManager.isToolAvailable(t)) return false;
       const vis: ToolVisibility = t.visibility ?? {};
       if (scope === 'reply') return vis.reply !== undefined;
       if (scope === 'subagent') {

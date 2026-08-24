@@ -480,8 +480,10 @@ Text-to-speech is a **bot-core capability** (not part of the LLM stack). It live
 
 | Piece | Role |
 |-------|------|
-| `TTSManager` | Registry of `TTSProvider` instances, default provider (`tts.defaultProvider`), health-aware selection, and ordered fallback when the preferred or default provider is unavailable or fails a probe. |
-| `TTSProvider` | Interface for backends (`synthesize`, optional `synthesizeStream`, optional `warmup`, optional `healthCheck`). |
+| `TTSManager` | Registry of `TTSProvider` instances, default provider (`tts.defaultProvider`), health-aware selection, and ordered fallback when the preferred or default provider is unavailable or fails a probe. `synthesize()` is the shared resolve → synthesize → mark-unhealthy → retry path used by every caller. |
+| `TTSProvider` | Interface for backends (`synthesize`, optional `synthesizeStream`, optional `warmup`, optional `healthCheck`), plus a required `capabilities` descriptor (`inlineCues`, `cueVocabulary`, `prosody`). |
+| `speechCues` | Renders a speech script into a backend's wire text (`renderCues`) and recovers the spoken content for history (`stripCues`). |
+| `SpeakToolExecutor` | The `speak` tool — the reply LLM's voice channel. See [Voice replies](#voice-replies-speak-tool). |
 | `FishAudioProvider` / `SovitsProvider` | Concrete providers; each implements `healthCheck()` (HTTP probe to the configured endpoint; SoVITS uses the same non-streaming shape as `synthesize` for POST). |
 | `TtsProviderHealthAdapter` | Wraps a `TTSProvider` as `HealthCheckable`; service name is `provider.name` so `HealthCheckManager` and `TTSManager` share one namespace. |
 | `TTSCommandHandler` | `/tts` command: resolves a provider via `TTSManager.resolveProvider()` (respects health), synthesizes audio, and on failure marks the provider unhealthy and retries another registered provider when possible. |
@@ -491,6 +493,48 @@ Text-to-speech is a **bot-core capability** (not part of the LLM stack). It live
 1. `bootstrapApp()` builds a `TTSManager`, instantiates providers from `tts` config (`tts.providers[]`, or the legacy single-provider `apiKey` shape for Fish Audio).
 2. `ttsManager.attachHealthManager(healthCheckManager)` registers each provider with `HealthCheckManager` before the manager is exposed on DI.
 3. Optional `warmup()` runs fire-and-forget for providers that support it (e.g. SoVITS cold start).
+4. `registerSpeakTool()` registers the `speak` tool when the configured provider supports inline cues, and returns the availability predicate that gates both the tool and its prompt fragment.
+
+### Delivery cues and provider capabilities
+
+Callers pass a **speech script**: plain text that may carry inline `[cue]`
+markers (`[happy]`, `[whispering]`, `[laughing]`, `[break]`). Rendering that
+script into wire text is the **provider's** job, not the caller's — otherwise
+every call site would branch on the resolved backend, and the fallback path
+(which can swap providers mid-call) would emit markers into a backend that
+reads them aloud.
+
+| Backend | `inlineCues` | Effect |
+|---------|--------------|--------|
+| Fish Audio, S2-class model (`s2*`) | `brackets` | Cues pass through; free-form descriptions allowed. |
+| Fish Audio, any other model | `none` | Cues stripped. S1's `(cue)` dialect is deliberately unsupported — the project standardizes on S2. |
+| GPT-SoVITS | `none` | Cues stripped (it would otherwise read them out). |
+
+`TTSSynthesizeRequest.requireInlineCues` restricts both selection and fallback
+to cue-capable backends. Callers whose text carries cues must set it: silently
+delivering the words without the direction is a different message, not a
+degraded one.
+
+### Voice replies (`speak` tool)
+
+`tts.voiceReply` exposes the reply LLM's own voice channel. The model authors a
+short script with cues, optionally switches voice (`voiceMap` keys) and speed,
+and the synthesized audio is sent to the current chat as a voice message —
+through the same `MessageAPI.sendFromContext` egress `SendSystem` uses.
+
+- Registered at bootstrap, not via `@Tool`: the `voice` enum and the taught cue
+  vocabulary are runtime facts of the configured provider.
+- Requires a cue-capable backend; QQ sources only (the Discord adapter has no
+  voice-message segment).
+- Per-reply quota (`maxPerReply`, metadata `voiceReplyCount`) and a spoken-length
+  cap (`maxTextLength`, cues excluded) keep voice from becoming the default
+  reply mode.
+- The send bypasses `SendSystem`, so the executor persists the spoken text
+  (cues stripped, `[语音]` prefix) via `appendBotMessageToSession` — same
+  rich-media invariant as `generate_image`.
+- Behavioral guidance lives in `prompts/llm/tool.voice_reply.txt`, injected by
+  `VoiceReplyProducer` in the `tool` layer under the same availability
+  predicate as the tool.
 
 ### Avatar package
 
@@ -528,7 +572,7 @@ The reply pipeline inside `ReplyPipelineOrchestrator` is composed of ordered sta
 
 #### Reply delivery contract
 
-The reply-stage agentic loop separates content from control. The model has four
+The reply-stage agentic loop separates content from control. The model has these
 delivery actions with non-overlapping semantics:
 
 - **Final text output** — always delivered (long structured text may auto-render
@@ -541,6 +585,10 @@ delivery actions with non-overlapping semantics:
 - **`send_card`** — renders a card image and queues it on the context
   (`cardSent`); history stores the deck as readable text (`cardDeckToHistoryText`),
   never raw JSON.
+- **`speak`** — synthesizes a short voice message and sends it immediately
+  (real send, like `send_message`), capped by `tts.voiceReply.maxPerReply`.
+  Present only when a cue-capable TTS backend is configured and healthy. See
+  [Voice replies](#voice-replies-speak-tool).
 - **`end_turn`** — explicit "nothing more to send". The tool sets
   `ToolResult.endTurn`, which `LLMService.generateWithTools` turns into
   stopReason `end_turn_tool` — the loop exits without demanding another model
@@ -605,6 +653,29 @@ export class SearchExecutor implements ToolExecutor {
 - `autoRegisterTools()`: Discovers all `@Tool()` decorated classes and registers them
 - `executeTool(call, context, hookManager)`: Execute a tool, firing `onToolBeforeExecute` / `onToolExecuted` hooks
 - Executors are created on-demand via DI (`tsyringe`)
+
+### Service-dependency gate (`ToolSpec.available`)
+
+A tool backed by an external service declares a cheap synchronous predicate:
+
+```typescript
+available: () => ttsManager.isProviderUsable('fish-audio')
+```
+
+`getToolsByScope()` evaluates it before any scope/admin check (so an unavailable
+tool disappears from every scope, including the `execute_code` sandbox catalog),
+and a predicate that throws hides only its own tool. Because it is re-evaluated
+per catalog build, recovery re-adds the tool with no bookkeeping.
+
+Registration then means "this is configured", and the predicate means "this
+works right now" — the alternative, re-registering on each health transition,
+turns the catalog into a cache of health that can go stale in either direction.
+`ToolManager` has no `unregisterTool` for exactly this reason. The predicate must
+read a cached flag (e.g. `HealthCheckManager.isServiceHealthySync`), never probe.
+
+First consumer: `speak` (TTS backend health). Other candidates when their
+services get a sync health flag: `generate_image`, `research` / `search`,
+`analyze_video`, `query_database`.
 
 ### Plugin-registered tools
 

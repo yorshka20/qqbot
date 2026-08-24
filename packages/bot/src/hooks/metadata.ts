@@ -144,6 +144,12 @@ export interface HookContextMetadata {
    * generation can't flood the chat with immediate sends.
    */
   sendMessageCount?: number;
+  /**
+   * Number of voice messages sent through the `speak` tool in the current LLM
+   * loop run. Incremented by SpeakToolExecutor and checked against the
+   * per-reply cap, so one generation can't bury the chat in audio.
+   */
+  voiceReplyCount?: number;
 }
 
 type MetadataKeys = keyof HookContextMetadata;
@@ -173,6 +179,7 @@ const DEFAULT_METADATA: Required<
     | 'aiUsage'
     | 'agendaChainDepth'
     | 'sendMessageCount'
+    | 'voiceReplyCount'
   >
 > = {
   sessionId: '',
@@ -214,6 +221,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'aiUsage',
   'agendaChainDepth',
   'sendMessageCount',
+  'voiceReplyCount',
 ];
 
 /**
