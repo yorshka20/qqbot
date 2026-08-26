@@ -1,9 +1,12 @@
 // Serper.dev HTTP API client (Google SERP proxy)
+//
+// Deliberately not `HealthCheckable`: every request to this API is billed, so
+// the only probe that would reveal an exhausted or rejected key costs a credit
+// to answer a question the next real search answers for free. SearchService
+// attempts it directly and falls through to the next configured provider when
+// it fails.
 
 import type { SerperConfig } from '@/core/config/types/mcp';
-import type { HealthCheckOptions, HealthCheckResult } from '@/core/health';
-import { HealthStatus } from '@/core/health';
-import type { HealthCheckable } from '@/core/health/types';
 import { logger } from '@/utils/logger';
 import type { SearchOptions, SearchResult } from '../searxng/types';
 import type { SerperSearchResponse } from './types';
@@ -11,7 +14,7 @@ import type { SerperSearchResponse } from './types';
 const DEFAULT_ENDPOINT = 'https://google.serper.dev/search';
 const DEFAULT_TIMEOUT_MS = 10000;
 
-export class SerperClient implements HealthCheckable {
+export class SerperClient {
   private apiKey: string;
   private endpoint: string;
   private glOverride?: string;
@@ -24,47 +27,6 @@ export class SerperClient implements HealthCheckable {
     this.glOverride = config.gl;
     this.hlOverride = config.hl;
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  }
-
-  getServiceName(): string {
-    return 'Serper';
-  }
-
-  async checkHealth(options?: HealthCheckOptions): Promise<HealthCheckResult> {
-    const timeout = options?.timeout ?? 2000;
-    const startTime = Date.now();
-
-    if (!this.apiKey) {
-      return {
-        status: HealthStatus.UNHEALTHY,
-        timestamp: Date.now(),
-        responseTime: 0,
-        message: 'Serper API key not configured',
-      };
-    }
-
-    try {
-      const host = new URL(this.endpoint).origin;
-      const response = await fetch(host, {
-        method: 'GET',
-        signal: AbortSignal.timeout(timeout),
-      });
-      return {
-        status: HealthStatus.HEALTHY,
-        timestamp: Date.now(),
-        responseTime: Date.now() - startTime,
-        message: `Service responded with status ${response.status}`,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.warn(`[SerperClient] Health check failed: ${errorMessage}`);
-      return {
-        status: HealthStatus.UNHEALTHY,
-        timestamp: Date.now(),
-        responseTime: Date.now() - startTime,
-        message: errorMessage,
-      };
-    }
   }
 
   /**

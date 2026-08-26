@@ -1011,6 +1011,12 @@
       //   "https": "http://proxy:8080"
       // }
     },
+    // Serper.dev (Google SERP API) — used when serper is in the search provider order
+    // "serper": {
+    //   "apiKey": "your-serper-api-key",
+    //   "gl": "cn", // Google country code
+    //   "hl": "zh-cn" // Google interface language
+    // },
     "server": {
       "enabled": false, // false = direct API mode, true = MCP server mode
       "runtime": "bunx", // "bunx" | "npx" | "npm"
@@ -1018,7 +1024,15 @@
     },
     "search": {
       "enabled": true,
-      "mode": "direct", // "direct" (SearXNG API) or "mcp" (MCP server)
+      "provider": "searxng", // "searxng" (self-hosted) or "serper" (Serper.dev Google SERP API)
+      // Providers tried, in order, when the primary fails. Mirrors
+      // ai.llmFallback.fallbackOrder — do NOT repeat the primary here. A
+      // provider whose credentials are missing is skipped at startup.
+      // Providers are attempted directly with no pre-flight health probe:
+      // metered backends (Serper) would be billed just to be asked whether
+      // they work, and the next real search answers that for free.
+      // "fallbackOrder": ["searxng"],
+      "mode": "direct", // "direct" (SearXNG API) or "mcp" (MCP server). Only applies to the searxng provider.
       "autoTrigger": true, // Automatically trigger search when needed
       "triggerStrategy": "llm", // "llm" (use LLM to judge) | "keywords" | "none"
       "maxResults": 5, // Maximum number of search results

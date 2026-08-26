@@ -83,6 +83,10 @@ export interface SearchConfig {
   enabled: boolean;
   // Backend provider: "searxng" (self-hosted) or "serper" (Serper.dev Google SERP API). Default "searxng".
   provider?: SearchProvider;
+  // Providers tried, in order, after `provider` fails. Mirrors
+  // ai.llmFallback.fallbackOrder: the primary is NOT repeated here. A provider
+  // whose credentials are missing is skipped. Omit for no fallback.
+  fallbackOrder?: SearchProvider[];
   // Search mode for SearXNG backend: "direct" (SearXNG API) or "mcp" (MCP server). Ignored when provider=serper.
   mode: SearchMode;
   // Whether to automatically trigger search
@@ -104,9 +108,9 @@ export interface SearchConfig {
 export interface MCPConfig {
   // Whether MCP feature is enabled
   enabled: boolean;
-  // SearXNG configuration (used when search.provider="searxng")
+  // SearXNG configuration (used when searxng is in the search provider order)
   searxng: SearXNGConfig;
-  // Serper.dev configuration (used when search.provider="serper")
+  // Serper.dev configuration (used when serper is in the search provider order)
   serper?: SerperConfig;
   // MCP server process configuration
   server: MCPServerConfig;

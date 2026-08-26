@@ -3,6 +3,7 @@
 import { inject, injectable } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/services/retrieval';
+import type { SearchResult } from '@/services/retrieval/searxng/types';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -45,17 +46,28 @@ export class SearchToolExecutor extends BaseToolExecutor {
       return this.error('请提供搜索关键词', 'Missing required parameter: query');
     }
 
-    if (!this.retrievalService?.isSearchEnabled()) {
-      logger.info('[SearchToolExecutor] Search is not enabled, skipping search');
-      return this.success('', { query, results: [] });
+    if (!this.retrievalService.isSearchEnabled()) {
+      return this.error('联网搜索未启用', 'search is not enabled');
     }
 
     logger.info(`[SearchToolExecutor] Executing search for query: ${query}`);
 
-    const searchResults = await this.retrievalService.search(query);
+    let searchResults: SearchResult[];
+    try {
+      searchResults = await this.retrievalService.search(query);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(`[SearchToolExecutor] Search failed for query "${query}": ${message}`);
+      // Distinct from an empty result on purpose: the model must not turn a
+      // broken backend into "there is nothing about this".
+      return this.error(
+        `联网搜索后端故障，本次查询没有执行：${message}。这不等于「没有搜到内容」，不要据此下结论。`,
+        message,
+      );
+    }
 
     if (searchResults.length === 0) {
-      return this.success('', { query, results: [] });
+      return this.success('搜索已执行，但没有匹配的结果。', { query, results: [] });
     }
 
     const formattedResults = this.retrievalService.formatSearchResults(searchResults);

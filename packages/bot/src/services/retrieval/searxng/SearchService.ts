@@ -3,7 +3,7 @@
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { parseSearchDecision as parseSearchDecisionShared } from '@/ai/utils/llmJsonExtract';
-import type { MCPConfig } from '@/core/config/types/mcp';
+import type { MCPConfig, SearchProvider } from '@/core/config/types/mcp';
 import type { HealthCheckManager } from '@/core/health';
 import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
@@ -38,6 +38,8 @@ export class SearchService {
   private searxngMcpClient: SearxngMcpClient | null = null;
   private config: MCPConfig | null = null;
   private maxResults: number;
+  /** Providers to try in order; only those whose client could be built. */
+  private readonly providerOrder: SearchProvider[] = [];
 
   private promptManager: PromptManager;
   private healthCheckManager: HealthCheckManager;
@@ -52,24 +54,46 @@ export class SearchService {
     this.pageContentFetchService = pageContentFetchService;
 
     if (config?.enabled) {
-      const provider = config.search.provider ?? 'searxng';
-      if (provider === 'serper') {
-        if (!config.serper?.apiKey) {
-          logger.warn('[SearchService] provider=serper but mcp.serper.apiKey is missing; search will be disabled');
-        } else {
-          this.serperClient = new SerperClient(config.serper);
-          logger.info('[SearchService] Initialized with Serper provider');
+      // Every provider in the order gets its client up front: a fallback that
+      // has to be constructed at the moment the primary breaks is a fallback
+      // that first fails on whatever the constructor needs.
+      const configured = [config.search.provider ?? 'searxng', ...(config.search.fallbackOrder ?? [])];
+      for (const name of new Set(configured)) {
+        if (this.buildBackend(name, config)) {
+          this.providerOrder.push(name);
         }
-      } else if (config.search.mode === 'direct') {
-        this.searxngClient = new SearXNGClient(config.searxng);
-        logger.info('[SearchService] Initialized with SearXNG provider (Direct mode)');
-      } else if (config.server.enabled) {
-        this.searxngMcpClient = new SearxngMcpClient(config);
-        logger.info('[SearchService] Initialized with SearXNG provider (MCP mode)');
-      } else {
-        logger.warn('[SearchService] search.mode=mcp but mcp.server.enabled is false; search will be disabled');
       }
+      logger.info(
+        this.providerOrder.length > 0
+          ? `[SearchService] Initialized | provider order: ${this.providerOrder.join(' → ')}`
+          : '[SearchService] Initialized with no usable search provider — search will fail',
+      );
     }
+  }
+
+  /** Construct one provider's client. Returns false when it cannot be used at all. */
+  private buildBackend(name: SearchProvider, config: MCPConfig): boolean {
+    if (name === 'serper') {
+      if (!config.serper?.apiKey) {
+        logger.warn('[SearchService] serper is in the provider order but mcp.serper.apiKey is missing; skipping it');
+        return false;
+      }
+      this.serperClient = new SerperClient(config.serper);
+      return true;
+    }
+
+    if (config.search.mode === 'direct') {
+      this.searxngClient = new SearXNGClient(config.searxng);
+      return true;
+    }
+    if (config.server.enabled) {
+      this.searxngMcpClient = new SearxngMcpClient(config);
+      return true;
+    }
+    logger.warn(
+      '[SearchService] searxng is in the provider order with mode=mcp but mcp.server.enabled is false; skipping it',
+    );
+    return false;
   }
 
   /**
@@ -142,6 +166,13 @@ export class SearchService {
     return { done: true, refinedText: resultSummaries };
   }
 
+  /**
+   * Only SearXNG is registered: its probe is a free request to a self-hosted
+   * instance. Serper has no free probe — the only request that reveals an
+   * exhausted key is a billed SERP call, and `/healthcheck all` would spend one
+   * per invocation. Its liveness comes from the search requests themselves,
+   * which fall through to the next provider on failure.
+   */
   registerHealthCheck(): void {
     if (this.searxngClient) {
       this.healthCheckManager.registerService(this.searxngClient, {
@@ -150,23 +181,26 @@ export class SearchService {
         retries: 0,
       });
     }
-    if (this.serperClient) {
-      this.healthCheckManager.registerService(this.serperClient, {
-        cacheDuration: 60000,
-        timeout: 2000,
-        retries: 0,
-      });
-    }
   }
 
+  /**
+   * Run one web search, walking the configured provider order.
+   *
+   * Throws when no provider could serve the request — disabled, no client, or
+   * every provider in the order failed. An empty array therefore means one
+   * thing only: a backend answered and had nothing. Callers that treat search
+   * as optional enrichment catch and carry on; the LLM-facing tool needs the
+   * distinction, because "every backend refused" reported as "nothing was
+   * found" is a different claim, not a degraded one.
+   */
   async search(query: string, options?: SearchOptions): Promise<SearchResult[]> {
-    if (!this.config || !this.config.enabled) {
-      logger.warn('[SearchService] Search is not enabled or configured');
-      return [];
+    if (!this.config?.enabled) {
+      throw new Error('Search is not enabled or configured');
+    }
+    if (this.providerOrder.length === 0) {
+      throw new Error('No search provider is usable (check mcp.search.provider / fallbackOrder and credentials)');
     }
 
-    const provider = this.config.search.provider ?? 'searxng';
-    const searchMode = this.config.search.mode;
     const maxResults = options?.maxResults || this.maxResults;
     // Merge config defaults: language (e.g. "zh"), engines (e.g. "baidu,bing"). No default timeRange: prefer year-in-keywords for timeliness.
     const mergedOptions: SearchOptions = {
@@ -176,60 +210,56 @@ export class SearchService {
       engines: options?.engines ?? this.config.search.engines,
     };
 
-    try {
-      let results: SearchResult[] = [];
-
-      if (provider === 'serper') {
-        if (!this.serperClient) {
-          logger.warn('[SearchService] provider=serper but client not initialized (missing apiKey?), skipping search');
-          return [];
+    const skipped: string[] = [];
+    for (const name of this.providerOrder) {
+      try {
+        const results = await this.runProvider(name, query, mergedOptions);
+        if (skipped.length > 0) {
+          logger.info(`[SearchService] Served by fallback provider "${name}" after: ${skipped.join('; ')}`);
         }
-        if (this.healthCheckManager && !(await this.healthCheckManager.isServiceHealthy('Serper'))) {
-          logger.warn('[SearchService] Serper service is not available, skipping search');
-          return [];
-        }
-        results = await this.serperClient.webSearch(query, mergedOptions);
-      } else if (searchMode === 'direct') {
-        if (!this.searxngClient) {
-          logger.warn('[SearchService] SearXNG client not initialized');
-          return [];
-        }
-        if (this.healthCheckManager && !(await this.healthCheckManager.isServiceHealthy('SearXNG'))) {
-          logger.warn('[SearchService] SearXNG service is not available, skipping search');
-          return [];
-        }
-        results = await this.searxngClient.webSearch(query, mergedOptions);
-      } else if (searchMode === 'mcp') {
-        if (!this.searxngMcpClient?.hasTool(SEARXNG_MCP_TOOL)) {
-          logger.warn(`[SearchService] MCP tool ${SEARXNG_MCP_TOOL} is unavailable, skipping search`);
-          return [];
-        }
-        try {
-          const toolResult = await this.searxngMcpClient.callTool(SEARXNG_MCP_TOOL, {
-            query,
-            pageno: mergedOptions.pageno ?? 1,
-            ...(mergedOptions.timeRange && { time_range: mergedOptions.timeRange }),
-            ...(mergedOptions.language && { language: mergedOptions.language }),
-            ...(mergedOptions.engines && { engines: mergedOptions.engines }),
-            ...(mergedOptions.safesearch !== undefined && { safesearch: mergedOptions.safesearch }),
-          });
-          const resultText = toolResult.content[0]?.text || '';
-          results = this.parseMCPSearchResults(resultText);
-        } catch (error) {
-          logger.warn(
-            `[SearchService] MCP tool call failed: ${error instanceof Error ? error.message : String(error)}, skipping search`,
-          );
-          return [];
-        }
+        return results.slice(0, maxResults);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        skipped.push(`${name}: ${reason}`);
+        logger.warn(`[SearchService] Provider "${name}" could not serve the query: ${reason}`);
       }
-
-      return results.slice(0, maxResults);
-    } catch (error) {
-      logger.warn(
-        `[SearchService] Search failed: ${error instanceof Error ? error.message : String(error)}, returning empty results`,
-      );
-      return [];
     }
+
+    throw new Error(`All search providers failed — ${skipped.join('; ')}`);
+  }
+
+  /**
+   * Attempt one provider. No pre-flight health probe: with a provider order in
+   * place the request itself is the probe, and for a metered backend a probe is
+   * a billed call that answers a question the next real search answers for
+   * free. A provider that fails here simply yields to the next one.
+   */
+  private async runProvider(name: SearchProvider, query: string, options: SearchOptions): Promise<SearchResult[]> {
+    if (name === 'serper') {
+      const client = this.serperClient;
+      if (!client) {
+        throw new Error('serper client was not initialized');
+      }
+      return client.webSearch(query, options);
+    }
+
+    if (this.searxngClient) {
+      return this.searxngClient.webSearch(query, options);
+    }
+
+    // The MCP transport advertises readiness only through its tool listing.
+    if (!this.searxngMcpClient?.hasTool(SEARXNG_MCP_TOOL)) {
+      throw new Error(`MCP tool ${SEARXNG_MCP_TOOL} is unavailable`);
+    }
+    const toolResult = await this.searxngMcpClient.callTool(SEARXNG_MCP_TOOL, {
+      query,
+      pageno: options.pageno ?? 1,
+      ...(options.timeRange && { time_range: options.timeRange }),
+      ...(options.language && { language: options.language }),
+      ...(options.engines && { engines: options.engines }),
+      ...(options.safesearch !== undefined && { safesearch: options.safesearch }),
+    });
+    return this.parseMCPSearchResults(toolResult.content[0]?.text || '');
   }
 
   /**
@@ -555,7 +585,8 @@ export class SearchService {
     return query || message;
   }
 
+  /** Whether a search can be attempted at all: switched on AND at least one provider built. */
   isEnabled(): boolean {
-    return this.config?.enabled === true && this.config?.search.enabled === true;
+    return this.config?.search.enabled === true && this.providerOrder.length > 0;
   }
 }
