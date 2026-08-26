@@ -3,6 +3,7 @@
 import { inject, injectable } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/services/retrieval';
+import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
@@ -20,6 +21,7 @@ const MAX_CONTENT_DISPLAY_LEN = 800;
     '返回按时间排序的匹配条目，含发布时间、正文内容和相似度评分。' +
     '支持多关键词搜索：传入多个 query 可以从不同角度检索同一话题，结果会自动去重合并。',
   executor: 'wechat_moments_search',
+  available: () => WeChatIngestPlugin.isEnabled(),
   parameters: {
     query: {
       type: 'string',

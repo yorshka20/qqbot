@@ -2,6 +2,7 @@
 // Used by Agenda cron jobs to generate daily reports
 
 import { inject, injectable } from 'tsyringe';
+import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { Tool } from '@/tools/decorators';
@@ -30,6 +31,7 @@ import { logger } from '@/utils/logger';
   name: 'wechat_digest',
   description: '获取今日微信消息摘要。返回按来源分组的消息列表，包含消息数量统计。可用于生成日报或定期汇总。',
   executor: 'wechat_digest',
+  available: () => WeChatIngestPlugin.isEnabled(),
   visibility: ['subagent'],
   parameters: {
     markProcessed: {

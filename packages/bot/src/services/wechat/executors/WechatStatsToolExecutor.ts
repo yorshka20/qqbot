@@ -2,6 +2,7 @@
 // Used by Agenda to generate daily/weekly statistics reports
 
 import { inject, injectable } from 'tsyringe';
+import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { Tool } from '@/tools/decorators';
@@ -29,6 +30,7 @@ import { logger } from '@/utils/logger';
   name: 'wechat_stats',
   description: '获取微信消息统计。包括消息总数、群聊/私聊分布、文章数量、活跃群聊排行、活跃公众号排行等。',
   executor: 'wechat_stats',
+  available: () => WeChatIngestPlugin.isEnabled(),
   visibility: ['subagent'],
   parameters: {
     sinceHours: {

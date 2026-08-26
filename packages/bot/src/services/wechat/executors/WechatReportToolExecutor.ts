@@ -3,6 +3,7 @@
 
 import { inject, injectable } from 'tsyringe';
 import { getStaticServer } from '@/services/staticServer';
+import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { ReportType, WechatReportService } from '@/services/wechat/WechatReportService';
 import { Tool } from '@/tools/decorators';
@@ -32,6 +33,7 @@ import { logger } from '@/utils/logger';
   name: 'wechat_report',
   description: '生成并保存微信报告。自动收集群聊摘要、文章推荐、统计数据，生成格式化报告并保存到文件。',
   executor: 'wechat_report',
+  available: () => WeChatIngestPlugin.isEnabled(),
   visibility: ['subagent'],
   parameters: {
     reportType: {

@@ -2,6 +2,7 @@
 
 import { inject, injectable } from 'tsyringe';
 import type { WeChatArticleAnalysisService } from '@/services/wechat/articles/WeChatArticleAnalysisService';
+import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
@@ -19,6 +20,7 @@ const DEFAULT_COUNT = 100;
     '分析完成后可通过 wechat_article_insights 工具查看提取结果。' +
     '注意：此操作耗时较长（每篇文章数秒到数十秒），建议在非高峰时段运行。',
   executor: 'wechat_analyze_articles',
+  available: () => WeChatIngestPlugin.isEnabled(),
   parameters: {
     count: {
       type: 'number',

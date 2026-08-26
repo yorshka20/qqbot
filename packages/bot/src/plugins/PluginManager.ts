@@ -211,6 +211,16 @@ export class PluginManager {
     return Array.from(this.enabledPlugins);
   }
 
+  /**
+   * Global enablement of one plugin — true only between a successful
+   * `enablePlugin` and its `disablePlugin`. Note this is narrower than
+   * "loaded": a plugin disabled in config still gets `onInit`, so its DI
+   * registrations exist regardless.
+   */
+  isPluginEnabled(name: string): boolean {
+    return this.enabledPlugins.has(name);
+  }
+
   getAllPlugins(): Plugin[] {
     return Array.from(this.plugins.values());
   }
@@ -273,7 +283,7 @@ export class PluginManager {
    */
   async isPluginEnabledForConversation(pluginName: string, context: CommandContext): Promise<boolean> {
     // Check if plugin is globally enabled first
-    if (!this.enabledPlugins.has(pluginName)) {
+    if (!this.isPluginEnabled(pluginName)) {
       return false;
     }
 

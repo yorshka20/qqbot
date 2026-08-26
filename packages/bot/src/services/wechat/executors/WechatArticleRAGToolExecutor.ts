@@ -3,6 +3,7 @@
 import { inject, injectable } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/services/retrieval';
+import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
@@ -21,6 +22,7 @@ const MAX_CHUNK_DISPLAY_LEN = 500;
     '适用于：1) 查找近期热点事件和新闻动态；2) 获取某个话题的高质量分析和观点；3) 作为联网搜索的补充知识源。' +
     '返回相关片段（非全文），含标题、来源和匹配段落。',
   executor: 'wechat_article_rag',
+  available: () => WeChatIngestPlugin.isEnabled(),
   visibility: ['subagent'],
   parameters: {
     query: {

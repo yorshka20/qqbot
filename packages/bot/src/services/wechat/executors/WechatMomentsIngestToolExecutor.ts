@@ -7,6 +7,7 @@ import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/services/retrieval';
 import { WechatMomentsAnalysisService } from '@/services/wechat/moments/WechatMomentsAnalysisService';
 import { WechatMomentsIngestService } from '@/services/wechat/moments/WechatMomentsIngestService';
+import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WeChatDatabase } from '@/services/wechat/WeChatDatabase';
 import type { WeChatPadProClient } from '@/services/wechat/WeChatPadProClient';
@@ -38,6 +39,7 @@ import { logger } from '@/utils/logger';
     '支持 backfill 模式：指定 sinceDaysAgo 可回溯拉取历史朋友圈。' +
     '同步的内容包括文字、图片（自动下载到本地）、链接等。',
   executor: 'wechat_moments_ingest',
+  available: () => WeChatIngestPlugin.isEnabled(),
   visibility: ['subagent'],
   parameters: {
     sinceDaysAgo: {

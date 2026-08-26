@@ -2,6 +2,7 @@
 // Used by Agenda or user queries to find relevant content
 
 import { inject, injectable } from 'tsyringe';
+import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { Tool } from '@/tools/decorators';
@@ -28,6 +29,7 @@ import { logger } from '@/utils/logger';
   name: 'wechat_search',
   description: '搜索微信消息和文章。在聊天记录和收藏的文章中查找包含关键词的内容。',
   executor: 'wechat_search',
+  available: () => WeChatIngestPlugin.isEnabled(),
   visibility: ['subagent'],
   parameters: {
     keyword: {

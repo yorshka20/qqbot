@@ -13,6 +13,7 @@ import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
+import type { PluginManager } from '@/plugins/PluginManager';
 import type { RetrievalService } from '@/services/retrieval';
 import type { WeChatIngestConfig, WeChatRealtimeRule } from '@/services/wechat';
 import {
@@ -31,12 +32,26 @@ import { WechatReportService } from '@/services/wechat/WechatReportService';
 import { logger } from '@/utils/logger';
 import { WechatCommandHandler } from '../commands/WechatCommandHandler';
 
+const PLUGIN_NAME = 'wechatIngest';
+
 @RegisterPlugin({
-  name: 'wechatIngest',
+  name: PLUGIN_NAME,
   version: '1.0.0',
   description: 'Receives WeChat messages via webhook and ingests them into the RAG knowledge base',
 })
 export class WeChatIngestPlugin extends PluginBase {
+  /**
+   * Availability gate for the wechat_* tool specs. Those specs are registered
+   * by an import-time decorator, so they can only ask the class — never an
+   * instance — whether the service behind them is live. Enablement is narrower
+   * than "loaded": PluginManager runs `onInit` for plugins disabled in config
+   * too, so the DI tokens the tools resolve are registered either way and
+   * cannot stand in for this.
+   */
+  static isEnabled(): boolean {
+    return getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER).isPluginEnabled(PLUGIN_NAME);
+  }
+
   private ingestService: WeChatIngestService | null = null;
   private db: WeChatDatabase | null = null;
   private eventBridge: WechatEventBridge | null = null;

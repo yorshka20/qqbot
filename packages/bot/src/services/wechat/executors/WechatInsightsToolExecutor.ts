@@ -1,6 +1,7 @@
 // WeChat article insights tool — retrieves LLM-analyzed article insights from DB
 
 import { inject, injectable } from 'tsyringe';
+import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WeChatDatabase } from '@/services/wechat/WeChatDatabase';
 import { Tool } from '@/tools/decorators';
@@ -19,6 +20,7 @@ const DEFAULT_LIMIT = 50;
     '每条包含标题、一句话概括、分类标签、以及具体的信息点列表。' +
     '适用于生成日报、了解今日资讯概览、按领域查看文章精华。',
   executor: 'wechat_article_insights',
+  available: () => WeChatIngestPlugin.isEnabled(),
   parameters: {
     sinceHours: {
       type: 'number',

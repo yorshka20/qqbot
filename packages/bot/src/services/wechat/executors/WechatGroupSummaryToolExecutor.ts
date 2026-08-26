@@ -2,6 +2,7 @@
 // Used by Agenda to generate group-specific reports
 
 import { inject, injectable } from 'tsyringe';
+import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { Tool } from '@/tools/decorators';
@@ -29,6 +30,7 @@ import { logger } from '@/utils/logger';
   name: 'wechat_group_summary',
   description: '获取微信群聊消息摘要。返回按群分组的消息列表，包含发言人、消息数量等统计信息。',
   executor: 'wechat_group_summary',
+  available: () => WeChatIngestPlugin.isEnabled(),
   visibility: ['subagent'],
   parameters: {
     conversationId: {

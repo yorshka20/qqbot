@@ -2,6 +2,7 @@
 // Used by Agenda to generate article reports or analyze shared content
 
 import { inject, injectable } from 'tsyringe';
+import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { Tool } from '@/tools/decorators';
@@ -29,6 +30,7 @@ import { logger } from '@/utils/logger';
   name: 'wechat_article_summary',
   description: '获取微信文章摘要。包括公众号推送和聊天中分享的链接。返回标题、来源、摘要等信息。',
   executor: 'wechat_article_summary',
+  available: () => WeChatIngestPlugin.isEnabled(),
   visibility: ['subagent'],
   parameters: {
     sourceType: {
