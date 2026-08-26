@@ -33,10 +33,28 @@ prompts/
 │   ├── proactive.system.txt # Proactive-reply scene system
 │   ├── proactive.user_frame.txt
 │   └── ...
+├── providers/        # Optional per-provider system patches (see below)
+│   └── gemini.system.txt
 ├── vision/
 ├── text2img/
 └── img2img/
 ```
+
+## Provider-specific system patches
+
+`providers/<providerName>.system.txt` is appended to the **first system message**
+(baseline layer, after base.system / persona) whenever the reply pipeline resolves
+that provider for the turn. Use it to compensate for a single vendor's behavioral
+quirks — e.g. `providers/gemini.system.txt` counters Gemini's tendency to agree
+with whatever the user asserts.
+
+`<providerName>` must match the provider's `name` field (`gemini`, `anthropic`,
+`openai`, `deepseek`, `doubao`, …). Adding or removing a patch is a file
+operation only: `ProviderPatchProducer` looks the template up by name and stays
+silent when there is none, so no code changes to add one for another provider.
+Applies to the main reply pipeline only (the flow driven by
+`PromptInjectionRegistry`); sideline services that build their own prompts are
+unaffected.
 
 ## Template Format
 

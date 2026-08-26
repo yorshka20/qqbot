@@ -12,6 +12,7 @@ import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { createBaselineProducer } from '@/ai/prompt/producers/BaselineProducer';
 import { createModelIdentityProducer } from '@/ai/prompt/producers/ModelIdentityProducer';
+import { createProviderPatchProducer } from '@/ai/prompt/producers/ProviderPatchProducer';
 import { createSceneProducer } from '@/ai/prompt/producers/SceneProducer';
 import { createToolInstructProducer } from '@/ai/prompt/producers/ToolInstructProducer';
 import { createVoiceReplyProducer } from '@/ai/prompt/producers/VoiceReplyProducer';
@@ -184,8 +185,8 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
 
   // ── Register core prompt producers (after PromptManager and PromptInjectionRegistry are ready) ──
   // PromptManager is registered by PromptInitializer above; PromptInjectionRegistry is registered
-  // just above ConversationInitializer. These three producers cover the entire main reply pipeline:
-  //   baseline → base.system + persona-stable (system msg #1)
+  // just above ConversationInitializer. These producers cover the entire main reply pipeline:
+  //   baseline → base.system + persona-stable + optional per-provider patch (system msg #1)
   //   scene    → per-source scene template (system msg #2 front)
   //   tool     → llm.tool.instruct (system msg #2 back)
   // Volatile persona-runtime producer is registered later by PersonaInitializer (via startPersonaSubsystem).
@@ -196,9 +197,12 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
       (config.getPluginConfig('messageTrigger') as { wakeWords?: string[] } | undefined)?.wakeWords ?? [];
     registry.register(createBaselineProducer({ promptManager }));
     registry.register(createModelIdentityProducer());
+    registry.register(createProviderPatchProducer({ promptManager }));
     registry.register(createSceneProducer({ promptManager, wakeWords }));
     registry.register(createToolInstructProducer({ promptManager }));
-    logger.info('[Bootstrap] Core prompt producers registered (baseline, model-identity, scene, tool-instruct)');
+    logger.info(
+      '[Bootstrap] Core prompt producers registered (baseline, model-identity, provider-patch, scene, tool-instruct)',
+    );
   }
 
   // ── Admin alerting (before Agent Cluster so its health probe can resolve it) ──
