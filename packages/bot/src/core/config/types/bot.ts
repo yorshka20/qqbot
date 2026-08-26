@@ -46,6 +46,9 @@ export interface ClaudeCodeServiceConfig {
   host?: string;
   // Claude Code CLI path (default: 'claude')
   claudeCliPath?: string;
+  // Model passed to the CLI's --model flag (default: 'claude-opus-5').
+  // Accepts an alias ('opus') or a full model id ('claude-opus-5').
+  model?: string;
   // Working directory for Claude Code tasks
   workingDirectory?: string;
   // Max concurrent tasks (default: 1)

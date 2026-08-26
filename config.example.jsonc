@@ -1081,6 +1081,9 @@
     "host": "127.0.0.1",
     // Claude Code CLI path (default: 'claude')
     "claudeCliPath": "claude",
+    // Model passed to the CLI's --model flag (default: 'claude-opus-5').
+    // Accepts an alias ('opus') or a full model id ('claude-opus-5').
+    "model": "claude-opus-5",
     // Working directory for Claude Code tasks
     "workingDirectory": "./",
     // Max concurrent tasks (default: 1)

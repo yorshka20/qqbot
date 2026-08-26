@@ -17,6 +17,13 @@ import type { ClaudeTask, ClaudeTaskType, ProjectContext, TaskNotification } fro
 
 type TaskUpdateCallback = (task: ClaudeTask) => void;
 
+/**
+ * Without `--model` the CLI falls back to whatever the local install last
+ * used, so a bot task would silently run on a different model than the
+ * operator expects. Pinned here and overridable via `claudeCodeService.model`.
+ */
+const DEFAULT_CLAUDE_MODEL = 'claude-opus-5';
+
 export interface CreateTaskOptions {
   taskType?: ClaudeTaskType;
   projectContext?: ProjectContext;
@@ -295,6 +302,8 @@ export class ClaudeToolManager {
       '--print', // Non-interactive mode, print result
       '--dangerously-skip-permissions', // Skip permission prompts
       `--mcp-config=${mcpConfigPath}`,
+      '--model',
+      this.config.model || DEFAULT_CLAUDE_MODEL,
       '--output-format',
       'text',
       processedPrompt,
