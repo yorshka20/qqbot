@@ -145,7 +145,7 @@ export class SessionMemoToolExecutor extends BaseToolExecutor {
     if (!id) {
       return this.error('delete 操作需要提供 id', 'missing id');
     }
-    const removed = this.store.delete(sessionId, id);
+    const removed = this.store.retire(sessionId, id);
     if (removed) {
       return this.success(`已删除备忘 [id:${id}]`, { deleted: true });
     }

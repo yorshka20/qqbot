@@ -45,7 +45,7 @@ for (const { label, makeStore } of modes) {
       );
     });
 
-    it('list prunes expired items', () => {
+    it('list hides expired items', () => {
       const store = makeStore();
       const a = store.add('s', { content: 'a', pinned: false, ttlMs: 1 });
       const b = store.add('s', { content: 'b', pinned: false, ttlMs: 100_000 });
@@ -119,22 +119,59 @@ for (const { label, makeStore } of modes) {
       expect(ids).toContain(n4.id);
     });
 
-    it('delete returns false for unknown id and true for existing id; item disappears from list', () => {
+    it('retire returns false for unknown id and true for a live id; item disappears from list', () => {
       const store = makeStore();
-      const item = store.add('group:1', { content: 'to delete', pinned: true });
-      expect(store.delete('group:1', 'nonexistent')).toBe(false);
-      expect(store.delete('group:1', item.id)).toBe(true);
+      const item = store.add('group:1', { content: 'to retire', pinned: true });
+      expect(store.retire('group:1', 'nonexistent')).toBe(false);
+      expect(store.retire('group:1', item.id)).toBe(true);
       expect(store.list('group:1').some((i) => i.id === item.id)).toBe(false);
+      // Already retired — nothing left to take out of the live set.
+      expect(store.retire('group:1', item.id)).toBe(false);
     });
 
-    it('clear empties that session; other sessions untouched', () => {
+    it('retireAll empties that session; other sessions untouched', () => {
       const store = makeStore();
       store.add('group:1', { content: 'a', pinned: true });
       store.add('group:1', { content: 'b', pinned: true });
       store.add('group:2', { content: 'c', pinned: true });
-      store.clear('group:1');
+      store.retireAll('group:1');
       expect(store.list('group:1').length).toBe(0);
       expect(store.list('group:2').length).toBe(1);
     });
   });
 }
+
+describe('SessionMemoStore retention [sqlite]', () => {
+  const countRows = (db: Database, sessionId: string) =>
+    db.query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM session_memos WHERE session_id = ?').get(sessionId)
+      ?.n ?? 0;
+
+  it('keeps the row of an item that expired, was retired, or was pushed out by the cap', () => {
+    const db = new Database(':memory:');
+    const store = new SessionMemoStore(db, { maxItemsPerSession: 2 });
+
+    const expired = store.add('s', { content: 'expired', pinned: false, ttlMs: 1 });
+    const retired = store.add('s', { content: 'retired', pinned: false, ttlMs: 100_000 });
+    store.retire('s', retired.id);
+    // Two more live items push the remaining one past the cap of 2.
+    store.add('s', { content: 'capped', pinned: false, ttlMs: 100_000 });
+    store.add('s', { content: 'c', pinned: false, ttlMs: 100_000 });
+    store.add('s', { content: 'd', pinned: false, ttlMs: 100_000 });
+
+    expect(store.list('s', expired.expiresAt! + 1).length).toBe(2);
+    expect(countRows(db, 's')).toBe(5);
+  });
+
+  it('reading and writing never deletes rows', () => {
+    const db = new Database(':memory:');
+    const store = new SessionMemoStore(db);
+    const item = store.add('s', { content: 'a', pinned: false, ttlMs: 1 });
+    const after = item.expiresAt! + 1;
+
+    store.list('s', after);
+    store.render('s', after);
+    store.add('s', { content: 'b', pinned: false, ttlMs: 100_000 });
+
+    expect(countRows(db, 's')).toBe(2);
+  });
+});

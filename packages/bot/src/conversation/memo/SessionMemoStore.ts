@@ -24,10 +24,12 @@
 // Pinned items live indefinitely (expiresAt = null). Non-pinned items MUST
 // carry a positive TTL; add() rejects requests that violate this.
 //
-// ## Pruning
+// ## Retention
 //
-// Expired items are pruned lazily on every read/write path — no background
-// cron. In SQLite mode a single DELETE runs before each read or write.
+// The table is a ledger: nothing here deletes a row. Expiry, the per-session cap
+// and an explicit retire all mark an item as no longer live by stamping
+// `expires_at`, and reads filter on that. The written record of what the bot once
+// noted therefore survives, while only live items reach the prompt.
 
 import type { Database } from 'bun:sqlite';
 import { randomUUID } from '@/utils/randomUUID';
@@ -80,6 +82,18 @@ function formatExpiry(ts: number): string {
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
   return `${mo}-${dd} ${hh}:${mm}`;
+}
+
+/** Live = still reaching the prompt: pinned, or not yet past its expiry. */
+function isLive(item: SessionMemoItem, now: number): boolean {
+  return item.expiresAt === null || item.expiresAt > now;
+}
+
+/** In-memory counterpart of the retiring UPDATE — keeps `pinned XOR expiresAt` intact. */
+function retireItem(item: SessionMemoItem, now: number): void {
+  item.pinned = false;
+  item.expiresAt = now;
+  item.updatedAt = now;
 }
 
 function generateId(): string {
@@ -154,51 +168,49 @@ export class SessionMemoStore {
     };
 
     if (this.db !== null) {
-      this.pruneExpiredSqlite(this.db, sessionId, now);
       this.db
         .query(
           'INSERT INTO session_memos (id, session_id, content, pinned, expires_at, created_at, updated_at, tags_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         )
         .run(item.id, sessionId, content, pinned ? 1 : 0, expiresAt, now, now, JSON.stringify(tags));
-      this.enforceSqliteCapForSession(this.db, sessionId);
+      this.enforceSqliteCapForSession(this.db, sessionId, now);
     } else {
-      this.pruneExpiredMemory(sessionId, now);
       const list = this.memStore.get(sessionId) ?? [];
       list.push(item);
       this.memStore.set(sessionId, list);
-      this.enforceMemoryCapForSession(sessionId);
+      this.enforceMemoryCapForSession(sessionId, now);
     }
 
     return item;
   }
 
-  delete(sessionId: string, id: string): boolean {
+  /**
+   * Take one item out of the live set. The row stays; a pinned item loses its pin
+   * so that the `pinned XOR expiresAt` invariant still holds. Returns false when
+   * the id is unknown or already retired.
+   */
+  retire(sessionId: string, id: string, now: number = Date.now()): boolean {
     if (this.db !== null) {
-      const result = this.db.query('DELETE FROM session_memos WHERE session_id = ? AND id = ?').run(sessionId, id) as {
-        changes: number;
-      };
+      const result = this.db
+        .query(
+          'UPDATE session_memos SET pinned = 0, expires_at = ?, updated_at = ? WHERE session_id = ? AND id = ? AND (expires_at IS NULL OR expires_at > ?)',
+        )
+        .run(now, now, sessionId, id, now) as { changes: number };
       return result.changes > 0;
     } else {
-      const list = this.memStore.get(sessionId);
-      if (!list) return false;
-      const idx = list.findIndex((item) => item.id === id);
-      if (idx === -1) return false;
-      list.splice(idx, 1);
+      const item = this.memStore.get(sessionId)?.find((candidate) => candidate.id === id);
+      if (!item || !isLive(item, now)) return false;
+      retireItem(item, now);
       return true;
     }
   }
 
+  /** Live items only, oldest first. Retired and expired items stay in the store, unread. */
   list(sessionId: string, now: number = Date.now()): SessionMemoItem[] {
     if (this.db !== null) {
-      this.pruneExpiredSqlite(this.db, sessionId, now);
-      const rows = this.db
-        .query<MemoRow, [string]>('SELECT * FROM session_memos WHERE session_id = ? ORDER BY created_at ASC')
-        .all(sessionId);
-      return rows.map(rowToItem);
+      return this.liveRows(this.db, sessionId, now).map(rowToItem);
     } else {
-      this.pruneExpiredMemory(sessionId, now);
-      const list = this.memStore.get(sessionId) ?? [];
-      return [...list];
+      return (this.memStore.get(sessionId) ?? []).filter((item) => isLive(item, now));
     }
   }
 
@@ -213,63 +225,48 @@ export class SessionMemoStore {
       .join('\n');
   }
 
-  clear(sessionId: string): void {
+  /** Retire every live item of a session at once. */
+  retireAll(sessionId: string, now: number = Date.now()): void {
     if (this.db !== null) {
-      this.db.query('DELETE FROM session_memos WHERE session_id = ?').run(sessionId);
+      this.db
+        .query(
+          'UPDATE session_memos SET pinned = 0, expires_at = ?, updated_at = ? WHERE session_id = ? AND (expires_at IS NULL OR expires_at > ?)',
+        )
+        .run(now, now, sessionId, now);
     } else {
-      this.memStore.delete(sessionId);
+      for (const item of this.memStore.get(sessionId) ?? []) {
+        if (isLive(item, now)) retireItem(item, now);
+      }
     }
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────
 
-  private pruneExpiredSqlite(db: Database, sessionId: string, now: number): void {
-    db.query('DELETE FROM session_memos WHERE session_id = ? AND expires_at IS NOT NULL AND expires_at <= ?').run(
-      sessionId,
-      now,
-    );
+  private liveRows(db: Database, sessionId: string, now: number): MemoRow[] {
+    return db
+      .query<MemoRow, [string, number]>(
+        'SELECT * FROM session_memos WHERE session_id = ? AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at ASC',
+      )
+      .all(sessionId, now);
   }
 
-  private pruneExpiredMemory(sessionId: string, now: number): void {
-    const list = this.memStore.get(sessionId);
-    if (!list) return;
-    const fresh = list.filter((item) => item.expiresAt === null || item.expiresAt > now);
-    this.memStore.set(sessionId, fresh);
-  }
+  private enforceSqliteCapForSession(db: Database, sessionId: string, now: number): void {
+    const rows = this.liveRows(db, sessionId, now);
+    const overflow = rows.length - this.maxItemsPerSession;
+    if (overflow <= 0) return;
 
-  private enforceSqliteCapForSession(db: Database, sessionId: string): void {
-    const rows = db
-      .query<MemoRow, [string]>('SELECT * FROM session_memos WHERE session_id = ? ORDER BY created_at ASC')
-      .all(sessionId);
-
-    const total = rows.length;
-    if (total <= this.maxItemsPerSession) return;
-
-    const overflow = total - this.maxItemsPerSession;
-    const nonPinned = rows.filter((r) => r.pinned === 0);
-    const toDrop = nonPinned.slice(0, overflow);
-    for (const row of toDrop) {
-      db.query('DELETE FROM session_memos WHERE id = ?').run(row.id);
+    for (const row of rows.filter((r) => r.pinned === 0).slice(0, overflow)) {
+      db.query('UPDATE session_memos SET expires_at = ?, updated_at = ? WHERE id = ?').run(now, now, row.id);
     }
   }
 
-  private enforceMemoryCapForSession(sessionId: string): void {
-    const list = this.memStore.get(sessionId);
-    if (!list) return;
+  private enforceMemoryCapForSession(sessionId: string, now: number): void {
+    const live = (this.memStore.get(sessionId) ?? []).filter((item) => isLive(item, now));
+    const overflow = live.length - this.maxItemsPerSession;
+    if (overflow <= 0) return;
 
-    const total = list.length;
-    if (total <= this.maxItemsPerSession) return;
-
-    const overflow = total - this.maxItemsPerSession;
-    let dropped = 0;
-    const result: SessionMemoItem[] = [];
-    for (const item of list) {
-      if (!item.pinned && dropped < overflow) {
-        dropped++;
-        continue;
-      }
-      result.push(item);
+    for (const item of live.filter((candidate) => !candidate.pinned).slice(0, overflow)) {
+      retireItem(item, now);
     }
-    this.memStore.set(sessionId, result);
   }
 }
