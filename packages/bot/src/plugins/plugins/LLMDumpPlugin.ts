@@ -15,6 +15,7 @@ import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
+import { isAssembledEnvelope } from '@/ai/prompt/PromptMessageAssembler';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, ChatMessageContent, LLMTraceEntry } from '@/ai/types';
 import { getContainer } from '@/core/DIContainer';
@@ -36,8 +37,8 @@ export interface LLMDumpPluginConfig {
   timezone?: string;
 }
 
-/** Role column width in the transcript block ("assistant" is the longest role). */
-const TRANSCRIPT_ROLE_WIDTH = 9;
+/** Rule flanking each transcript entry's header line. */
+const TRANSCRIPT_RULE = '='.repeat(10);
 
 @RegisterPlugin({
   name: 'llm-dump',
@@ -170,26 +171,35 @@ export class LLMDumpPlugin extends PluginBase {
   }
 
   /**
-   * System prompts and tool payloads keep their own labelled blocks — they are bulk
-   * text, not dialogue. The user/assistant turns between them collapse into a chat
-   * transcript, one line per message, so a long history reads as a conversation
-   * instead of dozens of near-empty sections.
+   * Three kinds of message get three renderings, because they are three different
+   * things wearing the same `role` field:
+   *
+   * - system prompts and tool payloads → their own headed blocks (bulk text);
+   * - the assembler's request envelope → its own chapter, one sub-block per context
+   *   section, so retrieved memory/RAG/persona material never reads as something a
+   *   person said;
+   * - everything else → a chat transcript.
+   *
+   * Which message is the envelope is PromptMessageAssembler's question to answer
+   * (`isAssembledEnvelope`) — position won't do it, since tool rounds append further
+   * user turns after it.
    */
   private renderMessages(messages: ChatMessage[]): string[] {
     // Number system messages (base system / scene system / …) so the distinct
     // prompts are easy to tell apart.
     const systemCount = messages.filter((m) => m.role === 'system').length;
     let systemIdx = 0;
+    const envelopeIdx = messages.findLastIndex(isAssembledEnvelope);
     const lines: string[] = [];
     let transcript: string[] = [];
 
     const flushTranscript = () => {
       if (transcript.length === 0) return;
-      lines.push('### conversation', '', this.fence(transcript.join('\n')), '');
+      lines.push('### conversation', '', this.fence(transcript.join('\n\n')), '');
       transcript = [];
     };
 
-    for (const msg of messages) {
+    for (const [idx, msg] of messages.entries()) {
       if (msg.role === 'system') {
         flushTranscript();
         const label = systemCount > 1 ? `system #${++systemIdx}` : 'system';
@@ -203,10 +213,20 @@ export class LLMDumpPlugin extends PluginBase {
       }
 
       const content = this.contentToText(msg.content).trim();
-      if (content) {
-        transcript.push(this.transcriptLine(msg.role, content));
+      if (idx === envelopeIdx) {
+        flushTranscript();
+        lines.push('### request envelope', '');
+        const sections = this.splitEnvelopeSections(content);
+        if (sections.length === 0) {
+          lines.push(this.fence(content), '');
+        }
+        for (const section of sections) {
+          lines.push(`#### ${section.tag}`, '', this.fence(section.body), '');
+        }
+      } else if (content) {
+        transcript.push(this.transcriptEntry(msg.role, content));
       } else if (!msg.tool_calls?.length) {
-        transcript.push(this.transcriptLine(msg.role, '(empty)'));
+        transcript.push(this.transcriptEntry(msg.role, '(empty)'));
       }
 
       if (msg.tool_calls?.length) {
@@ -222,9 +242,76 @@ export class LLMDumpPlugin extends PluginBase {
     return lines;
   }
 
-  /** One transcript line: padded role column, then the message on a single line. */
-  private transcriptLine(role: string, content: string): string {
-    return `${role.padEnd(TRANSCRIPT_ROLE_WIDTH)} ${content.replace(/\s*\n+\s*/g, ' ⏎ ')}`;
+  /**
+   * Break the envelope into its `<tag>…</tag>` context sections, or return none when
+   * the caller assembled the final turn some other way (the renderer then prints it
+   * whole). Anything left after the last section is kept so nothing is dropped.
+   */
+  private splitEnvelopeSections(content: string): Array<{ tag: string; body: string }> {
+    const sections: Array<{ tag: string; body: string }> = [];
+    let rest = content.trim();
+
+    while (rest.startsWith('<')) {
+      const nameEnd = rest.indexOf('>');
+      if (nameEnd === -1) break;
+      const tag = rest.slice(1, nameEnd);
+      const closeAt = rest.indexOf(`</${tag}>`, nameEnd);
+      if (closeAt === -1) break;
+      sections.push({ tag, body: rest.slice(nameEnd + 1, closeAt).trim() });
+      rest = rest.slice(closeAt + tag.length + 3).trim();
+    }
+
+    if (sections.length > 0 && rest) {
+      sections.push({ tag: '(trailing)', body: rest });
+    }
+    return sections;
+  }
+
+  /**
+   * A ruled header line (`===== role [speaker] time =====`) then the body verbatim.
+   * The rule is what separates entries — a blank line would not, since message
+   * bodies contain their own blank lines and would split into phantom messages.
+   */
+  private transcriptEntry(role: string, content: string): string {
+    const { time, speaker, body } = this.splitHistoryLabels(content);
+    const header = [role, speaker, time].filter(Boolean).join(' ');
+    return `${TRANSCRIPT_RULE} ${header} ${TRANSCRIPT_RULE}\n${body}`;
+  }
+
+  /**
+   * Peel the labels PromptMessageAssembler writes in front of a history turn —
+   * `[M/DD HH:mm]`, then `[speaker:…]` on user turns — off the message body.
+   * A leading bracket that is neither (a message opening with `[Image:…]`,
+   * `[Reply:…]`) is left in the body.
+   */
+  private splitHistoryLabels(content: string): { time: string; speaker: string; body: string } {
+    let time = '';
+    let speaker = '';
+    let rest = content;
+
+    while (rest.startsWith('[')) {
+      const end = rest.indexOf('] ');
+      if (end === -1) break;
+      const label = rest.slice(1, end);
+      if (label.startsWith('speaker:')) {
+        speaker = `[${label}]`;
+      } else if (this.isTimeLabel(label)) {
+        time = label;
+      } else {
+        break;
+      }
+      rest = rest.slice(end + 2);
+    }
+
+    return { time, speaker, body: rest };
+  }
+
+  /** `M/DD HH:mm` — the only non-speaker label the assembler emits. */
+  private isTimeLabel(label: string): boolean {
+    const [date, clock] = label.split(' ');
+    if (date === undefined || clock === undefined) return false;
+    const parts = [...date.split('/'), ...clock.split(':')];
+    return parts.length === 4 && parts.every((p) => p.length > 0 && Number.isInteger(Number(p)));
   }
 
   private contentToText(content: ChatMessageContent | undefined): string {

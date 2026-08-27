@@ -4,6 +4,24 @@ import type { MessageSegment } from '@/message/types';
 import { contentToPlainString } from '../utils/contentUtils';
 import { buildHistoryEntryPrefix } from './speakerTag';
 
+/** Tag wrapping the turn's actual question. Closes every assembled envelope. */
+const CURRENT_QUERY_TAG = 'current_query';
+
+/**
+ * True when this message is an envelope built by {@link PromptMessageAssembler} — the
+ * context blocks plus the current query — rather than a chat turn.
+ *
+ * Lives beside {@link PromptMessageAssembler.buildFinalUserContent} so the envelope
+ * format has one owner: change how it is written and this follows. Consumers must not
+ * re-derive it from message position — `generateWithTools` appends further user turns
+ * after the envelope (tool-result vision injection, the max-round notice), so "the
+ * last user message" is not it.
+ */
+export function isAssembledEnvelope(msg: ChatMessage): boolean {
+  if (msg.role !== 'user') return false;
+  return contentToPlainString(msg.content ?? '').includes(`<${CURRENT_QUERY_TAG}>`);
+}
+
 export interface FinalUserBlocks {
   memoryContext?: string;
   ragContext?: string;
@@ -201,7 +219,7 @@ export class PromptMessageAssembler {
     if (normalize(blocks.recentActions)) {
       sections.push(`<recent_actions>\n${normalize(blocks.recentActions)}\n</recent_actions>`);
     }
-    sections.push(`<current_query>\n${normalize(blocks.currentQuery)}\n</current_query>`);
+    sections.push(`<${CURRENT_QUERY_TAG}>\n${normalize(blocks.currentQuery)}\n</${CURRENT_QUERY_TAG}>`);
     return sections.join('\n\n');
   }
 

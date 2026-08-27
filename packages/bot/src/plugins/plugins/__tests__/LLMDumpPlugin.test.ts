@@ -66,6 +66,7 @@ describe('LLMDumpPlugin', () => {
         { role: 'system', content: 'base system\n## 运行环境\nyou are a bot' },
         { role: 'system', content: 'scene system' },
         { role: 'user', content: 'hello' },
+        { role: 'user', content: '<current_query>\n当前问题：q\n</current_query>' },
       ],
       response: { text: 'hi there', usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 } },
       turnKey: 'msg:abc123',
@@ -80,10 +81,10 @@ describe('LLMDumpPlugin', () => {
     // Prompt's own markdown header is fenced (kept verbatim, not promoted to an outline heading).
     expect(md).toContain('## 运行环境');
     expect(md).toContain('you are a bot');
-    // Dialogue turns live in one transcript block, one line per message — no per-message heading.
+    // Dialogue turns live in one transcript block, header line + body — no per-message heading.
     expect(md).toContain('### conversation');
     expect(md).not.toContain('### user');
-    expect(md).toMatch(/^user {6}hello$/m);
+    expect(md).toMatch(/^=+ user =+\nhello$/m);
     expect(md).toContain('hi there');
     expect(md).toContain('total=15');
     // The content header must sit inside a code fence, not start a real markdown heading.
@@ -98,6 +99,7 @@ describe('LLMDumpPlugin', () => {
       prompt: '',
       messages: [
         { role: 'user', content: 'search the web' },
+        { role: 'user', content: '<current_query>\n当前问题：q\n</current_query>' },
         {
           role: 'assistant',
           content: '',
@@ -113,7 +115,7 @@ describe('LLMDumpPlugin', () => {
     });
 
     const md = readTurnFile('msg-tool99');
-    expect(md).toMatch(/^user {6}search the web$/m);
+    expect(md).toMatch(/^=+ user =+\nsearch the web$/m);
     // Input side: the model's tool_call and the tool result that was fed back.
     expect(md).toContain('`search` (call_1)');
     expect(md).toContain('"query": "qqbot"'); // pretty-printed JSON args
@@ -130,13 +132,13 @@ describe('LLMDumpPlugin', () => {
     emit(plugin, {
       ...base,
       opLabel: 'generate',
-      messages: [{ role: 'user', content: 'first' }],
+      messages: [{ role: 'user', content: 'first' }, { role: 'assistant', content: 'seen' }],
       response: { text: 'r1' },
     });
     emit(plugin, {
       ...base,
       opLabel: 'generate',
-      messages: [{ role: 'user', content: 'second' }],
+      messages: [{ role: 'user', content: 'second' }, { role: 'assistant', content: 'seen' }],
       response: { text: 'r2' },
     });
 
@@ -148,22 +150,116 @@ describe('LLMDumpPlugin', () => {
     expect(md.match(/# LLM dump/g)?.length).toBeLessThanOrEqual(2);
   });
 
-  it('keeps a multi-line message on one transcript line', () => {
+  it('lifts the time and speaker labels onto the entry header line', () => {
     const plugin = makePlugin();
     emit(plugin, {
       opLabel: 'generate',
       provider: 'deepseek',
       prompt: '',
       messages: [
-        { role: 'user', content: 'question' },
-        { role: 'assistant', content: 'first para\n\nsecond para' },
+        { role: 'user', content: '[8/27 11:05] [speaker:Alice:1001] 并非特效' },
+        { role: 'assistant', content: '[8/27 11:06] first para\n\nsecond para' },
+        { role: 'user', content: '<current_query>\n当前问题：q\n</current_query>' },
       ],
       response: { text: 'ok' },
-      turnKey: 'msg:multiline',
+      turnKey: 'msg:labels',
     });
 
-    const md = readTurnFile('msg-multiline');
-    expect(md).toMatch(/^assistant first para ⏎ second para$/m);
+    const md = readTurnFile('msg-labels');
+    expect(md).toContain('========== user [speaker:Alice:1001] 8/27 11:05 ==========\n并非特效');
+    // The ruled header is the separator, so a blank line inside a body stays verbatim
+    // instead of splitting the entry into two phantom messages.
+    expect(md).toContain('========== assistant 8/27 11:06 ==========\nfirst para\n\nsecond para');
+  });
+
+  it('breaks the assembled request envelope out of the transcript', () => {
+    const plugin = makePlugin();
+    emit(plugin, {
+      opLabel: 'generate',
+      provider: 'deepseek',
+      prompt: '',
+      messages: [
+        { role: 'user', content: '[8/27 11:05] [speaker:Alice:1001] 并非特效' },
+        {
+          role: 'user',
+          content:
+            '<memory_context>\ngroup rules\n</memory_context>\n\n<rag_context>\ncygnus: 七夕都收了不少钱吧\n</rag_context>\n\n<current_query>\n当前问题：宝宝也会星期四文案了嘛\n</current_query>',
+        },
+      ],
+      response: { text: 'ok' },
+      turnKey: 'msg:envelope',
+    });
+
+    const md = readTurnFile('msg-envelope');
+    expect(md).toContain('### request envelope');
+    expect(md).toContain('#### memory_context');
+    expect(md).toContain('#### rag_context');
+    expect(md).toContain('#### current_query');
+    // Retrieved chat lines must not land in the transcript as if someone had said them.
+    const transcript = md.slice(md.indexOf('### conversation'), md.indexOf('### request envelope'));
+    expect(transcript).not.toContain('cygnus');
+  });
+
+  it('leaves a body that opens with a bracket alone', () => {
+    const plugin = makePlugin();
+    emit(plugin, {
+      opLabel: 'generate',
+      provider: 'deepseek',
+      prompt: '',
+      messages: [
+        { role: 'user', content: '[8/27 11:05] [speaker:Alice:1001] [Reply:153474] 宝宝也会星期四文案了嘛' },
+        { role: 'user', content: '<current_query>\nq\n</current_query>' },
+      ],
+      response: { text: 'ok' },
+      turnKey: 'msg:brackets',
+    });
+
+    const md = readTurnFile('msg-brackets');
+    // [Reply:…] is message content, not one of the assembler's labels.
+    expect(md).toContain('========== user [speaker:Alice:1001] 8/27 11:05 ==========\n[Reply:153474] 宝宝也会星期四文案了嘛');
+  });
+
+  it('finds the envelope behind the user turns tool rounds append after it', () => {
+    const plugin = makePlugin();
+    emit(plugin, {
+      opLabel: 'generate',
+      provider: 'deepseek',
+      prompt: '',
+      messages: [
+        { role: 'user', content: '[8/27 11:05] [speaker:Alice:1001] 看看这张图' },
+        { role: 'user', content: '<memory_context>\ngroup rules\n</memory_context>\n\n<current_query>\nq\n</current_query>' },
+        { role: 'assistant', content: '', tool_calls: [{ id: 'call_1', name: 'search', arguments: '{}' }] },
+        { role: 'tool', tool_call_id: 'call_1', content: 'results' },
+        // generateWithTools appends this user turn AFTER the envelope.
+        { role: 'user', content: '[以下是工具获取的图片的AI视觉分析结果，请结合此分析进行回复]\n一只猫' },
+      ],
+      response: { text: 'ok' },
+      turnKey: 'msg:afterenvelope',
+    });
+
+    const md = readTurnFile('msg-afterenvelope');
+    expect(md).toContain('#### memory_context');
+    // The injected turn is dialogue, not the envelope; the envelope keeps its chapter.
+    expect(md).toContain('一只猫');
+    expect(md.indexOf('### request envelope')).toBeLessThan(md.indexOf('一只猫'));
+    expect(md.match(/### request envelope/g)).toHaveLength(1);
+  });
+
+  it('renders an envelope that is not built from tag sections whole', () => {
+    const plugin = makePlugin();
+    emit(plugin, {
+      opLabel: 'generate',
+      provider: 'deepseek',
+      prompt: '',
+      messages: [{ role: 'user', content: '<current_query>plain final turn</current_query>' }],
+      response: { text: 'ok' },
+      turnKey: 'msg:rawenvelope',
+    });
+
+    const md = readTurnFile('msg-rawenvelope');
+    expect(md).toContain('### request envelope');
+    expect(md).toContain('#### current_query');
+    expect(md).toContain('plain final turn');
   });
 
   it('falls back to a background file when no turn key is present', () => {

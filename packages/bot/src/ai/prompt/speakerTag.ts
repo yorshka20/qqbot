@@ -16,6 +16,8 @@
 // in the surrounding tag grammar (`<memory_context>`, `[speaker:…]`, etc.)
 // and would corrupt the parse if left in.
 
+import { formatTimeCompact } from '@/utils/dateTime';
+
 export interface SpeakerIdentity {
   /** Raw user id — emitted verbatim. Empty string allowed (falls back to nick-only). */
   uid: string;
@@ -47,10 +49,16 @@ function stripStructuralChars(value: string): string {
 }
 
 /**
- * Build the speaker prefix for a conversation history entry.
+ * Build the leading label for a conversation history entry: `[M/DD HH:mm]` then,
+ * for user turns only, the speaker tag.
  *
- * Only user turns get a prefix. The tag exists to tell several humans apart in a
- * group; the bot's own turn is already marked by `role: 'assistant'`, so tagging it
+ * The timestamp goes on every turn, the bot's included. Whether a line is minutes
+ * or hours old decides whether a topic is still live, and the retrieved
+ * `<rag_context>` fragments carry their own timestamps — untimed history would read
+ * as less grounded than material pulled from days ago.
+ *
+ * Only user turns get a speaker tag. The tag exists to tell several humans apart in
+ * a group; the bot's own turn is already marked by `role: 'assistant'`, so tagging it
  * adds nothing — and misleads: models read the bot's own nick/uid as another
  * participant ("说话人从 X 变成了 Y，QQ 号不同"), which in a 1:1 chat contradicts the
  * private-chat rule that consecutive user messages are all the same person.
@@ -62,9 +70,12 @@ export function buildHistoryEntryPrefix(entry: {
   isBotReply?: boolean;
   userId?: string | number;
   nickname?: string;
+  createdAt?: Date;
 }): string {
+  const time = entry.createdAt ? `[${formatTimeCompact(entry.createdAt)}]` : '';
   if (entry.isBotReply) {
-    return '';
+    return time;
   }
-  return buildSpeakerTag(String(entry.userId ?? ''), entry.nickname);
+  const speaker = buildSpeakerTag(String(entry.userId ?? ''), entry.nickname);
+  return time ? `${time} ${speaker}` : speaker;
 }

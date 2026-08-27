@@ -114,7 +114,7 @@ describe('PromptMessageAssembler', () => {
 
     expect(messages[1].content).toContain('<image_segment id="1:0" summary="img" />');
   });
-  it('prefixes user turns with a speaker tag but leaves the bot turn untagged', () => {
+  it('timestamps every turn, but tags only the user turn with a speaker', () => {
     const assembler = new PromptMessageAssembler();
     const entries: ConversationMessageEntry[] = [
       {
@@ -143,10 +143,12 @@ describe('PromptMessageAssembler', () => {
     const userTurn = messages.find((m) => m.role === 'user' && String(m.content).includes('hello'));
     const botTurn = messages.find((m) => m.role === 'assistant');
 
-    expect(userTurn?.content).toBe('[speaker:Alice:1001] hello');
-    // A tag here would read as a third participant and, in a 1:1 chat, contradict
-    // the private-chat rule that consecutive user messages are the same person.
-    expect(botTurn?.content).toBe('hi there');
+    expect(userTurn?.content).toBe('[1/01 09:00] [speaker:Alice:1001] hello');
+    // The bot's turn is timestamped too — how long ago it spoke decides whether the
+    // topic is still live — but a speaker tag here would read as a third participant
+    // and, in a 1:1 chat, contradict the private-chat rule that consecutive user
+    // messages are the same person.
+    expect(botTurn?.content).toBe('[1/01 09:00] hi there');
     expect(String(botTurn?.content)).not.toContain('[speaker:');
   });
 });
