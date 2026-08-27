@@ -11,7 +11,7 @@ import { getChainDepth } from './ScheduleTaskToolExecutor';
 @Tool({
   name: 'watch_messages',
   description:
-    '注册一个临时的消息监听：接下来当前会话里出现匹配的消息（包含关键词，或来自指定用户）时，bot 会以你写下的 prompt 为指令被唤起执行。监听是非永久的：默认 24 小时后自动失效，默认触发 1 次后失效（最多可设 100 次）。',
+    '注册一个临时的消息监听：接下来当前会话里出现匹配的消息（包含关键词，或来自指定用户）时，bot 会带着那条消息、以你写下的 prompt 为指令被唤起，结合它现场组织回应。监听是非永久的：默认 24 小时后自动失效，默认触发 1 次后失效（最多可设 100 次）。',
   executor: 'watch_messages',
   visibility: {
     reply: { sources: ['qq-group', 'qq-private', 'discord'] },
@@ -21,7 +21,7 @@ import { getChainDepth } from './ScheduleTaskToolExecutor';
       type: 'string',
       required: true,
       description:
-        '触发时给自己的任务指令。触发时你能看到命中的那条消息，但看不到现在的对话，所以要把背景写进来（例如"有人提到明天的比赛时，把下午整理的赛程发出来"）。',
+        '触发时给自己的任务指令：写「要达成什么效果」——话题、切入角度，以及现在知道、将来查不到的背景事实（触发时你能看到命中的那条消息和近期聊天记录，但看不到现在这轮对话）。命中的消息事先不可知，回应必须结合它现场发挥，所以不要写好成品文案让未来的自己复述。例：写"有人再提到明天的比赛时，提醒他们下午接龙的名单还差两个人，语气轻松"，而不是写"输出这句话：『……』"。',
     },
     keywords: {
       type: 'array',
@@ -51,7 +51,8 @@ import { getChainDepth } from './ScheduleTaskToolExecutor';
     },
   },
   examples: ['接下来有人说"开饭"就提醒他们带伞', '留意用户 12345 的下一条消息并转告我'],
-  whenToUse: '用户希望 bot 在接下来一段时间内关注特定话题或特定人的发言，并在出现时做出反应时调用。',
+  whenToUse:
+    '用户希望 bot 在接下来一段时间内关注特定话题或特定人的发言，并在出现时做出反应时调用。想让 bot"到时候说某句固定的话"也用它，但 prompt 里写的是那句话想表达的意思和背景，措辞留给触发时的自己。',
 })
 @injectable()
 export class WatchMessagesToolExecutor extends BaseToolExecutor {

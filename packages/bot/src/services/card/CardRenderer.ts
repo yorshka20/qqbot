@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url';
 import type { Page } from 'puppeteer-core';
 import { BrowserService } from '@/services/browser/BrowserService';
 import { logger } from '@/utils/logger';
-import { getCardStyles, getProviderTheme } from './cardStyles';
 import { renderCardDeck } from './cardTemplates';
 import type { CardData } from './cardTypes';
+import { getCardStyles, getProviderTheme } from './styles';
 
 /** Pre-load twemoji JS from local libs/ so it never depends on a CDN at render time. */
 const __dirname = dirname(fileURLToPath(import.meta.url));

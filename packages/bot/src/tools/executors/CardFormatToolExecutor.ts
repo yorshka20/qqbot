@@ -44,7 +44,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 - qa:        { type, question, answer }             — 一问一答
 - knowledge: { type, term, definition, examples?: string[] } — 单个术语定义；多术语用多个 knowledge 卡
 - comparison:{ type, title, leftHeader, rightHeader, items: [{label, left, right}] } — 双列对比表
-- stats:     { type, title, data: [{label, value, highlight?: boolean}] } — 数据展示
+- stats:     { type, title, data: [{label, value, highlight?: boolean}] } — 键值一览；label 是维度名，value 数字或短语都行，highlight 标出关键行
 - highlight: { type, title, summary, detail? }      — 单条结论 / 重点
 - quote:     { type, text, source? }                — 引用
 - info:      { type, title, content, level: 'info'|'warning'|'success'|'tip' } — 提示框

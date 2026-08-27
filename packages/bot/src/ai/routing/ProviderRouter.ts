@@ -45,7 +45,7 @@ export class ProviderRouter {
    * Color-nickname aliases. Unlike PREFIX_ALIASES these match anywhere in the
    * message, so longer keys must be tried first (`橙色高手` before `高手`).
    * A null value means "no specific provider" — fall back to the configured default.
-   * Colors follow each vendor's brand color (see cardStyles PROVIDER_THEMES).
+   * Colors follow each vendor's brand color (see card styles PROVIDER_THEMES).
    */
   private static readonly NICKNAME_ALIASES: Record<string, string | null> = {
     橙色高手: 'anthropic',

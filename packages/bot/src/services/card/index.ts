@@ -2,7 +2,6 @@
 
 export { CardRenderer } from './CardRenderer';
 export { CardRenderingService } from './CardRenderingService';
-export { getCardStyles } from './cardStyles';
 export {
   renderCard,
   renderCardDeck,
@@ -21,3 +20,4 @@ export type {
   StatsCardData,
   StepsCardData,
 } from './cardTypes';
+export { getCardStyles } from './styles';

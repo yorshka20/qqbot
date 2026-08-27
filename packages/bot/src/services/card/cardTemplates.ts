@@ -247,16 +247,27 @@ export function knowledgeCard(data: KnowledgeCardData): string {
 }
 
 /**
- * Stats card template
+ * Longest value that still reads as a metric rather than a sentence. A card whose
+ * values are all this short is laid out as a metric board (label left, big number
+ * right); one long value anywhere makes the whole card a label→value fact sheet,
+ * so a single card never mixes the two typographic scales.
+ */
+const METRIC_VALUE_MAX_LENGTH = 10;
+
+/**
+ * Stats card template — label→value rows, not a tile grid: values are frequently
+ * whole phrases, and a tile grid both wraps them into unreadable blocks and leaves
+ * orphan tiles whenever the item count does not fill the last row.
  */
 export function statsCard(data: StatsCardData): string {
   const title = escapeHtml(data.title);
-  const stats = data.data
+  const isMetricBoard = data.data.every((item) => item.value.trim().length <= METRIC_VALUE_MAX_LENGTH);
+  const rows = data.data
     .map(
       (item) => `
-        <div class="stat-item ${item.highlight ? 'highlight' : ''}">
-          <div class="stat-value">${escapeHtml(item.value)}</div>
+        <div class="stat-row${item.highlight ? ' highlight' : ''}">
           <div class="stat-label">${escapeHtml(item.label)}</div>
+          <div class="stat-value">${escapeHtml(item.value)}</div>
         </div>
       `,
     )
@@ -264,8 +275,8 @@ export function statsCard(data: StatsCardData): string {
   return `
     <div class="stats-card">
       <h2>${title}</h2>
-      <div class="stats-grid">
-        ${stats}
+      <div class="stat-rows${isMetricBoard ? ' metric' : ''}">
+        ${rows}
       </div>
     </div>
   `;
