@@ -10,6 +10,7 @@
  */
 
 import type { LLMService } from '@/ai/services/LLMService';
+import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import type { RetrievalService } from '@/services/retrieval';
 import { toQdrantPointId } from '@/services/retrieval/rag/QdrantClient';
 import { logger } from '@/utils/logger';
@@ -234,7 +235,7 @@ export class WechatMomentsAnalysisService {
       throw new Error(`LLM provider "${this.provider}" is not available`);
     }
 
-    const response = await provider.generate(prompt, { temperature: 0.3, maxTokens: 4096 });
+    const response = await provider.generate(prompt, { temperature: 0.3, maxTokens: TOKEN_BUDGET.analysis });
     const text = response.text?.trim() ?? '';
 
     return this.extractJsonArray<T>(text);

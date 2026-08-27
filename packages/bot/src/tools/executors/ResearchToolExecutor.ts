@@ -4,6 +4,7 @@
 import { inject, injectable } from 'tsyringe';
 import type { SubAgentManager } from '@/agent/SubAgentManager';
 import { SubAgentType } from '@/agent/types';
+import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
@@ -139,7 +140,7 @@ export class ResearchToolExecutor extends BaseToolExecutor {
           // Pin to base models; main-flow defaults (deepseek-v4-pro / gemini paid 3.5-flash) are too costly here.
           providerModels: { deepseek: 'deepseek-v4-flash', gemini: 'gemini-3-flash-preview' },
           maxToolRounds: 4,
-          maxTokens: 2000,
+          maxTokens: TOKEN_BUDGET.analysis,
         },
       );
 

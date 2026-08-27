@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
+import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import type { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import type { Config } from '@/core/config';
@@ -203,7 +204,7 @@ export class TodoPlugin extends PluginBase {
       prompt,
       {
         temperature: 0.3,
-        maxTokens: 1024,
+        maxTokens: TOKEN_BUDGET.analysis,
         ...(aiConfig?.taskProviders?.todoOptimizeModel ? { model: aiConfig.taskProviders.todoOptimizeModel } : {}),
       },
       provider,

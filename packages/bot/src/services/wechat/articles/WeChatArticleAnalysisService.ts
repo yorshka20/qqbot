@@ -3,6 +3,7 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
+import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { logger } from '@/utils/logger';
 import type { WeChatDatabase, WeChatOAArticleRow } from '../WeChatDatabase';
 import { fetchArticleText } from './fetchArticleText';
@@ -220,7 +221,7 @@ export class WeChatArticleAnalysisService {
       prompt,
       {
         temperature: 0.3,
-        maxTokens: 2048,
+        maxTokens: TOKEN_BUDGET.analysis,
         jsonMode: true,
         model: this.model,
       },

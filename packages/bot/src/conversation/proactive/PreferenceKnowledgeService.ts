@@ -2,6 +2,7 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
+import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import type { RetrievalService, SearchResult } from '@/services/retrieval';
 import {
   buildSummariesFromStringChunks,
@@ -182,7 +183,7 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
     try {
       const response = await this.llmService.generate(prompt, {
         temperature: 0.2,
-        maxTokens: 1500,
+        maxTokens: TOKEN_BUDGET.analysis,
       });
       responseText = (response.text || '').trim();
     } catch (err) {

@@ -15,6 +15,7 @@ import { getRolePreset } from '@/agent/SubAgentRolePresets';
 import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
+import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
@@ -278,7 +279,7 @@ export class GroupReportPlugin extends PluginBase {
             prompt,
             {
               temperature: 0.7,
-              maxTokens: 4000,
+              maxTokens: TOKEN_BUDGET.document,
               jsonMode: true,
               // group_report batch JSON 生成是大 prompt + reasoning + jsonMode，
               // provider 默认 60-120s 超时不够（实测会触发 abort）。显式抬到 4 分钟。

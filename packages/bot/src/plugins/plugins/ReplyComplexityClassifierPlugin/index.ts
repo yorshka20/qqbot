@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
+import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import { getReply } from '@/context/HookContextHelpers';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
@@ -69,8 +70,7 @@ export class ReplyComplexityClassifierPlugin extends PluginBase {
     } catch (err) {
       // Fail-open: any error → leave replyMode unset → PromptAssemblyStage defaults to chatReasoning (deep).
       logger.warn(
-        '[ReplyComplexityClassifier] classify failed, defaulting to deep:',
-        err instanceof Error ? err.message : err,
+        `[ReplyComplexityClassifier] classify failed, defaulting to deep: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
     return true;
@@ -107,7 +107,7 @@ export class ReplyComplexityClassifierPlugin extends PluginBase {
 
     const callPromise = this.llmService.generateLite(
       prompt,
-      { maxTokens: 200, jsonMode: true, model: liteModel || undefined },
+      { maxTokens: TOKEN_BUDGET.decision, jsonMode: true, model: liteModel || undefined },
       liteProvider,
     );
 

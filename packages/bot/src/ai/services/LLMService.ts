@@ -9,6 +9,7 @@ import type { LLMCapability } from '../capabilities/LLMCapability';
 import { isLLMCapability } from '../capabilities/LLMCapability';
 import type { ProviderSelector } from '../ProviderSelector';
 import { TokenRateLimiter, type TokenRateLimiterConfig } from '../rateLimit';
+import { TOKEN_BUDGET } from '../tokenBudget';
 import type {
   AIGenerateOptions,
   AIGenerateResponse,
@@ -587,7 +588,7 @@ export class LLMService {
     const { provider, resolvedName, swapped } = resolved;
     const liteDefaults: AIGenerateOptions = {
       temperature: 0.1,
-      maxTokens: 256,
+      maxTokens: TOKEN_BUDGET.decision,
       reasoningEffort: 'minimal',
     };
     const incomingOptions = this.stripModelIfSwapped(options, swapped);
@@ -1096,7 +1097,7 @@ export class LLMService {
       const result = await visionProvider.generate('', {
         messages,
         temperature: 0.1,
-        maxTokens: 1024,
+        maxTokens: TOKEN_BUDGET.analysis,
       });
 
       logger.info(`[LLMService] Vision provider "${visionProviderName}" described image: ${result.text.length} chars`);

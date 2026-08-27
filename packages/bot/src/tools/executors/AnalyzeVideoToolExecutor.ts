@@ -13,6 +13,7 @@
 import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import type { GeminiProvider } from '@/ai/providers/GeminiProvider';
+import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { DITokens } from '@/core/DITokens';
 import type { ResourceCleanupService, VideoDownloadService } from '@/services/video';
 import { logger } from '@/utils/logger';
@@ -218,7 +219,7 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
       let analysisText: string;
       try {
         const result = await gemini.generateWithFileUri(prompt, fileUri, fileMime, {
-          maxTokens: 2000,
+          maxTokens: TOKEN_BUDGET.analysis,
           temperature: 0.5,
         });
         analysisText = result.text;

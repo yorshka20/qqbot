@@ -2,6 +2,7 @@
 
 import { inject, injectable } from 'tsyringe';
 import type { LLMService } from '@/ai/services/LLMService';
+import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { DITokens } from '@/core/DITokens';
 import type { RetrievalService } from '@/services/retrieval';
 import { loadAnalysisPrompt } from '@/services/wechat/moments/momentsTags';
@@ -168,7 +169,7 @@ export class WechatMomentsAnalyzeToolExecutor extends BaseToolExecutor {
 
         const response = await provider.generate(prompt, {
           temperature: 0.3,
-          maxTokens: 2048,
+          maxTokens: TOKEN_BUDGET.analysis,
         });
 
         const text = response.text?.trim();

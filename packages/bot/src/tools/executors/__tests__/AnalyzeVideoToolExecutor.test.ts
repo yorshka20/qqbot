@@ -5,6 +5,7 @@ import type { GeminiProvider } from '@/ai/providers/GeminiProvider';
 import type { ResourceCleanupService, VideoDownloadResult, VideoDownloadService } from '@/services/video';
 import type { ToolCall, ToolExecutionContext } from '@/tools/types';
 import { AnalyzeVideoToolExecutor } from '../AnalyzeVideoToolExecutor';
+import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -152,7 +153,7 @@ describe('AnalyzeVideoToolExecutor', () => {
         '分析视频内容',
         'https://generativelanguage.googleapis.com/files/test-video-id',
         'video/mp4',
-        expect.objectContaining({ maxTokens: 2000 }),
+        expect.objectContaining({ maxTokens: TOKEN_BUDGET.analysis }),
       );
     });
   });

@@ -5,6 +5,7 @@ import type { AIManager } from '@/ai/AIManager';
 import type { AIGenerateOptions, AIGenerateResponse, ToolDefinition } from '@/ai/types';
 import { HttpClientError } from '@/api/http/HttpClient';
 import { isTransientLLMError, LLMService } from '../LLMService';
+import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import {
   createAIManagerWithProvider,
   getIntegrationProvider,
@@ -71,7 +72,7 @@ describe('LLMService', () => {
       await llmService.generateLite('test prompt');
       expect(lastOptions).toBeDefined();
       expect(lastOptions?.temperature).toBe(0.1);
-      expect(lastOptions?.maxTokens).toBe(256);
+      expect(lastOptions?.maxTokens).toBe(TOKEN_BUDGET.decision);
       expect(lastOptions?.reasoningEffort).toBe('minimal');
 
       await llmService.generateLite('test', { model: 'doubao-1-5-lite-32k-250115' }, 'doubao');
