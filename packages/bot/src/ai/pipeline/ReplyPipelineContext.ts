@@ -21,7 +21,12 @@ export class ReplyPipelineContext {
 
   // --- ContextResolutionStage ---
   referencedMessage: NormalizedMessageEvent | null = null;
-  userMessageOverride: string | undefined;
+  /**
+   * Text of the message the user quoted, if any. Kept separate from `userMessage`
+   * so the prompt template owns how it is labelled and so provider-prefix routing
+   * only ever looks at what the user actually typed.
+   */
+  quotedText: string | undefined;
   messageImages: VisionImage[] = [];
   taskResultImages: string[] = [];
 

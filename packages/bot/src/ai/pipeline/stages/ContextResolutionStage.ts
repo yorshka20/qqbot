@@ -40,7 +40,7 @@ export class ContextResolutionStage implements ReplyStage {
         const hasImage = ctx.referencedMessage.segments?.some((s) => s.type === 'image');
         const referencedText = refText + (hasImage ? '（含图片）' : '');
         if (referencedText) {
-          ctx.userMessageOverride = `被引用的消息：${referencedText}\n\n当前问题：${hookContext.message.message ?? ''}`;
+          ctx.quotedText = referencedText;
           logger.debug(
             `[ContextResolutionStage] Injected referenced message into prompt | messageSeq=${replyMessageId} | refLength=${referencedText.length}`,
           );

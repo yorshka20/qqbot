@@ -116,6 +116,7 @@ export class PromptAssemblyStage implements ReplyStage {
     const frameCurrentQuery = this.promptManager.render('llm.reply.user_frame', {
       userMessage: ctx.userMessage,
       senderIdentity,
+      quotedMessage: ctx.quotedText ?? '',
     });
     const finalUserBlocks = {
       memoryContext: ctx.memoryContextText,

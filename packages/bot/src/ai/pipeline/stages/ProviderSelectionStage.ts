@@ -46,20 +46,15 @@ export class ProviderSelectionStage implements ReplyStage {
 
     if (resolvedPrefix) {
       providerName = resolvedPrefix.providerName;
-      // When userMessageOverride exists (e.g. referenced message context from ContextResolutionStage),
-      // preserve it but strip the provider prefix from the current query portion.
-      if (ctx.userMessageOverride) {
-        const originalMsg = hookContext.message.message ?? '';
-        userMessage = ctx.userMessageOverride.replace(originalMsg, resolvedPrefix.strippedMessage);
-      } else {
-        userMessage = resolvedPrefix.strippedMessage;
-      }
+      userMessage = resolvedPrefix.strippedMessage;
       reason = resolvedPrefix.providerName ? 'explicit_prefix' : 'nickname_default';
       confidence = 'high';
       usedExplicitProvider = resolvedPrefix.providerName != null;
     } else {
-      const rawInput = ctx.userMessageOverride ?? hookContext.message.message ?? '';
-      const result = this.providerRouter.routeReplyInput(rawInput);
+      // Routes on what the user typed, never on quoted text: a provider prefix is
+      // leading, so a quote pasted in front of it would hide it, and a nickname
+      // trigger would fire on words the quoted author wrote.
+      const result = this.providerRouter.routeReplyInput(hookContext.message.message ?? '');
       providerName = result.providerName;
       userMessage = result.userMessage;
       reason = result.reason;

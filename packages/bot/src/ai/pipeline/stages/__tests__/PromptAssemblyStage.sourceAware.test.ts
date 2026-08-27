@@ -34,7 +34,7 @@ function makeContext(source: string): ReplyPipelineContext {
     hookContext,
     taskResults: new Map(),
     referencedMessage: null,
-    userMessageOverride: undefined,
+    quotedText: undefined,
     messageImages: [],
     taskResultImages: [],
     historyEntries: [],

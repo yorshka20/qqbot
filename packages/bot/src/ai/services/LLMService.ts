@@ -70,6 +70,20 @@ function withHardTimeout<T>(p: Promise<T>, timeoutMs: number, label: string): Pr
 }
 
 /**
+ * Turns `generateWithTools` appends after the assembled request envelope. They are
+ * plumbing, not user speech, so each says so and points back at `<current_query>` —
+ * `base.system.txt` tells the model to read them that way. They stay on the `user`
+ * role because a mid-conversation `system` message is not portable across providers
+ * (Anthropic and Gemini take their system prompt as a separate top-level field).
+ */
+const TOOL_IMAGE_NOTICE =
+  '[工具补充材料] 以下是工具取回的图片，不是新的用户发言。看完后继续回答 <current_query> 里的问题。';
+const TOOL_VISION_NOTICE =
+  '[工具补充材料] 以下是工具取回图片的 AI 视觉分析结果，不是新的用户发言。结合它继续回答 <current_query> 里的问题。';
+const TOOL_ROUNDS_EXHAUSTED_NOTICE =
+  '[系统提示] 工具调用轮次已用尽，不要再调用任何工具。现在直接基于已获得的信息，回答 <current_query> 里的问题。';
+
+/**
  * Errors that warrant a same-provider retry before falling back. Covers
  * server-side overload (5xx, rate-limit) and socket-level blips where the
  * response was cut mid-read — observed when DeepSeek's reasoning stalls past
@@ -925,19 +939,19 @@ export class LLMService {
 
           if (supportsVision) {
             // Provider supports vision — inject image content parts directly
+            // Images have to ride in a user message — `tool` messages are text-only on
+            // every provider here — so the text part says what this turn actually is,
+            // and base.system tells the model to keep answering <current_query>.
             currentMessages.push({
               role: 'user',
-              content: [
-                { type: 'text' as const, text: '[以下是工具获取的图片内容，请结合图片进行分析回复]' },
-                ...pendingVisionParts,
-              ],
+              content: [{ type: 'text' as const, text: TOOL_IMAGE_NOTICE }, ...pendingVisionParts],
             });
           } else {
             // Provider doesn't support vision — use vision provider to describe the image, inject as text
             const description = await this.describeImageWithVisionProvider(pendingVisionParts);
             currentMessages.push({
               role: 'user',
-              content: `[以下是工具获取的图片的AI视觉分析结果，请结合此分析进行回复]\n${description}`,
+              content: `${TOOL_VISION_NOTICE}\n${description}`,
             });
           }
           logger.info(
@@ -980,11 +994,7 @@ export class LLMService {
 
     // Max rounds reached, force final generation with explicit instruction to produce text answer
     logger.warn(`[LLMService] Max tool rounds (${maxRounds}) reached, forcing final response`);
-    currentMessages.push({
-      role: 'user',
-      content:
-        'You have used all available tool rounds. Please provide your final answer now based on the information you have gathered so far. Do not attempt to call any more tools.',
-    });
+    currentMessages.push({ role: 'user', content: TOOL_ROUNDS_EXHAUSTED_NOTICE });
     const finalResponse = await this.generateFromMessages(currentMessages, options, currentProviderName);
     sawUsage = this.accumulateUsage(accUsage, finalResponse.usage) || sawUsage;
     await this.emitReasoning(finalResponse, options, accReasoning, seenReasoning, currentProviderName);

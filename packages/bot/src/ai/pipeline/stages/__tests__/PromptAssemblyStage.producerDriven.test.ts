@@ -42,7 +42,7 @@ function makeContext(source = 'qq-private'): ReplyPipelineContext {
     hookContext,
     taskResults: new Map(),
     referencedMessage: null,
-    userMessageOverride: undefined,
+    quotedText: undefined,
     messageImages: [],
     taskResultImages: [],
     historyEntries: [],
