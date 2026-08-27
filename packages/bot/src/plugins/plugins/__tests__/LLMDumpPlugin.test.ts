@@ -1,6 +1,8 @@
 // Tests for LLMDumpPlugin markdown rendering: a trace entry with tool calls must
 // produce a per-turn markdown file showing input messages (incl. the model's
-// tool_calls and the tool results fed back) and the response.
+// tool_calls and the tool results fed back) and the response. Dialogue turns are
+// rendered as a chat transcript; only bulk blocks (system prompts, tool payloads)
+// get their own headings.
 
 import 'reflect-metadata';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
@@ -78,7 +80,10 @@ describe('LLMDumpPlugin', () => {
     // Prompt's own markdown header is fenced (kept verbatim, not promoted to an outline heading).
     expect(md).toContain('## 运行环境');
     expect(md).toContain('you are a bot');
-    expect(md).toContain('hello');
+    // Dialogue turns live in one transcript block, one line per message — no per-message heading.
+    expect(md).toContain('### conversation');
+    expect(md).not.toContain('### user');
+    expect(md).toMatch(/^user {6}hello$/m);
     expect(md).toContain('hi there');
     expect(md).toContain('total=15');
     // The content header must sit inside a code fence, not start a real markdown heading.
@@ -108,10 +113,11 @@ describe('LLMDumpPlugin', () => {
     });
 
     const md = readTurnFile('msg-tool99');
+    expect(md).toMatch(/^user {6}search the web$/m);
     // Input side: the model's tool_call and the tool result that was fed back.
     expect(md).toContain('`search` (call_1)');
     expect(md).toContain('"query": "qqbot"'); // pretty-printed JSON args
-    expect(md).toContain('tool ← call_1');
+    expect(md).toContain('### tool ← call_1');
     expect(md).toContain('8 results found');
     // Output side: the response's function call.
     expect(md).toContain('tool calls (response):');
@@ -140,6 +146,24 @@ describe('LLMDumpPlugin', () => {
     // Calls in the same second share one file (single header); a call landing
     // in the next second starts a new time-prefixed file with its own header.
     expect(md.match(/# LLM dump/g)?.length).toBeLessThanOrEqual(2);
+  });
+
+  it('keeps a multi-line message on one transcript line', () => {
+    const plugin = makePlugin();
+    emit(plugin, {
+      opLabel: 'generate',
+      provider: 'deepseek',
+      prompt: '',
+      messages: [
+        { role: 'user', content: 'question' },
+        { role: 'assistant', content: 'first para\n\nsecond para' },
+      ],
+      response: { text: 'ok' },
+      turnKey: 'msg:multiline',
+    });
+
+    const md = readTurnFile('msg-multiline');
+    expect(md).toMatch(/^assistant first para ⏎ second para$/m);
   });
 
   it('falls back to a background file when no turn key is present', () => {

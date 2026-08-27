@@ -1,9 +1,10 @@
 // LogArchivePlugin - archives old log directories every N days into compressed tar.gz files
 
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
+import { archiveDateDirs } from '@/utils/dateDirArchive';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { RegisterPlugin } from '../decorators';
@@ -95,60 +96,15 @@ export class LogArchivePlugin extends PluginBase {
    * Scan logs/ for date directories older than intervalDays and archive them in batches.
    */
   private async archiveLogs(): Promise<void> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Collect all date directories (YYYY-MM-DD format)
-    const dateDirs = this.getDateDirectories();
-    if (dateDirs.length === 0) return;
-
-    // Filter directories older than intervalDays (don't archive today or recent days)
-    const cutoff = new Date(today);
-    cutoff.setDate(cutoff.getDate() - this.intervalDays);
-
-    const eligibleDirs = dateDirs.filter((d) => d.date < cutoff);
-    if (eligibleDirs.length === 0) {
-      logger.debug('[LogArchivePlugin] No log directories old enough to archive');
-      return;
-    }
-
-    // Sort by date ascending
-    eligibleDirs.sort((a, b) => a.date.getTime() - b.date.getTime());
-
-    // Group into batches of intervalDays
-    for (let i = 0; i < eligibleDirs.length; i += this.intervalDays) {
-      const batch = eligibleDirs.slice(i, i + this.intervalDays);
-      if (batch.length === 0) continue;
-
-      const startDate = batch[0].date;
-      const endDate = batch[batch.length - 1].date;
-      const archiveName = this.formatArchiveName(startDate, endDate);
-      const archivePath = join(this.archiveDir, `${archiveName}.tar.gz`);
-
-      // Skip if already archived
-      if (existsSync(archivePath)) {
-        logger.debug(`[LogArchivePlugin] Archive already exists: ${archiveName}.tar.gz`);
-        if (this.deleteAfterArchive) {
-          for (const dir of batch) {
-            this.removeDir(dir.dirName);
-          }
-        }
-        continue;
-      }
-
-      await this.createArchive(
-        archivePath,
-        batch.map((d) => d.dirName),
-      );
-
-      if (this.deleteAfterArchive) {
-        for (const dir of batch) {
-          this.removeDir(dir.dirName);
-        }
-      }
-
-      logger.info(`[LogArchivePlugin] Archived ${batch.length} day(s) -> ${archiveName}.tar.gz`);
-    }
+    await archiveDateDirs({
+      sourceDir: this.logsDir,
+      archiveDir: this.archiveDir,
+      retainDays: this.intervalDays,
+      batchDays: this.intervalDays,
+      format: 'tar.gz',
+      deleteAfterArchive: this.deleteAfterArchive,
+      logLabel: '[LogArchivePlugin]',
+    });
   }
 
   /**
@@ -192,59 +148,6 @@ export class LogArchivePlugin extends PluginBase {
   }
 
   /**
-   * Get all YYYY-MM-DD date directories under logs/
-   */
-  private getDateDirectories(): Array<{ dirName: string; date: Date }> {
-    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-    const entries = readdirSync(this.logsDir);
-    const result: Array<{ dirName: string; date: Date }> = [];
-
-    for (const entry of entries) {
-      if (!datePattern.test(entry)) continue;
-      const fullPath = join(this.logsDir, entry);
-      try {
-        if (!statSync(fullPath).isDirectory()) continue;
-      } catch {
-        continue;
-      }
-      const [year, month, day] = entry.split('-').map(Number);
-      const date = new Date(year, month - 1, day);
-      result.push({ dirName: entry, date });
-    }
-
-    return result;
-  }
-
-  /**
-   * Format archive name: YYYY-MMDD-MMDD
-   */
-  private formatArchiveName(start: Date, end: Date): string {
-    const year = start.getFullYear();
-    const startMM = String(start.getMonth() + 1).padStart(2, '0');
-    const startDD = String(start.getDate()).padStart(2, '0');
-    const endMM = String(end.getMonth() + 1).padStart(2, '0');
-    const endDD = String(end.getDate()).padStart(2, '0');
-    return `${year}-${startMM}${startDD}-${endMM}${endDD}`;
-  }
-
-  /**
-   * Create a tar.gz archive containing the specified directories
-   */
-  private async createArchive(archivePath: string, dirNames: string[]): Promise<void> {
-    const proc = Bun.spawn(['tar', '-czf', archivePath, ...dirNames], {
-      cwd: this.logsDir,
-      stdout: 'ignore',
-      stderr: 'pipe',
-    });
-
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text();
-      throw new Error(`tar failed (exit ${exitCode}): ${stderr}`);
-    }
-  }
-
-  /**
    * Create a tar.gz from paths relative to the repo root (e.g. .claude-learnings)
    */
   private async createArchiveAtRoot(archivePath: string, relPaths: string[]): Promise<void> {
@@ -258,19 +161,6 @@ export class LogArchivePlugin extends PluginBase {
     if (exitCode !== 0) {
       const stderr = await new Response(proc.stderr).text();
       throw new Error(`tar failed (exit ${exitCode}): ${stderr}`);
-    }
-  }
-
-  /**
-   * Remove a date directory under logs/
-   */
-  private removeDir(dirName: string): void {
-    const fullPath = join(this.logsDir, dirName);
-    try {
-      rmSync(fullPath, { recursive: true, force: true });
-      logger.debug(`[LogArchivePlugin] Removed directory: ${dirName}`);
-    } catch (err) {
-      logger.warn(`[LogArchivePlugin] Failed to remove directory ${dirName}:`, err);
     }
   }
 }

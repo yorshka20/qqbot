@@ -7,13 +7,19 @@
 // drives them through generate()). So one turn's file shows the main reply, each
 // tool-calling round (with the model's tool_calls and the tool results fed back),
 // and any sub-agent calls, in order.
+//
+// Day directories older than the retention window are zipped into <outputDir>/archive/,
+// the same shape LogArchivePlugin uses for logs/.
 
 import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import type { ScheduledTask } from 'node-cron';
+import { schedule } from 'node-cron';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, ChatMessageContent, LLMTraceEntry } from '@/ai/types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import { archiveDateDirs } from '@/utils/dateDirArchive';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { RegisterPlugin } from '../decorators';
@@ -22,7 +28,16 @@ import { PluginBase } from '../PluginBase';
 export interface LLMDumpPluginConfig {
   /** Output directory, relative to repo root (default: "logs/llm-dumps"). */
   outputDir?: string;
+  /** Days of dumps kept uncompressed; older days are zipped (default: 7). */
+  retainDays?: number;
+  /** Cron for the archive pass (default: "0 4 * * 1" = Mondays at 04:00). */
+  archiveCron?: string;
+  /** Timezone for the archive cron (default: "Asia/Tokyo"). */
+  timezone?: string;
 }
+
+/** Role column width in the transcript block ("assistant" is the longest role). */
+const TRANSCRIPT_ROLE_WIDTH = 9;
 
 @RegisterPlugin({
   name: 'llm-dump',
@@ -34,12 +49,25 @@ export class LLMDumpPlugin extends PluginBase {
   /** Turn keys we have already written a file header for. */
   private readonly headerWritten = new Set<string>();
   private registered = false;
+  private retainDays = 7;
+  private archiveCron = '0 4 * * 1';
+  private timezone = 'Asia/Tokyo';
+  private archiveJob: ScheduledTask | null = null;
 
   async onInit(): Promise<void> {
     const config = (this.pluginConfig?.config ?? {}) as LLMDumpPluginConfig;
     if (config.outputDir) {
       this.outputDir = join(getRepoRoot(), config.outputDir);
     }
+    this.retainDays = config.retainDays ?? 7;
+    this.archiveCron = config.archiveCron ?? '0 4 * * 1';
+    this.timezone = config.timezone ?? 'Asia/Tokyo';
+
+    await this.archiveOldDumps();
+    this.archiveJob = schedule(this.archiveCron, () => void this.archiveOldDumps(), {
+      scheduled: true,
+      timezone: this.timezone,
+    });
   }
 
   onEnable(): void {
@@ -53,7 +81,33 @@ export class LLMDumpPlugin extends PluginBase {
     const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
     llmService.addTraceObserver((entry) => this.handleEntry(entry));
     this.registered = true;
-    logger.info(`[LLMDumpPlugin] Dumping LLM calls to ${this.outputDir}`);
+    logger.info(
+      `[LLMDumpPlugin] Dumping LLM calls to ${this.outputDir} (archive: ${this.archiveCron}, retain ${this.retainDays}d)`,
+    );
+  }
+
+  async onDisable(): Promise<void> {
+    super.onDisable();
+    if (this.archiveJob) {
+      this.archiveJob.stop();
+      this.archiveJob = null;
+    }
+  }
+
+  private async archiveOldDumps(): Promise<void> {
+    try {
+      await archiveDateDirs({
+        sourceDir: this.outputDir,
+        archiveDir: join(this.outputDir, 'archive'),
+        retainDays: this.retainDays,
+        batchDays: this.retainDays,
+        format: 'zip',
+        deleteAfterArchive: true,
+        logLabel: '[LLMDumpPlugin]',
+      });
+    } catch (err) {
+      logger.error('[LLMDumpPlugin] Archive failed:', err);
+    }
   }
 
   private handleEntry(entry: LLMTraceEntry): void {
@@ -87,17 +141,10 @@ export class LLMDumpPlugin extends PluginBase {
     const lines: string[] = [`## ${this.formatTime(at)} · ${entry.opLabel} · ${entry.provider}${model}`, ''];
 
     if (entry.messages && entry.messages.length > 0) {
-      // Number system messages (base system / scene system / …) so the distinct
-      // prompts are easy to tell apart.
-      const systemCount = entry.messages.filter((m) => m.role === 'system').length;
-      let systemIdx = 0;
-      for (const msg of entry.messages) {
-        const idx = msg.role === 'system' && systemCount > 1 ? ++systemIdx : undefined;
-        lines.push(...this.renderMessage(msg, idx));
-      }
+      lines.push(...this.renderMessages(entry.messages));
     } else {
       if (entry.systemPrompt) lines.push('### system', '', this.fence(entry.systemPrompt), '');
-      if (entry.prompt) lines.push('### user', '', this.fence(entry.prompt), '');
+      if (entry.prompt) lines.push('### prompt', '', this.fence(entry.prompt), '');
     }
 
     if (entry.response.reasoningContent?.trim()) {
@@ -122,28 +169,62 @@ export class LLMDumpPlugin extends PluginBase {
     return lines.join('\n');
   }
 
-  private renderMessage(msg: ChatMessage, systemIdx?: number): string[] {
-    let label: string;
-    if (msg.role === 'system') label = systemIdx ? `system #${systemIdx}` : 'system';
-    else if (msg.role === 'tool') label = `tool ← ${msg.tool_call_id ?? ''}`;
-    else label = msg.role;
+  /**
+   * System prompts and tool payloads keep their own labelled blocks — they are bulk
+   * text, not dialogue. The user/assistant turns between them collapse into a chat
+   * transcript, one line per message, so a long history reads as a conversation
+   * instead of dozens of near-empty sections.
+   */
+  private renderMessages(messages: ChatMessage[]): string[] {
+    // Number system messages (base system / scene system / …) so the distinct
+    // prompts are easy to tell apart.
+    const systemCount = messages.filter((m) => m.role === 'system').length;
+    let systemIdx = 0;
+    const lines: string[] = [];
+    let transcript: string[] = [];
 
-    const lines: string[] = [`### ${label}`, ''];
+    const flushTranscript = () => {
+      if (transcript.length === 0) return;
+      lines.push('### conversation', '', this.fence(transcript.join('\n')), '');
+      transcript = [];
+    };
 
-    const content = this.contentToText(msg.content);
-    if (content.trim()) {
-      lines.push(this.fence(content), '');
-    } else if (!msg.tool_calls?.length) {
-      lines.push('_(empty)_', '');
-    }
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        flushTranscript();
+        const label = systemCount > 1 ? `system #${++systemIdx}` : 'system';
+        lines.push(`### ${label}`, '', this.fence(this.contentToText(msg.content)), '');
+        continue;
+      }
+      if (msg.role === 'tool') {
+        flushTranscript();
+        lines.push(`### tool ← ${msg.tool_call_id ?? ''}`, '', this.fence(this.contentToText(msg.content)), '');
+        continue;
+      }
 
-    if (msg.tool_calls?.length) {
-      lines.push('**tool calls:**', '');
-      for (const tc of msg.tool_calls) {
-        lines.push(`- \`${tc.name}\` (${tc.id})`, '', this.fence(this.pretty(tc.arguments), 'json'), '');
+      const content = this.contentToText(msg.content).trim();
+      if (content) {
+        transcript.push(this.transcriptLine(msg.role, content));
+      } else if (!msg.tool_calls?.length) {
+        transcript.push(this.transcriptLine(msg.role, '(empty)'));
+      }
+
+      if (msg.tool_calls?.length) {
+        flushTranscript();
+        lines.push('**tool calls:**', '');
+        for (const tc of msg.tool_calls) {
+          lines.push(`- \`${tc.name}\` (${tc.id})`, '', this.fence(this.pretty(tc.arguments), 'json'), '');
+        }
       }
     }
+
+    flushTranscript();
     return lines;
+  }
+
+  /** One transcript line: padded role column, then the message on a single line. */
+  private transcriptLine(role: string, content: string): string {
+    return `${role.padEnd(TRANSCRIPT_ROLE_WIDTH)} ${content.replace(/\s*\n+\s*/g, ' ⏎ ')}`;
   }
 
   private contentToText(content: ChatMessageContent | undefined): string {
