@@ -75,11 +75,12 @@ export class EpisodeCacheManager {
       const appended = newMessages.filter((e) => e.messageId !== currentMessageId);
       const combined = [...cached, ...appended];
       if (combined.length > NORMAL_MAX_HISTORY_ENTRIES) {
-        entries = await this.conversationHistoryService.replaceOldestWithSummary(
+        const roll = await this.conversationHistoryService.replaceOldestWithSummary(
           combined,
           NORMAL_MAX_HISTORY_ENTRIES,
           new Date(),
         );
+        entries = roll.entries;
         this.episodeHistoryCache.set(episodeKey, entries);
       } else {
         entries = combined;
@@ -131,12 +132,12 @@ export class EpisodeCacheManager {
       return;
     }
     try {
-      const replaced = await this.conversationHistoryService.replaceOldestWithSummary(
+      const roll = await this.conversationHistoryService.replaceOldestWithSummary(
         cached,
         NORMAL_MAX_HISTORY_ENTRIES,
         new Date(),
       );
-      this.episodeHistoryCache.set(episodeKey, replaced);
+      this.episodeHistoryCache.set(episodeKey, roll.entries);
     } catch (err) {
       logger.warn('[EpisodeCacheManager] maintainEpisodeContext failed:', err instanceof Error ? err.message : err);
     }

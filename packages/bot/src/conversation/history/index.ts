@@ -1,7 +1,7 @@
 // Conversation history: in-memory buffer/summary + DB load and format (single ConversationHistoryService)
 
 export { ConversationHistoryBuffer } from './ConversationHistoryBuffer';
-export type { ConversationMessageEntry } from './ConversationHistoryService';
+export type { ConversationMessageEntry, SummaryRollResult } from './ConversationHistoryService';
 export {
   ConversationHistoryService,
   normalizeGroupId,

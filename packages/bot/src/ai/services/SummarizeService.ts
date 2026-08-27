@@ -17,16 +17,22 @@ export interface SummarizeOptions {
 }
 
 const DEFAULT_TEMPERATURE = 0.5;
-const DEFAULT_MAX_TOKENS = 200;
+/**
+ * Budget for reasoning + answer, not answer length — every mainstream provider counts
+ * thinking tokens against this cap, so a summary-sized value starves the answer to
+ * empty on any reasoning model. Output length is governed by the prompt instead.
+ */
+const DEFAULT_MAX_TOKENS = 2048;
 
 /**
  * Unified summarization: renders llm.summarize prompt and calls LLM.
- * Provider is passed per-call via options.provider when calling summarize().
+ * Runs on `ai.taskProviders.summarize` unless a call overrides it via options.provider.
  */
 export class SummarizeService {
   constructor(
     private llmService: LLMService,
     private promptManager: PromptManager,
+    private defaultProvider?: string,
   ) {}
 
   /**
@@ -37,15 +43,15 @@ export class SummarizeService {
    */
   async summarize(conversationText: string, options?: SummarizeOptions): Promise<string> {
     const prompt = this.promptManager.render('llm.summarize', { conversationText });
-    const provider = options?.provider;
 
     const response = await this.llmService.generate(
       prompt,
       {
         temperature: options?.temperature ?? DEFAULT_TEMPERATURE,
         maxTokens: options?.maxTokens ?? DEFAULT_MAX_TOKENS,
+        reasoningEffort: 'minimal',
       },
-      provider,
+      options?.provider ?? this.defaultProvider,
     );
 
     const text = (response.text ?? '').trim();
@@ -66,13 +72,12 @@ export class SummarizeService {
       threadContextWithIndices,
       preferenceSummary,
     });
-    const provider = options?.provider;
     const response = await this.llmService.generate(
       prompt,
       {
         temperature: options?.temperature ?? 0.3,
       },
-      provider,
+      options?.provider ?? this.defaultProvider,
     );
     const text = (response.text ?? '').trim();
     if (!text) {

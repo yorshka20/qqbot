@@ -26,6 +26,13 @@ export interface ConversationMessageEntry {
   wasAtBot?: boolean;
 }
 
+/** Outcome of a summary roll: the resulting window plus how many entries the summary stands for. */
+export interface SummaryRollResult {
+  entries: ConversationMessageEntry[];
+  /** Leading entries folded into the summary entry; 0 when no summary was produced. */
+  replacedCount: number;
+}
+
 /**
  * Normalize sessionId to canonical form for DB/history lookup.
  * Ensures group sessions use "group:{groupId}" and user sessions use "user:{userId}" so history and persistence always match.
@@ -428,7 +435,11 @@ export class ConversationHistoryService {
 
   /**
    * When entries exceed maxEntries, summarize the oldest segment into one assistant entry (summary roll).
-   * Resolves SummarizeService from DI when needed; when not registered, oldest entries are dropped (no summary).
+   *
+   * The window size is the contract; the summary is how the dropped span survives it.
+   * When the summarizer yields nothing the span cannot survive, so it is dropped outright
+   * rather than stood in for by a placeholder entry — a placeholder reads to the model as
+   * "context existed here" while carrying none of it.
    *
    * @param entries - Chronological history entries (oldest first)
    * @param maxEntries - Max entries to keep; when exceeded, oldest are summarized into one
@@ -438,23 +449,38 @@ export class ConversationHistoryService {
     entries: ConversationMessageEntry[],
     maxEntries: number,
     now: Date,
-  ): Promise<ConversationMessageEntry[]> {
+  ): Promise<SummaryRollResult> {
     if (entries.length <= maxEntries) {
-      return entries;
+      return { entries, replacedCount: 0 };
     }
     const numToSummarize = entries.length - (maxEntries - 1);
     const toSummarize = entries.slice(0, numToSummarize);
     const rest = entries.slice(numToSummarize);
     const conversationText = this.formatAsText(toSummarize);
-    const summaryText = await this.summarizeService.summarize(conversationText);
+
+    let summaryText = '';
+    try {
+      summaryText = (await this.summarizeService.summarize(conversationText)).trim();
+    } catch (err) {
+      logger.error('[ConversationHistoryService] Summary roll failed:', err);
+    }
+
+    if (!summaryText) {
+      logger.warn(
+        `[ConversationHistoryService] Summary roll produced no text; dropping ${numToSummarize} oldest entries | ` +
+          `conversationTextLength=${conversationText.length}`,
+      );
+      return { entries: entries.slice(-maxEntries), replacedCount: 0 };
+    }
+
     const summaryEntry: ConversationMessageEntry = {
       messageId: `summary:${now.getTime()}`,
       userId: 0,
-      content: summaryText.trim() || '[Previous conversation summary]',
+      content: summaryText,
       isBotReply: true,
       createdAt: toSummarize[0].createdAt,
     };
-    return [summaryEntry, ...rest];
+    return { entries: [summaryEntry, ...rest], replacedCount: numToSummarize };
   }
 
   /**

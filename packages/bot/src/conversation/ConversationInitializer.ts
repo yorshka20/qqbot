@@ -253,7 +253,11 @@ export class ConversationInitializer {
 
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
     // SummarizeService is reused by context memory and proactive thread compression. Must be registered before ConversationHistoryService (it resolves it in constructor).
-    const summarizeService = new SummarizeService(llmService, promptManager);
+    const summarizeService = new SummarizeService(
+      llmService,
+      promptManager,
+      aiConfig.taskProviders?.summarize ?? aiConfig.defaultProviders?.llm,
+    );
     container.registerInstance(DITokens.SUMMARIZE_SERVICE, summarizeService);
 
     const memoryConfig = config.getContextMemoryConfig();
@@ -538,13 +542,9 @@ export class ConversationInitializer {
       DITokens.PROACTIVE_THREAD_PERSISTENCE_SERVICE,
       new DefaultProactiveThreadPersistenceService(databaseManager),
     );
-    // Get summarize provider from config
-    const config = container.resolve<Config>(DITokens.CONFIG);
-    const summarizeProvider =
-      config.getAIConfig()?.taskProviders?.summarize ?? config.getAIConfig()?.defaultProviders?.llm;
     container.registerInstance(
       DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE,
-      new ThreadContextCompressionService(threadService, summarizeService, promptManager, summarizeProvider),
+      new ThreadContextCompressionService(threadService, summarizeService, promptManager),
     );
 
     container.registerSingleton(DITokens.PROACTIVE_CONVERSATION_SERVICE, ProactiveConversationService);

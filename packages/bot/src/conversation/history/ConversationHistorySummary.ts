@@ -66,12 +66,14 @@ export class ConversationHistorySummary implements ISessionHistory {
 
       logger.debug('[ConversationHistorySummary] Generating summary...');
 
-      const summaryText = await this.summarizeService.summarize(conversationText);
+      const summaryText = (await this.summarizeService.summarize(conversationText)).trim();
 
-      if (this.summary) {
-        this.summary = `${this.summary} ${summaryText}`;
+      if (summaryText) {
+        this.summary = this.summary ? `${this.summary} ${summaryText}` : summaryText;
       } else {
-        this.summary = summaryText;
+        logger.warn(
+          `[ConversationHistorySummary] Empty summary; dropping ${oldEntries.length} oldest entries uncompressed`,
+        );
       }
 
       const recentEntries = this.buffer.getEntries().slice(-5);

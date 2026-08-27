@@ -215,28 +215,13 @@ export class LLMService {
   }
 
   /**
-   * Get fallback response when no provider is available
-   * Returns a simple template response based on the prompt type
+   * Get fallback response when no provider is available.
+   *
+   * Never derives task-shaped content from the prompt: callers such as summarization
+   * feed the result straight back into conversation state, where an invented
+   * "summary" is indistinguishable from a real one.
    */
-  private getFallbackResponse(prompt: string): AIGenerateResponse {
-    // Check if this is a summary request
-    if (prompt.includes('Summarize') || prompt.includes('Summary:')) {
-      // Extract conversation text if possible
-      const conversationMatch = prompt.match(/User:.*?Assistant:.*/s);
-      if (conversationMatch) {
-        const conversationText = conversationMatch[0];
-        // Create a simple summary based on message count
-        const messages = conversationText.split(/\n(?=User:|Assistant:)/).filter(Boolean);
-        return {
-          text: `Previous conversation with ${messages.length} messages. Key topics discussed.`,
-        };
-      }
-      return {
-        text: 'Previous conversation summary: Key topics and decisions were discussed.',
-      };
-    }
-
-    // Default fallback response
+  private getFallbackResponse(_prompt: string): AIGenerateResponse {
     return {
       text: 'I apologize, but AI service is currently unavailable. Please try again later.',
     };

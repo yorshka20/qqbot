@@ -24,17 +24,12 @@ const MIN_MESSAGES_FOR_TOPIC_CLEAN = 8;
  */
 export class ThreadContextCompressionService {
   private compressingThreadIds = new Set<string>();
-  /** Provider for summarization (from config) */
-  private readonly summarizeProvider: string;
 
   constructor(
     private threadService: ThreadService,
     private summarizeService: SummarizeService,
     private promptManager?: PromptManager,
-    summarizeProvider?: string,
-  ) {
-    this.summarizeProvider = summarizeProvider ?? 'deepseek';
-  }
+  ) {}
 
   /**
    * Schedule compression check for all active threads in the group (async, non-blocking).
@@ -73,9 +68,7 @@ export class ThreadContextCompressionService {
     this.compressingThreadIds.add(threadId);
     try {
       const contextWithIndices = this.threadService.getContextFormattedWithIndices(threadId);
-      const keepIndices = await this.summarizeService.cleanThreadTopic(contextWithIndices, preferenceSummary, {
-        provider: this.summarizeProvider,
-      });
+      const keepIndices = await this.summarizeService.cleanThreadTopic(contextWithIndices, preferenceSummary);
       if (keepIndices.length > 0 && keepIndices.length < thread.messages.length) {
         this.threadService.keepOnlyMessageIndices(threadId, keepIndices);
       }
@@ -121,9 +114,7 @@ export class ThreadContextCompressionService {
       const segment = thread.messages.slice(0, segmentLength);
       const conversationText = this.formatSegmentForSummarize(segment);
 
-      const summaryText = await this.summarizeService.summarize(conversationText, {
-        provider: this.summarizeProvider,
-      });
+      const summaryText = await this.summarizeService.summarize(conversationText);
 
       if (!summaryText) {
         logger.warn(

@@ -176,14 +176,16 @@ export class ProactiveReplyContextBuilder {
     }));
     // When over limit, summarize front so summary becomes stable start (in memory); next build sees same start.
     if (historyEntries.length > PROACTIVE_MAX_HISTORY_ENTRIES) {
-      const replaced = await this.deps.conversationHistoryService.replaceOldestWithSummary(
+      const roll = await this.deps.conversationHistoryService.replaceOldestWithSummary(
         historyEntries,
         PROACTIVE_MAX_HISTORY_ENTRIES,
         new Date(),
       );
-      const numToReplace = historyEntries.length - (PROACTIVE_MAX_HISTORY_ENTRIES - 1);
-      this.deps.threadService.replaceEarliestWithSummary(threadId, numToReplace, replaced[0].content);
-      historyEntries = replaced;
+      // Only mirror a real summary back into the thread; a failed roll just trims this build.
+      if (roll.replacedCount > 0) {
+        this.deps.threadService.replaceEarliestWithSummary(threadId, roll.replacedCount, roll.entries[0].content);
+      }
+      historyEntries = roll.entries;
     }
     const preferenceText = this.getPreferenceText(preferenceKey);
     // Use trigger user message for RAG (same as reply flow): last user message in thread, fallback to topic
