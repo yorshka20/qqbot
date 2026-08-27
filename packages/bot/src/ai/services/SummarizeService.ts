@@ -5,6 +5,7 @@ import { KeepIndicesSchema } from '@/ai/schemas';
 import type { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import { logger } from '@/utils/logger';
+import { TOKEN_BUDGET } from '../tokenBudget';
 
 /** cleanThreadTopic prompt expects JSON (keepIndices); usually in code block or raw. */
 const CLEAN_THREAD_TOPIC_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'regex'];
@@ -22,7 +23,7 @@ const DEFAULT_TEMPERATURE = 0.5;
  * thinking tokens against this cap, so a summary-sized value starves the answer to
  * empty on any reasoning model. Output length is governed by the prompt instead.
  */
-const DEFAULT_MAX_TOKENS = 2048;
+const DEFAULT_MAX_TOKENS = TOKEN_BUDGET.analysis;
 
 /**
  * Unified summarization: renders llm.summarize prompt and calls LLM.
@@ -76,6 +77,7 @@ export class SummarizeService {
       prompt,
       {
         temperature: options?.temperature ?? 0.3,
+        jsonMode: true,
       },
       options?.provider ?? this.defaultProvider,
     );

@@ -3,6 +3,7 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
+import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import type { Config } from '@/core/config';
 import { GROUP_CORE_SCOPES, type ParsedScope, USER_CORE_SCOPES } from '@/core/config/types/memory';
@@ -11,6 +12,15 @@ import type { MemoryNoteBuffer } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 import type { MemoryService } from './MemoryService';
 import { GROUP_MEMORY_USER_ID } from './MemoryService';
+
+/**
+ * Extract and merge are background jobs whose prompts carry up to 500 raw group
+ * messages (~50KB) or a whole memory slot, and ask a reasoning model for a
+ * document-sized answer. LLMService's 120s default hard-timeout aborts them
+ * mid-generation and the whole run is lost; nothing waits on these, so a longer
+ * budget costs nothing.
+ */
+const MEMORY_JOB_TIMEOUT_MS = 300_000;
 
 /**
  * Extract output shape from prompts/memory/extract.txt:
@@ -339,8 +349,9 @@ export class MemoryExtractService {
         prompt,
         {
           temperature: 0.4,
-          maxTokens: 10000,
+          maxTokens: TOKEN_BUDGET.document,
           systemPrompt: baseSystemPrompt,
+          timeout: MEMORY_JOB_TIMEOUT_MS,
         },
         provider,
       );
@@ -396,8 +407,10 @@ export class MemoryExtractService {
         prompt,
         {
           temperature: 0.4,
-          maxTokens: 20000, // use long context for extract.
+          maxTokens: TOKEN_BUDGET.document,
           systemPrompt: baseSystemPrompt,
+          jsonMode: true,
+          timeout: MEMORY_JOB_TIMEOUT_MS,
         },
         provider,
       );
@@ -472,7 +485,9 @@ export class MemoryExtractService {
         prompt,
         {
           temperature: 0.4,
-          maxTokens: 20000,
+          maxTokens: TOKEN_BUDGET.document,
+          jsonMode: true,
+          timeout: MEMORY_JOB_TIMEOUT_MS,
         },
         provider,
       );

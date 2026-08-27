@@ -10,6 +10,7 @@ import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import { logger } from '@/utils/logger';
 import type { Text2ImageOptions } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
+import { TOKEN_BUDGET } from '../tokenBudget';
 import type { LLMService } from './LLMService';
 
 /** Default and bounds for I2V video duration (seconds) */
@@ -94,8 +95,9 @@ export class ImagePromptService {
       llmPrompt,
       {
         temperature: 0.3, // Lower temperature for more consistent JSON output
-        maxTokens: 1000,
+        maxTokens: TOKEN_BUDGET.analysis,
         sessionId,
+        jsonMode: true,
       },
       this.providerName,
     );
@@ -151,8 +153,9 @@ export class ImagePromptService {
         llmPrompt,
         {
           temperature: 0.3,
-          maxTokens: 1000,
+          maxTokens: TOKEN_BUDGET.analysis,
           sessionId,
+          jsonMode: true,
         },
         this.providerName,
       );
