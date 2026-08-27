@@ -84,15 +84,22 @@ export interface PersonaRelationshipEvent {
 }
 
 /**
- * One reflection log entry stored in `persona_reflections`.
- * Append-only: rows are never deleted or updated.
+ * One row of `persona_reflections`. Append-only: rows are never deleted or updated.
+ *
+ * The table holds two kinds of row and `trigger` is what tells them apart:
+ * an applied reflection (`time` / `event` / `manual`), whose `insightMd` is the
+ * model's actual self-reflection, and a rejection audit (`rejected`), whose
+ * `insightMd` is the diagnostic reason the patch was refused. Readers that surface
+ * insight text to the model must take applied rows only — see
+ * {@link EpigeneticsStore.getRecentAppliedReflections}.
  */
 export interface PersonaReflection {
   id: number;
   personaId: string;
   /** Unix timestamp (ms) when the reflection was applied. */
   timestamp: number;
-  trigger: 'time' | 'event' | 'manual';
+  trigger: 'time' | 'event' | 'manual' | 'rejected';
+  /** Real insight on applied rows; the rejection reason on `rejected` rows. */
   insightMd: string;
   /** The patch that was applied, serialized for audit / rollback. */
   appliedPatch: ReflectionPatch;

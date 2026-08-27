@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { EpigeneticsStore } from '../../reflection/epigenetics/EpigeneticsStore';
-import type { PersonaEpigenetics, PersonaRelationship } from '../../reflection/epigenetics/types';
+import type { PersonaEpigenetics, PersonaRelationship, PersonaReflection } from '../../reflection/epigenetics/types';
 import { TONE_MAPPINGS } from '../../reflection/tone/mappings';
 import { TONE_VOCABULARY } from '../../reflection/tone/types';
 import type { PersonaStateSnapshot } from '../../types';
@@ -272,7 +272,10 @@ describe('TONE_MAPPINGS — vocabulary coverage', () => {
 
 // ─── buildPromptPatchAsync — tone injection tests ─────────────────────────────
 
-function makeEpigeneticsStore(behavioralBiases: Record<string, number | string>) {
+function makeEpigeneticsStore(
+  behavioralBiases: Record<string, number | string>,
+  reflections: { applied?: PersonaReflection[]; all?: PersonaReflection[] } = {},
+) {
   const epi: PersonaEpigenetics = {
     personaId: 'default',
     topicMastery: {},
@@ -286,9 +289,52 @@ function makeEpigeneticsStore(behavioralBiases: Record<string, number | string>)
   return {
     getRelationship: async () => null,
     getEpigenetics: async () => epi,
-    getRecentReflections: async () => [],
+    getRecentReflections: async () => reflections.all ?? [],
+    getRecentAppliedReflections: async () => reflections.applied ?? [],
   };
 }
+
+function reflection(trigger: PersonaReflection['trigger'], insightMd: string, timestamp: number): PersonaReflection {
+  return { id: 1, personaId: 'default', timestamp, trigger, insightMd, appliedPatch: {} };
+}
+
+describe('buildPromptPatchAsync — recent insight', () => {
+  const mindSnap = snapshot({ fatigue: 0 });
+  const now = 1_700_000_000_000;
+
+  test('surfaces the most recent applied insight', async () => {
+    const store = makeEpigeneticsStore(
+      { currentTone: 'neutral' },
+      { applied: [reflection('time', '近期对话以群聊玩梗为主。', now - 60_000)] },
+    );
+    const patch = await buildPromptPatchAsync(mindSnap, {
+      store: store as unknown as EpigeneticsStore,
+      userId: 'user1',
+      now,
+    });
+
+    expect(patch.recentInsight).toBe('近期对话以群聊玩梗为主。');
+  });
+
+  test('a rejection audit never becomes the insight, and does not hide the real one', async () => {
+    // The store holds both kinds of row; the rejection is the newest.
+    const rejection = reflection('rejected', 'rejected after retry: trait_bound_exceeded:openness', now - 10_000);
+    const applied = reflection('time', '近期对话以群聊玩梗为主。', now - 60_000);
+    const store = makeEpigeneticsStore(
+      { currentTone: 'neutral' },
+      { all: [rejection, applied], applied: [applied] },
+    );
+
+    const patch = await buildPromptPatchAsync(mindSnap, {
+      store: store as unknown as EpigeneticsStore,
+      userId: 'user1',
+      now,
+    });
+
+    expect(patch.recentInsight).toBe('近期对话以群聊玩梗为主。');
+    expect(patch.recentInsight).not.toContain('trait_bound_exceeded');
+  });
+});
 
 describe('buildPromptPatchAsync — tone injection', () => {
   const mindSnap = snapshot({ fatigue: 0 });

@@ -173,10 +173,27 @@ export class EpigeneticsStore {
     return rows.map(deserializeRelationship);
   }
 
+  /** Every row, rejection audits included — the audit view (history tool, WebUI). */
   async getRecentReflections(personaId: string, limit: number): Promise<PersonaReflection[]> {
     const rows = this.db
       .query<ReflectionRow, [string]>(
         `SELECT * FROM persona_reflections WHERE persona_id = ? ORDER BY timestamp DESC LIMIT ${Math.max(1, limit)}`,
+      )
+      .all(personaId);
+    return rows.map(deserializeReflection);
+  }
+
+  /**
+   * Applied reflections only. Callers that put insight text in front of the model
+   * must use this: a rejection audit's `insightMd` is a diagnostic string, and
+   * taking the newest row regardless of kind both leaks that string and hides the
+   * last real insight behind it.
+   */
+  async getRecentAppliedReflections(personaId: string, limit: number): Promise<PersonaReflection[]> {
+    const rows = this.db
+      .query<ReflectionRow, [string]>(
+        `SELECT * FROM persona_reflections WHERE persona_id = ? AND trigger != 'rejected'
+         ORDER BY timestamp DESC LIMIT ${Math.max(1, limit)}`,
       )
       .all(personaId);
     return rows.map(deserializeReflection);

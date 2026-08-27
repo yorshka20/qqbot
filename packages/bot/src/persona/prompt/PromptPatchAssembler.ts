@@ -336,7 +336,7 @@ export async function buildPromptPatchAsync(
     // per-user read, so it is conditional on userId being present.
     const [epigenetics, reflections, relationship] = await Promise.all([
       opts.store.getEpigenetics(snapshot.personaId),
-      opts.store.getRecentReflections(snapshot.personaId, 1),
+      opts.store.getRecentAppliedReflections(snapshot.personaId, 1),
       opts.userId ? opts.store.getRelationship(snapshot.personaId, opts.userId) : Promise.resolve(null),
     ]);
 
