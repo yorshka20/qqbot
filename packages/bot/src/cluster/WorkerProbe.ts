@@ -1,24 +1,24 @@
 /**
- * WorkerProbe — live liveness check for worker templates.
+ * WorkerProbe — credential check for worker templates.
  *
  * WorkerTemplateHealthCheck only validates static preconditions (binary on
- * PATH, required env vars present) — it never actually runs a worker, so
- * expired CLI logins, wrong base URLs, and provider outages stay invisible
- * until a real ticket dispatches and fails. probeWorkerTemplates spawns
- * each enabled template through the same `WorkerBackend.spawn()` path a
- * real task uses, with a trivial prompt, and checks the reply for a fixed
- * token — the only way to confirm the CLI can actually reach its provider
- * and answer.
+ * PATH, required env vars present) — it never confirms the credential behind a
+ * template still works, so expired CLI logins, revoked keys, wrong base URLs
+ * and models an account cannot reach stay invisible until a real ticket
+ * dispatches and fails. probeWorkerTemplates closes that gap by asking each
+ * template's provider directly through `WorkerBackend.verifyCredentials`.
+ *
+ * Nothing is spawned. An agent CLI ships its entire system prompt and tool
+ * schema on every invocation, so a spawn-based probe costs a full paid model
+ * call per template per cluster start — for a question the provider answers
+ * for free. Whether the CLI harness itself works is a separate, near-static
+ * property already covered by the binary check.
  *
  * The probe deliberately does not register with the cluster coordination
  * layer or produce a TaskRecord — it is a side-effect-free sanity check,
  * not a real task dispatch.
  */
 
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { logger } from '@/utils/logger';
 import type { ClusterConfig, WorkerBackendType, WorkerTemplateConfig } from './config';
 import type { WorkerBackend } from './types';
@@ -30,87 +30,36 @@ export interface WorkerProbeResult {
   ok: boolean;
   durationMs: number;
   reason?: string;
-  output?: string;
+  /** Origin of the credential the CLI would use — never the credential itself. */
+  credentialSource?: string;
+  endpoint?: string;
+  model?: string;
+  warnings?: string[];
 }
 
-const PROBE_TOKEN = 'CLUSTER_PROBE_OK';
-const PROBE_PROMPT = `Reply with exactly this token and nothing else: ${PROBE_TOKEN}`;
-
-/** How many probes run concurrently. Keeps a large fleet of templates from
- *  all spawning CLIs at once and thrashing the machine. */
-const PROBE_CONCURRENCY = 4;
-
-async function runBatched<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let cursor = 0;
-  async function worker(): Promise<void> {
-    while (cursor < items.length) {
-      const index = cursor++;
-      results[index] = await fn(items[index]);
-    }
+/** The environment a worker of this template would be spawned with. */
+function resolveTemplateEnv(template: WorkerTemplateConfig): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === 'string') merged[key] = value;
   }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
-  return results;
+  return { ...merged, ...(template.env || {}) };
 }
 
-async function probeOneTemplate(
+async function verifyOneTemplate(
   templateName: string,
   template: WorkerTemplateConfig,
   backend: WorkerBackend,
   timeoutMs: number,
 ): Promise<WorkerProbeResult> {
   const start = Date.now();
-  const dir = await mkdtemp(join(tmpdir(), 'cluster-probe-'));
   try {
-    const mcpConfigPath = join(dir, 'mcp.json');
-    await writeFile(mcpConfigPath, JSON.stringify({ mcpServers: {} }));
-
-    const proc = await backend.spawn({
-      workerId: `probe-${templateName}-${randomUUID().slice(0, 6)}`,
-      taskPrompt: PROBE_PROMPT,
-      projectPath: dir,
-      mcpConfigPath,
-      hubUrl: '',
-      command: template.command,
+    const result = await backend.verifyCredentials({
+      env: resolveTemplateEnv(template),
       args: template.args,
-      env: { ...(template.env || {}) },
-      timeout: timeoutMs,
+      timeoutMs,
     });
-
-    const exited = await Promise.race([
-      proc.exited,
-      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), timeoutMs)),
-    ]);
-
-    if (exited === 'timeout') {
-      proc.kill();
-      return {
-        templateName,
-        type: template.type,
-        ok: false,
-        durationMs: Date.now() - start,
-        reason: `timeout after ${timeoutMs}ms`,
-      };
-    }
-
-    const exitCode = exited;
-    const stdout = await new Response(proc.stdout as ReadableStream<Uint8Array>).text();
-    const stderr = await new Response(proc.stderr as ReadableStream<Uint8Array>).text();
-    const finalMessage = backend.parseOutput ? backend.parseOutput(stdout).finalMessage : stdout;
-    const ok = exitCode === 0 && finalMessage.includes(PROBE_TOKEN);
-
-    return {
-      templateName,
-      type: template.type,
-      ok,
-      durationMs: Date.now() - start,
-      reason: ok
-        ? undefined
-        : stderr.trim()
-          ? stderr.trim().slice(0, 300)
-          : `exit ${exitCode}, unexpected output: ${finalMessage.slice(0, 200)}`,
-      output: finalMessage.slice(0, 200),
-    };
+    return { templateName, type: template.type, durationMs: Date.now() - start, ...result };
   } catch (err) {
     return {
       templateName,
@@ -119,17 +68,14 @@ async function probeOneTemplate(
       durationMs: Date.now() - start,
       reason: err instanceof Error ? err.message : String(err),
     };
-  } finally {
-    await rm(dir, { recursive: true, force: true });
   }
 }
 
 /**
- * Probe every enabled worker template (or the subset named in
- * `opts.templates`) by spawning it with a trivial prompt and checking for
- * the expected reply. Runs `checkWorkerTemplateHealth` once up front so a
- * template with a missing binary or a placeholder key short-circuits
- * without burning a paid API call.
+ * Check the credential of every enabled worker template (or the subset named
+ * in `opts.templates`). Runs `checkWorkerTemplateHealth` once up front so a
+ * template with a missing binary or a placeholder key is reported without a
+ * pointless network round trip.
  */
 export async function probeWorkerTemplates(
   config: ClusterConfig,
@@ -173,37 +119,34 @@ export async function probeWorkerTemplates(
     runnable.push(name);
   }
 
-  const probed = await runBatched(runnable, PROBE_CONCURRENCY, async (name) => {
-    const template = config.workerTemplates[name];
-    const backend = getBackend(template.type);
-    if (!backend) {
-      return {
-        templateName: name,
-        type: template.type,
-        ok: false,
-        durationMs: 0,
-        reason: `no backend registered for type ${template.type}`,
-      };
-    }
-    try {
-      return await probeOneTemplate(name, template, backend, timeoutMs);
-    } catch (err) {
-      return {
-        templateName: name,
-        type: template.type,
-        ok: false,
-        durationMs: 0,
-        reason: err instanceof Error ? err.message : String(err),
-      };
-    }
-  });
+  const probed = await Promise.all(
+    runnable.map(async (name) => {
+      const template = config.workerTemplates[name];
+      const backend = getBackend(template.type);
+      if (!backend) {
+        return {
+          templateName: name,
+          type: template.type,
+          ok: false,
+          durationMs: 0,
+          reason: `no backend registered for type ${template.type}`,
+        };
+      }
+      return verifyOneTemplate(name, template, backend, timeoutMs);
+    }),
+  );
 
   results.push(...probed);
+
+  const warningLines = results.flatMap((r) => (r.warnings ?? []).map((w) => `  ! ${r.templateName}: ${w}`));
+  if (warningLines.length > 0) {
+    logger.warn(`[WorkerProbe] credential warnings:\n${warningLines.join('\n')}`);
+  }
 
   const failed = results.filter((r) => !r.ok);
   if (failed.length > 0) {
     logger.warn(
-      `[WorkerProbe] ${failed.length}/${results.length} template(s) failed live probe:\n` +
+      `[WorkerProbe] ${failed.length}/${results.length} template(s) failed credential check:\n` +
         failed.map((r) => `  ✗ ${r.templateName}: ${r.reason}`).join('\n'),
     );
   }

@@ -11,9 +11,20 @@
  * against any Anthropic-compatible endpoint when env vars are overridden.
  */
 
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { spawn } from 'bun';
 import { logger } from '@/utils/logger';
-import type { ParsedWorkerOutput, WorkerBackend, WorkerSpawnConfig } from '../types';
+import type {
+  CredentialProbeConfig,
+  CredentialProbeResult,
+  ParsedWorkerOutput,
+  WorkerBackend,
+  WorkerSpawnConfig,
+} from '../types';
+import { checkAnthropicCredential, checkClaudeOAuthLogin } from './providerCredentialCheck';
+
+const ANTHROPIC_DEFAULT_BASE_URL = 'https://api.anthropic.com';
 
 export class ClaudeCliBackend implements WorkerBackend {
   name = 'claude-cli';
@@ -73,6 +84,28 @@ export class ClaudeCliBackend implements WorkerBackend {
       stdout: 'pipe',
       stderr: 'pipe',
     });
+  }
+
+  /**
+   * Two credential shapes reach the same binary: an explicit key (what the
+   * anthropic-compat façades supply, and what a self-hosted endpoint needs),
+   * or the subscription login written by `claude login`. A key can be checked
+   * against whichever endpoint it targets; a subscription login has no free
+   * endpoint that validates it, so that path falls back to a local check.
+   */
+  async verifyCredentials(config: CredentialProbeConfig): Promise<CredentialProbeResult> {
+    const apiKey = config.env.ANTHROPIC_API_KEY || config.env.ANTHROPIC_AUTH_TOKEN;
+    if (apiKey) {
+      return checkAnthropicCredential({
+        baseUrl: config.env.ANTHROPIC_BASE_URL || ANTHROPIC_DEFAULT_BASE_URL,
+        apiKey,
+        credentialSource: config.env.ANTHROPIC_API_KEY ? 'env.ANTHROPIC_API_KEY' : 'env.ANTHROPIC_AUTH_TOKEN',
+        timeoutMs: config.timeoutMs,
+      });
+    }
+
+    const configDir = config.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+    return checkClaudeOAuthLogin({ credentialsPath: join(configDir, '.credentials.json'), now: Date.now() });
   }
 
   /**

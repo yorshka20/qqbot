@@ -396,9 +396,47 @@ export interface ParsedWorkerOutput {
   rawEvents?: unknown;
 }
 
+/**
+ * Input for `WorkerBackend.verifyCredentials`: the environment a worker would
+ * be spawned with, plus the template's CLI args so a backend can read the
+ * model its own flag spelling pins.
+ */
+export interface CredentialProbeConfig {
+  /** process.env + template.env — the same merge `spawn` receives. */
+  env: Record<string, string>;
+  args: string[];
+  timeoutMs: number;
+}
+
+export interface CredentialProbeResult {
+  ok: boolean;
+  /**
+   * The credential the CLI would actually authenticate with, identified by
+   * origin rather than value (e.g. `~/.codex/auth.json`, `env.OPENAI_API_KEY`).
+   * A CLI that resolves credentials from its own config outranking the
+   * environment makes this the difference between a useful result and a
+   * misleading one.
+   */
+  credentialSource: string;
+  /** Provider endpoint consulted; absent when the check is purely local. */
+  endpoint?: string;
+  /** Set only by providers whose API answers per-model, confirming entitlement. */
+  model?: string;
+  reason?: string;
+  /** Non-fatal findings, e.g. a template key the CLI would silently ignore. */
+  warnings?: string[];
+}
+
 export interface WorkerBackend {
   name: string;
   spawn(config: WorkerSpawnConfig): Promise<import('bun').Subprocess>;
+  /**
+   * Confirm the credential this backend's CLI would authenticate with,
+   * without spawning it. Runs on every cluster start, so implementations must
+   * stay free: consult a provider's model-metadata endpoint or a local
+   * credential file, never an inference endpoint.
+   */
+  verifyCredentials(config: CredentialProbeConfig): Promise<CredentialProbeResult>;
   /**
    * Optional: parse the worker's stdout into a clean final message.
    * Default behavior (when not implemented) is to use the raw stdout

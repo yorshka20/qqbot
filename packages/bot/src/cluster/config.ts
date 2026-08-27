@@ -58,15 +58,15 @@ export interface ClusterConfig {
   };
 
   /**
-   * Live worker probe settings. Non-optional so downstream code (bootstrap,
-   * the future `/cluster health` command) can read `config.healthCheck.*`
+   * Worker credential check settings. Non-optional so downstream code
+   * (bootstrap, the `/cluster health` command) can read `config.healthCheck.*`
    * directly instead of threading fallback defaults everywhere the field
    * is used — `parseClusterConfig` is the single place that owns defaults.
    */
   healthCheck: {
     /** Run `probeWorkerTemplates` once at cluster startup. */
     probeOnStartup: boolean;
-    /** Per-template probe timeout (ms). */
+    /** Per-template timeout (ms) for the provider credential request. */
     probeTimeout: number;
   };
 }
@@ -281,7 +281,7 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
       probeTimeout:
         typeof healthCheckRaw.probeTimeout === 'string'
           ? parseDuration(healthCheckRaw.probeTimeout)
-          : (healthCheckRaw.probeTimeout as number) || 45_000,
+          : (healthCheckRaw.probeTimeout as number) || 10_000,
     },
   };
 }

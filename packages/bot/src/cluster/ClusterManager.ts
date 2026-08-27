@@ -184,6 +184,10 @@ export class ClusterManager {
     this.started = true;
     logger.info('[ClusterManager] Agent Cluster started');
 
+    void CodexCliBackend.cleanupProbeWorkspaces().catch((err) =>
+      logger.warn('[ClusterManager] Probe workspace cleanup failed:', err),
+    );
+
     if (this.config.healthCheck.probeOnStartup) {
       void this.runStartupProbe();
     }
@@ -325,10 +329,9 @@ export class ClusterManager {
   }
 
   /**
-   * Live-probe worker templates by spawning each one with a trivial prompt
-   * and checking for a fixed response token. Works even when the cluster
-   * hasn't been started — only needs config + registered backends, both
-   * available from the constructor.
+   * Check each worker template's provider credential. Works even when the
+   * cluster hasn't been started — only needs config + registered backends,
+   * both available from the constructor.
    */
   async probeWorkerTemplates(opts?: { templates?: string[]; timeoutMs?: number }): Promise<WorkerProbeResult[]> {
     const results = await probeWorkerTemplates(this.config, (type) => this.workerPool.getBackend(type), opts);
@@ -387,10 +390,10 @@ export class ClusterManager {
   // ── Private ──
 
   /**
-   * Fire-and-forget live probe run at startup. `probeWorkerTemplates`
-   * already routes failures through `healthAlertNotifier`; this only adds
-   * a console summary. A probe failure (or notifier failure) must never
-   * destabilize the cluster, so the whole body is wrapped.
+   * Fire-and-forget probe run at startup. `probeWorkerTemplates` already
+   * routes failures through `healthAlertNotifier`; this only adds a console
+   * summary. A probe failure (or notifier failure) must never destabilize
+   * the cluster, so the whole body is wrapped.
    */
   private async runStartupProbe(): Promise<void> {
     try {
@@ -399,7 +402,7 @@ export class ClusterManager {
       const failed = results.filter((r) => !r.ok);
 
       if (ok.length > 0) {
-        const lines = ok.map((r) => `  ✓ ${r.templateName} [${r.durationMs}ms]`);
+        const lines = ok.map((r) => `  ✓ ${r.templateName} → ${r.credentialSource ?? 'ok'} [${r.durationMs}ms]`);
         logger.info(`[ClusterManager] ${ok.length} worker template(s) passed startup probe:\n${lines.join('\n')}`);
       }
       if (failed.length > 0) {

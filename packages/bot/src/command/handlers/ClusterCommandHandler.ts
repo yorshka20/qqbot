@@ -9,7 +9,7 @@
  *   /cluster task <project> "desc"    → submit manual task
  *   /cluster ask list                 → list pending hub_ask requests
  *   /cluster ask answer <id> <text>   → answer a pending hub_ask request
- *   /cluster health [template]        → live-probe worker template availability
+ *   /cluster health [template]        → verify worker template provider credentials
  */
 
 import { inject, injectable } from 'tsyringe';
@@ -201,13 +201,17 @@ export class ClusterCommand implements CommandHandler {
   private async handleHealth(args: string[]): Promise<CommandResult> {
     const results = await this.clusterManager.probeWorkerTemplates(args[0] ? { templates: [args[0]] } : undefined);
     const ok = results.filter((r) => r.ok);
-    const lines = [`Worker 探测: ${ok.length}/${results.length} 可用`];
+    const lines = [`Worker 凭据检查: ${ok.length}/${results.length} 可用`];
     for (const r of results) {
       const seconds = (r.durationMs / 1000).toFixed(1);
       if (r.ok) {
-        lines.push(`  ✓ ${r.templateName} (${r.type}, ${seconds}s)`);
+        const detail = [r.model, r.credentialSource].filter(Boolean).join(' via ');
+        lines.push(`  ✓ ${r.templateName} (${r.type}${detail ? `, ${detail}` : ''}, ${seconds}s)`);
       } else {
-        lines.push(`  ✗ ${r.templateName} (${r.type}): ${(r.reason ?? 'unknown').slice(0, 120)}`);
+        lines.push(`  ✗ ${r.templateName} (${r.type}): ${(r.reason ?? 'unknown').slice(0, 160)}`);
+      }
+      for (const warning of r.warnings ?? []) {
+        lines.push(`    ! ${warning}`);
       }
     }
     return textResult(lines.join('\n'));

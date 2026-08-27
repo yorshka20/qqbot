@@ -31,12 +31,26 @@
  * variant or tweak CLAUDE_CODE_EFFORT_LEVEL without touching this file.
  */
 
-import type { ParsedWorkerOutput, WorkerBackend, WorkerSpawnConfig } from '../types';
+import type {
+  CredentialProbeConfig,
+  CredentialProbeResult,
+  ParsedWorkerOutput,
+  WorkerBackend,
+  WorkerSpawnConfig,
+} from '../types';
 import { ClaudeCliBackend } from './ClaudeCliBackend';
+import { checkOpenAiCredential } from './providerCredentialCheck';
 
 const DEEPSEEK_ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic';
 const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-pro';
 const DEEPSEEK_FAST_MODEL = 'deepseek-v4-flash';
+
+/**
+ * DeepSeek's `/anthropic` façade covers `/v1/messages` but returns 404 for
+ * `/v1/models`, so credential checks have to use the native OpenAI-shaped API
+ * on the bare host instead of the compat base URL that `spawn` uses.
+ */
+const DEEPSEEK_NATIVE_BASE_URL = 'https://api.deepseek.com';
 
 export class DeepseekBackend implements WorkerBackend {
   name = 'deepseek-cli';
@@ -57,6 +71,20 @@ export class DeepseekBackend implements WorkerBackend {
     };
 
     return this.inner.spawn({ ...config, env });
+  }
+
+  async verifyCredentials(config: CredentialProbeConfig): Promise<CredentialProbeResult> {
+    const apiKey = config.env.ANTHROPIC_AUTH_TOKEN;
+    if (!apiKey) {
+      return { ok: false, credentialSource: 'none', reason: 'ANTHROPIC_AUTH_TOKEN is not set in template.env' };
+    }
+
+    return checkOpenAiCredential({
+      baseUrl: DEEPSEEK_NATIVE_BASE_URL,
+      apiKey,
+      credentialSource: 'env.ANTHROPIC_AUTH_TOKEN',
+      timeoutMs: config.timeoutMs,
+    });
   }
 
   /**

@@ -31,7 +31,10 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { spawn } from 'bun';
 import { logger } from '@/utils/logger';
-import type { WorkerBackend, WorkerSpawnConfig } from '../types';
+import type { CredentialProbeConfig, CredentialProbeResult, WorkerBackend, WorkerSpawnConfig } from '../types';
+import { checkGeminiCredential, readModelArg } from './providerCredentialCheck';
+
+const GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
 export class GeminiCliBackend implements WorkerBackend {
   name = 'gemini-cli';
@@ -73,6 +76,25 @@ export class GeminiCliBackend implements WorkerBackend {
     );
 
     return proc;
+  }
+
+  async verifyCredentials(config: CredentialProbeConfig): Promise<CredentialProbeResult> {
+    const apiKey = config.env.GEMINI_API_KEY || config.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      return {
+        ok: false,
+        credentialSource: 'none',
+        reason: 'neither GEMINI_API_KEY nor GOOGLE_API_KEY is set in template.env',
+      };
+    }
+
+    return checkGeminiCredential({
+      baseUrl: GEMINI_DEFAULT_BASE_URL,
+      model: readModelArg(config.args, ['-m', '--model']),
+      apiKey,
+      credentialSource: config.env.GEMINI_API_KEY ? 'env.GEMINI_API_KEY' : 'env.GOOGLE_API_KEY',
+      timeoutMs: config.timeoutMs,
+    });
   }
 
   /**

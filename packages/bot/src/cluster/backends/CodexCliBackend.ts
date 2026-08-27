@@ -4,8 +4,10 @@
  * Uses `codex exec` (non-interactive subcommand) with the prompt fed via
  * stdin (the `-` sentinel) so long/templated prompts don't hit argv limits.
  *
- * Authentication: requires `OPENAI_API_KEY` in template.env (codex CLI also
- * supports interactive `codex login`, but workers run headless).
+ * Authentication: codex resolves an `apikey`-mode `<CODEX_HOME>/auth.json`
+ * ahead of `OPENAI_API_KEY`, so a stale auth.json makes every worker fail with
+ * 401 no matter what template.env says. `verifyCredentials` mirrors that
+ * precedence and reports which one is live.
  *
  * Project context: codex picks up `AGENTS.md` from the working directory
  * tree automatically, so per-project instructions need to live there.
@@ -25,13 +27,27 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { spawn } from 'bun';
 import { logger } from '@/utils/logger';
-import type { WorkerBackend, WorkerSpawnConfig } from '../types';
+import type { CredentialProbeConfig, CredentialProbeResult, WorkerBackend, WorkerSpawnConfig } from '../types';
+import { checkOpenAiCredential, checkOpenAiResponsesAccess, readModelArg } from './providerCredentialCheck';
 
 const MARKER_BEGIN = '# === cluster-managed BEGIN: do not edit between markers ===';
 const MARKER_END = '# === cluster-managed END ===';
+
+const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1';
+
+/** Matches a `[projects."<path>"]` table header in `config.toml`. */
+const PROJECT_SECTION = /^\[projects\."([^"]*)"\]\s*$/;
+
+/** Prefix of the throwaway workspaces `WorkerProbe` used to create via mkdtemp. */
+const PROBE_WORKSPACE_PREFIX = 'cluster-probe-';
+
+interface CodexAuthFile {
+  auth_mode?: string;
+  OPENAI_API_KEY?: string;
+}
 
 export class CodexCliBackend implements WorkerBackend {
   name = 'codex-cli';
@@ -79,6 +95,114 @@ export class CodexCliBackend implements WorkerBackend {
     );
 
     return proc;
+  }
+
+  async verifyCredentials(config: CredentialProbeConfig): Promise<CredentialProbeResult> {
+    const credential = await this.resolveCredential(config.env);
+    if (!credential) {
+      return {
+        ok: false,
+        credentialSource: 'none',
+        reason: 'no OPENAI_API_KEY in template.env and no apikey login in auth.json — run `codex login`',
+      };
+    }
+
+    const target = {
+      baseUrl: config.env.OPENAI_BASE_URL || OPENAI_DEFAULT_BASE_URL,
+      model: readModelArg(config.args, ['--model', '-m']),
+      apiKey: credential.key,
+      credentialSource: credential.source,
+      timeoutMs: config.timeoutMs,
+    };
+
+    // Model entitlement first, because it names the pinned model when an
+    // account cannot reach it; only then confirm the key is authorized for
+    // the Responses API, which is what codex drives and which a key scoped
+    // to model metadata alone would fail.
+    const entitlement = await checkOpenAiCredential(target);
+    const result = entitlement.ok ? await checkOpenAiResponsesAccess(target) : entitlement;
+
+    return credential.warnings.length > 0 ? { ...result, warnings: credential.warnings } : result;
+  }
+
+  /**
+   * Resolve the key codex itself would use. `auth.json` in `apikey` mode wins
+   * over the environment, so a template that sets `OPENAI_API_KEY` alongside a
+   * different stored login is authenticating as the stored one — worth a
+   * warning, because the symptom is otherwise an unexplained 401 or a bill
+   * against the wrong account.
+   */
+  private async resolveCredential(
+    env: Record<string, string>,
+  ): Promise<{ key: string; source: string; warnings: string[] } | null> {
+    const authFile = join(env.CODEX_HOME || join(homedir(), '.codex'), 'auth.json');
+    const envKey = env.OPENAI_API_KEY;
+
+    let stored: CodexAuthFile | null = null;
+    try {
+      stored = JSON.parse(await readFile(authFile, 'utf-8')) as CodexAuthFile;
+    } catch {
+      stored = null;
+    }
+
+    const storedKey = stored?.auth_mode === 'apikey' ? stored.OPENAI_API_KEY : undefined;
+    if (storedKey) {
+      const warnings =
+        envKey && envKey !== storedKey
+          ? [`template.env.OPENAI_API_KEY is ignored — codex authenticates with the apikey login in ${authFile}`]
+          : [];
+      return { key: storedKey, source: authFile, warnings };
+    }
+
+    if (envKey) return { key: envKey, source: 'env.OPENAI_API_KEY', warnings: [] };
+    return null;
+  }
+
+  /**
+   * Drop `[projects."…/cluster-probe-*"]` entries from `config.toml`.
+   *
+   * codex records every working directory it is pointed at as a trusted
+   * project and never prunes them, so each probe that ran in a throwaway
+   * mkdtemp workspace left a permanent entry behind in the user's own codex
+   * config. Probing no longer spawns the CLI, so this only has to clear what
+   * earlier runs accumulated; it is idempotent and cheap enough to run at
+   * every cluster start.
+   */
+  static async cleanupProbeWorkspaces(codexHome?: string): Promise<number> {
+    const file = join(codexHome || join(homedir(), '.codex'), 'config.toml');
+    if (!existsSync(file)) return 0;
+
+    let content: string;
+    try {
+      content = await readFile(file, 'utf-8');
+    } catch (err) {
+      logger.warn(`[CodexCliBackend] Could not read ${file} for probe-workspace cleanup:`, err);
+      return 0;
+    }
+
+    const kept: string[] = [];
+    let removed = 0;
+    let skipping = false;
+    for (const line of content.split('\n')) {
+      if (line.startsWith('[')) {
+        const match = PROJECT_SECTION.exec(line);
+        skipping = match !== null && basename(match[1]).startsWith(PROBE_WORKSPACE_PREFIX);
+        if (skipping) removed++;
+      }
+      if (!skipping) kept.push(line);
+    }
+
+    if (removed === 0) return 0;
+
+    try {
+      await writeFile(file, kept.join('\n').replace(/\n{3,}/g, '\n\n'));
+    } catch (err) {
+      logger.warn(`[CodexCliBackend] Could not rewrite ${file} during probe-workspace cleanup:`, err);
+      return 0;
+    }
+
+    logger.info(`[CodexCliBackend] Removed ${removed} stale probe workspace entr(ies) from ${file}`);
+    return removed;
   }
 
   /**

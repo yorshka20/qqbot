@@ -1271,16 +1271,17 @@
       "lockTTL": "10m",
       "eventLogMaxSize": 2000
     },
-    // Live worker probe: spawns each enabled worker template with a
-    // trivial prompt and checks the reply, catching expired CLI logins,
-    // wrong base URLs, and provider outages that the static binary/env
-    // check (WorkerTemplateHealthCheck) can't see. Costs one trivial paid
-    // API call per enabled template each time it runs.
+    // Worker credential check: asks each enabled template's provider whether
+    // its credential still works, catching expired CLI logins, revoked keys,
+    // wrong base URLs, and models the account can't reach — none of which the
+    // static binary/env check (WorkerTemplateHealthCheck) can see. Costs no
+    // tokens: it reads a model-metadata endpoint, never an inference one, so
+    // it is safe to leave on at every startup.
     "healthCheck": {
-      // Run the probe once at cluster startup. Default: true.
+      // Run the check once at cluster startup. Default: true.
       "probeOnStartup": true,
-      // Per-template probe timeout. Default: "45s".
-      "probeTimeout": "45s"
+      // Per-template timeout for the provider request. Default: "10s".
+      "probeTimeout": "10s"
     },
     "workerTemplates": {
       "claude-sonnet": {

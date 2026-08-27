@@ -632,29 +632,55 @@ worker 在 spawn 后**几秒内**退出、且 stdout 为空或只有一行报错
    注意它同时是用户交互式 `codex` 的凭证，改动会影响手动使用。
 
 > OpenAI 侧还有一个干扰项：`/v1/models` 返回 200 不代表 key 可用于 codex，因为 codex 走的是
-> `/v1/responses`。验证 codex 凭证要打 `/v1/responses`。
+> `/v1/responses`，而 project key 的权限可以按端点细分。验证 codex 凭证要同时打
+> `/v1/responses`——发一个**故意缺 `input` 的请求体**，请求在参数校验阶段就被拒（返回 400
+> `missing_required_parameter`），不会进入推理、不产生费用；只有 401/403 才代表凭据本身不可用。
+> `WorkerProbe` 已按这个方式同时覆盖两个端点，见 5.4。
 
 ### 5.4 Worker 健康检查（Worker health check）
 
-两层检查，静态在前、live probe 在后，避免为已知不可用的模板浪费一次真实付费调用：
+两层检查，静态在前、凭据检查在后。**两层都不消耗 token**：
 
 1. **静态检查**（`WorkerTemplateHealthCheck.ts`）— 只验证 binary 是否在 PATH 上、必需的
-   环境变量是否存在，不实际起进程。便宜但盲区大：CLI 登录过期、base URL 配错、供应商
-   故障都验证不出来，只有真实任务派发失败时才会暴露。
-2. **live probe**（`WorkerProbe.ts` 的 `probeWorkerTemplates()`）— 对每个 enabled 且通过
-   静态检查的模板，走 `WorkerBackend.spawn()` 的同一条真实路径起一次进程，发送固定
-   prompt（要求原样回复 token `CLUSTER_PROBE_OK`），按回复是否命中判定可用性。**每个
-   enabled 模板消耗一次真实付费调用**；已经在静态检查阶段失败的模板会被跳过，不会
-   重复计费。probe 不接入 ContextHub / WorkerRegistry / TaskRecord，纯粹是无副作用的
-   健康检查，不产生任务记录。
+   环境变量是否存在，不实际起进程。便宜但盲区大：CLI 登录过期、key 被吊销、base URL 配错、
+   模板 pin 了账号没权限的模型，都验证不出来，只有真实任务派发失败时才会暴露。
+2. **凭据检查**（`WorkerProbe.ts` 的 `probeWorkerTemplates()`）— 对每个 enabled 且通过静态
+   检查的模板调用 `WorkerBackend.verifyCredentials()`。由 backend 按**它那个 CLI 自己的凭据
+   解析顺序**取出实际生效的凭据，再打一次供应商的模型元数据端点（不是推理端点）。probe 不
+   接入 ContextHub / WorkerRegistry / TaskRecord，不产生任务记录。
+
+**为什么不起真实 CLI**：agent CLI 每次调用都会把完整 system prompt + tool schema 一并发给
+模型——codex 实测一次 `codex exec` 固定 11.8k input token 换回 9 个 output token，与 prompt
+多短无关。所以 spawn 式 probe 会按 enabled 模板数在每次集群启动时产生付费调用，而它能多证明
+的只有「CLI harness 本身能跑通」这个近乎静态的属性，已由第 1 层的 binary 检查覆盖。凭据是否
+有效才是会随时间变化、值得每次启动都查的那一半。
+
+各 backend 的检查方式（端点选择是实测结论，不能想当然按 wire format 类推）：
+
+| backend | 端点 | 凭据来源 |
+|---|---|---|
+| `codex-cli` | `GET /v1/models/<model>`（模型权限）+ `POST /v1/responses`（端点授权，见上方 note） | `<CODEX_HOME>/auth.json` 中 `auth_mode=apikey` 时**优先于** `OPENAI_API_KEY` |
+| `claude-cli` | 有 key 时 `GET {ANTHROPIC_BASE_URL}/v1/models`；订阅登录时改为本地读 `.credentials.json` 的过期时间 | `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`，都没有则 `claude login` 的 OAuth |
+| `minimax-cli` | 复用 claude-cli 的检查，base URL 换成 MiniMax 的 `/anthropic` façade（该 façade 实现了 `/v1/models`） | `ANTHROPIC_API_KEY` |
+| `deepseek-cli` | `GET https://api.deepseek.com/models`——**原生端点**，因为 DeepSeek 的 `/anthropic` façade 对 `/v1/models` 返回 404 | `ANTHROPIC_AUTH_TOKEN` |
+| `gemini-cli` | `GET /v1beta/models/<model>` | `GEMINI_API_KEY` / `GOOGLE_API_KEY` |
+
+只有能对「某个具体模型」给出确定答复的供应商（OpenAI / Gemini）才把模型权限计入成败；返回
+模型清单的那几家只判定鉴权，因为清单里是带日期的完整 id，而模板通常 pin 的是别名，拿不到
+清单里不等于不可用。
+
+`verifyCredentials` 返回的 `credentialSource` 只报**凭据来源**（如 `~/.codex/auth.json`、
+`env.OPENAI_API_KEY`），不含凭据本身。当模板 env 里的 key 与 CLI 实际采用的凭据不一致时
+（codex 的 auth.json 陷阱，见上一节第 3 条），检查照常通过但附带 `warnings`——这正是那个陷阱
+唯一能被自动发现的时机。
 
 配置项 `cluster.healthCheck`：
 
 ```yaml
 cluster:
   healthCheck:
-    probeOnStartup: true    # 集群启动时自动跑一次 live probe
-    probeTimeout: 45s       # 单个模板的 probe 超时
+    probeOnStartup: true    # 集群启动时自动跑一次凭据检查
+    probeTimeout: 10s       # 单个模板的供应商请求超时
 ```
 
 `probeOnStartup` 为 true 时，`ClusterManager.start()` 在 `this.started = true` 之后**非阻塞**
@@ -664,8 +690,8 @@ probe 结果。probe 有失败项时，通过 `AdminAlertService` 把失败列�
 `ClusterEscalation.ts` 顶部的分层说明），实际投递由 `bootstrap.ts` 通过
 `clusterManager.setHealthAlertNotifier(cb)` 注入。
 
-按需触发同样的 live probe：`/cluster health [template]`（`template` 省略时探测全部 enabled
-模板）。该命令即使集群未 `start()` 也能跑 —— probe 只依赖 config + 已注册的 backend，两者
+按需触发同样的凭据检查：`/cluster health [template]`（`template` 省略时检查全部 enabled
+模板）。该命令即使集群未 `start()` 也能跑 —— 检查只依赖 config + 已注册的 backend，两者
 在构造函数阶段就绪。
 
 ---
@@ -830,7 +856,7 @@ data: {"file":"src/X.ts","action":"locked","by":"worker-b1c3"}
 /cluster stop [project]        → 停止集群（指定项目或全部）
 /cluster pause / resume        → 暂停/恢复调度
 /cluster task <project> "描述" → 手动提交任务到队列
-/cluster health [template]     → live-probe worker 模板可用性（见 5.4）
+/cluster health [template]     → 检查 worker 模板的供应商凭据（见 5.4）
 ```
 
 ### 8.2 通知（默认静默，仅关键事件）

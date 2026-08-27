@@ -27,7 +27,13 @@
  * See cluster learnings doc for the architectural rationale.
  */
 
-import type { ParsedWorkerOutput, WorkerBackend, WorkerSpawnConfig } from '../types';
+import type {
+  CredentialProbeConfig,
+  CredentialProbeResult,
+  ParsedWorkerOutput,
+  WorkerBackend,
+  WorkerSpawnConfig,
+} from '../types';
 import { ClaudeCliBackend } from './ClaudeCliBackend';
 
 const MINIMAX_CN_ANTHROPIC_BASE_URL = 'https://api.minimaxi.com/anthropic';
@@ -49,6 +55,18 @@ export class MinimaxBackend implements WorkerBackend {
     };
 
     return this.inner.spawn({ ...config, env });
+  }
+
+  /**
+   * MiniMax's façade serves the Anthropic model listing, so the inner
+   * backend's own check works once the base URL is baked in the same way
+   * `spawn` bakes it.
+   */
+  async verifyCredentials(config: CredentialProbeConfig): Promise<CredentialProbeResult> {
+    return this.inner.verifyCredentials({
+      ...config,
+      env: { ANTHROPIC_BASE_URL: MINIMAX_CN_ANTHROPIC_BASE_URL, ...config.env },
+    });
   }
 
   /**
