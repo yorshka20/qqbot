@@ -34,6 +34,7 @@ import {
   handleNoImageData,
 } from '../utils/geminiErrorHandler';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
+import { clampMaxTokens } from './maxTokens';
 
 /** Flat Part[] payload — simple prompts and vision requests. */
 type GeminiRequestParts = Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>;
@@ -59,6 +60,7 @@ interface GeminiGenerateContentOptions {
   reasoningEffort?: AIGenerateOptions['reasoningEffort'];
   timeoutMs?: number;
   nativeWebSearch?: boolean;
+  jsonMode?: boolean;
 }
 
 /**
@@ -462,7 +464,7 @@ export class GeminiProvider
     // especially harmful for thinking models: thinking tokens count against this budget, so a small
     // cap can be fully consumed by thinking, yielding finishReason=MAX_TOKENS with no text parts.
     if (options?.maxTokens !== undefined) {
-      config.maxOutputTokens = options.maxTokens;
+      config.maxOutputTokens = clampMaxTokens(options.maxTokens);
     }
     // Tools array can hold both functionDeclarations and googleSearch grounding entries.
     // Drop caller-supplied `search` tool when grounding is on so the model uses grounding instead.
@@ -490,6 +492,11 @@ export class GeminiProvider
     }
     if (options?.systemInstruction) {
       config.systemInstruction = options.systemInstruction;
+    }
+    // Gemini rejects responseMimeType together with a tools array, so structured
+    // output is only requestable on tool-free calls.
+    if (options?.jsonMode && geminiTools.length === 0) {
+      config.responseMimeType = 'application/json';
     }
     if (options?.disableThinking) {
       // Gemini thinking models require thought_signature on every functionCall part echoed from
@@ -702,6 +709,7 @@ export class GeminiProvider
         reasoningEffort: options.reasoningEffort,
         timeoutMs: options?.timeout,
         nativeWebSearch,
+        jsonMode: options?.jsonMode,
       });
       return {
         text: result.text,
@@ -731,6 +739,7 @@ export class GeminiProvider
       reasoningEffort: options?.reasoningEffort,
       timeoutMs: options?.timeout,
       nativeWebSearch,
+      jsonMode: options?.jsonMode,
     });
     return {
       text: result.text,

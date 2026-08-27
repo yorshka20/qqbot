@@ -17,6 +17,7 @@ import type {
   StreamingHandler,
   ToolDefinition,
 } from '../types';
+import { clampMaxTokens } from './maxTokens';
 
 // ---------------------------------------------------------------------------
 // Ark Responses API: request types (what we send)
@@ -359,7 +360,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       model,
       messages,
       temperature: options?.temperature ?? this.config.defaultTemperature ?? 0.7,
-      max_tokens: options?.maxTokens ?? this.config.defaultMaxTokens,
+      max_tokens: clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens),
       top_p: options?.topP,
       frequency_penalty: options?.frequencyPenalty,
       presence_penalty: options?.presencePenalty,
@@ -452,7 +453,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       model,
       input: normalizeInputForRequest(input, { hasTools }),
       temperature: options?.temperature ?? this.config.defaultTemperature ?? 0.7,
-      max_output_tokens: options?.maxTokens ?? this.config.defaultMaxTokens,
+      max_output_tokens: clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens),
       top_p: options?.topP,
       frequency_penalty: options?.frequencyPenalty,
       presence_penalty: options?.presencePenalty,

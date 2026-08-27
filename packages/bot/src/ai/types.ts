@@ -115,7 +115,8 @@ export interface AIGenerateOptions {
   stream?: boolean;
   /**
    * When true, request the provider to return valid JSON (e.g. response_format.json_object).
-   * Supported by: OpenAI, OpenRouter, DeepSeek, Doubao, Ollama (format: "json").
+   * Supported by: OpenAI, OpenRouter, DeepSeek, Doubao, Groq, SiliconFlow, Ollama (format: "json"),
+   * Gemini (responseMimeType; ignored on tool-enabled calls, which the API rejects).
    * Note: Many APIs only guarantee a single JSON object (not top-level array). For array output
    * (e.g. [{}]), ask in the prompt for {"result": [...]} and use the "result" key after parsing,
    * or use ensureJsonObject() to wrap array responses into { result: array }.

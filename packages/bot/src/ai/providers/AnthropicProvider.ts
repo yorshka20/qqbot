@@ -18,6 +18,7 @@ import type {
 import { contentToPlainString } from '../utils/contentUtils';
 import { detectMimeType } from '../utils/imageResize';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
+import { clampMaxTokens } from './maxTokens';
 
 export interface AnthropicProviderConfig {
   apiKey: string;
@@ -315,7 +316,9 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS;
+    const maxTokens = clampMaxTokens(
+      options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
+    );
 
     try {
       logger.info(`[STATS] [AnthropicProvider] Generating with model: ${model}`);
@@ -399,7 +402,9 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS;
+    const maxTokens = clampMaxTokens(
+      options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
+    );
 
     try {
       logger.info(`[STATS] [AnthropicProvider] Generating stream with model: ${model}`);
@@ -501,7 +506,9 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'claude-3-opus-20240229';
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS;
+    const maxTokens = clampMaxTokens(
+      options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
+    );
 
     try {
       logger.info(`[STATS] [AnthropicProvider] Generating with vision, model: ${model}`);

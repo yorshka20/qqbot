@@ -15,6 +15,7 @@ import type {
   ToolDefinition,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
+import { clampMaxTokens } from './maxTokens';
 
 export interface GroqProviderConfig {
   apiKey: string;
@@ -154,7 +155,7 @@ export class GroqProvider extends AIProvider implements LLMCapability {
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'qwen/qwen3-32b';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
+    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
 
     try {
       logger.info(`[STATS] [GroqProvider] Generating with model: ${model}`);
@@ -271,7 +272,7 @@ export class GroqProvider extends AIProvider implements LLMCapability {
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'qwen/qwen3-32b';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
+    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
 
     try {
       logger.info(`[STATS] [GroqProvider] Generating stream with model: ${model}`);

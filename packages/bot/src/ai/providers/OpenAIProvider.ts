@@ -28,6 +28,7 @@ import type {
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
+import { clampMaxTokens } from './maxTokens';
 
 /**
  * Translate the pipeline's reasoning effort into the Responses API `reasoning` param.
@@ -286,7 +287,7 @@ export class OpenAIProvider
     const body: OpenAI.Responses.ResponseCreateParamsNonStreaming = {
       model,
       input,
-      max_output_tokens: options?.maxTokens ?? this.config.defaultMaxTokens,
+      max_output_tokens: clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens),
       store: false,
     };
     const reasoning = mapReasoningEffortToOpenAI(options?.reasoningEffort);
