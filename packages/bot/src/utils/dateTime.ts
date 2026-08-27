@@ -153,6 +153,22 @@ export function formatTimeCompact(date: Date | string | number): string {
 }
 
 /**
+ * Format a time span compactly in Asia/Tokyo: "3/18 15:30–16:04" within one day,
+ * "3/18 23:10 – 3/19 01:05" across days, and a single stamp when `to` is omitted
+ * or lands on the same minute.
+ */
+export function formatTimeSpanCompact(from: Date | string | number, to?: Date | string | number): string {
+  const start = formatTimeCompact(from);
+  if (to === undefined) return start;
+  const end = formatTimeCompact(to);
+  if (start === end) return start;
+
+  const [startDay] = start.split(' ');
+  const [endDay, endClock] = end.split(' ');
+  return startDay === endDay ? `${start}–${endClock}` : `${start} – ${end}`;
+}
+
+/**
  * Format a date to HH:mm:ss in Asia/Tokyo timezone.
  * Time-only format for thread display.
  * Example output: "15:30:45"

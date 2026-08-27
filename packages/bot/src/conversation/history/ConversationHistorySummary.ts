@@ -4,7 +4,7 @@ import type { SummarizeService } from '@/ai/services/SummarizeService';
 import { logger } from '@/utils/logger';
 import type { ConversationHistoryBuffer } from './ConversationHistoryBuffer';
 import type { ConversationMessageEntry } from './ConversationHistoryService';
-import { formatConversationEntriesToText } from './format';
+import { formatConversationEntriesToText, formatEntriesForSummaryInput } from './format';
 import type { ISessionHistory } from './SessionHistory';
 
 /**
@@ -62,7 +62,7 @@ export class ConversationHistorySummary implements ISessionHistory {
         return;
       }
 
-      const conversationText = formatConversationEntriesToText(oldEntries);
+      const conversationText = formatEntriesForSummaryInput(oldEntries);
 
       logger.debug('[ConversationHistorySummary] Generating summary...');
 

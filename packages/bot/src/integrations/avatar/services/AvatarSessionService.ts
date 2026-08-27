@@ -81,6 +81,7 @@ export class AvatarSessionService {
       isBotReply: m.isBotReply,
       createdAt: m.createdAt,
       wasAtBot: m.wasAtBot,
+      isSummary: m.isSummary,
     }));
   }
 

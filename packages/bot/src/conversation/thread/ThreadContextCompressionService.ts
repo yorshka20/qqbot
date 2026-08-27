@@ -1,6 +1,8 @@
 // Thread Context Compression Service (Phase 4) - async summarize oldest segment, replace in thread; periodic topic cleaning
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import { buildSpeakerTag } from '@/ai/prompt/speakerTag';
+import { formatTimeCompact } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import type { SummarizeService } from '../../ai/services/SummarizeService';
 import type { ThreadMessage, ThreadService } from './ThreadService';
@@ -132,11 +134,15 @@ export class ThreadContextCompressionService {
     }
   }
 
+  /** Same speaker grammar and time stamps the episode path feeds the summarizer. */
   private formatSegmentForSummarize(messages: ThreadMessage[]): string {
     return messages
       .map((m) => {
-        const who = m.isBotReply ? 'Assistant' : `User<${m.userId}>`;
-        return `${who}: ${m.content}`;
+        if (m.isSummary) {
+          return `[前序对话摘要] ${m.content}`;
+        }
+        const who = m.isBotReply ? 'Assistant' : buildSpeakerTag(String(m.userId), m.nickname);
+        return `${formatTimeCompact(m.createdAt)} ${who}: ${m.content}`;
       })
       .join('\n');
   }

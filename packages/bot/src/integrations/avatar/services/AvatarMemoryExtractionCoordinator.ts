@@ -182,7 +182,9 @@ export class AvatarMemoryExtractionCoordinator {
     // Only drop bot replies for extract input — the extract LLM learns
     // facts from what *users* said. Keeping bot turns just pollutes the
     // extraction with self-referential roleplay lines.
-    const userOnly = entries.filter((e) => !e.isBotReply);
+    // Summaries are nobody's utterance — extracting "facts" from one would launder
+    // the bot's own compression back in as something a user stated.
+    const userOnly = entries.filter((e) => !e.isBotReply && !e.isSummary);
     if (userOnly.length < resolved.minUserEntries) {
       logger.debug(
         `[Live2DMemoryExtraction] thread=${threadId} group=${groupId}: userEntries=${userOnly.length} < min=${resolved.minUserEntries}, skip`,

@@ -114,6 +114,45 @@ describe('PromptMessageAssembler', () => {
 
     expect(messages[1].content).toContain('<image_segment id="1:0" summary="img" />');
   });
+  it('renders a summary entry as its own tagged block covering a span, not a chat turn', () => {
+    const assembler = new PromptMessageAssembler();
+    const from = new Date('2026-08-27T03:30:00.000Z');
+    const to = new Date('2026-08-27T04:24:00.000Z');
+    const entries: ConversationMessageEntry[] = [
+      {
+        messageId: 'summary:1',
+        userId: 0,
+        content: '讨论了 GPU 与 CPU 的差异。',
+        isBotReply: false,
+        isSummary: true,
+        createdAt: from,
+        summarySpan: { from, to },
+      },
+      {
+        messageId: '2',
+        userId: 1001,
+        nickname: 'Alice',
+        content: 'hello',
+        isBotReply: false,
+        createdAt: to,
+      },
+    ];
+
+    const messages = assembler.buildNormalMessages({
+      sceneSystem: 'scene',
+      historyEntries: entries,
+      finalUserBlocks: { currentQuery: 'q' },
+    });
+
+    const summaryTurn = messages.find((m) => String(m.content).includes('conversation_summary'));
+    expect(summaryTurn?.content).toBe(
+      '<conversation_summary 覆盖 8/27 12:30–13:24>\n讨论了 GPU 与 CPU 的差异。\n</conversation_summary>',
+    );
+    // It is nobody's utterance: no speaker tag, and never attributed to the bot.
+    expect(String(summaryTurn?.content)).not.toContain('[speaker:');
+    expect(summaryTurn?.role).toBe('user');
+  });
+
   it('timestamps every turn, but tags only the user turn with a speaker', () => {
     const assembler = new PromptMessageAssembler();
     const entries: ConversationMessageEntry[] = [

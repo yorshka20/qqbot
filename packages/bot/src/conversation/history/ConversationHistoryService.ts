@@ -11,7 +11,7 @@ import type { Conversation, Message } from '@/database/models/types';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
-import { formatConversationEntriesToText } from './format';
+import { formatConversationEntriesToText, formatEntriesForSummaryInput } from './format';
 
 export interface ConversationMessageEntry {
   /** Stable message ID from database (Message.id). Used for dedup boundary tracking. */
@@ -24,6 +24,15 @@ export interface ConversationMessageEntry {
   createdAt: Date;
   /** True when message was @ bot (direct reply already sent); used to mark in thread context. */
   wasAtBot?: boolean;
+  /**
+   * True when this entry stands in for a span of compressed earlier messages rather
+   * than something a participant said. Readers that attribute entries to a speaker
+   * — prompt serializers, "what did users say" filters — must check this first.
+   * Mirrors `ThreadMessage.isSummary` on the thread side.
+   */
+  isSummary?: boolean;
+  /** For summary entries: the span covered. A summary has no single moment of its own. */
+  summarySpan?: { from: Date; to: Date };
 }
 
 /** Outcome of a summary roll: the resulting window plus how many entries the summary stands for. */
@@ -456,7 +465,7 @@ export class ConversationHistoryService {
     const numToSummarize = entries.length - (maxEntries - 1);
     const toSummarize = entries.slice(0, numToSummarize);
     const rest = entries.slice(numToSummarize);
-    const conversationText = this.formatAsText(toSummarize);
+    const conversationText = formatEntriesForSummaryInput(toSummarize);
 
     let summaryText = '';
     try {
@@ -477,8 +486,13 @@ export class ConversationHistoryService {
       messageId: `summary:${now.getTime()}`,
       userId: 0,
       content: summaryText,
-      isBotReply: true,
+      // Not a bot turn: the span it replaces is mostly what other people said, and
+      // attributing it to the bot both misplaces those contributions and puts a
+      // report-voice paragraph in the model's mouth as its own most recent line.
+      isBotReply: false,
+      isSummary: true,
       createdAt: toSummarize[0].createdAt,
+      summarySpan: { from: toSummarize[0].createdAt, to: toSummarize[toSummarize.length - 1].createdAt },
     };
     return { entries: [summaryEntry, ...rest], replacedCount: numToSummarize };
   }

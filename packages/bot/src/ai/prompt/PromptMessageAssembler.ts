@@ -1,6 +1,7 @@
 import type { ChatMessage } from '@/ai/types';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import type { MessageSegment } from '@/message/types';
+import { formatTimeSpanCompact } from '@/utils/dateTime';
 import { contentToPlainString } from '../utils/contentUtils';
 import { buildHistoryEntryPrefix } from './speakerTag';
 
@@ -224,6 +225,14 @@ export class PromptMessageAssembler {
   }
 
   private serializeEntry(entry: ConversationMessageEntry): string {
+    if (entry.isSummary) {
+      const body = this.normalize(entry.content);
+      if (!body) return '';
+      // Its own tagged block rather than a chat turn: it is nobody's utterance, and
+      // it covers a span, so it carries neither a speaker tag nor a single stamp.
+      const span = formatTimeSpanCompact(entry.summarySpan?.from ?? entry.createdAt, entry.summarySpan?.to);
+      return `<conversation_summary 覆盖 ${span}>\n${body}\n</conversation_summary>`;
+    }
     const textFromSegments = this.extractText(entry.segments);
     const text = this.normalize(textFromSegments || entry.content);
     const imageTags = this.extractImageTags(entry.segments, entry.messageId);
