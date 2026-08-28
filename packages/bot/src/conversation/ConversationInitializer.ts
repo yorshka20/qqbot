@@ -261,8 +261,6 @@ export class ConversationInitializer {
     container.registerInstance(DITokens.SUMMARIZE_SERVICE, summarizeService);
 
     const memoryConfig = config.getContextMemoryConfig();
-    const useSummary = memoryConfig?.useSummary ?? false;
-    const summaryThreshold = memoryConfig?.summaryThreshold ?? 20;
     const maxBufferSize = memoryConfig?.maxBufferSize ?? 30;
     const maxHistoryMessages = memoryConfig?.maxHistoryMessages ?? 10;
 
@@ -280,7 +278,7 @@ export class ConversationInitializer {
     );
     container.registerInstance(DITokens.MEMORY_EXTRACT_SERVICE, memoryExtractService);
 
-    const sessionHistoryStore = new SessionHistoryStore(maxBufferSize, summaryThreshold, useSummary);
+    const sessionHistoryStore = new SessionHistoryStore(maxBufferSize);
     const contextManager = new ContextManager(sessionHistoryStore);
 
     // File reading service is used by file-related task executors.

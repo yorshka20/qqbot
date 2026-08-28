@@ -43,7 +43,7 @@ export function formatSingleEntryToText(entry: ConversationMessageEntry): string
 
 /**
  * Format message entries as a single text (User<userId:nickname> / Assistant, [id], time).
- * Shared by ConversationHistoryService and ConversationHistorySummary so output format is consistent.
+ * Shared by ConversationHistoryService and the avatar memory extractor so output format is consistent.
  * For single-message storage (e.g. RAG payload) use formatSingleEntryToText so content has no [id:0].
  */
 export function formatConversationEntriesToText(entries: ConversationMessageEntry[]): string {

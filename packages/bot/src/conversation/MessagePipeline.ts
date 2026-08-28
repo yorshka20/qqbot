@@ -238,7 +238,6 @@ export class MessagePipeline {
 
     if (replyContent?.segments && replyContent.segments.length > 0) {
       const replyText = getReply(hookContext) ?? '';
-      // Save conversation messages asynchronously (non-blocking)
       this.saveConversationMessages(context.sessionId, event.message, replyText, {
         userId: event.userId,
         nickname: event.sender?.nickname ?? event.sender?.card,
@@ -328,15 +327,15 @@ export class MessagePipeline {
   /**
    * Save user message and assistant reply to conversation history (rich: userId, nickname for consistent format).
    */
-  private async saveConversationMessages(
+  private saveConversationMessages(
     sessionId: string,
     userMessage: string,
     assistantReply: string,
     options?: { userId?: number | string; nickname?: string },
-  ): Promise<void> {
+  ): void {
     try {
-      await this.contextManager.addMessage(sessionId, 'user', userMessage, options);
-      await this.contextManager.addMessage(sessionId, 'assistant', assistantReply);
+      this.contextManager.addMessage(sessionId, 'user', userMessage, options);
+      this.contextManager.addMessage(sessionId, 'assistant', assistantReply);
     } catch (error) {
       logger.warn(`[MessagePipeline] Failed to save conversation to history: ${error}`);
     }

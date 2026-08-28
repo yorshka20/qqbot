@@ -234,10 +234,6 @@ export interface AIConfig {
 export interface ContextMemoryConfig {
   // Maximum number of messages to store in memory buffer
   maxBufferSize?: number;
-  // Whether to use summary memory (requires AI manager)
-  useSummary?: boolean;
-  // Threshold for triggering summary (number of messages)
-  summaryThreshold?: number;
   // Maximum number of history messages to include in AI prompt
   maxHistoryMessages?: number;
 }

@@ -1,13 +1,11 @@
 // Conversation History Buffer - in-memory rolling buffer of recent messages (not persistent memory)
 
 import type { ConversationMessageEntry } from './ConversationHistoryService';
-import { formatConversationEntriesToText } from './format';
-import type { ISessionHistory } from './SessionHistory';
 
 /**
- * In-memory buffer of conversation messages for a session. Implements ISessionHistory (raw + CHS-formatted).
+ * In-memory buffer of conversation messages for a session.
  */
-export class ConversationHistoryBuffer implements ISessionHistory {
+export class ConversationHistoryBuffer {
   private buffer: ConversationMessageEntry[] = [];
   private maxSize: number;
 
@@ -17,9 +15,8 @@ export class ConversationHistoryBuffer implements ISessionHistory {
 
   /**
    * Add message entry to buffer (rich: userId, nickname, etc., same shape as DB entries).
-   * Returns Promise so Buffer and Summary share the same async interface for Store.append().
    */
-  async addMessage(entry: ConversationMessageEntry): Promise<void> {
+  addMessage(entry: ConversationMessageEntry): void {
     this.buffer.push(entry);
 
     if (this.buffer.length > this.maxSize) {
@@ -30,11 +27,6 @@ export class ConversationHistoryBuffer implements ISessionHistory {
   /** Raw data: conversation message entries. */
   getEntries(): ConversationMessageEntry[] {
     return [...this.buffer];
-  }
-
-  /** Formatted data: CHS-format string (User<userId:nickname> / Assistant, [id], time). */
-  getFormattedHistory(): string {
-    return formatConversationEntriesToText(this.getEntries());
   }
 
   clear(): void {

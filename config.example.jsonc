@@ -895,11 +895,6 @@
   "contextMemory": {
     // Maximum number of messages to store in memory buffer (default: 30)
     "maxBufferSize": 30,
-    // Whether to use summary memory for long conversations (default: false)
-    // Requires AI manager to be configured
-    "useSummary": false,
-    // Threshold for triggering summary when buffer exceeds this count (default: 20)
-    "summaryThreshold": 20,
     // Maximum number of history messages to include in AI prompt (default: 10)
     // This limits the prompt length to prevent excessive token usage
     "maxHistoryMessages": 10

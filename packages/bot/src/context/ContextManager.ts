@@ -67,12 +67,7 @@ export class ContextManager {
   /**
    * Add message to conversation history (rich entry: userId, nickname, etc., for consistent format with DB path).
    */
-  async addMessage(
-    sessionId: string,
-    role: ConversationHistoryRole,
-    content: string,
-    options?: AddMessageOptions,
-  ): Promise<void> {
+  addMessage(sessionId: string, role: ConversationHistoryRole, content: string, options?: AddMessageOptions): void {
     const now = new Date();
     const entry: ConversationMessageEntry = {
       messageId: options?.messageId ?? `mem:${now.getTime()}`,
@@ -84,7 +79,7 @@ export class ContextManager {
       wasAtBot: options?.wasAtBot,
     };
 
-    await this.sessionHistoryStore.append(sessionId, entry);
+    this.sessionHistoryStore.append(sessionId, entry);
   }
 
   /**
