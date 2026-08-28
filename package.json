@@ -4,7 +4,9 @@
   "description": "QQ Bot with multi-protocol support (Milky, OneBot11, Satori)",
   "type": "module",
   "packageManager": "bun@1.0.0",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "start": "bash start.sh",
     "web": "bun run --filter @qqbot/webui dev",
@@ -34,14 +36,20 @@
     "test:network": "NETWORK_TESTS=1 bun test packages/bot",
     "prepare": "husky"
   },
-  "keywords": ["qqbot", "qq", "bot", "milky", "onebot", "satori"],
+  "keywords": [
+    "qqbot",
+    "qq",
+    "bot",
+    "milky",
+    "onebot",
+    "satori"
+  ],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@biomejs/biome": "^2.5.8",
+    "@biomejs/biome": "^2.5.11",
     "concurrently": "^9.2.4",
     "husky": "^9.1.7",
-    "prettier": "^3.9.6",
     "typescript": "^5.9.3"
   },
   "dependencies": {
