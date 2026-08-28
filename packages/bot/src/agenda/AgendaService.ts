@@ -19,7 +19,7 @@ import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { PluginManager } from '@/plugins/PluginManager';
 import { logger } from '@/utils/logger';
-import type { ActionHandlerRegistry } from './ActionHandlerRegistry';
+import type { ActionHandler, ActionHandlerRegistry } from './ActionHandlerRegistry';
 import type { AgendaReporter } from './AgendaReporter';
 import type { AgentLoop } from './AgentLoop';
 import type { InternalEventBus } from './InternalEventBus';
@@ -134,6 +134,21 @@ export class AgendaService {
     } catch (err) {
       logger.error('[AgendaService] Cron rehydration failed:', err);
     }
+  }
+
+  // ─── Action handlers ─────────────────────────────────────────────────────────
+
+  /**
+   * Register a handler for `actionType: 'action'` items. This is how a plugin plugs its own
+   * scheduled work into the agenda framework: register in `onEnable`, unregister in
+   * `onDisable`, so a disabled plugin's action simply has no handler to dispatch to.
+   */
+  registerActionHandler(handler: ActionHandler): void {
+    this.actionHandlerRegistry.register(handler);
+  }
+
+  unregisterActionHandler(name: string): void {
+    this.actionHandlerRegistry.unregister(name);
   }
 
   // ─── CRUD ────────────────────────────────────────────────────────────────────

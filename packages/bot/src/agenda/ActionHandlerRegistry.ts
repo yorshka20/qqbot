@@ -31,6 +31,11 @@ export interface ActionHandler {
  * Registry of named action handlers.
  * Schedule items with `actionType: 'action'` and `actionTarget: '<name>'`
  * are dispatched to the matching handler.
+ *
+ * Framework-level handlers (those backed by core services) are registered by
+ * AgendaInitializer. Handlers that belong to a plugin register themselves through
+ * `AgendaService.registerActionHandler` in the plugin's `onEnable`, so a disabled
+ * plugin leaves no handler behind.
  */
 export class ActionHandlerRegistry {
   private handlers = new Map<string, ActionHandler>();
@@ -41,6 +46,12 @@ export class ActionHandlerRegistry {
     }
     this.handlers.set(handler.name, handler);
     logger.debug(`[ActionHandlerRegistry] Registered handler: ${handler.name}`);
+  }
+
+  unregister(name: string): void {
+    if (this.handlers.delete(name)) {
+      logger.debug(`[ActionHandlerRegistry] Unregistered handler: ${name}`);
+    }
   }
 
   get(name: string): ActionHandler | undefined {

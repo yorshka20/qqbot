@@ -34,6 +34,9 @@ export class GroupReportToolExecutor implements ToolExecutor {
   /** Pre-computed stats keyed by groupId, set before subagent runs */
   private precomputedStats = new Map<string, PrecomputedReportStats>();
 
+  /** Report data of the last successful render per group, awaiting pickup by the caller */
+  private renderedReports = new Map<string, GroupReportData>();
+
   constructor(private messageAPI: MessageAPI) {}
 
   /**
@@ -42,6 +45,18 @@ export class GroupReportToolExecutor implements ToolExecutor {
    */
   setPrecomputedStats(groupId: string, stats: PrecomputedReportStats): void {
     this.precomputedStats.set(groupId, stats);
+  }
+
+  /**
+   * Hand the finished report data back to whoever started the run, so post-report
+   * steps work off the analysis instead of re-reading the raw chat history.
+   * The subagent path renders from inside a tool call, so this is the only place
+   * the caller can pick the result up. Consumed once.
+   */
+  takeRenderedReport(groupId: string): GroupReportData | undefined {
+    const data = this.renderedReports.get(groupId);
+    this.renderedReports.delete(groupId);
+    return data;
   }
 
   async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
@@ -94,42 +109,27 @@ export class GroupReportToolExecutor implements ToolExecutor {
     }
 
     try {
-      logger.info(`[GroupReportTool] Rendering report for group ${groupId}`);
-      const imageBuffer = await this.renderToImage(reportData);
-      const base64 = imageBuffer.toString('base64');
-
-      const mb = new MessageBuilder();
-      mb.image({ data: base64 });
-      const segments = mb.build();
-
-      await this.messageAPI.sendGroupMessage(Number(groupId), segments, 'milky', SEND_TIMEOUT_MS);
-      logger.info(`[GroupReportTool] Report image sent to group ${groupId}`);
-
-      return this.success('群聊每日汇报图片已成功发送到群内。');
+      const { ackTimedOut } = await this.renderAndSend(reportData, String(groupId));
+      return this.success(
+        ackTimedOut
+          ? '群聊每日汇报图片已发送（API 响应超时但通常已送达，未重试以避免重发）。'
+          : '群聊每日汇报图片已成功发送到群内。',
+      );
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      // Timeout on send_group_msg almost always means "image uploaded fine,
-      // ack was just slow" — retrying makes the LLM re-render and re-send,
-      // resulting in duplicate posts. Swallow timeouts as success so the
-      // LLM doesn't loop. Real failures (auth, format, etc.) return errors
-      // promptly with non-timeout messages and still surface here.
-      if (TIMEOUT_ERROR_PATTERN.test(errMsg)) {
-        logger.warn(`[GroupReportTool] send timed out (${errMsg}); assuming image arrived, not retrying`);
-        return this.success('群聊每日汇报图片已发送（API 响应超时但通常已送达，未重试以避免重发）。');
-      }
       logger.error(`[GroupReportTool] Failed to render/send report:`, err);
       return this.error(`渲染或发送报告失败: ${errMsg}`, errMsg);
     }
   }
 
   /**
-   * Render report data as image and send to group.
-   * Called directly by the plugin for batched analysis flow (bypasses tool call).
-   * Mirrors execute()'s timeout handling: swallows timeouts because the image
-   * almost certainly arrived even when the ack times out.
+   * Render report data as an image and send it to the group — the single send path
+   * for both the subagent tool call and the batched analysis flow.
+   * Swallows send-ack timeouts because the image almost certainly arrived; the
+   * returned flag lets callers word their result accordingly.
    */
-  async renderAndSend(data: GroupReportData, groupId: string): Promise<void> {
-    logger.info(`[GroupReportTool] Rendering report for group ${groupId} (direct call)`);
+  async renderAndSend(data: GroupReportData, groupId: string): Promise<{ ackTimedOut: boolean }> {
+    logger.info(`[GroupReportTool] Rendering report for group ${groupId}`);
     const imageBuffer = await this.renderToImage(data);
     const base64 = imageBuffer.toString('base64');
 
@@ -137,17 +137,24 @@ export class GroupReportToolExecutor implements ToolExecutor {
     mb.image({ data: base64 });
     const segments = mb.build();
 
+    let ackTimedOut = false;
     try {
       await this.messageAPI.sendGroupMessage(Number(groupId), segments, 'milky', SEND_TIMEOUT_MS);
       logger.info(`[GroupReportTool] Report image sent to group ${groupId}`);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      if (TIMEOUT_ERROR_PATTERN.test(errMsg)) {
-        logger.warn(`[GroupReportTool] send timed out (${errMsg}); assuming image arrived`);
-        return;
+      // Timeout on send_group_msg almost always means "image uploaded fine, ack was
+      // just slow" — a retry re-renders and re-sends, producing a duplicate post.
+      // Real failures (auth, format) surface promptly with non-timeout messages.
+      if (!TIMEOUT_ERROR_PATTERN.test(errMsg)) {
+        throw err;
       }
-      throw err;
+      logger.warn(`[GroupReportTool] send timed out (${errMsg}); assuming image arrived, not retrying`);
+      ackTimedOut = true;
     }
+
+    this.renderedReports.set(groupId, data);
+    return { ackTimedOut };
   }
 
   /**

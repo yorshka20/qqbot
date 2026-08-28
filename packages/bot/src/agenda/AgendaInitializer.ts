@@ -18,7 +18,6 @@ import { AgendaReporter } from './AgendaReporter';
 import { AgendaService } from './AgendaService';
 import { AgentLoop } from './AgentLoop';
 import { ClusterTicketsSyncHandler } from './handlers/ClusterTicketsGitHandlers';
-import { GroupReportHandler } from './handlers/GroupReportHandler';
 import { RepeatingTicketDispatchHandler } from './handlers/RepeatingTicketDispatchHandler';
 import { RepeatingTodoWorkerHandler } from './handlers/RepeatingTodoWorkerHandler';
 import { TodoWorkerHandler } from './handlers/TodoWorkerHandler';
@@ -80,10 +79,11 @@ export class AgendaInitializer {
 
     const reporter = new AgendaReporter(reportsDir);
 
+    // Framework-level handlers only (each backed by a core service). Plugin-owned handlers
+    // register themselves via AgendaService.registerActionHandler in the plugin's onEnable.
     const actionHandlerRegistry = new ActionHandlerRegistry();
     actionHandlerRegistry.register(new TodoWorkerHandler());
     actionHandlerRegistry.register(new RepeatingTodoWorkerHandler());
-    actionHandlerRegistry.register(new GroupReportHandler());
     actionHandlerRegistry.register(new ClusterTicketsSyncHandler());
     actionHandlerRegistry.register(new RepeatingTicketDispatchHandler());
 
