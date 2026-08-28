@@ -7,9 +7,14 @@
     "emitDeclarationOnly": true,
     "outDir": "./dist-types",
     "rootDir": ".",
+    // Two candidates for one alias: tsc resolves them against this file's directory and takes
+    // `./src/*`, but Bun anchors a baseUrl-less `paths` at the *cwd*, so a root-cwd script
+    // (`bun run dev`, `bun test`, smoke-test) only resolves via the second. baseUrl would fix
+    // the anchor but is removed in TypeScript 7.
     "paths": {
       "@/*": [
-        "./src/*"
+        "./src/*",
+        "./packages/bot/src/*"
       ],
     },
     "types": [
