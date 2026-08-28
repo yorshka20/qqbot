@@ -18,7 +18,7 @@ export * from './EchoPlugin';
 export * from './GroupDownloadPlugin';
 export * from './GroupNoticePlugin';
 export * from './GroupReportPlugin';
-export * from './gachaPlugin';
+export * from './GachaPlugin';
 export * from './LanControlPlugin';
 export * from './LightAppPlugin';
 export * from './LLMDumpPlugin';
