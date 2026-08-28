@@ -72,7 +72,7 @@ export interface AppendItemData {
 }
 
 /** JSON metadata tag that marks a DB item as originating from the schedule file */
-const FILE_SOURCE_META = JSON.stringify({ source: 'file' });
+const FILE_SOURCE_META = { source: 'file' } as const;
 
 /** Parsed section metadata keys (camelCase only). Raw file keys are normalized to these. */
 interface ScheduleSectionMeta {
@@ -149,13 +149,7 @@ export class ScheduleFileService {
     const allItems = await this.agendaService.listItems();
     let tombstoned = 0;
     for (const item of allItems) {
-      if (!item.metadata) continue;
-      try {
-        const meta = JSON.parse(item.metadata) as Record<string, unknown>;
-        if (meta.source !== 'file') continue;
-      } catch {
-        continue;
-      }
+      if (item.metadata?.source !== 'file') continue;
       if (!fileNames.has(item.name) && item.enabled) {
         await this.agendaService.setEnabled(item.id, false);
         tombstoned++;

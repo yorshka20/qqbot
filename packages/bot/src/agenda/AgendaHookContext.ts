@@ -17,13 +17,8 @@ import type { AgendaEventContext, AgendaItem } from './types';
  * context already holds the depth for child registrations.
  */
 function resolveChainDepth(item: AgendaItem): number {
-  if (!item.metadata) return 0;
-  try {
-    const depth = (JSON.parse(item.metadata) as { chainDepth?: unknown }).chainDepth;
-    return typeof depth === 'number' && Number.isFinite(depth) ? depth : 0;
-  } catch {
-    return 0;
-  }
+  const depth = item.metadata?.chainDepth;
+  return typeof depth === 'number' && Number.isFinite(depth) ? depth : 0;
 }
 
 export function buildAgendaHookContext(

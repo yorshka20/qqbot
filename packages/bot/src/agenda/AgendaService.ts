@@ -223,7 +223,7 @@ export class AgendaService {
       maxSteps: 15,
       enabled: true,
       fireCount: 0,
-      metadata: JSON.stringify({ source: 'llm', chainDepth: request.chainDepth }),
+      metadata: { source: 'llm', chainDepth: request.chainDepth },
     };
 
     if (request.kind === 'once') {
@@ -284,12 +284,7 @@ export class AgendaService {
 
   /** True when the item was registered by the LLM itself (metadata.source === 'llm'). */
   isLlmItem(item: AgendaItem): boolean {
-    if (!item.metadata) return false;
-    try {
-      return (JSON.parse(item.metadata) as { source?: string }).source === 'llm';
-    } catch {
-      return false;
-    }
+    return item.metadata?.source === 'llm';
   }
 
   /** Update fields on an existing AgendaItem and reschedule. */

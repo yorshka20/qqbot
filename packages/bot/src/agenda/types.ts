@@ -64,8 +64,8 @@ export interface AgendaItem extends BaseModel {
   lastRunAt?: string;
   /** ISO string of next scheduled run (populated for cron/once, null for onEvent) */
   nextRunAt?: string;
-  /** JSON string for extra metadata */
-  metadata?: string;
+  /** Extra metadata (e.g. provenance: which source created this item) */
+  metadata?: Record<string, unknown>;
   /**
    * Execution mode:
    *   - 'intent' (default): LLM interprets the intent text and decides what tools to call

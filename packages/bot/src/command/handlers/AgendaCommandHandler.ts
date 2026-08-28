@@ -153,23 +153,11 @@ export class AgendaCommand implements CommandHandler {
   }
 
   private isFileSourced(item: AgendaItem): boolean {
-    if (!item.metadata) return false;
-    try {
-      const meta = JSON.parse(item.metadata) as Record<string, unknown>;
-      return meta.source === 'file';
-    } catch {
-      return false;
-    }
+    return item.metadata?.source === 'file';
   }
 
   private isLlmSourced(item: AgendaItem): boolean {
-    if (!item.metadata) return false;
-    try {
-      const meta = JSON.parse(item.metadata) as Record<string, unknown>;
-      return meta.source === 'llm';
-    } catch {
-      return false;
-    }
+    return item.metadata?.source === 'llm';
   }
 
   private formatItem(item: AgendaItem, index: number): string {

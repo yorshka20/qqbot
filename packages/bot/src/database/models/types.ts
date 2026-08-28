@@ -180,7 +180,7 @@ export interface AgendaItem extends BaseModel {
   enabled: boolean;
   lastRunAt?: string;
   nextRunAt?: string;
-  metadata?: string; // JSON string
+  metadata?: Record<string, unknown>;
   actionType?: 'intent' | 'subagent' | 'action'; // Execution mode (default: 'intent')
   actionTarget?: string; // Subagent presetKey
   actionParams?: string; // JSON string of parameters

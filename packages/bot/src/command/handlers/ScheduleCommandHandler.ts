@@ -143,7 +143,7 @@ export class ScheduleCommand implements CommandHandler {
         cooldownMs,
         maxSteps: 3,
         enabled: true,
-        metadata: isOnce ? undefined : JSON.stringify({ source: 'file' }),
+        metadata: isOnce ? undefined : { source: 'file' },
       });
 
       const mb = new MessageBuilder();
