@@ -34,6 +34,8 @@ bun run debug
 bun run build:admin
 ```
 
+**Restarting under PM2** (including a restart the bot triggers on itself): use `pm2 restart qq-bot qq-bot-ui`, not `nohup` + `start.sh`. PM2 exits the process first, so the ecosystem scripts (`pm2-bot.sh`) run `git pull` + `bun install` in a fresh process — which is what avoids bun `EEXIST` and interleaved logs.
+
 ## High-Level Architecture
 
 This is a production-ready QQ bot framework built with TypeScript and Bun. It connects to QQ via LLBot (supporting Milky/OneBot11/Satori protocols) and provides an AI-powered conversation pipeline.
@@ -88,6 +90,15 @@ The bot requires a `config.jsonc` file (JSONC with comments). Copy from `config.
 - **Dependency Injection**: Use `@injectable()` and `@singleton()` decorators
 - **Async/Await**: Prefer async/await over callbacks
 - **Error Handling**: Custom error types (ConfigError, APIError, ConnectionError)
+- **Control Flow**: Always use curly braces for `if`/`else`; ESM `import` only, never inline `require()`
+- **No Defensive Optionals**: Make a field non-optional when the value is always set (metadata, protocol types); don't add an optional param plus fallbacks for a case the config already guarantees
+- **Single Representation**: One field, not a boolean alongside a parallel enum — use `replyTriggerType` alone, never `triggeredByAtBot` + `triggeredByWakeWord` + `replyTriggerType`
+- **One Shape for Single/Multi**: Keep the same format for one and many — a card deck is always an array, a single card is `[card]`
+- **Derive, Don't Hardcode**: Never hardcode a list or an ordering the module can supply (capabilities come from `ProviderRegistry`); default to alphabetical ordering unless there is a stated reason
+- **Reuse Over Reimplementation**: Use the existing shared utility (e.g. image-to-base64 + mime) and promote common logic into a shared module instead of writing a second copy
+- **One Entry Point**: Unify duplicate code paths behind a single entry (e.g. `handleCardReply`) rather than parallel methods that duplicate logic
+- **Keep Provider Code in the Provider**: Don't put non-provider modules inside the provider directory; provider-specific state (e.g. key mode) belongs on the provider class
+- **Gate Permissions Once**: Check at the service that invokes the LLM (`ReplyGenerationService`, `ProactiveConversationService.runAnalysis`), not redundantly at every caller
 
 ## Engineering Principles
 
@@ -126,6 +137,8 @@ The bot requires a `config.jsonc` file (JSONC with comments). Copy from `config.
 
 **Write no comments by default**. The code's identifiers already explain "what it does"; only write a comment when the *why* is not obvious — a hidden constraint, a counter-intuitive invariant, a workaround for some external bug, a point in the flow that needs caution.
 
+Comments are written in **English**. This default governs the comments you *add*: when editing existing code, do not delete comments that are already there.
+
 ### Forbidden Comment Types
 
 When writing comments, it is **forbidden** to smuggle in anything that can only be understood within the current task/session context:
@@ -159,6 +172,8 @@ When testing changes:
 3. Run `bun run smoke-test` — **MANDATORY**. Boots the real application through the full initialization path (`packages/bot/src/core/bootstrap.ts`), verifying DI registration, module loading order, and plugin initialization. This catches circular imports, TDZ errors, and missing DI tokens that typecheck cannot detect. **A change is NOT considered fixed/complete until smoke-test passes.**
 4. Use `bun run debug` for interactive mock message testing when needed
 5. Check WebSocket connections with `LOG_LEVEL=debug` for protocol-level debugging
+
+When template files already exist on disk, load them with `loadTemplatesFromDirectory()` so the test exercises the production path; don't hand-register via `registerTemplate` when the file is right there.
 
 ### Why smoke-test is required
 
@@ -210,6 +225,45 @@ The bot automatically handles database schema initialization. For SQLite, tables
 - **Session Memo Tool**: `packages/bot/src/tools/executors/SessionMemoToolExecutor.ts` — `session_memo` tool exposed to LLM at reply stage (`action=add|delete|list`).
 - **Configuration**: `config.jsonc` (local, not committed)
 
+## Domain Notes
+
+Non-obvious specifics that are easy to get wrong:
+
+- **Card rendering**: `convert_to_card` output is a JSON array of cards; a single card is `[card]`. The comparison card takes `leftHeader` / `rightHeader` from data, not fixed labels.
+- **Reply trigger**: centralized in `MessageTriggerPlugin`; the type lives on `replyTriggerType` (`at` | `reaction` | `wakeWordConfig` | `wakeWordPreference` | `providerName`).
+- **Whitelist config**: per-group limited permissions use the `groups` key (array of `{ id, capabilities }`). `groupIds` must stay a plain string array — putting objects there breaks lookup.
+
+## Where Conventions Live
+
+Anything the user states as a convention, preference, or working agreement has two possible homes, **both tracked in this repo** so they travel with the user across machines:
+
+- **`CLAUDE.md`** (this file) — the structured, hand-maintained instruction set: commands, architecture, code conventions, comment style, commit style, testing, workflow. A rule about *how code is written or how work is delivered* belongs here, next to its peers.
+- **`.claude/memory/`** — accumulated learned preferences and hard-won project facts, one file per entry, indexed by `.claude/memory/MEMORY.md`. The kind of thing that surfaces through a correction ("don't thread that value through", "that silence marker is intentional") belongs here rather than as a new section above.
+
+**Never** record such a rule only in an agent's own private memory store. Per-agent memory directories live on a single machine, so a convention parked there silently stops applying the moment the user switches machines — and it is invisible to the cluster's CLI workers, which read this repo's files and cannot see another agent's private memory.
+
+`AGENTS.md` is a pointer to this file, not a second copy — codex and gemini read it and are directed here. Do not start a parallel rule list there.
+
+## Git Commit Messages
+
+**Keep them short.** A one-line subject plus a few sentences saying what changed and why it was needed. Root-cause analysis, empirical findings, endpoint/API comparisons, benchmark numbers, design trade-offs — none of that belongs in a commit body.
+
+Those details go into that day's `.claude-workbook/` report, and the commit body points at it:
+
+```
+refactor(cluster): check worker credentials over HTTP instead of spawning CLIs
+
+启动探针原本对每个 enabled template 真实 spawn CLI，单次固定 ~11.8k input token
+换 9 个 output token。改为各 backend 通过 verifyCredentials() 打供应商的模型元数据
+端点，不起进程、不消耗 token。
+
+详见 workbook 2026-08-27(3)。
+```
+
+Write the workbook entry first, then write the commit against it. The analysis then exists in exactly one place instead of being written twice and drifting.
+
+The `Co-Authored-By:` trailer convention is unchanged.
+
 ## Workflow: Workbook & Learnings
 
 `.claude-workbook/` and `.claude-learnings/` are listed in `.gitignore` — they are **local-only notes**; do not `git add` or push them. Delivery and collaboration rely on the tracked code and docs inside the repo.
@@ -219,9 +273,10 @@ The project maintains these two directories; you are **encouraged** (optional bu
 ### When Starting Work
 
 1. Read this file (`CLAUDE.md`)
-2. Read `.claude-workbook/index.md` — to understand past work (read the index first, then specific dated reports as needed)
-3. Read `.claude-learnings/index.md` — to understand the project's key details and design points (read the index first, then the relevant scope files as needed)
-4. Start the task
+2. Read `.claude/memory/MEMORY.md` — the index of learned preferences and project facts; open the entries relevant to the task. Nothing loads these automatically.
+3. Read `.claude-workbook/index.md` — to understand past work (read the index first, then specific dated reports as needed)
+4. Read `.claude-learnings/index.md` — to understand the project's key details and design points (read the index first, then the relevant scope files as needed)
+5. Start the task
 
 ### When Work Is Done
 

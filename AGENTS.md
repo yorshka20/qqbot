@@ -1,21 +1,16 @@
-## Learned User Preferences
+# AGENTS.md
 
-- Do not add non-provider modules inside the provider directory; keep provider-specific state (e.g. key mode) inside the provider class.
-- Reuse shared utilities instead of reimplementing (e.g. image-to-base64 + mime); migrate common logic to a shared module.
-- Unify duplicate code paths: prefer a single entry point (e.g. handleCardReply) over separate methods that duplicate logic.
-- In tests, when template files exist on disk, use loadTemplatesFromDirectory() so templates are loaded as in production; avoid manual registerTemplate when the file is already there.
-- Type definitions: make required fields non-optional when the value is always set (e.g. metadata, protocol types).
-- Do not hardcode lists or order when the value can come from the module (e.g. capabilities from ProviderRegistry, sort order use alphabetical unless there is a clear reason).
-- Prefer a single representation over boolean + enum (e.g. use replyTriggerType only instead of triggeredByAtBot + triggeredByWakeWord + replyTriggerType).
-- Prefer one format for single/multi variants (e.g. card deck always as array; single card is [one card]).
-- Use English comments in code; do not delete comments when editing.
-- Always use curly braces for if/else; use ESM import only, no inline require.
-- Gate permission once at the service that invokes LLM (e.g. ReplyGenerationService, ProactiveConversationService.runAnalysis); avoid redundant checks at every caller.
+**Read [`CLAUDE.md`](./CLAUDE.md) first — it is the complete and authoritative instruction set for this repository.**
 
-## Learned Workspace Facts
+This file exists only so that agents which look for `AGENTS.md` (codex, gemini) find their way there. It is deliberately *not* maintained as a parallel copy, so anything you need is in `CLAUDE.md`:
 
-- QQ bot project with plugin pipeline (MessageTriggerPlugin, WhitelistPlugin, ProactiveConversation, etc.), AI providers (Gemini, Doubao, etc.), and HookContext/metadata flow.
-- Card rendering: convert_to_card output is a JSON array of cards; single card is [one card]; comparison card uses leftHeader/rightHeader from data, not fixed labels.
-- Reply trigger is centralized in MessageTriggerPlugin; trigger type is stored as replyTriggerType (at | reaction | wakeWordConfig | wakeWordPreference | providerName).
-- Whitelist: per-group limited permissions use config key "groups" (array of { id, capabilities }); "groupIds" must be a string array only—putting objects there breaks lookup.
-- For in-bot restart under PM2: use `pm2 restart qq-bot qq-bot-ui` (not nohup + start.sh) so the process exits first and ecosystem scripts (pm2-bot.sh) run git pull + bun install in a new process, avoiding bun EEXIST and log mixing.
+- Development commands, and the build / typecheck / lint / **smoke-test** workflow that gates a change
+- High-level architecture: the message pipeline, hook system, tool and plugin systems
+- Code conventions and comment style
+- Bug-fixing principle — root cause first, no stacking patches
+- Git commit message convention
+- The workbook / learnings workflow and roadmap maintenance
+
+Accumulated user preferences and project facts live in [`.claude/memory/`](./.claude/memory/) — start from its `MEMORY.md` index.
+
+**Do not add project rules to this file.** Put them where `CLAUDE.md` → "Where Conventions Live" says they belong.
