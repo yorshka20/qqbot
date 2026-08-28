@@ -26,9 +26,16 @@ import type {
  * SQLite model accessor implementation
  */
 class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
+  /**
+   * Columns the model declares as boolean. SQLite has no boolean type and stores them as 0/1 in
+   * INTEGER columns, which is indistinguishable from a genuine number on the way back — so the
+   * only way to hand callers the type they declared is to be told which columns those are.
+   * Only real columns belong here: a boolean nested inside a JSON field is restored by the parse.
+   */
   constructor(
     private db: Database,
     private tableName: string,
+    private booleanFields: readonly string[] = [],
   ) {}
 
   async create(
@@ -241,6 +248,12 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
         } catch {
           // Keep as string if parsing fails
         }
+      }
+    }
+
+    for (const field of this.booleanFields) {
+      if (typeof result[field] === 'number') {
+        result[field] = result[field] !== 0;
       }
     }
 
@@ -793,8 +806,10 @@ export class SQLiteAdapter implements DatabaseAdapter {
         'memory_extract_user_cursors',
       ),
       memoryNotesBuffer: new SQLiteModelAccessor<MemoryNoteBuffer>(this.db, 'memory_notes_buffer'),
-      agendaItems: new SQLiteModelAccessor<AgendaItem>(this.db, 'agenda_items'),
-      bilibiliDanmaku: new SQLiteModelAccessor<BilibiliDanmakuRecord>(this.db, 'bilibili_danmaku'),
+      agendaItems: new SQLiteModelAccessor<AgendaItem>(this.db, 'agenda_items', ['enabled']),
+      bilibiliDanmaku: new SQLiteModelAccessor<BilibiliDanmakuRecord>(this.db, 'bilibili_danmaku', [
+        'mentionsStreamer',
+      ]),
       userPortraitScore: new SQLiteModelAccessor<UserPortraitScore>(this.db, 'user_portrait_score'),
       tokenUsage: new SQLiteModelAccessor<TokenUsageRecord>(this.db, 'token_usage'),
     };
