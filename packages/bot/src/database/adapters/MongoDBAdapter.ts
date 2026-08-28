@@ -27,12 +27,12 @@ class MongoModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
   constructor(private collection: Collection) {}
 
   async create(
-    data: Omit<T, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<BaseModel, 'createdAt' | 'updatedAt'>>,
+    data: Omit<T, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<BaseModel, 'id' | 'createdAt' | 'updatedAt'>>,
   ): Promise<T> {
     const now = new Date();
     const createdAt = this.toDate((data as Record<string, unknown>).createdAt) ?? now;
     const updatedAt = this.toDate((data as Record<string, unknown>).updatedAt) ?? now;
-    const id = randomUUID();
+    const id = (data as Partial<BaseModel>).id ?? randomUUID();
     const record = {
       ...data,
       _id: id,

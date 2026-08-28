@@ -234,9 +234,11 @@ export interface ModelAccessor<T extends BaseModel> {
   /**
    * Create a new record.
    * createdAt/updatedAt are optional; when provided (e.g. message event time), they are used instead of server now.
+   * id is optional; supply it only for a model that mints its own keys (agenda items number theirs
+   * so they can be typed by hand), otherwise a UUID is generated.
    */
   create(
-    data: Omit<T, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<BaseModel, 'createdAt' | 'updatedAt'>>,
+    data: Omit<T, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<BaseModel, 'id' | 'createdAt' | 'updatedAt'>>,
   ): Promise<T>;
 
   /**

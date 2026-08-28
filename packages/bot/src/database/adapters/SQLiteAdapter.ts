@@ -32,12 +32,12 @@ class SQLiteModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
   ) {}
 
   async create(
-    data: Omit<T, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<BaseModel, 'createdAt' | 'updatedAt'>>,
+    data: Omit<T, 'id' | 'createdAt' | 'updatedAt'> & Partial<Pick<BaseModel, 'id' | 'createdAt' | 'updatedAt'>>,
   ): Promise<T> {
     const now = new Date();
     const createdAt = this.toDate((data as Record<string, unknown>).createdAt) ?? now;
     const updatedAt = this.toDate((data as Record<string, unknown>).updatedAt) ?? now;
-    const id = randomUUID();
+    const id = (data as Partial<BaseModel>).id ?? randomUUID();
     const record = {
       ...data,
       id,
@@ -650,6 +650,36 @@ export class SQLiteAdapter implements DatabaseAdapter {
       }
     } catch (error) {
       logger.warn(`[SQLiteAdapter] Failed to migrate agenda_items triggerType CHECK: ${error}`);
+    }
+
+    // Agenda ids are typed by hand into /agenda commands, so they are short integers rather than
+    // UUIDs. Rows minted before that are renumbered once, oldest first. Safe because no table
+    // references an agenda id as a foreign key — it only ever travels as a transient tool result.
+    try {
+      const rows = this.db.query(`SELECT id FROM agenda_items ORDER BY createdAt ASC`).all() as Array<{
+        id: string;
+      }>;
+      const legacy = rows.filter((r) => !/^\d+$/.test(r.id));
+      if (legacy.length > 0) {
+        this.db.run('BEGIN');
+        try {
+          // Park every row on a temporary key first: assigning final ids in one pass can collide
+          // with a numeric id that a not-yet-rewritten row still holds.
+          for (const [i, row] of rows.entries()) {
+            this.db.run(`UPDATE agenda_items SET id = ? WHERE id = ?`, [`migrating:${i + 1}`, row.id]);
+          }
+          for (const [i] of rows.entries()) {
+            this.db.run(`UPDATE agenda_items SET id = ? WHERE id = ?`, [String(i + 1), `migrating:${i + 1}`]);
+          }
+          this.db.run('COMMIT');
+          logger.info(`[SQLiteAdapter] Renumbered ${rows.length} agenda_items ids (${legacy.length} legacy UUIDs)`);
+        } catch (renumberError) {
+          this.db.run('ROLLBACK');
+          throw renumberError;
+        }
+      }
+    } catch (error) {
+      logger.warn(`[SQLiteAdapter] Failed to renumber agenda_items ids: ${error}`);
     }
 
     // Add normalizedContent column to memory_fact_meta if it doesn't exist (migration)

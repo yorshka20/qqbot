@@ -153,19 +153,41 @@ export class AgendaService {
 
   // ─── CRUD ────────────────────────────────────────────────────────────────────
 
+  /**
+   * Next agenda id, seeded from the highest one in the DB. Held in memory so a burst of creations
+   * in one run cannot hand out the same number twice; reseeded on restart.
+   */
+  private nextId: number | null = null;
+
+  /**
+   * Agenda ids are short integers, not UUIDs: the owner types them into /agenda enable|disable.
+   * They are never reused, so a number keeps pointing at the same item for its whole life.
+   */
+  private async allocateId(): Promise<string> {
+    if (this.nextId == null) {
+      const existing = await this.getAccessor().find({});
+      const highest = existing.reduce((max, item) => Math.max(max, Number.parseInt(item.id, 10) || 0), 0);
+      this.nextId = highest + 1;
+    }
+    const id = this.nextId;
+    this.nextId += 1;
+    return String(id);
+  }
+
   /** Create a new AgendaItem and schedule it if enabled. */
   async createItem(data: CreateAgendaItemData): Promise<AgendaItem> {
     const accessor = this.getAccessor();
 
     const item = await accessor.create({
       ...data,
+      id: await this.allocateId(),
       cooldownMs: data.cooldownMs ?? 60_000,
       maxSteps: data.maxSteps ?? 15,
       enabled: data.enabled ?? true,
       lastRunAt: undefined,
       nextRunAt: undefined,
       metadata: data.metadata,
-    } as Omit<AgendaItem, 'id' | 'createdAt' | 'updatedAt'>);
+    } as Omit<AgendaItem, 'id' | 'createdAt' | 'updatedAt'> & { id: string });
 
     if (item.enabled) {
       this.scheduleItem(item);

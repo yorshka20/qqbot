@@ -2,9 +2,9 @@
 //
 // Usage:
 //   /agenda list              列出所有日程任务
-//   /agenda delete <id|name>  删除指定日程任务
-//   /agenda enable <id|name>  启用指定日程任务
-//   /agenda disable <id|name> 禁用指定日程任务
+//   /agenda delete <编号|name>  删除指定日程任务
+//   /agenda enable <编号|name>  启用指定日程任务
+//   /agenda disable <编号|name> 禁用指定日程任务
 
 import { inject, injectable } from 'tsyringe';
 import type { AgendaService } from '@/agenda/AgendaService';
@@ -19,7 +19,7 @@ import type { CommandContext, CommandHandler, CommandResult } from '../types';
 @Command({
   name: 'agenda',
   description: '管理日程任务（列表/删除/启用/禁用）',
-  usage: '/agenda list | delete <id|名称> | enable <id|名称> | disable <id|名称>',
+  usage: '/agenda list | delete <编号|名称> | enable <编号|名称> | disable <编号|名称>',
   permissions: ['admin', 'owner'],
   aliases: ['日程管理'],
 })
@@ -27,7 +27,7 @@ import type { CommandContext, CommandHandler, CommandResult } from '../types';
 export class AgendaCommand implements CommandHandler {
   name = 'agenda';
   description = '管理日程任务（列表/删除/启用/禁用）';
-  usage = '/agenda list | delete <id|名称> | enable <id|名称> | disable <id|名称>';
+  usage = '/agenda list | delete <编号|名称> | enable <编号|名称> | disable <编号|名称>';
 
   constructor(
     @inject(DITokens.AGENDA_SERVICE) private agendaService: AgendaService,
@@ -61,9 +61,9 @@ export class AgendaCommand implements CommandHandler {
           error: [
             '用法:',
             '  /agenda list              列出所有日程',
-            '  /agenda delete <id|名称>  删除日程',
-            '  /agenda enable <id|名称>  启用日程',
-            '  /agenda disable <id|名称> 禁用日程',
+            '  /agenda delete <编号|名称>  删除日程',
+            '  /agenda enable <编号|名称>  启用日程',
+            '  /agenda disable <编号|名称> 禁用日程',
           ].join('\n'),
         };
     }
@@ -81,15 +81,17 @@ export class AgendaCommand implements CommandHandler {
       return { success: true, segments: mb.build() };
     }
 
-    const lines = items.map((item, i) => this.formatItem(item, i + 1));
+    const lines = items.map((item) => this.formatItem(item));
     const mb = new MessageBuilder();
-    mb.text(`📋 日程任务列表 (共${items.length}项)\n\n${lines.join('\n\n')}`);
+    mb.text(
+      `📋 日程任务列表 (共${items.length}项)\n\n${lines.join('\n\n')}\n\n用编号操作，例如 /agenda disable ${items[0].id}`,
+    );
     return { success: true, segments: mb.build() };
   }
 
   private async handleDelete(query: string, context: CommandContext): Promise<CommandResult> {
     if (!query) {
-      return { success: false, error: '请指定要删除的日程ID或名称。' };
+      return { success: false, error: '请指定要删除的日程编号或名称。' };
     }
 
     const item = await this.resolveItem(query, context.groupId?.toString());
@@ -112,7 +114,7 @@ export class AgendaCommand implements CommandHandler {
 
   private async handleSetEnabled(query: string, enabled: boolean): Promise<CommandResult> {
     if (!query) {
-      return { success: false, error: `请指定要${enabled ? '启用' : '禁用'}的日程ID或名称。` };
+      return { success: false, error: `请指定要${enabled ? '启用' : '禁用'}的日程编号或名称。` };
     }
 
     const item = await this.resolveItem(query);
@@ -136,9 +138,9 @@ export class AgendaCommand implements CommandHandler {
 
   // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-  /** Resolve an item by ID or name (case-insensitive name match). */
+  /** Resolve an item by its number or name (case-insensitive name match). */
   private async resolveItem(query: string, groupId?: string): Promise<AgendaItem | null> {
-    // Try exact ID match first
+    // Try the item number first
     const byId = await this.agendaService.getItem(query);
     if (byId) return byId;
 
@@ -160,13 +162,12 @@ export class AgendaCommand implements CommandHandler {
     return item.metadata?.source === 'llm';
   }
 
-  private formatItem(item: AgendaItem, index: number): string {
+  private formatItem(item: AgendaItem): string {
     const status = item.enabled ? '🟢' : '🔴';
     const llmTag = this.isLlmSourced(item) ? ' 🤖' : '';
     const trigger = this.formatTrigger(item);
     const lines = [
-      `${index}. ${status} ${item.name}${llmTag}`,
-      `   ID: ${item.id}`,
+      `#${item.id} ${status} ${item.name}${llmTag}`,
       `   触发: ${trigger}`,
       `   意图: ${item.intent.length > 50 ? `${item.intent.slice(0, 50)}...` : item.intent}`,
     ];
