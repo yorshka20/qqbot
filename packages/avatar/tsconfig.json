@@ -7,8 +7,11 @@
     "emitDeclarationOnly": true,
     "outDir": "./dist-types",
     "rootDir": "./src",
-    "baseUrl": ".",
-    "types": ["bun-types"]
+    "types": [
+      "bun-types"
+    ]
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*"
+  ]
 }

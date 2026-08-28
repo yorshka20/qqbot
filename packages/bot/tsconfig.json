@@ -7,13 +7,24 @@
     "emitDeclarationOnly": true,
     "outDir": "./dist-types",
     "rootDir": ".",
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@/types/*": ["./types/*"]
+      "@/*": [
+        "./src/*"
+      ],
     },
-    "types": ["bun-types"]
+    "types": [
+      "bun-types"
+    ]
   },
-  "references": [{ "path": "../avatar" }],
-  "include": ["src/**/*", "types/**/*", "scripts/builds/**/*", "build.config.ts"]
+  "references": [
+    {
+      "path": "../avatar"
+    }
+  ],
+  "include": [
+    "src/**/*",
+    "types/**/*",
+    "scripts/builds/**/*",
+    "build.config.ts"
+  ]
 }
