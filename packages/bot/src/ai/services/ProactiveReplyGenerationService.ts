@@ -18,8 +18,14 @@ import { normalizeVisionImages } from '../utils/imageUtils';
 import type { LLMService } from './LLMService';
 import type { VisionService } from './VisionService';
 
-/** Proactive reply: max history entries in prompt. */
-const PROACTIVE_MAX_HISTORY_ENTRIES = 24;
+/**
+ * Proactive reply: the single ceiling on history entries in the prompt, enforced by dropping
+ * oldest. Folding the front into a summary is `ThreadContextCompressionService`'s job and runs
+ * in the background, so this must stay above that compressor's trigger — a lower cap would
+ * silently drop the very spans the compressor was about to preserve as a summary, and would
+ * also cut off the leading summary entry it had already written.
+ */
+const PROACTIVE_MAX_HISTORY_ENTRIES = 90;
 
 const PROACTIVE_GEN_OPTIONS = {
   temperature: 0.5,

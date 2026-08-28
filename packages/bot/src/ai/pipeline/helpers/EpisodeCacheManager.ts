@@ -10,15 +10,51 @@ import {
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 
-/** Normal mode: max history entries in prompt (stable size for LLM cache hit). */
-const NORMAL_MAX_HISTORY_ENTRIES = 24;
+/**
+ * Window sizing.
+ *
+ * The read path never summarizes. It appends and hands back whatever is materialized,
+ * so a turn's latency never contains a summarizer round-trip; compression runs after
+ * the reply and its result is picked up by the *next* turn.
+ *
+ * Trigger and target are deliberately far apart. Folding back down to the trigger would
+ * leave the window sitting on the boundary and re-summarize every turn, which (a) re-cooks
+ * the previous summary into a lossier one on each pass, since the leading entry of the
+ * folded span is itself a summary, and (b) changes the prompt prefix every turn, defeating
+ * the provider-side prefix cache this cache exists to keep warm.
+ */
+const EPISODE_WINDOW_COMPRESS_TRIGGER_ENTRIES = 100;
+/** Entries left after a pass: the oldest span collapses into one summary entry. */
+const EPISODE_WINDOW_COMPRESS_TARGET_ENTRIES = 48;
+/**
+ * Second budget dimension. Entry count varies by an order of magnitude per entry — a one-line
+ * "嗯" and a rendered card both count as 1 — so a window can blow a prompt budget well before it
+ * reaches the entry trigger. It gets the same trigger/target spread as the entry dimension: a
+ * char budget that only bounded the trigger would fold to 48 entries that are still over budget
+ * and fire again next turn, which is the boundary-sitting this whole split exists to avoid.
+ */
+const EPISODE_WINDOW_COMPRESS_TRIGGER_CHARS = 20_000;
+const EPISODE_WINDOW_COMPRESS_TARGET_CHARS = 10_000;
+/**
+ * Floor on recent entries kept, whatever the char budget says. A window is a conversation before
+ * it is a token count, and a couple of long cards must not be able to fold everything behind them.
+ */
+const EPISODE_WINDOW_MIN_RECENT_ENTRIES = 8;
+/**
+ * Ceiling the read path enforces by dropping oldest, without an LLM. Only reached while
+ * compression is failing or cannot keep up; the summary is how a dropped span normally
+ * survives, so this is degradation, not the routine path.
+ */
+const EPISODE_WINDOW_HARD_MAX_ENTRIES = 150;
+/** Per-turn DB fetch bound for appending: must exceed what an active group produces between two triggers. */
+const EPISODE_APPEND_FETCH_LIMIT = 60;
 
 /**
  * Manages episode-based conversation history caching.
  * Owns the {@link NormalEpisodeService} instance and a per-episode history Map
  * so the prompt prefix stays stable across turns (improving LLM cache hit rate).
- * Handles new-episode initialization, incremental appending, and summarization
- * when the history exceeds the configured maximum entry count.
+ * Handles new-episode initialization, incremental appending, and scheduling of
+ * background compression when the window outgrows its budget.
  */
 export class EpisodeCacheManager {
   private readonly episodeService = new NormalEpisodeService();
@@ -26,13 +62,21 @@ export class EpisodeCacheManager {
   /** Per-episode history cache so prompt prefix stays stable until summary roll (for LLM cache). */
   private readonly episodeHistoryCache = new Map<string, ConversationMessageEntry[]>();
 
+  /** Live episode per session, so the previous episode's window is released when the episode rolls over. */
+  private readonly activeEpisodeKeyBySession = new Map<string, string>();
+
+  /** Episodes with a compression pass in flight; a second pass would fold an already-folded span. */
+  private readonly compressingEpisodeKeys = new Set<string>();
+
   constructor(private conversationHistoryService: ConversationHistoryService) {}
 
   /**
    * Build history for normal (episode) mode.
    * - SessionId is normalized so history and DB persistence use the same key (group:groupId / user:userId).
    * - New episode (no cache): initial context = last EPISODE_CONTEXT_WINDOW_SIZE (10) messages within 10 min before trigger.
-   * - Existing episode (has cache): same start (cached prefix) + new messages from DB since last cached; when over cap, summarize front.
+   * - Existing episode (has cache): same start (cached prefix) + new messages from DB since last cached.
+   *
+   * Never summarizes: see {@link maintainEpisodeContext}.
    */
   async buildNormalHistoryEntries(context: HookContext): Promise<{
     historyEntries: ConversationMessageEntry[];
@@ -55,6 +99,7 @@ export class EpisodeCacheManager {
       userMessage: context.message.message,
     });
     const episodeKey = this.episodeService.buildEpisodeKey(canonicalSessionId, episode);
+    this.releasePreviousEpisode(canonicalSessionId, episodeKey);
     const currentMessageId = this.getMessageIdString(context);
 
     let entries: ConversationMessageEntry[];
@@ -70,22 +115,19 @@ export class EpisodeCacheManager {
         canonicalSessionId,
         sessionType,
         sinceAfterLast,
-        NORMAL_MAX_HISTORY_ENTRIES + 10,
+        EPISODE_APPEND_FETCH_LIMIT,
       );
       const appended = newMessages.filter((e) => e.messageId !== currentMessageId);
       const combined = [...cached, ...appended];
-      if (combined.length > NORMAL_MAX_HISTORY_ENTRIES) {
-        const roll = await this.conversationHistoryService.replaceOldestWithSummary(
-          combined,
-          NORMAL_MAX_HISTORY_ENTRIES,
-          new Date(),
+      entries =
+        combined.length > EPISODE_WINDOW_HARD_MAX_ENTRIES ? combined.slice(-EPISODE_WINDOW_HARD_MAX_ENTRIES) : combined;
+      if (entries.length < combined.length) {
+        logger.warn(
+          `[EpisodeCacheManager] Window hit hard max, dropped ${combined.length - entries.length} oldest entries ` +
+            `uncompressed | episodeKey=${episodeKey}`,
         );
-        entries = roll.entries;
-        this.episodeHistoryCache.set(episodeKey, entries);
-      } else {
-        entries = combined;
-        this.episodeHistoryCache.set(episodeKey, entries);
       }
+      this.episodeHistoryCache.set(episodeKey, entries);
     } else {
       // New episode: last EPISODE_CONTEXT_WINDOW_SIZE (10) messages within 10 min before trigger.
       const raw = await this.conversationHistoryService.getMessagesSinceForSession(
@@ -120,27 +162,109 @@ export class EpisodeCacheManager {
   }
 
   /**
-   * Maintain episode context window: when cache exceeds limit, replace oldest with summary and update cache.
-   * Called fire-and-forget after reply completes so the next reply sees a stable summarized prefix.
+   * Fold the oldest span of an over-budget window into one summary entry.
+   * Called fire-and-forget after the reply completes; the folded window is picked up by the
+   * next turn's build, so no turn ever waits on the summarizer.
    */
   async maintainEpisodeContext(episodeKey: string | undefined): Promise<void> {
-    if (!episodeKey) {
+    if (!episodeKey || this.compressingEpisodeKeys.has(episodeKey)) {
       return;
     }
-    const cached = this.episodeHistoryCache.get(episodeKey);
-    if (!cached || cached.length <= NORMAL_MAX_HISTORY_ENTRIES) {
+    const snapshot = this.episodeHistoryCache.get(episodeKey);
+    if (!snapshot) {
       return;
     }
+    const targetSize = this.planFold(snapshot);
+    if (targetSize == null) {
+      return;
+    }
+
+    this.compressingEpisodeKeys.add(episodeKey);
     try {
-      const roll = await this.conversationHistoryService.replaceOldestWithSummary(
-        cached,
-        NORMAL_MAX_HISTORY_ENTRIES,
-        new Date(),
-      );
-      this.episodeHistoryCache.set(episodeKey, roll.entries);
+      const roll = await this.conversationHistoryService.replaceOldestWithSummary(snapshot, targetSize, new Date());
+      // replacedCount 0 means the summarizer yielded nothing. Keep the window intact and retry
+      // next turn rather than take the roll's uncompressed trim: the read path's hard max already
+      // bounds growth, so there is nothing to buy by dropping the span now.
+      if (roll.replacedCount === 0) {
+        return;
+      }
+      this.commitFold(episodeKey, snapshot.slice(0, roll.replacedCount), roll.entries[0]);
     } catch (err) {
       logger.warn('[EpisodeCacheManager] maintainEpisodeContext failed:', err instanceof Error ? err.message : err);
+    } finally {
+      this.compressingEpisodeKeys.delete(episodeKey);
     }
+  }
+
+  /**
+   * Decide whether the window is over budget and, if so, how many entries it should have once
+   * the oldest span is folded (the summary entry included). Null means leave it alone.
+   *
+   * The kept tail is walked back-to-front so both budgets land on the same fold: the recent end
+   * is what a reply actually needs, and the span that falls off the front is the span the summary
+   * then stands for.
+   */
+  private planFold(entries: ConversationMessageEntry[]): number | null {
+    const totalChars = entries.reduce((sum, e) => sum + e.content.length, 0);
+    if (
+      entries.length <= EPISODE_WINDOW_COMPRESS_TRIGGER_ENTRIES &&
+      totalChars <= EPISODE_WINDOW_COMPRESS_TRIGGER_CHARS
+    ) {
+      return null;
+    }
+
+    let kept = 0;
+    let keptChars = 0;
+    for (let i = entries.length - 1; i >= 0 && kept < EPISODE_WINDOW_COMPRESS_TARGET_ENTRIES - 1; i--) {
+      const withEntry = keptChars + entries[i].content.length;
+      if (kept >= EPISODE_WINDOW_MIN_RECENT_ENTRIES && withEntry > EPISODE_WINDOW_COMPRESS_TARGET_CHARS) {
+        break;
+      }
+      keptChars = withEntry;
+      kept += 1;
+    }
+
+    const targetSize = kept + 1;
+    return targetSize < entries.length ? targetSize : null;
+  }
+
+  /**
+   * Write the fold back onto the window as it stands now, not onto the snapshot it was computed
+   * from: the read path appends to the same cache while the summarizer runs. The folded span is
+   * matched by message id, and a mismatch means the window moved under us (hard-max trim, episode
+   * rollover) — dropping the result is correct, the next pass recomputes against the live window.
+   */
+  private commitFold(
+    episodeKey: string,
+    foldedSpan: ConversationMessageEntry[],
+    summaryEntry: ConversationMessageEntry,
+  ): void {
+    const current = this.episodeHistoryCache.get(episodeKey);
+    if (!current || current.length < foldedSpan.length) {
+      return;
+    }
+    const prefixMatches = foldedSpan.every((entry, i) => current[i].messageId === entry.messageId);
+    if (!prefixMatches) {
+      logger.debug(`[EpisodeCacheManager] Window moved during compression, discarding fold | episodeKey=${episodeKey}`);
+      return;
+    }
+    this.episodeHistoryCache.set(episodeKey, [summaryEntry, ...current.slice(foldedSpan.length)]);
+    logger.debug(
+      `[EpisodeCacheManager] Folded ${foldedSpan.length} entries into summary | ` +
+        `episodeKey=${episodeKey} windowSize=${current.length - foldedSpan.length + 1}`,
+    );
+  }
+
+  /** An episode's window dies with the episode; without this the map grows for the life of the process. */
+  private releasePreviousEpisode(sessionId: string, episodeKey: string): void {
+    const previousKey = this.activeEpisodeKeyBySession.get(sessionId);
+    if (previousKey === episodeKey) {
+      return;
+    }
+    if (previousKey != null) {
+      this.episodeHistoryCache.delete(previousKey);
+    }
+    this.activeEpisodeKeyBySession.set(sessionId, episodeKey);
   }
 
   private getMessageIdString(context: HookContext): string {

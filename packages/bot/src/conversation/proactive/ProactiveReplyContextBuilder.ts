@@ -15,9 +15,6 @@ import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNoti
 import type { ProactiveThread, ThreadService } from '../thread/ThreadService';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 
-/** Max history entries in proactive prompt; when exceeded, front is summarized and summary becomes stable start (in memory). */
-const PROACTIVE_MAX_HISTORY_ENTRIES = 24;
-
 export interface ProactiveReplyContextBuilderDeps {
   threadService: ThreadService;
   conversationHistoryService: ConversationHistoryService;
@@ -164,7 +161,7 @@ export class ProactiveReplyContextBuilder {
     fetchProgressNotifier?: FetchProgressNotifier,
   ): Promise<ProactiveReplyInjectContext> {
     const threadContext = this.getThreadContextFormatted(threadId);
-    let historyEntries: ConversationMessageEntry[] = thread.messages.map((m, idx) => ({
+    const historyEntries: ConversationMessageEntry[] = thread.messages.map((m, idx) => ({
       messageId: `thread:${threadId}:${idx}`,
       userId: m.userId,
       nickname: m.nickname,
@@ -174,19 +171,6 @@ export class ProactiveReplyContextBuilder {
       createdAt: m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt),
       wasAtBot: m.wasAtBot,
     }));
-    // When over limit, summarize front so summary becomes stable start (in memory); next build sees same start.
-    if (historyEntries.length > PROACTIVE_MAX_HISTORY_ENTRIES) {
-      const roll = await this.deps.conversationHistoryService.replaceOldestWithSummary(
-        historyEntries,
-        PROACTIVE_MAX_HISTORY_ENTRIES,
-        new Date(),
-      );
-      // Only mirror a real summary back into the thread; a failed roll just trims this build.
-      if (roll.replacedCount > 0) {
-        this.deps.threadService.replaceEarliestWithSummary(threadId, roll.replacedCount, roll.entries[0].content);
-      }
-      historyEntries = roll.entries;
-    }
     const preferenceText = this.getPreferenceText(preferenceKey);
     // Use trigger user message for RAG (same as reply flow): last user message in thread, fallback to topic
     const lastUserMsg = [...thread.messages].reverse().find((m) => !m.isBotReply);
