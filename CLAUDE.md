@@ -246,18 +246,25 @@ Anything the user states as a convention, preference, or working agreement has t
 
 ## Git Commit Messages
 
+**Write them in English — subject and body both.** No Chinese in a commit message, whatever
+language the conversation that produced the change was in.
+
 **Keep them short.** A one-line subject plus a few sentences saying what changed and why it was needed. Root-cause analysis, empirical findings, endpoint/API comparisons, benchmark numbers, design trade-offs — none of that belongs in a commit body.
+
+Concretely: **body ≤ 5 lines of prose, and no bullet lists, tables, code blocks, or logs.** Reaching
+for any of those means the content belongs in the workbook, not here. A body that enumerates every
+affected call site is already too long — name the defect once and point at the report.
 
 Those details go into that day's `.claude-workbook/` report, and the commit body points at it:
 
 ```
 refactor(cluster): check worker credentials over HTTP instead of spawning CLIs
 
-启动探针原本对每个 enabled template 真实 spawn CLI，单次固定 ~11.8k input token
-换 9 个 output token。改为各 backend 通过 verifyCredentials() 打供应商的模型元数据
-端点，不起进程、不消耗 token。
+The startup probe really spawned a CLI per enabled template, trading a fixed ~11.8k input
+tokens for 9 output tokens each time. Each backend now hits its provider's model-metadata
+endpoint through verifyCredentials(): no process, no tokens.
 
-详见 workbook 2026-08-27(3)。
+See workbook 2026-08-27(3).
 ```
 
 Write the workbook entry first, then write the commit against it. The analysis then exists in exactly one place instead of being written twice and drifting.
