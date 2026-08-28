@@ -16,6 +16,7 @@ Accumulated user preferences and project facts for this repo, one file per entry
 
 - [feedback_no_defensive_optionals.md](feedback_no_defensive_optionals.md) — 上游保证有值就别做可选参数 + 条件 fallback
 - [feedback_avoid_prop_drilling.md](feedback_avoid_prop_drilling.md) — 别反射性透传；先看能不能从已持有的依赖或既有 context 读，新增 context 字段要论证
+- [feedback_tool_output_budget.md](feedback_tool_output_budget.md) — 工具输出截断要配杠杆+续读指引，逼出额外一轮调用就是负收益
 - [feedback_no_module_state_prefer_statics.md](feedback_no_module_state_prefer_statics.md) — 别用模块级可变状态；访问器挂到拥有该概念的类上做 static
 
 ## Project facts

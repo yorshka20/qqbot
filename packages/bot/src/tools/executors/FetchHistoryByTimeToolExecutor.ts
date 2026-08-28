@@ -1,18 +1,33 @@
 // Fetch history by time range task executor - retrieves conversation history within a time window
 
 import { inject, injectable } from 'tsyringe';
-import { type ConversationHistoryService, normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
+import {
+  type ConversationHistoryService,
+  type ConversationMessageEntry,
+  normalizeGroupId,
+} from '@/conversation/history/ConversationHistoryService';
 import { DITokens } from '@/core/DITokens';
-import { DATE_TIMEZONE, formatDateTimeShort } from '@/utils/dateTime';
+import { DATE_TIMEZONE, dateInTimezone, formatDateTimeShort } from '@/utils/dateTime';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 
-/** Maximum messages to fetch from DB before filtering by time */
-const MAX_FETCH_LIMIT = 500;
+/** Hard ceiling on how many messages one window may load from the DB */
+const MAX_FETCH_LIMIT = 2000;
+/** Messages rendered per call when the caller does not ask for a different page size */
+const DEFAULT_LIMIT = 200;
+/** Upper bound the caller may raise `limit` to */
+const MAX_LIMIT = 1000;
+/** Per-message content cut-off in the rendered list */
+const MAX_CONTENT_CHARS = 200;
+/**
+ * Backstop on the rendered transcript so one call can never blow up the caller's
+ * context: `limit` is the caller's lever, this is the ceiling it cannot cross.
+ */
+const MAX_TRANSCRIPT_CHARS = 20_000;
 
 /**
- * Parse a time string relative to today in Asia/Tokyo timezone.
+ * Parse a time string in the canonical data timezone (DATE_TIMEZONE).
  * Supports formats:
  * - "HH:mm" or "HH:mm:ss" (today)
  * - "YYYY-MM-DD HH:mm" or "YYYY-MM-DD HH:mm:ss"
@@ -39,37 +54,37 @@ function parseTimeInput(input: string): Date | null {
   const fullMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (fullMatch) {
     const [, year, month, day, hour, minute, second] = fullMatch;
-    // Create date in Asia/Tokyo timezone
-    const dateStr = `${year}-${month}-${day}T${hour.padStart(2, '0')}:${minute}:${second ?? '00'}`;
-    // Parse as local time in the target timezone
-    const date = new Date(dateStr);
-    // Adjust for timezone offset (this is approximate; full TZ handling would need a library)
-    return date;
+    return dateInTimezone(`${year}-${month}-${day}`, `${hour.padStart(2, '0')}:${minute}:${second ?? '00'}`);
   }
 
-  // Time only: HH:mm or HH:mm:ss (today in Asia/Tokyo)
+  // Time only: HH:mm or HH:mm:ss (today in DATE_TIMEZONE)
   const timeOnlyMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (timeOnlyMatch) {
     const [, hour, minute, second] = timeOnlyMatch;
-    const now = new Date();
-    // Get today's date in Asia/Tokyo
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: DATE_TIMEZONE,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
     });
-    const todayStr = formatter.format(now); // YYYY-MM-DD
-    const dateStr = `${todayStr}T${hour.padStart(2, '0')}:${minute}:${second ?? '00'}`;
-    return new Date(dateStr);
+    const todayStr = formatter.format(new Date()); // YYYY-MM-DD
+    return dateInTimezone(todayStr, `${hour.padStart(2, '0')}:${minute}:${second ?? '00'}`);
   }
 
   return null;
 }
 
+function clampInt(raw: unknown, fallback: number, min: number, max: number): number {
+  if (typeof raw !== 'number' || Number.isNaN(raw)) {
+    return fallback;
+  }
+  return Math.min(Math.max(Math.trunc(raw), min), max);
+}
+
 @Tool({
   name: 'fetch_history_by_time',
-  description: '获取当前群指定时间段内的聊天记录。返回该时间窗口内的消息列表（发送者、内容、时间）。',
+  description:
+    '获取当前群指定时间段内的聊天记录。一次调用即返回该时间窗口内的全部消息（按时间正序），条数由 limit 控制（默认 200，最多 1000），超出部分用 offset 翻页——不需要把一个时间段拆成多次小窗口调用。',
   executor: 'fetch_history_by_time',
   visibility: { subagent: true },
   parameters: {
@@ -88,6 +103,16 @@ function parseTimeInput(input: string): Date | null {
       type: 'boolean',
       required: false,
       description: '是否包含 bot 自身的消息。默认 false（仅用户消息）。',
+    },
+    limit: {
+      type: 'number',
+      required: false,
+      description: `本次返回的消息条数上限，默认 ${DEFAULT_LIMIT}，最多 ${MAX_LIMIT}。要一次看完整天记录就把它调大。`,
+    },
+    offset: {
+      type: 'number',
+      required: false,
+      description: '从窗口内第几条开始返回（0 起）。配合 limit 翻页，返回结果会写明下一页的 offset。',
     },
   },
   examples: [
@@ -148,30 +173,19 @@ export class FetchHistoryByTimeToolExecutor extends BaseToolExecutor {
     }
 
     const includeBot = call.parameters?.includeBot === true;
+    const limit = clampInt(call.parameters?.limit, DEFAULT_LIMIT, 1, MAX_LIMIT);
+    const offset = clampInt(call.parameters?.offset, 0, 0, MAX_FETCH_LIMIT);
 
-    // Fetch recent messages from DB
     const { sessionId } = normalizeGroupId(groupId);
-    const allMessages = await this.conversationHistoryService.getRecentMessagesForSession(
+    const windowMessages = await this.conversationHistoryService.getMessagesInRange(
       sessionId,
       'group',
-      MAX_FETCH_LIMIT,
+      startTime,
+      endTime,
+      { includeBot, maxLimit: MAX_FETCH_LIMIT },
     );
 
-    // Filter by time range
-    const startTs = startTime.getTime();
-    const endTs = endTime.getTime();
-    const filtered = allMessages.filter((msg) => {
-      const msgTime = msg.createdAt instanceof Date ? msg.createdAt.getTime() : new Date(msg.createdAt).getTime();
-      if (msgTime < startTs || msgTime > endTs) {
-        return false;
-      }
-      if (!includeBot && msg.isBotReply) {
-        return false;
-      }
-      return true;
-    });
-
-    if (filtered.length === 0) {
+    if (windowMessages.length === 0) {
       return this.success(`在 ${formatDateTimeShort(startTime)} 至 ${formatDateTimeShort(endTime)} 期间没有找到消息`, {
         groupId,
         startTime: startTime.toISOString(),
@@ -182,61 +196,59 @@ export class FetchHistoryByTimeToolExecutor extends BaseToolExecutor {
       });
     }
 
-    // Collect unique users
-    const userMap = new Map<number | string, { userId: number | string; nickname?: string; messageCount: number }>();
-    for (const msg of filtered) {
-      if (msg.isBotReply) continue;
-      const existing = userMap.get(msg.userId);
-      if (existing) {
-        existing.messageCount++;
-        if (!existing.nickname && msg.nickname) {
-          existing.nickname = msg.nickname;
-        }
-      } else {
-        userMap.set(msg.userId, {
-          userId: msg.userId,
-          nickname: msg.nickname,
-          messageCount: 1,
-        });
-      }
+    const uniqueUsers = this.collectUsers(windowMessages);
+    const page = windowMessages.slice(offset, offset + limit);
+    if (page.length === 0) {
+      return this.error(
+        `offset=${offset} 超出范围：该时间窗口共 ${windowMessages.length} 条消息`,
+        `offset ${offset} out of range (${windowMessages.length} messages)`,
+      );
     }
 
-    const uniqueUsers = Array.from(userMap.values()).sort((a, b) => b.messageCount - a.messageCount);
+    const { lines, shown } = this.renderTranscript(page);
+    const shownFrom = offset + 1;
+    const shownTo = offset + shown;
+    const remaining = windowMessages.length - shownTo;
 
-    // Format output
     const userSummary = uniqueUsers
       .map((u) => `${u.nickname ?? u.userId} (${u.userId}): ${u.messageCount}条消息`)
       .join('\n');
 
-    const messageSummary = filtered
-      .slice(0, 50) // Limit output to avoid too long response
-      .map((msg) => {
-        const time = formatDateTimeShort(msg.createdAt);
-        const speaker = msg.isBotReply ? 'Bot' : (msg.nickname ?? String(msg.userId));
-        return `[${time}] ${speaker}: ${msg.content.slice(0, 100)}${msg.content.length > 100 ? '...' : ''}`;
-      })
-      .join('\n');
+    const rangeLabel =
+      shown === windowMessages.length
+        ? `全部${windowMessages.length}条`
+        : `第${shownFrom}-${shownTo}条 / 共${windowMessages.length}条`;
 
     const reply = [
       `时间范围: ${formatDateTimeShort(startTime)} 至 ${formatDateTimeShort(endTime)}`,
-      `消息总数: ${filtered.length}条`,
+      `消息总数: ${windowMessages.length}条`,
       `发言用户: ${uniqueUsers.length}人`,
       '',
       '=== 发言统计 ===',
       userSummary,
       '',
-      `=== 消息记录 (前${Math.min(50, filtered.length)}条) ===`,
-      messageSummary,
-    ].join('\n');
+      `=== 消息记录 (${rangeLabel}) ===`,
+      lines,
+    ];
 
-    return this.success(reply, {
+    if (remaining > 0) {
+      reply.push('', `还有 ${remaining} 条未返回。用同样的时间范围再调用一次本工具并传 offset=${shownTo} 即可续读。`);
+    }
+    if (windowMessages.length === MAX_FETCH_LIMIT) {
+      reply.push(`（该时间窗口的消息数已达单次查询上限 ${MAX_FETCH_LIMIT} 条，更早的部分请缩小时间范围分段获取。）`);
+    }
+
+    return this.success(reply.join('\n'), {
       groupId,
       startTime: startTime.toISOString(),
       endTime: endTime.toISOString(),
-      messageCount: filtered.length,
+      messageCount: windowMessages.length,
+      returnedCount: shown,
+      offset,
+      nextOffset: remaining > 0 ? shownTo : undefined,
       uniqueUserCount: uniqueUsers.length,
       uniqueUsers,
-      messages: filtered.map((m) => ({
+      messages: page.slice(0, shown).map((m) => ({
         userId: m.userId,
         nickname: m.nickname,
         content: m.content,
@@ -244,5 +256,45 @@ export class FetchHistoryByTimeToolExecutor extends BaseToolExecutor {
         isBotReply: m.isBotReply,
       })),
     });
+  }
+
+  private collectUsers(
+    messages: ConversationMessageEntry[],
+  ): Array<{ userId: number | string; nickname?: string; messageCount: number }> {
+    const userMap = new Map<number | string, { userId: number | string; nickname?: string; messageCount: number }>();
+    for (const msg of messages) {
+      if (msg.isBotReply) {
+        continue;
+      }
+      const existing = userMap.get(msg.userId);
+      if (existing) {
+        existing.messageCount++;
+        if (!existing.nickname && msg.nickname) {
+          existing.nickname = msg.nickname;
+        }
+      } else {
+        userMap.set(msg.userId, { userId: msg.userId, nickname: msg.nickname, messageCount: 1 });
+      }
+    }
+    return Array.from(userMap.values()).sort((a, b) => b.messageCount - a.messageCount);
+  }
+
+  /** Render messages until the transcript budget is spent; returns how many actually made it in. */
+  private renderTranscript(messages: ConversationMessageEntry[]): { lines: string; shown: number } {
+    const rendered: string[] = [];
+    let chars = 0;
+    for (const msg of messages) {
+      const time = formatDateTimeShort(msg.createdAt);
+      const speaker = msg.isBotReply ? 'Bot' : (msg.nickname ?? String(msg.userId));
+      const content =
+        msg.content.length > MAX_CONTENT_CHARS ? `${msg.content.slice(0, MAX_CONTENT_CHARS)}...` : msg.content;
+      const line = `[${time}] ${speaker}: ${content}`;
+      if (chars + line.length > MAX_TRANSCRIPT_CHARS && rendered.length > 0) {
+        break;
+      }
+      rendered.push(line);
+      chars += line.length + 1;
+    }
+    return { lines: rendered.join('\n'), shown: rendered.length };
   }
 }

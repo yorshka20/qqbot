@@ -590,6 +590,97 @@ export class ConversationHistoryService {
   }
 
   /**
+   * Get all session messages inside [start, end], sorted by createdAt ascending.
+   * Filtering happens in the DB query, so the window comes back complete however
+   * much newer traffic the session has since seen — a "load last N, then filter"
+   * query silently drops the older part of a window on busy sessions.
+   */
+  async getMessagesInRange(
+    sessionId: string,
+    sessionType: 'group' | 'user',
+    start: Date,
+    end: Date,
+    options?: { includeBot?: boolean; maxLimit?: number },
+  ): Promise<ConversationMessageEntry[]> {
+    const adapter = this.databaseManager.getAdapter();
+    if (!adapter?.isConnected()) {
+      return [];
+    }
+
+    const canonicalSessionId = normalizeSessionId(sessionId, sessionType);
+    const maxLimit = options?.maxLimit ?? 2000;
+    const includeBot = options?.includeBot === true;
+
+    try {
+      const conversations = adapter.getModel('conversations');
+      const conversation = await conversations.findOne({
+        sessionId: canonicalSessionId,
+        sessionType,
+      });
+      if (!conversation) {
+        return [];
+      }
+
+      const rawDb = (adapter as SQLiteAdapter).getRawDb?.();
+      if (!rawDb) {
+        return this.getMessagesInRangeFallback(conversation.id, start, end, includeBot, maxLimit);
+      }
+
+      const conditions: string[] = ['m.conversationId = ?', 'm.createdAt >= ?', 'm.createdAt <= ?'];
+      const params: (string | number)[] = [conversation.id, start.toISOString(), end.toISOString()];
+      if (!includeBot) {
+        conditions.push('(m.metadata IS NULL OR m.metadata NOT LIKE \'%"isBotReply":true%\')');
+      }
+
+      // ASC + LIMIT keeps the OLDEST N of a bounded window, which is where reading
+      // a time range starts; DESC would hand back its tail instead.
+      const sql = `
+        SELECT m.* FROM messages m
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY m.createdAt ASC
+        LIMIT ?
+      `;
+      params.push(maxLimit);
+
+      const rows = rawDb.query(sql).all(...params) as Record<string, unknown>[];
+      return rows.map((row) => this.mapMessageToEntry(this.deserializeMessageRow(row)));
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.warn('[ConversationHistoryService] getMessagesInRange failed:', err);
+      return [];
+    }
+  }
+
+  /** Client-side range filter for adapters without raw SQL access (MongoDB). */
+  private async getMessagesInRangeFallback(
+    conversationId: string,
+    start: Date,
+    end: Date,
+    includeBot: boolean,
+    maxLimit: number,
+  ): Promise<ConversationMessageEntry[]> {
+    const adapter = this.databaseManager.getAdapter();
+    const messages = adapter.getModel('messages');
+    const recent = await messages.find({ conversationId } as Partial<Message>, {
+      orderBy: 'createdAt',
+      order: 'desc',
+      limit: 2000,
+    });
+
+    const startTs = start.getTime();
+    const endTs = end.getTime();
+    const filtered = (recent as Message[]).filter((msg) => {
+      const ts = new Date(msg.createdAt).getTime();
+      if (ts < startTs || ts > endTs) return false;
+      if (!includeBot && msg.metadata?.isBotReply) return false;
+      return true;
+    });
+
+    filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return filtered.slice(0, maxLimit).map((m) => this.mapMessageToEntry(m));
+  }
+
+  /**
    * Search messages by keyword(s) with optional time range, using DB-level LIKE queries.
    * Returns messages whose plain-text content contains ALL given keywords (AND match).
    * Uses raw SQL for efficient full-table keyword search instead of loading into memory.
