@@ -21,8 +21,10 @@ export interface MemoryPluginConfig {
   groups: string[];
   /** Debounce delay in ms before running extract after last message. Default 600000 (10 min). Use a larger value (e.g. 10 min) to avoid extract running too often and filling the queue; small values (e.g. 10s) cause frequent group extracts and can make memory extract appear to run non-stop. */
   debounceMs: number;
-  /** LLM provider for extract (e.g. "deepseek", "doubao"). Required. */
+  /** LLM provider for extract (e.g. "gemini", "deepseek", "doubao"). Required. */
   extractProvider: string;
+  /** Model override for the extract provider (e.g. "gemini-3.1-flash-lite"). Default: the provider's configured model. */
+  extractModel?: string;
   /** Full-history extract (via MemoryTrigger): max character length per extract chunk. Default 15000. */
   fullHistoryMaxLength?: number;
   /** Full-history progress file path (one line per "groupId:userId"). Default "data/memory_full_history_progress.txt". */
@@ -55,6 +57,7 @@ export class MemoryPlugin extends PluginBase {
   private debounceMs = DEFAULT_DEBOUNCE_MS;
   /** LLM provider name for extract + analyze (from config). */
   private extractProvider = '';
+  private extractModel: string | undefined;
   /** Full-history extract (MemoryTrigger): max character length per extract chunk. */
   private fullHistoryMaxLength = DEFAULT_FULL_HISTORY_MAX_LENGTH;
   /** Full-history progress file path (one line per "groupId:userId"). */
@@ -96,13 +99,14 @@ export class MemoryPlugin extends PluginBase {
       this.debounceMs = pluginConfig.debounceMs ?? DEFAULT_DEBOUNCE_MS;
       // Plugin config takes precedence over AI config
       this.extractProvider = pluginConfig.extractProvider;
+      this.extractModel = pluginConfig.extractModel;
       this.fullHistoryMaxLength = pluginConfig.fullHistoryMaxLength ?? DEFAULT_FULL_HISTORY_MAX_LENGTH;
       this.fullHistoryProgressFile = pluginConfig.fullHistoryProgressFile ?? DEFAULT_FULL_HISTORY_PROGRESS_FILE;
       this.maxMessagesPerExtract = pluginConfig.maxMessagesPerExtract ?? DEFAULT_MAX_MESSAGES_PER_EXTRACT;
       this.backupIntervalMs = pluginConfig.backupIntervalMs ?? DEFAULT_BACKUP_INTERVAL_MS;
       this.backupDir = pluginConfig.backupDir ?? DEFAULT_BACKUP_DIR;
       logger.info(
-        `[MemoryPlugin] Enabled | groups=${Array.from(this.groupIds).join(', ')} debounceMs=${this.debounceMs} maxPerExtract=${this.maxMessagesPerExtract} extractProvider=${this.extractProvider}`,
+        `[MemoryPlugin] Enabled | groups=${Array.from(this.groupIds).join(', ')} debounceMs=${this.debounceMs} maxPerExtract=${this.maxMessagesPerExtract} extractProvider=${this.extractProvider}${this.extractModel ? ` model=${this.extractModel}` : ''}`,
       );
     }
 
@@ -265,6 +269,7 @@ export class MemoryPlugin extends PluginBase {
     const recentMessagesText = this.conversationHistoryService.formatAsText(filtered);
     await this.memoryExtractService.extractAndUpsert(groupId, recentMessagesText, {
       provider: this.extractProvider,
+      model: this.extractModel,
     });
   }
 
@@ -334,7 +339,7 @@ export class MemoryPlugin extends PluginBase {
     logger.info(
       `[MemoryPlugin] runFullHistoryExtractForUser: processing groupId=${groupId} userId=${userId} messages=${entries.length} chunks=${chunks.length}`,
     );
-    const opts = { provider: this.extractProvider };
+    const opts = { provider: this.extractProvider, model: this.extractModel };
     try {
       for (let i = 0; i < chunks.length; i++) {
         logger.info(
@@ -398,7 +403,7 @@ export class MemoryPlugin extends PluginBase {
     logger.info(
       `[MemoryPlugin] runFullHistoryExtractForGroup: processing groupId=${groupId} messages=${filtered.length} chunks=${chunks.length}`,
     );
-    const opts = { provider: this.extractProvider };
+    const opts = { provider: this.extractProvider, model: this.extractModel };
     for (let i = 0; i < chunks.length; i++) {
       logger.info(`[MemoryPlugin] runFullHistoryExtractForGroup chunk ${i + 1}/${chunks.length} groupId=${groupId}`);
       await this.memoryExtractService.extractAndUpsert(groupId, chunks[i], opts);
@@ -446,7 +451,7 @@ export class MemoryPlugin extends PluginBase {
     logger.info(
       `[MemoryPlugin] runExtractForUserSince: processing groupId=${groupId} userId=${userId} messages=${userEntries.length} chunks=${chunks.length}`,
     );
-    const opts = { provider: this.extractProvider };
+    const opts = { provider: this.extractProvider, model: this.extractModel };
     for (let i = 0; i < chunks.length; i++) {
       logger.info(
         `[MemoryPlugin] runExtractForUserSince chunk ${i + 1}/${chunks.length} groupId=${groupId} userId=${userId}`,
@@ -495,7 +500,7 @@ export class MemoryPlugin extends PluginBase {
     logger.info(
       `[MemoryPlugin] runExtractForGroupSince: processing groupId=${groupId} messages=${filtered.length} chunks=${chunks.length}`,
     );
-    const opts = { provider: this.extractProvider };
+    const opts = { provider: this.extractProvider, model: this.extractModel };
     for (let i = 0; i < chunks.length; i++) {
       logger.info(`[MemoryPlugin] runExtractForGroupSince chunk ${i + 1}/${chunks.length} groupId=${groupId}`);
       await this.memoryExtractService.extractAndUpsert(groupId, chunks[i], opts);

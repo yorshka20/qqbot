@@ -36,6 +36,12 @@ export interface ExtractResult {
 export interface MemoryExtractServiceOptions {
   /** LLM provider name (required — must be resolved from config by caller). */
   provider: string;
+  /**
+   * Model override. Extraction wants a provider's cheap base model, not whatever
+   * the chat pipeline is configured with — same reasoning as the subagent presets.
+   * Omitted means the provider's configured default.
+   */
+  model?: string;
 }
 
 export class MemoryExtractService {
@@ -350,6 +356,7 @@ export class MemoryExtractService {
         {
           temperature: 0.4,
           maxTokens: TOKEN_BUDGET.document,
+          model: options.model,
           systemPrompt: baseSystemPrompt,
           timeout: MEMORY_JOB_TIMEOUT_MS,
         },
@@ -408,6 +415,7 @@ export class MemoryExtractService {
         {
           temperature: 0.4,
           maxTokens: TOKEN_BUDGET.document,
+          model: options.model,
           systemPrompt: baseSystemPrompt,
           jsonMode: true,
           timeout: MEMORY_JOB_TIMEOUT_MS,
@@ -486,6 +494,7 @@ export class MemoryExtractService {
         {
           temperature: 0.4,
           maxTokens: TOKEN_BUDGET.document,
+          model: options.model,
           jsonMode: true,
           timeout: MEMORY_JOB_TIMEOUT_MS,
         },
