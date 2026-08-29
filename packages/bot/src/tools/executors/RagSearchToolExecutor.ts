@@ -10,14 +10,14 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 @Tool({
   name: 'rag_search',
   description:
-    '语义搜索群聊历史消息原文。通过向量相似度匹配，找到与查询最相关的历史发言片段。适用于回忆"之前有人说过什么"。',
+    '按**语义**检索群聊历史：用自然语言描述你要找的意思，向量相似度返回最接近的若干片段（每条带相似度分数）。返回的是片段本身，**不带时间和发言人**，也不保证覆盖全部相关消息——只是最相似的 top-K。',
   executor: 'rag_search',
   visibility: { subagent: true },
   parameters: {
     query: {
       type: 'string',
       required: true,
-      description: '语义搜索查询文本（自然语言描述要找的内容）',
+      description: '用自然语言描述要找的**意思**，不是字面词——匹配靠语义相近，原话用词不同也能命中。',
     },
     collection: {
       type: 'string',
@@ -38,7 +38,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   examples: ['在本地 RAG 里搜索这段话题', '查一下群历史向量库里有没有相关内容', '搜索指定 collection 的知识'],
   triggerKeywords: ['rag', '向量搜索', '知识库搜索', '本地知识', '语义搜索'],
   whenToUse:
-    '当需要查找群里过去的聊天内容时调用（如"之前有人讨论过X吗"、"上周谁提到了Y"）。搜索的是原始聊天消息，不是 bot 的记忆摘要——要搜索 bot 记住的信息请用 search_memory。',
+    '当你**说不准群里当时用的是哪个词**、只知道大概在讲什么时调用（如"之前有人讨论过 X 吗"）。知道确切的词就用 search_chat_history 搜正文，那个能给出时间和发言人且不漏；要看某个时间段的完整对话用 fetch_history_by_time。搜索的是原始聊天消息，不是 bot 的记忆摘要——要搜 bot 记住的结论请用 search_memory。',
 })
 @injectable()
 export class RagSearchToolExecutor extends BaseToolExecutor {

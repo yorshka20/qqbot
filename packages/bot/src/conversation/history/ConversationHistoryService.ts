@@ -681,15 +681,20 @@ export class ConversationHistoryService {
   }
 
   /**
-   * Search messages by keyword(s) with optional time range, using DB-level LIKE queries.
-   * Returns messages whose plain-text content contains ALL given keywords (AND match).
-   * Uses raw SQL for efficient full-table keyword search instead of loading into memory.
+   * Search one conversation's messages by content keywords, by sender, or by both.
+   *
+   * Both filters live on one query because they are the same question asked with
+   * different constraints, and "what did X say about Y" needs them together —
+   * splitting them into two methods made that combination unexpressible, and left
+   * callers keyword-searching a nickname, which matches message bodies and returns
+   * everyone talking *about* that person.
    */
-  async searchMessagesByKeyword(
+  async searchMessages(
     sessionId: string,
     sessionType: 'group' | 'user',
-    keywords: string[],
-    options?: {
+    filter: {
+      keywords?: string[];
+      userId?: string | number;
       since?: Date;
       includeBot?: boolean;
       limit?: number;
@@ -701,10 +706,9 @@ export class ConversationHistoryService {
     }
 
     const canonicalSessionId = normalizeSessionId(sessionId, sessionType);
-    const maxResults = options?.limit ?? 50;
+    const maxResults = filter.limit ?? 50;
 
     try {
-      // Get conversation ID first
       const conversations = adapter.getModel('conversations');
       const conversation = await conversations.findOne({
         sessionId: canonicalSessionId,
@@ -714,31 +718,27 @@ export class ConversationHistoryService {
         return [];
       }
 
-      // Use raw SQL for LIKE-based keyword search
       const rawDb = (adapter as SQLiteAdapter).getRawDb?.();
       if (!rawDb) {
-        // Fallback: load recent messages and filter client-side (for MongoDB or if getRawDb unavailable)
-        return this.searchMessagesByKeywordFallback(conversation.id, keywords, options);
+        return this.searchMessagesFallback(conversation.id, filter);
       }
 
-      // Build SQL with LIKE conditions for each keyword
       const conditions: string[] = ['m.conversationId = ?'];
       const params: (string | number)[] = [conversation.id];
 
-      // Keyword LIKE conditions on content field (plain text)
-      for (const kw of keywords) {
+      for (const kw of filter.keywords ?? []) {
         conditions.push('m.content LIKE ?');
         params.push(`%${kw}%`);
       }
-
-      // Time range filter
-      if (options?.since) {
-        conditions.push('m.createdAt >= ?');
-        params.push(options.since.toISOString());
+      if (filter.userId !== undefined) {
+        conditions.push('m.userId = ?');
+        params.push(filter.userId);
       }
-
-      // Exclude bot replies unless includeBot is true
-      if (!options?.includeBot) {
+      if (filter.since) {
+        conditions.push('m.createdAt >= ?');
+        params.push(filter.since.toISOString());
+      }
+      if (!filter.includeBot) {
         conditions.push('(m.metadata IS NULL OR m.metadata NOT LIKE \'%"isBotReply":true%\')');
       }
 
@@ -754,146 +754,131 @@ export class ConversationHistoryService {
       const rows = rawDb.query(sql).all(...params) as Record<string, unknown>[];
       rows.reverse(); // restore chronological (oldest→newest) order for display
 
-      // Deserialize rows to Message objects and map to entries
-      return rows.map((row) => {
-        const msg = this.deserializeMessageRow(row);
-        return this.mapMessageToEntry(msg);
-      });
+      return rows.map((row) => this.mapMessageToEntry(this.deserializeMessageRow(row)));
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.warn('[ConversationHistoryService] searchMessagesByKeyword failed:', err);
+      logger.warn('[ConversationHistoryService] searchMessages failed:', err);
       return [];
     }
   }
 
-  /**
-   * Search messages by userId with optional time range.
-   * Uses raw SQL for efficient querying; falls back to client-side filtering for MongoDB.
-   */
-  async searchMessagesByUserId(
-    sessionId: string,
-    sessionType: 'group' | 'user',
-    userId: string | number,
-    options?: {
-      since?: Date;
-      includeBot?: boolean;
-      limit?: number;
-    },
-  ): Promise<ConversationMessageEntry[]> {
-    const adapter = this.databaseManager.getAdapter();
-    if (!adapter?.isConnected()) {
-      return [];
-    }
-
-    const canonicalSessionId = normalizeSessionId(sessionId, sessionType);
-    const maxResults = options?.limit ?? 50;
-
-    try {
-      const conversations = adapter.getModel('conversations');
-      const conversation = await conversations.findOne({
-        sessionId: canonicalSessionId,
-        sessionType,
-      });
-      if (!conversation) {
-        return [];
-      }
-
-      const rawDb = (adapter as SQLiteAdapter).getRawDb?.();
-      if (!rawDb) {
-        return this.searchMessagesByUserIdFallback(conversation.id, userId, options);
-      }
-
-      const conditions: string[] = ['m.conversationId = ?', 'm.userId = ?'];
-      const params: (string | number)[] = [conversation.id, userId];
-
-      if (options?.since) {
-        conditions.push('m.createdAt >= ?');
-        params.push(options.since.toISOString());
-      }
-
-      if (!options?.includeBot) {
-        conditions.push('(m.metadata IS NULL OR m.metadata NOT LIKE \'%"isBotReply":true%\')');
-      }
-
-      // DESC + LIMIT takes the NEWEST N messages; ASC would silently take the oldest N.
-      const sql = `
-        SELECT m.* FROM messages m
-        WHERE ${conditions.join(' AND ')}
-        ORDER BY m.createdAt DESC
-        LIMIT ?
-      `;
-      params.push(maxResults);
-
-      const rows = rawDb.query(sql).all(...params) as Record<string, unknown>[];
-      rows.reverse(); // restore chronological (oldest→newest) order for display
-      return rows.map((row) => {
-        const msg = this.deserializeMessageRow(row);
-        return this.mapMessageToEntry(msg);
-      });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.warn('[ConversationHistoryService] searchMessagesByUserId failed:', err);
-      return [];
-    }
-  }
-
-  /** Fallback userId search for MongoDB. */
-  private async searchMessagesByUserIdFallback(
+  /** Same filters applied client-side, for adapters without raw SQL (e.g. MongoDB). */
+  private async searchMessagesFallback(
     conversationId: string,
-    userId: string | number,
-    options?: { since?: Date; includeBot?: boolean; limit?: number },
+    filter: { keywords?: string[]; userId?: string | number; since?: Date; includeBot?: boolean; limit?: number },
   ): Promise<ConversationMessageEntry[]> {
     const adapter = this.databaseManager.getAdapter();
     const messages = adapter.getModel('messages');
-    const limit = options?.limit ?? 50;
+    const limit = filter.limit ?? 50;
 
-    const userIdNum = Number(userId);
-    const list = await messages.find(
-      { conversationId, userId: Number.isNaN(userIdNum) ? userId : userIdNum } as Partial<Message>,
-      { orderBy: 'createdAt', order: 'desc', limit: 2000 },
-    );
-
-    const sinceTs = options?.since?.getTime();
-    const filtered = (list as Message[]).filter((msg) => {
-      if (sinceTs && new Date(msg.createdAt).getTime() < sinceTs) return false;
-      if (!options?.includeBot && msg.metadata?.isBotReply) return false;
-      return true;
-    });
-
-    filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    return filtered.slice(-limit).map((m) => this.mapMessageToEntry(m));
-  }
-
-  /** Fallback keyword search when raw SQL is not available (e.g. MongoDB). Loads recent messages and filters client-side. */
-  private async searchMessagesByKeywordFallback(
-    conversationId: string,
-    keywords: string[],
-    options?: { since?: Date; includeBot?: boolean; limit?: number },
-  ): Promise<ConversationMessageEntry[]> {
-    const adapter = this.databaseManager.getAdapter();
-    const messages = adapter.getModel('messages');
-    const limit = options?.limit ?? 50;
-
-    // Fetch a large chunk and filter client-side
     const recent = await messages.find({ conversationId } as Partial<Message>, {
       orderBy: 'createdAt',
       order: 'desc',
       limit: 2000,
     });
 
-    const lowerKeywords = keywords.map((k) => k.toLowerCase());
-    const sinceTs = options?.since?.getTime();
+    const lowerKeywords = (filter.keywords ?? []).map((k) => k.toLowerCase());
+    const sinceTs = filter.since?.getTime();
+    const userId = filter.userId !== undefined ? String(filter.userId) : undefined;
 
     const filtered = (recent as Message[]).filter((msg) => {
       if (sinceTs && new Date(msg.createdAt).getTime() < sinceTs) return false;
-      if (!options?.includeBot && msg.metadata?.isBotReply) return false;
+      if (!filter.includeBot && msg.metadata?.isBotReply) return false;
+      if (userId !== undefined && String(msg.userId) !== userId) return false;
       const contentLower = (msg.content ?? '').toLowerCase();
       return lowerKeywords.every((kw) => contentLower.includes(kw));
     });
 
-    // Sort ascending and take last N
     filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     return filtered.slice(-limit).map((m) => this.mapMessageToEntry(m));
+  }
+
+  /**
+   * Resolve a display name to the user ids that have posted under it in this
+   * conversation, newest-first by volume.
+   *
+   * A nickname is not a column — it lives inside each message's
+   * `metadata.sender` JSON — so SQL can only pre-filter with LIKE and the
+   * match has to be confirmed in JS against the parsed nickname/card. Both
+   * are checked because a group card overrides the nickname in what people
+   * actually see and type.
+   *
+   * Returns every candidate rather than picking one: two members can share a
+   * display name, and silently guessing between them would attribute one
+   * person's messages to another.
+   */
+  async findUserIdsByDisplayName(
+    sessionId: string,
+    sessionType: 'group' | 'user',
+    displayName: string,
+  ): Promise<Array<{ userId: string; displayName: string; messageCount: number }>> {
+    const needle = displayName.trim().toLowerCase();
+    if (!needle) {
+      return [];
+    }
+
+    const adapter = this.databaseManager.getAdapter();
+    if (!adapter?.isConnected()) {
+      return [];
+    }
+
+    try {
+      const conversations = adapter.getModel('conversations');
+      const conversation = await conversations.findOne({
+        sessionId: normalizeSessionId(sessionId, sessionType),
+        sessionType,
+      });
+      if (!conversation) {
+        return [];
+      }
+
+      const rows = await this.loadSenderRows(conversation.id, needle);
+      const byUser = new Map<string, { userId: string; displayName: string; messageCount: number }>();
+      for (const row of rows) {
+        const msg = this.deserializeMessageRow(row);
+        const meta = msg.metadata ?? {};
+        if (meta.isBotReply === true) {
+          continue;
+        }
+        const sender = meta.sender;
+        const names = [sender?.card, sender?.nickname].filter((n): n is string => typeof n === 'string' && n !== '');
+        const matched = names.find((n) => n.toLowerCase().includes(needle));
+        if (!matched) {
+          continue;
+        }
+        const userId = String(msg.userId);
+        const seen = byUser.get(userId);
+        if (seen) {
+          seen.messageCount += 1;
+        } else {
+          byUser.set(userId, { userId, displayName: matched, messageCount: 1 });
+        }
+      }
+
+      return [...byUser.values()].sort((a, b) => b.messageCount - a.messageCount);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.warn('[ConversationHistoryService] findUserIdsByDisplayName failed:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Candidate rows for a display-name lookup. LIKE over the raw metadata JSON is a
+   * pre-filter only — it cannot tell a sender name from any other string in the blob,
+   * so the caller re-checks each row against the parsed sender.
+   */
+  private async loadSenderRows(conversationId: string, needle: string): Promise<Record<string, unknown>[]> {
+    const adapter = this.databaseManager.getAdapter();
+    const rawDb = (adapter as SQLiteAdapter).getRawDb?.();
+    if (rawDb) {
+      return rawDb
+        .query('SELECT m.userId, m.metadata FROM messages m WHERE m.conversationId = ? AND m.metadata LIKE ?')
+        .all(conversationId, `%${needle}%`) as Record<string, unknown>[];
+    }
+    const messages = adapter.getModel('messages');
+    const all = await messages.find({ conversationId });
+    return all as unknown as Record<string, unknown>[];
   }
 
   /** Deserialize a raw SQLite row into a Message-like object (mirrors SQLiteModelAccessor.deserialize). */

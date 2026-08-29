@@ -1,12 +1,15 @@
 import { injectable } from 'tsyringe';
 import type { AgendaService } from '@/agenda/AgendaService';
+import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
+import { resolveConversationScope } from './conversationScope';
 import { getChainDepth } from './ScheduleTaskToolExecutor';
+import { resolveSender, SENDER_PARAM_DESCRIPTIONS } from './senderResolution';
 
 @Tool({
   name: 'watch_messages',
@@ -32,7 +35,12 @@ import { getChainDepth } from './ScheduleTaskToolExecutor';
     user_id: {
       type: 'string',
       required: false,
-      description: '只监听该用户的消息（QQ 号）。可与 keywords 组合；两者至少提供一个。',
+      description: `只监听该用户的消息。${SENDER_PARAM_DESCRIPTIONS.userId} 可与 keywords 组合；两者至少提供一个。`,
+    },
+    nickname: {
+      type: 'string',
+      required: false,
+      description: `只监听该用户的消息，但手上只有名字时用这个。${SENDER_PARAM_DESCRIPTIONS.nickname}`,
     },
     max_fires: {
       type: 'number',
@@ -64,10 +72,15 @@ export class WatchMessagesToolExecutor extends BaseToolExecutor {
     const keywords = Array.isArray(keywordsParam)
       ? keywordsParam.filter((k): k is string => typeof k === 'string')
       : undefined;
-    const userIdParam = typeof call.parameters?.user_id === 'string' ? call.parameters.user_id.trim() : undefined;
     const maxFires = typeof call.parameters?.max_fires === 'number' ? call.parameters.max_fires : undefined;
     const ttlHours = typeof call.parameters?.ttl_hours === 'number' ? call.parameters.ttl_hours : undefined;
     const name = typeof call.parameters?.name === 'string' ? call.parameters.name : undefined;
+
+    const watchTarget = await this.resolveWatchTarget(call, context);
+    if (watchTarget && 'error' in watchTarget) {
+      return watchTarget.error;
+    }
+    const userIdParam = watchTarget?.userId;
 
     if (context.messageType === 'private' && userIdParam) {
       return this.error('私聊会话只会监听当前用户，无需指定 user_id', 'user_id not applicable in private chat');
@@ -97,5 +110,31 @@ export class WatchMessagesToolExecutor extends BaseToolExecutor {
       `已注册消息监听「${result.item.name}」：触发上限 ${result.item.maxFires} 次，${result.item.expiresAt} 过期。`,
       { itemId: result.item.id, expiresAt: result.item.expiresAt, maxFires: result.item.maxFires },
     );
+  }
+
+  /** Settle `user_id` / `nickname` into the QQ id the watch filters on. */
+  private async resolveWatchTarget(
+    call: ToolCall,
+    context: ToolExecutionContext,
+  ): Promise<{ userId: string } | { error: ToolResult } | null> {
+    const params = { userId: call.parameters?.user_id, nickname: call.parameters?.nickname };
+    const scope = resolveConversationScope(context);
+    if (!scope) {
+      const raw = params.userId;
+      const direct = typeof raw === 'string' ? raw.trim() : '';
+      return direct ? { userId: direct } : null;
+    }
+
+    const history = getContainer().resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
+    const resolution = await resolveSender(history, scope, params);
+    switch (resolution.kind) {
+      case 'resolved':
+        return { userId: resolution.userId };
+      case 'not_found':
+      case 'ambiguous':
+        return { error: this.success(resolution.message, { nickname: resolution.nickname }) };
+      default:
+        return null;
+    }
   }
 }

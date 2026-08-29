@@ -1,21 +1,24 @@
 // Fetch history by time range task executor - retrieves conversation history within a time window
 
 import { inject, injectable } from 'tsyringe';
-import {
-  type ConversationHistoryService,
-  type ConversationMessageEntry,
-  normalizeGroupId,
+import type {
+  ConversationHistoryService,
+  ConversationMessageEntry,
 } from '@/conversation/history/ConversationHistoryService';
 import { DITokens } from '@/core/DITokens';
 import { DATE_TIMEZONE, dateInTimezone, formatDateTimeShort } from '@/utils/dateTime';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
+import { resolveConversationScope } from './conversationScope';
 
 /** Hard ceiling on how many messages one window may load from the DB */
 const MAX_FETCH_LIMIT = 2000;
 /** Messages rendered per call when the caller does not ask for a different page size */
-const DEFAULT_LIMIT = 200;
+// Modest by design: this tool is now reachable from the reply turn, where every
+// returned message lands directly in the model's context. Callers that genuinely
+// want a whole day raise `limit` (up to MAX_LIMIT) or page with `offset`.
+const DEFAULT_LIMIT = 80;
 /** Upper bound the caller may raise `limit` to */
 const MAX_LIMIT = 1000;
 /** Per-message content cut-off in the rendered list */
@@ -86,7 +89,7 @@ function clampInt(raw: unknown, fallback: number, min: number, max: number): num
   description:
     '获取当前群指定时间段内的聊天记录。一次调用即返回该时间窗口内的全部消息（按时间正序），条数由 limit 控制（默认 200，最多 1000），超出部分用 offset 翻页——不需要把一个时间段拆成多次小窗口调用。',
   executor: 'fetch_history_by_time',
-  visibility: { subagent: true },
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] }, subagent: true },
   parameters: {
     startTime: {
       type: 'string',
@@ -121,8 +124,9 @@ function clampInt(raw: unknown, fallback: number, min: number, max: number): num
     '统计今天早上发言的人',
     '获取 2024-01-15 08:00 到 2024-01-15 12:00 的消息',
   ],
-  triggerKeywords: ['历史记录', '聊天记录', '发言记录', '消息记录', '时间范围', '时间段'],
-  whenToUse: '当需要获取特定时间段内的群聊消息时调用。常见场景：总结某段时间的讨论、统计发言人、回顾错过的对话。',
+  triggerKeywords: ['历史记录', '聊天记录', '消息记录', '时间范围', '时间段'],
+  whenToUse:
+    '当范围由**时间**界定、而且你要的是那段时间里的完整对话时调用。常见场景：总结某段时间的讨论、统计发言人、回顾错过的对话。只要某个词或某个人的零散几条，用 search_chat_history——它只给命中的消息，这里给整段。',
 })
 @injectable()
 export class FetchHistoryByTimeToolExecutor extends BaseToolExecutor {
@@ -135,10 +139,11 @@ export class FetchHistoryByTimeToolExecutor extends BaseToolExecutor {
   }
 
   async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
-    const groupId = context.groupId;
-    if (!groupId) {
-      return this.error('只有群聊场景下才能获取聊天记录', 'fetch_history_by_time requires group context');
+    const scope = resolveConversationScope(context);
+    if (!scope) {
+      return this.error('当前没有可读取的会话', 'fetch_history_by_time requires a conversation context');
     }
+    const groupId = scope.groupId;
 
     const startTimeStr = call.parameters?.startTime;
     if (typeof startTimeStr !== 'string' || !startTimeStr.trim()) {
@@ -176,10 +181,9 @@ export class FetchHistoryByTimeToolExecutor extends BaseToolExecutor {
     const limit = clampInt(call.parameters?.limit, DEFAULT_LIMIT, 1, MAX_LIMIT);
     const offset = clampInt(call.parameters?.offset, 0, 0, MAX_FETCH_LIMIT);
 
-    const { sessionId } = normalizeGroupId(groupId);
     const windowMessages = await this.conversationHistoryService.getMessagesInRange(
-      sessionId,
-      'group',
+      scope.sessionId,
+      scope.sessionType,
       startTime,
       endTime,
       { includeBot, maxLimit: MAX_FETCH_LIMIT },

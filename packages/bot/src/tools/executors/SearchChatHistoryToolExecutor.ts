@@ -1,13 +1,22 @@
-// Search chat history by keyword - retrieves messages matching a keyword in the current group
+// Search this conversation's messages by content keyword, by sender, or by both.
+//
+// One tool rather than a keyword/by-user pair: they read the same table, return the
+// same shape, and differ only in which WHERE clause they add. Split apart, the model
+// had to route every lookup between them and got it wrong whenever it held a nickname
+// instead of a QQ number — falling back to a keyword search on the name, which matches
+// message bodies and returns everyone talking *about* that person. Combined, the two
+// filters also compose: "what did X say about Y" was previously unexpressible.
 
 import { inject, injectable } from 'tsyringe';
-import { type ConversationHistoryService, normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
+import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { DITokens } from '@/core/DITokens';
 import { formatDateTimeShort } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
+import { resolveConversationScope } from './conversationScope';
+import { resolveSender, SENDER_PARAM_DESCRIPTIONS } from './senderResolution';
 
 /** Maximum messages to return in results */
 const MAX_RESULTS = 50;
@@ -15,14 +24,25 @@ const MAX_RESULTS = 50;
 @Tool({
   name: 'search_chat_history',
   description:
-    '在当前群的聊天记录中按关键词搜索。返回包含关键词的消息列表（发送者、内容、时间）。支持可选的时间范围限制。',
+    '取当前会话的聊天记录原文。可以按 keyword（正文里出现过的字面词）筛，按 userId / nickname（谁发的）筛，或者两者同时用来查“某人说过关于某事的什么”。至少给一个筛选条件。返回时间、发言人和正文。',
   executor: 'search_chat_history',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] }, reflection: true },
   parameters: {
     keyword: {
       type: 'string',
-      required: true,
-      description: '搜索关键词。支持多个关键词用空格分隔（同时包含）。',
+      required: false,
+      description:
+        '要在消息正文里查找的字面词，原样做子串匹配，所以填话题词本身而不是一整句问题。空格分隔多个词表示同时包含。不要拿它填人名——那只会搜到别人提到 TA 的消息；查某人的发言请用 userId 或 nickname。',
+    },
+    userId: {
+      type: 'string',
+      required: false,
+      description: `按发言人筛选。${SENDER_PARAM_DESCRIPTIONS.userId}`,
+    },
+    nickname: {
+      type: 'string',
+      required: false,
+      description: `按发言人筛选。${SENDER_PARAM_DESCRIPTIONS.nickname}`,
     },
     timeRange: {
       type: 'string',
@@ -35,10 +55,10 @@ const MAX_RESULTS = 50;
       description: '是否包含 bot 自身的消息。默认 false。',
     },
   },
-  examples: ['搜索群里关于"项目进度"的讨论', '查找最近聊天中提到"会议"的消息', '搜一下过去3天谁提到了"deadline"'],
-  triggerKeywords: ['搜索聊天', '查找聊天', '搜索记录', '查找记录', '搜消息', '找消息'],
+  examples: ['{"keyword":"项目进度"}', '{"nickname":"某某"}', '{"userId":"123456","keyword":"显卡","timeRange":"-7d"}'],
+  triggerKeywords: ['搜索聊天', '查找聊天', '搜索记录', '查找记录', '搜消息', '找消息', '某人说过', '谁说的'],
   whenToUse:
-    '当需要在群聊历史中查找包含特定关键词的消息时调用。适用于：回忆谁说过某件事、查找特定话题的讨论、定位之前提到的信息。',
+    '当你要的是**具体某几条原始消息**时调用——某个话题被谁提起过、某个人说过什么、某人对某事的说法。想看某个时间段里的完整对话用 fetch_history_by_time；只需要「关于这个群/这个人已经沉淀下来的结论」而不是原话，用 get_memory。',
 })
 @injectable()
 export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
@@ -51,37 +71,38 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
   }
 
   async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
-    const groupId = context.groupId;
-    if (!groupId) {
+    const scope = resolveConversationScope(context);
+    if (!scope) {
       if (context.metadata?.reflectionScope) {
-        return this.success('（reflection 上下文：当前无活跃群上下文，无法搜索聊天记录）', {
+        return this.success('（reflection 上下文：当前无活跃会话，无法搜索聊天记录）', {
           reflectionContext: true,
-          reason: 'no-group',
+          reason: 'no-conversation',
           messageCount: 0,
           messages: [],
         });
       }
-      return this.error('只有群聊场景下才能搜索聊天记录', 'search_chat_history requires group context');
+      return this.error('当前没有可搜索的会话', 'search_chat_history requires a conversation context');
     }
 
-    const keyword = call.parameters?.keyword;
-    if (typeof keyword !== 'string' || !keyword.trim()) {
-      return this.error('请提供搜索关键词 (keyword)', 'Missing required parameter: keyword');
+    const keywords = this.parseKeywords(call.parameters?.keyword);
+    const resolution = await resolveSender(this.conversationHistoryService, scope, call.parameters ?? {});
+    if (resolution.kind === 'not_found') {
+      return this.success(resolution.message, { nickname: resolution.nickname, messageCount: 0, messages: [] });
+    }
+    if (resolution.kind === 'ambiguous') {
+      return this.success(resolution.message, { nickname: resolution.nickname, candidates: resolution.candidates });
+    }
+    const sender = resolution.kind === 'resolved' ? resolution : null;
+
+    if (keywords.length === 0 && !sender) {
+      return this.error(
+        '请至少给一个筛选条件：keyword（正文关键词）或 userId / nickname（发言人）',
+        'search_chat_history requires keyword, userId or nickname',
+      );
     }
 
-    const keywords = keyword
-      .trim()
-      .split(/\s+/)
-      .filter((k) => k.length > 0);
-    if (keywords.length === 0) {
-      return this.error('请提供有效的搜索关键词', 'Empty keyword after parsing');
-    }
-
-    const includeBot = call.parameters?.includeBot === true;
-
-    // Determine time filter
-    let sinceTime: Date | undefined;
     const timeRange = call.parameters?.timeRange;
+    let sinceTime: Date | undefined;
     if (typeof timeRange === 'string' && timeRange.trim()) {
       sinceTime = this.parseTimeRange(timeRange.trim()) ?? undefined;
       if (!sinceTime) {
@@ -92,26 +113,28 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
       }
     }
 
-    // Search using DB-level keyword matching
-    const { sessionId } = normalizeGroupId(groupId);
-    const results = await this.conversationHistoryService.searchMessagesByKeyword(sessionId, 'group', keywords, {
+    const results = await this.conversationHistoryService.searchMessages(scope.sessionId, scope.sessionType, {
+      keywords: keywords.length > 0 ? keywords : undefined,
+      userId: sender?.userId,
       since: sinceTime,
-      includeBot,
+      includeBot: call.parameters?.includeBot === true,
       limit: MAX_RESULTS,
     });
 
-    logger.info(`[SearchChatHistory] keyword="${keyword}" timeRange=${timeRange ?? 'none'} matched=${results.length}`);
+    const criteria = this.describeCriteria(keywords, sender);
+    logger.info(
+      `[SearchChatHistory] session=${scope.sessionId} ${criteria} timeRange=${timeRange ?? 'none'} matched=${results.length}`,
+    );
 
     if (results.length === 0) {
-      return this.success(`没有找到包含「${keyword}」的消息`, {
-        groupId,
-        keyword,
+      return this.success(`没有找到${criteria}的消息`, {
+        sessionId: scope.sessionId,
+        groupId: scope.groupId,
         messageCount: 0,
         messages: [],
       });
     }
 
-    // Format output
     const messageSummary = results
       .map((msg) => {
         const time = formatDateTimeShort(msg.createdAt);
@@ -121,7 +144,7 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
       .join('\n');
 
     const reply = [
-      `搜索关键词: ${keyword}`,
+      `筛选条件: ${criteria}`,
       `匹配消息: ${results.length}条${results.length >= MAX_RESULTS ? `（显示最近${MAX_RESULTS}条）` : ''}`,
       '',
       '=== 匹配消息 ===',
@@ -129,8 +152,10 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
     ].join('\n');
 
     return this.success(reply, {
-      groupId,
-      keyword,
+      sessionId: scope.sessionId,
+      groupId: scope.groupId,
+      keywords,
+      userId: sender?.userId,
       messageCount: results.length,
       messages: results.map((m) => ({
         userId: m.userId,
@@ -140,6 +165,24 @@ export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
         isBotReply: m.isBotReply,
       })),
     });
+  }
+
+  private parseKeywords(raw: unknown): string[] {
+    if (typeof raw !== 'string') {
+      return [];
+    }
+    return raw.trim().split(/\s+/).filter(Boolean);
+  }
+
+  private describeCriteria(keywords: string[], sender: { label: string } | null): string {
+    const parts: string[] = [];
+    if (sender) {
+      parts.push(`发言人「${sender.label}」`);
+    }
+    if (keywords.length > 0) {
+      parts.push(`关键词「${keywords.join(' ')}」`);
+    }
+    return parts.join(' + ');
   }
 
   /** Parse relative time range: "-Xh" (hours) or "-Xd" (days) */

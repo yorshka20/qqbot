@@ -28,7 +28,6 @@ export { ReplyToolExecutor } from './ReplyToolExecutor';
 export { ResearchToolExecutor } from './ResearchToolExecutor';
 export { RunShellToolExecutor } from './RunShellToolExecutor';
 export { ScheduleTaskToolExecutor } from './ScheduleTaskToolExecutor';
-export { SearchChatHistoryByUserToolExecutor } from './SearchChatHistoryByUserToolExecutor';
 export { SearchChatHistoryToolExecutor } from './SearchChatHistoryToolExecutor';
 export { SearchCodeToolExecutor } from './SearchCodeToolExecutor';
 export { SearchMemoryToolExecutor } from './SearchMemoryToolExecutor';
