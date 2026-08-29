@@ -161,10 +161,13 @@ export class LLMDumpPlugin extends PluginBase {
         lines.push(`- \`${fc.name}\``, '', this.fence(this.pretty(fc.arguments), 'json'), '');
       }
     }
+    const stats: string[] = [];
     if (entry.response.usage) {
       const u = entry.response.usage;
-      lines.push(`> tokens: prompt=${u.promptTokens} completion=${u.completionTokens} total=${u.totalTokens}`, '');
+      stats.push(`tokens: prompt=${u.promptTokens} completion=${u.completionTokens} total=${u.totalTokens}`);
     }
+    stats.push(`elapsed: ${this.formatDuration(entry.durationMs)}`);
+    lines.push(`> ${stats.join(' · ')}`, '');
 
     lines.push('---', '');
     return lines.join('\n');
@@ -343,6 +346,11 @@ export class LLMDumpPlugin extends PluginBase {
 
   private sanitize(key: string): string {
     return key.replace(/[^\w.-]+/g, '-');
+  }
+
+  /** Sub-second calls are the cheap ones; seconds is the resolution worth comparing. */
+  private formatDuration(ms: number): string {
+    return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
   }
 
   private formatDay(d: Date): string {

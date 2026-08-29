@@ -59,6 +59,7 @@ describe('LLMDumpPlugin', () => {
     const plugin = makePlugin();
     emit(plugin, {
       opLabel: 'generate',
+      durationMs: 1234,
       provider: 'gemini',
       resolvedModel: 'gemini-3.5-flash',
       prompt: 'ignored when messages present',
@@ -86,7 +87,7 @@ describe('LLMDumpPlugin', () => {
     expect(md).not.toContain('### user');
     expect(md).toMatch(/^=+ user =+\nhello$/m);
     expect(md).toContain('hi there');
-    expect(md).toContain('total=15');
+    expect(md).toContain('> tokens: prompt=10 completion=5 total=15 · elapsed: 1.2s');
     // The content header must sit inside a code fence, not start a real markdown heading.
     expect(md).toMatch(/```\n[\s\S]*## 运行环境/);
   });
@@ -95,6 +96,7 @@ describe('LLMDumpPlugin', () => {
     const plugin = makePlugin();
     emit(plugin, {
       opLabel: 'generate',
+      durationMs: 1234,
       provider: 'deepseek',
       prompt: '',
       messages: [
@@ -132,12 +134,14 @@ describe('LLMDumpPlugin', () => {
     emit(plugin, {
       ...base,
       opLabel: 'generate',
+      durationMs: 1234,
       messages: [{ role: 'user', content: 'first' }, { role: 'assistant', content: 'seen' }],
       response: { text: 'r1' },
     });
     emit(plugin, {
       ...base,
       opLabel: 'generate',
+      durationMs: 1234,
       messages: [{ role: 'user', content: 'second' }, { role: 'assistant', content: 'seen' }],
       response: { text: 'r2' },
     });
@@ -154,6 +158,7 @@ describe('LLMDumpPlugin', () => {
     const plugin = makePlugin();
     emit(plugin, {
       opLabel: 'generate',
+      durationMs: 1234,
       provider: 'deepseek',
       prompt: '',
       messages: [
@@ -176,6 +181,7 @@ describe('LLMDumpPlugin', () => {
     const plugin = makePlugin();
     emit(plugin, {
       opLabel: 'generate',
+      durationMs: 1234,
       provider: 'deepseek',
       prompt: '',
       messages: [
@@ -204,6 +210,7 @@ describe('LLMDumpPlugin', () => {
     const plugin = makePlugin();
     emit(plugin, {
       opLabel: 'generate',
+      durationMs: 1234,
       provider: 'deepseek',
       prompt: '',
       messages: [
@@ -223,6 +230,7 @@ describe('LLMDumpPlugin', () => {
     const plugin = makePlugin();
     emit(plugin, {
       opLabel: 'generate',
+      durationMs: 1234,
       provider: 'deepseek',
       prompt: '',
       messages: [
@@ -249,6 +257,7 @@ describe('LLMDumpPlugin', () => {
     const plugin = makePlugin();
     emit(plugin, {
       opLabel: 'generate',
+      durationMs: 1234,
       provider: 'deepseek',
       prompt: '',
       messages: [{ role: 'user', content: '<current_query>plain final turn</current_query>' }],
@@ -264,9 +273,11 @@ describe('LLMDumpPlugin', () => {
 
   it('falls back to a background file when no turn key is present', () => {
     const plugin = makePlugin();
-    emit(plugin, { opLabel: 'generateLite', provider: 'groq', prompt: 'classify', response: { text: 'quick' } });
+    emit(plugin, { opLabel: 'generateLite', durationMs: 820, provider: 'groq', prompt: 'classify', response: { text: 'quick' } });
     const md = readTurnFile('background');
     expect(md).toContain('classify');
     expect(md).toContain('quick');
+    // No usage reported: the stats line still carries elapsed, sub-second in ms.
+    expect(md).toContain('> elapsed: 820ms');
   });
 });

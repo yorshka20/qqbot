@@ -371,6 +371,12 @@ export interface LLMTraceEntry {
      */
     reasoningContent?: string;
   };
+  /**
+   * Wall time of the provider call, in ms. Spans `runWithProviderRetry`, so a
+   * value inflated far past the model's own latency means retries happened.
+   * Excludes the rate limiter's queue wait, which is not the request.
+   */
+  durationMs: number;
   sessionId?: string;
   /** Correlation key for the originating message turn (log tag, e.g. "msg:ab12cd"). */
   turnKey?: string;

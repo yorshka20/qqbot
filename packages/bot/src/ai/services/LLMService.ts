@@ -153,6 +153,7 @@ export class LLMService {
     prompt: string,
     options: AIGenerateOptions | undefined,
     result: AIGenerateResponse,
+    startedAt: number,
   ): void {
     if (this.traceObservers.length === 0) return;
     const entry = {
@@ -169,6 +170,7 @@ export class LLMService {
         usage: result.usage,
         reasoningContent: result.reasoningContent,
       },
+      durationMs: Date.now() - startedAt,
       sessionId: options?.sessionId,
       turnKey: getCurrentMessageContext()?.logTag,
     };
@@ -474,6 +476,7 @@ export class LLMService {
     await this.rateLimiter.waitForCapacity(estimatedTokens, providerName);
     this.logLLMPrompt(providerName, prompt, options);
 
+    const startedAt = Date.now();
     try {
       const result = await this.runWithProviderRetry(
         providerName,
@@ -491,7 +494,7 @@ export class LLMService {
         this.rateLimiter.recordUsage(result.usage.totalTokens, providerName);
       }
       this.logLLMUsage(providerName, prompt, options, result);
-      this.emitTrace('generateFixed', providerName, prompt, options, result);
+      this.emitTrace('generateFixed', providerName, prompt, options, result, startedAt);
       this.healthCheckManager?.markServiceHealthy(providerName);
       result.resolvedProviderName = providerName;
       this.stampResolvedModel(result, provider, options);
@@ -527,6 +530,7 @@ export class LLMService {
     await this.rateLimiter.waitForCapacity(estimatedTokens, resolvedName);
     this.logLLMPrompt(resolvedName, prompt, effectiveOptions);
 
+    const startedAt = Date.now();
     try {
       const result = await this.runWithProviderRetry(
         resolvedName,
@@ -547,7 +551,7 @@ export class LLMService {
         this.rateLimiter.recordUsage(result.usage.totalTokens, resolvedName);
       }
       this.logLLMUsage(resolvedName, prompt, effectiveOptions, result);
-      this.emitTrace('generate', resolvedName, prompt, effectiveOptions, result);
+      this.emitTrace('generate', resolvedName, prompt, effectiveOptions, result, startedAt);
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
@@ -599,6 +603,7 @@ export class LLMService {
 
     this.logLLMPrompt(resolvedName, prompt, mergedOptions);
 
+    const startedAt = Date.now();
     try {
       const result = await this.runWithProviderRetry(
         resolvedName,
@@ -613,7 +618,7 @@ export class LLMService {
         { opLabel: 'generateLite' },
       );
       this.logLLMUsage(resolvedName, prompt, mergedOptions, result);
-      this.emitTrace('generateLite', resolvedName, prompt, mergedOptions, result);
+      this.emitTrace('generateLite', resolvedName, prompt, mergedOptions, result, startedAt);
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
       this.stampResolvedModel(result, provider, mergedOptions);
@@ -688,13 +693,14 @@ export class LLMService {
     const effectiveOptions = this.stripModelIfSwapped(options, swapped);
     this.logLLMPrompt(resolvedName, prompt, effectiveOptions);
 
+    const startedAt = Date.now();
     try {
       const result = await provider.generateStream(prompt, handler, effectiveOptions);
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
       this.stampResolvedModel(result, provider, effectiveOptions);
-      this.emitTrace('generateStream', resolvedName, prompt, effectiveOptions, result);
+      this.emitTrace('generateStream', resolvedName, prompt, effectiveOptions, result, startedAt);
       return result;
     } catch (err) {
       // Mark provider as failed
