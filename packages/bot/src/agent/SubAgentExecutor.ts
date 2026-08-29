@@ -6,6 +6,7 @@ import type { ChatMessage, FunctionCall, ToolDefinition, ToolUseGenerateResponse
 import type { PermissionChecker } from '@/command/CommandManager';
 import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 import type { ToolManager } from '@/tools/ToolManager';
+import { getCurrentDateHourForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import type { SubAgentManager } from './SubAgentManager';
 import type { IToolRunner } from './ToolRunner';
@@ -17,8 +18,10 @@ const SUBAGENT_SYSTEM_TEMPLATES: Partial<Record<SubAgentType, string>> = {
   analysis: 'subagent.research.system', // reuse research system prompt
 };
 
+// Research is deliberately absent: its system.txt owns the whole behaviour
+// contract, so the user turn is the bare query. A second template restating
+// the rules would win over the system prompt and silently override it.
 const SUBAGENT_TASK_TEMPLATES: Partial<Record<SubAgentType, string>> = {
-  research: 'subagent.research.task',
   generic: 'subagent.generic.task',
 };
 
@@ -200,11 +203,17 @@ export class SubAgentExecutor {
   private buildMessages(session: SubAgentSession, context: SubAgentContext): ChatMessage[] {
     const messages: ChatMessage[] = [];
 
+    // Hour-truncated so an hour of subagent runs share one prompt-cache prefix.
+    const variables = {
+      message: session.task.description,
+      currentDate: getCurrentDateHourForPrompt(),
+    };
+
     // System message from template (config override → type-specific → hardcoded minimal)
     const systemTemplateName = session.config.systemTemplate ?? SUBAGENT_SYSTEM_TEMPLATES[session.type];
     const systemContent = this.renderTemplateOrFallback(
       systemTemplateName,
-      { message: session.task.description },
+      variables,
       `你是一个子任务执行助手。完成以下任务并给出简洁总结。`,
     );
     messages.push({ role: 'system', content: systemContent });
@@ -216,14 +225,22 @@ export class SubAgentExecutor {
 
     // Task input from template (type-specific → fallback to generic)
     const taskTemplateName = SUBAGENT_TASK_TEMPLATES[session.type];
-    const taskContent = this.renderTemplateOrFallback(
-      taskTemplateName,
-      { message: session.task.description },
-      `任务: ${session.task.description}\n\n输入: ${JSON.stringify(session.task.input)}`,
-    );
+    const taskContent = this.renderTemplateOrFallback(taskTemplateName, variables, this.describeTask(session));
     messages.push({ role: 'user', content: taskContent });
 
     return messages;
+  }
+
+  /**
+   * The user turn for a subagent whose type has no task template: the task text,
+   * plus the structured input only when it carries something the description
+   * doesn't. Echoing an empty or duplicated `input` back at the model just spends
+   * tokens restating the line above it.
+   */
+  private describeTask(session: SubAgentSession): string {
+    const input = session.task.input;
+    const hasInput = input != null && Object.keys(input).length > 0;
+    return hasInput ? `任务: ${session.task.description}\n\n输入: ${JSON.stringify(input)}` : session.task.description;
   }
 
   /**

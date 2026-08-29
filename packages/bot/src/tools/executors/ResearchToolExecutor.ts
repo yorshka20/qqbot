@@ -124,7 +124,7 @@ export class ResearchToolExecutor extends BaseToolExecutor {
         SubAgentType.RESEARCH,
         {
           description: task,
-          input: { task },
+          input: {},
           parentContext,
         },
         {
@@ -139,7 +139,10 @@ export class ResearchToolExecutor extends BaseToolExecutor {
           providerName: ['deepseek', 'gemini'],
           // Pin to base models; main-flow defaults (deepseek-v4-pro / gemini paid 3.5-flash) are too costly here.
           providerModels: { deepseek: 'deepseek-v4-flash', gemini: 'gemini-3-flash-preview' },
-          maxToolRounds: 4,
+          // Matches the ≤5-call budget in the subagent's system prompt. Rounds, not
+          // calls: a round can carry several parallel searches, which the prompt asks
+          // for — this only bounds the serial worst case.
+          maxToolRounds: 5,
           maxTokens: TOKEN_BUDGET.analysis,
         },
       );

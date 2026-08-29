@@ -174,17 +174,18 @@ export class SubAgentTriggerHandler {
 
   /**
    * Render the task.txt template for a presetKey with the triggering message substituted.
-   * Falls back to a generic description if the template is not found.
+   *
+   * task.txt is optional: a preset whose system.txt already owns the full behaviour
+   * contract (e.g. research) sends the message verbatim rather than wrapping it in a
+   * second set of instructions, which would arrive as a later user turn and override
+   * the system prompt.
    */
   private renderTaskDescription(presetKey: string, message: string): string {
     const templateName = `subagent.${presetKey}.task`;
     const tpl = this.promptManager.getTemplate(templateName);
     if (!tpl) {
-      logger.warn(
-        `[SubAgentTriggerHandler] task template not found: ${templateName} ` +
-          `(expected: prompts/subagent/${presetKey}/task.txt) — using generic fallback`,
-      );
-      return `Process the following message and provide a helpful response: ${message}`;
+      logger.debug(`[SubAgentTriggerHandler] no task template for preset "${presetKey}"; sending message verbatim`);
+      return message;
     }
 
     // PromptManager.render() uses {{variable}} syntax
