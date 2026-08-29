@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { listDocs } from '../../../api';
 import type { DocsRootInfo, FileItem } from '../../../types';
+import { byNewestFirst } from '../utils';
 
 export interface DirListingState {
   items: FileItem[];
@@ -28,7 +29,7 @@ export function useDirListing(roots: DocsRootInfo[] | null, rootId: string, dirP
     setError(null);
     try {
       const data = await listDocs(rootId, dirPath);
-      setItems(data.items);
+      setItems([...data.items].sort(byNewestFirst));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setItems([]);
