@@ -67,9 +67,11 @@ interface ListResponse {
 function buildBuiltinRoots(): Array<[string, { label: string; absPath: string }]> {
   const repo = getRepoRoot();
   return [
-    ['docs', { label: 'docs/', absPath: join(repo, 'docs') }],
+    ['logs', { label: 'logs/', absPath: join(repo, 'logs') }],
     ['claude-learnings', { label: 'claude-learnings/', absPath: join(repo, '.claude-learnings') }],
     ['claude-workbook', { label: 'claude-workbook/', absPath: join(repo, '.claude-workbook') }],
+    ['docs', { label: 'docs/', absPath: join(repo, 'docs') }],
+    ['data', { label: 'data/', absPath: join(repo, 'data') }],
   ];
 }
 
