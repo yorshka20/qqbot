@@ -12,7 +12,7 @@ import { getRepoRoot } from '@/utils/repoRoot';
 
 function renderExtract(recentMessagesText: string): string {
   return new PromptManager(join(getRepoRoot(), 'prompts')).render('memory.extract', {
-    groupId: '960504183',
+    groupId: '100000001',
     recentMessagesText,
     targetUserSection: '',
     groupCoreScopes: 'topic / rule / event / context',

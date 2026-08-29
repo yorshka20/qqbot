@@ -175,6 +175,14 @@ When testing changes:
 
 When template files already exist on disk, load them with `loadTemplatesFromDirectory()` so the test exercises the production path; don't hand-register via `registerTemplate` when the file is right there.
 
+**Never put real user data in tests or in prompt files.** No real QQ numbers, group ids,
+nicknames, or verbatim chat content — not in fixtures, not in assertions, not in the
+few-shot examples inside `prompts/`. Use obviously-synthetic stand-ins (`10000001`,
+`测试用户甲`, `甲`/`乙`). Copying identifiers straight out of a `logs/llm-dumps/` file while
+debugging is the usual way this happens: those dumps are local-only, the tests and prompts
+are committed and shared. Anonymising costs nothing — a fixture never needs the real name
+to prove the behaviour.
+
 ### Why smoke-test is required
 
 `typecheck` and `build` only validate static types — they cannot catch runtime initialization order issues (circular imports causing TDZ errors, DI tokens referenced before registration, etc.). The `smoke-test` runs the exact same `bootstrapApp()` function as `packages/bot/src/index.ts`, ensuring every service, plugin, and tool executor initializes successfully without live network connections.
