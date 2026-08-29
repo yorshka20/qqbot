@@ -90,6 +90,29 @@ describe('LLMDumpPlugin', () => {
     expect(md).toContain('> tokens: prompt=10 completion=5 total=15 · elapsed: 1.2s');
     // The content header must sit inside a code fence, not start a real markdown heading.
     expect(md).toMatch(/```\n[\s\S]*## 运行环境/);
+    // Providers ignore the positional prompt when messages are present, so the dump must too.
+    expect(md).not.toContain('ignored when messages present');
+  });
+
+  it('renders options.systemPrompt alongside messages (generateFixed shape)', () => {
+    const plugin = makePlugin();
+    emit(plugin, {
+      opLabel: 'generateFixed',
+      durationMs: 500,
+      provider: 'deepseek',
+      prompt: '',
+      systemPrompt: '反思任务说明\n当前 phenotype: {...}',
+      messages: [{ role: 'user', content: '请根据以上输入完成反思，输出符合格式要求的 JSON。' }],
+      response: { text: '{}' },
+      turnKey: 'background',
+    });
+
+    const md = readTurnFile('background');
+    // The out-of-band system prompt is prepended by providers, so it must appear in the dump.
+    expect(md).toContain('### system');
+    expect(md).toContain('反思任务说明');
+    expect(md).toContain('### conversation');
+    expect(md).toContain('请根据以上输入完成反思');
   });
 
   it('renders tool-calling: assistant tool_calls, tool result, and response function calls', () => {

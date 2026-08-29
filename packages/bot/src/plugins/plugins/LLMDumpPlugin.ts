@@ -141,11 +141,15 @@ export class LLMDumpPlugin extends PluginBase {
     // fenced (below) so the prompt's own markdown headers can't hijack the outline.
     const lines: string[] = [`## ${this.formatTime(at)} · ${entry.opLabel} · ${entry.provider}${model}`, ''];
 
+    // options.systemPrompt is sent even alongside messages (providers prepend it
+    // as a system message — generateFixed callers use that shape), so it renders
+    // unconditionally. The positional prompt is what providers IGNORE when
+    // messages are present, so it only renders without them.
+    if (entry.systemPrompt) lines.push('### system', '', this.fence(entry.systemPrompt), '');
     if (entry.messages && entry.messages.length > 0) {
       lines.push(...this.renderMessages(entry.messages));
-    } else {
-      if (entry.systemPrompt) lines.push('### system', '', this.fence(entry.systemPrompt), '');
-      if (entry.prompt) lines.push('### prompt', '', this.fence(entry.prompt), '');
+    } else if (entry.prompt) {
+      lines.push('### prompt', '', this.fence(entry.prompt), '');
     }
 
     if (entry.response.reasoningContent?.trim()) {
