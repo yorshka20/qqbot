@@ -323,6 +323,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
 
       const data = await this.httpClient.post<{
         choices: Array<{
+          finish_reason?: string;
           message: {
             content?: string;
             reasoning_content?: string;
@@ -333,9 +334,17 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
         model: string;
       }>('/chat/completions', body, options?.timeout ? { timeout: options.timeout } : undefined);
 
-      const msg = data.choices[0]?.message;
+      const choice = data.choices[0];
+      const msg = choice?.message;
       const text = msg?.content ?? '';
       const reasoningContent = msg?.reasoning_content || undefined;
+
+      // A thinking model charges its hidden CoT against max_tokens, so the cap can be
+      // spent entirely on reasoning and leave no content. Without this the caller sees
+      // an empty string and cannot tell a truncated generation from "nothing to say".
+      if (!text && !msg?.tool_calls?.length && choice?.finish_reason && choice.finish_reason !== 'stop') {
+        throw new Error(`DeepSeek returned no content (finish_reason=${choice.finish_reason})`);
+      }
       const usage = data.usage
         ? {
             promptTokens: data.usage.prompt_tokens,
