@@ -12,9 +12,19 @@ import type {
 } from '@/conversation/history';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
-import { EpisodeCacheManager } from '../EpisodeCacheManager';
+import {
+  EPISODE_WINDOW_COMPRESS_TARGET_CHARS,
+  EPISODE_WINDOW_COMPRESS_TARGET_ENTRIES,
+  EPISODE_WINDOW_COMPRESS_TRIGGER_CHARS,
+  EPISODE_WINDOW_COMPRESS_TRIGGER_ENTRIES,
+  EPISODE_WINDOW_HARD_MAX_ENTRIES,
+  EPISODE_WINDOW_MIN_RECENT_ENTRIES,
+  EpisodeCacheManager,
+} from '../EpisodeCacheManager';
 
 const SESSION_ID = 'group:1';
+/** Entry count comfortably past the compress trigger but under the read-path hard max. */
+const OVER_TRIGGER_ENTRIES = EPISODE_WINDOW_COMPRESS_TRIGGER_ENTRIES + 40;
 
 function makeEntry(index: number, contentLength = 20): ConversationMessageEntry {
   return {
@@ -67,7 +77,7 @@ function makeContext(messageId: string): HookContext {
 
 describe('EpisodeCacheManager — read path', () => {
   it('never summarizes while building history, however long the window is', async () => {
-    const history = Array.from({ length: 400 }, (_, i) => makeEntry(i));
+    const history = Array.from({ length: EPISODE_WINDOW_HARD_MAX_ENTRIES + 100 }, (_, i) => makeEntry(i));
     const service = makeHistoryService(history, fold);
     const manager = new EpisodeCacheManager(service);
 
@@ -80,17 +90,18 @@ describe('EpisodeCacheManager — read path', () => {
   });
 
   it('bounds the window without an LLM when compression cannot keep up', async () => {
-    const history = Array.from({ length: 400 }, (_, i) => makeEntry(i));
+    const total = EPISODE_WINDOW_HARD_MAX_ENTRIES + 100;
+    const history = Array.from({ length: total }, (_, i) => makeEntry(i));
     const service = makeHistoryService(history, fold);
     const manager = new EpisodeCacheManager(service);
 
     await manager.buildNormalHistoryEntries(makeContext('trigger-1'));
     const result = await manager.buildNormalHistoryEntries(makeContext('trigger-2'));
 
-    expect(result.historyEntries.length).toBeLessThanOrEqual(150);
+    expect(result.historyEntries.length).toBeLessThanOrEqual(EPISODE_WINDOW_HARD_MAX_ENTRIES);
     // The bound keeps the recent end, not the stale front.
     const last = result.historyEntries[result.historyEntries.length - 1];
-    expect(last.messageId).toBe('m399');
+    expect(last.messageId).toBe(`m${total - 1}`);
   });
 });
 
@@ -106,7 +117,7 @@ describe('EpisodeCacheManager — background compression', () => {
   });
 
   it('folds an over-budget window down to the target and shows it on the next build', async () => {
-    const history = Array.from({ length: 120 }, (_, i) => makeEntry(i));
+    const history = Array.from({ length: OVER_TRIGGER_ENTRIES }, (_, i) => makeEntry(i));
     const service = makeHistoryService(history, fold);
     const manager = new EpisodeCacheManager(service);
 
@@ -119,13 +130,15 @@ describe('EpisodeCacheManager — background compression', () => {
     await manager.maintainEpisodeContext(beforeFold.episodeKey);
     const afterFold = await manager.buildNormalHistoryEntries(makeContext('trigger-3'));
 
-    expect(afterFold.historyEntries.length).toBe(48);
+    expect(afterFold.historyEntries.length).toBe(EPISODE_WINDOW_COMPRESS_TARGET_ENTRIES);
     expect(afterFold.historyEntries[0].isSummary).toBe(true);
-    expect(afterFold.historyEntries[afterFold.historyEntries.length - 1].messageId).toBe('m119');
+    expect(afterFold.historyEntries[afterFold.historyEntries.length - 1].messageId).toBe(
+      `m${OVER_TRIGGER_ENTRIES - 1}`,
+    );
   });
 
   it('keeps entries appended while the summarizer was running', async () => {
-    const history = Array.from({ length: 120 }, (_, i) => makeEntry(i));
+    const history = Array.from({ length: OVER_TRIGGER_ENTRIES }, (_, i) => makeEntry(i));
     let releaseSummarizer: () => void = () => {};
     const summarizerStarted = new Promise<void>((resolve) => {
       releaseSummarizer = resolve;
@@ -154,9 +167,9 @@ describe('EpisodeCacheManager — background compression', () => {
   });
 
   it('leaves the window intact when the summarizer produces nothing', async () => {
-    const history = Array.from({ length: 120 }, (_, i) => makeEntry(i));
+    const history = Array.from({ length: OVER_TRIGGER_ENTRIES }, (_, i) => makeEntry(i));
     const service = makeHistoryService(history, async (input) => ({
-      entries: input.slice(-48),
+      entries: input.slice(-EPISODE_WINDOW_COMPRESS_TARGET_ENTRIES),
       replacedCount: 0,
     }));
     const manager = new EpisodeCacheManager(service);
@@ -174,14 +187,15 @@ describe('EpisodeCacheManager — background compression', () => {
   });
 
   it('folds on the char budget before the entry count runs out', async () => {
-    // 60 entries, well under the 100-entry trigger, but far past the char trigger.
-    const history = Array.from({ length: 60 }, (_, i) => makeEntry(i, 600));
+    // Few entries, well under the entry trigger, but far past the char trigger.
+    const entryChars = Math.ceil((EPISODE_WINDOW_COMPRESS_TRIGGER_CHARS * 1.25) / 60);
+    const history = Array.from({ length: 60 }, (_, i) => makeEntry(i, entryChars));
     const service = makeHistoryService(history, fold);
     const manager = new EpisodeCacheManager(service);
 
     await manager.buildNormalHistoryEntries(makeContext('trigger-1'));
     const built = await manager.buildNormalHistoryEntries(makeContext('trigger-2'));
-    expect(built.historyEntries.length).toBeLessThanOrEqual(100);
+    expect(built.historyEntries.length).toBeLessThanOrEqual(EPISODE_WINDOW_COMPRESS_TRIGGER_ENTRIES);
 
     service.getMessagesSinceForSession = vi.fn().mockResolvedValue([]);
     await manager.maintainEpisodeContext(built.episodeKey);
@@ -190,14 +204,37 @@ describe('EpisodeCacheManager — background compression', () => {
     expect(after.historyEntries[0].isSummary).toBe(true);
     // Folded to the char target, not all the way to the entry target.
     const keptChars = after.historyEntries.slice(1).reduce((sum, e) => sum + e.content.length, 0);
-    expect(keptChars).toBeLessThanOrEqual(10_000);
-    expect(after.historyEntries.length).toBeGreaterThan(8);
+    expect(keptChars).toBeLessThanOrEqual(EPISODE_WINDOW_COMPRESS_TARGET_CHARS);
+    expect(after.historyEntries.length).toBeGreaterThan(EPISODE_WINDOW_MIN_RECENT_ENTRIES);
+  });
+
+  it('counts a bot entry reasoning toward the char budget', async () => {
+    // Content alone is far under the char trigger; content + persisted reasoning is far
+    // over it. Reasoning is rendered into the prompt as a <thought> block, so a budget
+    // that ignored it would let the window blow the prompt size unfolded.
+    const history = Array.from({ length: 40 }, (_, i) => ({
+      ...makeEntry(i, 20),
+      // 10 bot entries carry the reasoning → 1.25× the char trigger from reasoning alone.
+      reasoning: i % 4 === 0 ? 'r'.repeat(Math.ceil(EPISODE_WINDOW_COMPRESS_TRIGGER_CHARS / 8)) : undefined,
+    }));
+    const service = makeHistoryService(history, fold);
+    const manager = new EpisodeCacheManager(service);
+
+    await manager.buildNormalHistoryEntries(makeContext('trigger-1'));
+    const built = await manager.buildNormalHistoryEntries(makeContext('trigger-2'));
+
+    service.getMessagesSinceForSession = vi.fn().mockResolvedValue([]);
+    await manager.maintainEpisodeContext(built.episodeKey);
+    const after = await manager.buildNormalHistoryEntries(makeContext('trigger-3'));
+
+    expect(after.historyEntries[0].isSummary).toBe(true);
+    expect(after.historyEntries.length).toBeLessThan(40);
   });
 
   it('does not fold the window below the recent-entry floor for one huge entry', async () => {
     const history = [
       ...Array.from({ length: 110 }, (_, i) => makeEntry(i)),
-      makeEntry(999, 50_000),
+      makeEntry(999, EPISODE_WINDOW_COMPRESS_TRIGGER_CHARS * 2),
     ];
     const service = makeHistoryService(history, fold);
     const manager = new EpisodeCacheManager(service);
@@ -209,8 +246,8 @@ describe('EpisodeCacheManager — background compression', () => {
     await manager.maintainEpisodeContext(built.episodeKey);
     const after = await manager.buildNormalHistoryEntries(makeContext('trigger-3'));
 
-    // 1 summary + at least the 8-entry floor.
-    expect(after.historyEntries.length).toBeGreaterThanOrEqual(9);
+    // 1 summary + at least the recent-entry floor.
+    expect(after.historyEntries.length).toBeGreaterThanOrEqual(EPISODE_WINDOW_MIN_RECENT_ENTRIES + 1);
     expect(after.historyEntries[0].isSummary).toBe(true);
   });
 });

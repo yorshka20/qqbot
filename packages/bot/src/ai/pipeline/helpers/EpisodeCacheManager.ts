@@ -23,29 +23,43 @@ import { logger } from '@/utils/logger';
  * folded span is itself a summary, and (b) changes the prompt prefix every turn, defeating
  * the provider-side prefix cache this cache exists to keep warm.
  */
-const EPISODE_WINDOW_COMPRESS_TRIGGER_ENTRIES = 100;
+export const EPISODE_WINDOW_COMPRESS_TRIGGER_ENTRIES = 200;
 /** Entries left after a pass: the oldest span collapses into one summary entry. */
-const EPISODE_WINDOW_COMPRESS_TARGET_ENTRIES = 48;
+export const EPISODE_WINDOW_COMPRESS_TARGET_ENTRIES = 96;
 /**
  * Second budget dimension. Entry count varies by an order of magnitude per entry — a one-line
  * "嗯" and a rendered card both count as 1 — so a window can blow a prompt budget well before it
  * reaches the entry trigger. It gets the same trigger/target spread as the entry dimension: a
- * char budget that only bounded the trigger would fold to 48 entries that are still over budget
+ * char budget that only bounded the trigger would fold to entries that are still over budget
  * and fire again next turn, which is the boundary-sitting this whole split exists to avoid.
+ *
+ * Sizing rule:
+ * - The TARGET is the window's steady floor right after a fold, so it must still hold
+ *   3–5 bot turns WITH their reasoning even when turns are heavy. Measured over real
+ *   llm-dumps (2026-08-28..31, 220 reply turns), per-turn persisted reasoning is
+ *   p50≈1.6K / p90≈8.6K / p99≈21.7K chars — 48K ≈ 5 heavy (p90) turns.
+ * - The TRIGGER is the 2× spread above it; at 96K chars (≈ ≤96K tokens worst case,
+ *   mixed CJK ≈ 0.6–1 token/char) the whole prompt stays near 10% of the primary
+ *   models' 1M windows, so TTFT and per-turn cost stay flat.
+ * - Fallback capacity does NOT bound the budget (owner decision): fallbacks are
+ *   best-effort, and one that cannot fit the prompt is allowed to fail rather than
+ *   shrink the window for everyone.
+ * Counted chars include each bot entry's persisted reasoning (`entry.reasoning`), which is
+ * rendered into the prompt as a <thought> block and is often longer than the reply itself.
  */
-const EPISODE_WINDOW_COMPRESS_TRIGGER_CHARS = 20_000;
-const EPISODE_WINDOW_COMPRESS_TARGET_CHARS = 10_000;
+export const EPISODE_WINDOW_COMPRESS_TRIGGER_CHARS = 96_000;
+export const EPISODE_WINDOW_COMPRESS_TARGET_CHARS = 48_000;
 /**
  * Floor on recent entries kept, whatever the char budget says. A window is a conversation before
  * it is a token count, and a couple of long cards must not be able to fold everything behind them.
  */
-const EPISODE_WINDOW_MIN_RECENT_ENTRIES = 8;
+export const EPISODE_WINDOW_MIN_RECENT_ENTRIES = 8;
 /**
  * Ceiling the read path enforces by dropping oldest, without an LLM. Only reached while
  * compression is failing or cannot keep up; the summary is how a dropped span normally
  * survives, so this is degradation, not the routine path.
  */
-const EPISODE_WINDOW_HARD_MAX_ENTRIES = 150;
+export const EPISODE_WINDOW_HARD_MAX_ENTRIES = 300;
 /** Per-turn DB fetch bound for appending: must exceed what an active group produces between two triggers. */
 const EPISODE_APPEND_FETCH_LIMIT = 60;
 
@@ -205,7 +219,8 @@ export class EpisodeCacheManager {
    * then stands for.
    */
   private planFold(entries: ConversationMessageEntry[]): number | null {
-    const totalChars = entries.reduce((sum, e) => sum + e.content.length, 0);
+    const entryChars = (e: ConversationMessageEntry): number => e.content.length + (e.reasoning?.length ?? 0);
+    const totalChars = entries.reduce((sum, e) => sum + entryChars(e), 0);
     if (
       entries.length <= EPISODE_WINDOW_COMPRESS_TRIGGER_ENTRIES &&
       totalChars <= EPISODE_WINDOW_COMPRESS_TRIGGER_CHARS
@@ -216,7 +231,7 @@ export class EpisodeCacheManager {
     let kept = 0;
     let keptChars = 0;
     for (let i = entries.length - 1; i >= 0 && kept < EPISODE_WINDOW_COMPRESS_TARGET_ENTRIES - 1; i--) {
-      const withEntry = keptChars + entries[i].content.length;
+      const withEntry = keptChars + entryChars(entries[i]);
       if (kept >= EPISODE_WINDOW_MIN_RECENT_ENTRIES && withEntry > EPISODE_WINDOW_COMPRESS_TARGET_CHARS) {
         break;
       }
