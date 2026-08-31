@@ -9,6 +9,7 @@ import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../../capabilities/types';
 import type { PromptManager } from '../../prompt/PromptManager';
+import { buildBotThoughtBlock } from '../../prompt/PromptMessageAssembler';
 import { buildHistoryEntryPrefix, buildSpeakerTag } from '../../prompt/speakerTag';
 import type { ChatMessage, ContentPart } from '../../types';
 import { extractImagesFromSegmentsAsync, normalizeVisionImages } from '../../utils/imageUtils';
@@ -262,7 +263,8 @@ export class PromptAssemblyStage implements ReplyStage {
       .trim();
     const textContent = textFromSegments || entry.content || '';
     const prefix = buildHistoryEntryPrefix(entry);
-    const parts: ContentPart[] = [{ type: 'text', text: `${prefix} ${textContent}`.trim() || '(no text)' }];
+    const thought = buildBotThoughtBlock(entry);
+    const parts: ContentPart[] = [{ type: 'text', text: `${prefix} ${thought}${textContent}`.trim() || '(no text)' }];
     for (const img of normalizedImages) {
       const mime = img.mimeType || 'image/jpeg';
       const url = img.base64 ? `data:${mime};base64,${img.base64}` : img.url;

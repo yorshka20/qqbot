@@ -44,6 +44,7 @@ import type { LLMService } from './services/LLMService';
 import { NsfwReplyService } from './services/NsfwReplyService';
 import { ProactiveReplyGenerationService } from './services/ProactiveReplyGenerationService';
 import { VisionService } from './services/VisionService';
+import type { AIGenerateResponse } from './types';
 
 /**
  * AI Service — pure facade delegating to specialized sub-services.
@@ -243,7 +244,10 @@ export class AIService {
 
   // --- Proactive reply ---
 
-  async generateProactiveReply(context: ProactiveReplyInjectContext, providerName?: string): Promise<string> {
+  async generateProactiveReply(
+    context: ProactiveReplyInjectContext,
+    providerName?: string,
+  ): Promise<AIGenerateResponse> {
     return this.proactiveReplyService.generateProactiveReply(context, providerName);
   }
 

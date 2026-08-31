@@ -49,6 +49,23 @@ export type ContentPart = ContentPartText | ContentPartImage;
 export type ChatMessageContent = string | ContentPart[];
 
 /**
+ * One Anthropic thinking block, carried verbatim for echo-back.
+ * The Anthropic API requires the assistant turn that carries tool_use blocks to be
+ * echoed back exactly as received — thinking blocks included, `signature` unmodified;
+ * rebuilding the turn without them silently drops the model's reasoning state between
+ * tool rounds (and rejects the request outright for `redacted_thinking`).
+ */
+export interface ThinkingBlockEcho {
+  type: 'thinking' | 'redacted_thinking';
+  /** Thinking text (`type: 'thinking'`); may be empty when the API omits display. */
+  thinking?: string;
+  /** Cryptographic signature over the thinking content; echoed back unmodified. */
+  signature?: string;
+  /** Encrypted payload (`type: 'redacted_thinking'`). */
+  data?: string;
+}
+
+/**
  * Tool call payload (for assistant messages with tool_calls).
  * Used when building messages for tool-use round-trips (OpenAI-compatible).
  */
@@ -83,6 +100,12 @@ export interface ChatMessage {
    * ignore this field.
    */
   reasoning_content?: string;
+  /**
+   * Anthropic thinking blocks from the response that produced this assistant turn.
+   * AnthropicProvider replays them verbatim (before text/tool_use) when the turn is
+   * echoed back in the tool loop; other providers ignore this field.
+   */
+  thinking_blocks?: ThinkingBlockEcho[];
   /**
    * Name of the provider that produced this assistant turn (set for assistant
    * turns carrying tool_calls). Providers use it to tell their own turns from
@@ -226,6 +249,12 @@ export interface AIGenerateResponse {
    * will reject the request with "reasoning_content must be passed back". Other providers ignore it.
    */
   reasoningContent?: string;
+  /**
+   * Anthropic thinking blocks of this response, verbatim (text + signature). Set only by
+   * AnthropicProvider; LLMService stamps them onto the assistant tool_calls message so the
+   * next round's request echoes them back — see {@link ThinkingBlockEcho}.
+   */
+  thinkingBlocks?: ThinkingBlockEcho[];
 }
 
 /**

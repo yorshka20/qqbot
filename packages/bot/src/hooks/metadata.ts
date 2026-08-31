@@ -94,6 +94,12 @@ export interface HookContextMetadata {
   /** Reply tags extracted from LLM reply via parseSubtextTags (META tag items). */
   replyTagsMeta?: string[];
   /**
+   * The turn's full reasoning text (all tool rounds joined). Set by GenerationStage;
+   * DatabasePersistenceSystem persists it on the bot-reply row so the next turn's
+   * prompt can render it into the assistant history entry as a <thought> block.
+   */
+  replyReasoning?: string;
+  /**
    * Provider name currently driving the reply generation (e.g. 'anthropic',
    * 'deepseek'). Set by GenerationStage before the LLM call so tool
    * executors invoked mid-generation (e.g. send_card) can stamp the right
@@ -173,6 +179,7 @@ const DEFAULT_METADATA: Required<
     | 'promptModelName'
     | 'replySubtext'
     | 'replyTagsMeta'
+    | 'replyReasoning'
     | 'replyMode'
     | 'activeProvider'
     | 'activeModel'
@@ -215,6 +222,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'promptModelName',
   'replySubtext',
   'replyTagsMeta',
+  'replyReasoning',
   'replyMode',
   'activeProvider',
   'activeModel',

@@ -25,6 +25,13 @@ export interface ConversationMessageEntry {
   /** True when message was @ bot (direct reply already sent); used to mark in thread context. */
   wasAtBot?: boolean;
   /**
+   * The model's own reasoning at the turn that produced this bot reply (bot entries only).
+   * Prompt assembly renders it into the assistant turn as a <thought> block so later turns
+   * see the stance behind the delivered text instead of reverse-engineering it from the
+   * output — reconstruction from output alone misreads the stance and re-spends reasoning.
+   */
+  reasoning?: string;
+  /**
    * True when this entry stands in for a span of compressed earlier messages rather
    * than something a participant said. Readers that attribute entries to a speaker
    * — prompt serializers, "what did users say" filters — must check this first.
@@ -125,7 +132,7 @@ export class ConversationHistoryService {
     groupId: string | number,
     content: string,
     protocol: ProtocolName,
-    options?: { botUserId?: number; messageSeq?: number; subtext?: string; replyTags?: string[] },
+    options?: { botUserId?: number; messageSeq?: number; subtext?: string; replyTags?: string[]; reasoning?: string },
   ): Promise<void> {
     const { groupIdNum } = normalizeGroupId(groupId);
     await this.appendBotMessageToSession({ sessionType: 'group', targetId: groupIdNum }, content, protocol, options);
@@ -143,7 +150,14 @@ export class ConversationHistoryService {
     target: { sessionType: 'group' | 'user'; targetId: string | number },
     content: string,
     protocol: ProtocolName,
-    options?: { botUserId?: number; messageSeq?: number; subtext?: string; replyTags?: string[]; viaTool?: string },
+    options?: {
+      botUserId?: number;
+      messageSeq?: number;
+      subtext?: string;
+      replyTags?: string[];
+      viaTool?: string;
+      reasoning?: string;
+    },
   ): Promise<void> {
     const adapter = this.databaseManager.getAdapter();
     if (!adapter?.isConnected()) {
@@ -184,6 +198,9 @@ export class ConversationHistoryService {
       }
       if (typeof options?.viaTool === 'string' && options.viaTool.length > 0) {
         metadata.viaTool = options.viaTool;
+      }
+      if (typeof options?.reasoning === 'string' && options.reasoning.length > 0) {
+        metadata.reasoning = options.reasoning;
       }
       await messages.create({
         conversationId: conversation.id,
@@ -407,6 +424,7 @@ export class ConversationHistoryService {
       isBotReply: meta.isBotReply === true,
       createdAt: new Date(msg.createdAt),
       wasAtBot: meta.wasAtBot === true,
+      reasoning: typeof meta.reasoning === 'string' && meta.reasoning.length > 0 ? meta.reasoning : undefined,
     };
   }
 

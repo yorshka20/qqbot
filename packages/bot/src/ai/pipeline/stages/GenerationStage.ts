@@ -178,6 +178,7 @@ export class GenerationStage implements ReplyStage {
     // multiply the per-turn send cap by the retry count.
     context.metadata.delete('cardSent');
     context.metadata.delete('cardSendFailedReason');
+    context.metadata.delete('replyReasoning');
 
     // Stamp the active provider so tool executors (notably send_card) can
     // attribute their output to whoever is actually generating this turn.
@@ -215,6 +216,13 @@ export class GenerationStage implements ReplyStage {
       },
       selectedProviderName,
     );
+
+    // The turn's reasoning rides on metadata to DatabasePersistenceSystem, which
+    // persists it on the bot-reply row; the next turn's prompt renders it into the
+    // assistant history entry as a <thought> block.
+    if (r.reasoningContent) {
+      context.metadata.set('replyReasoning', r.reasoningContent);
+    }
 
     // Stamp per-user usage onto the context so the onAIGenerationComplete hook
     // handler can record it. r.usage is the summed total across all tool rounds.

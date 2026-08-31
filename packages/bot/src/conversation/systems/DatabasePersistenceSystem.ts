@@ -122,6 +122,10 @@ export class DatabasePersistenceSystem implements System {
       if (Array.isArray(replyTagsValue) && replyTagsValue.length > 0) {
         botReplyMetadata.replyTags = replyTagsValue;
       }
+      const reasoningValue = context.metadata.get('replyReasoning');
+      if (typeof reasoningValue === 'string' && reasoningValue.length > 0) {
+        botReplyMetadata.reasoning = reasoningValue;
+      }
 
       const botReplyData: Omit<Message, 'id' | 'createdAt' | 'updatedAt'> = {
         conversationId: conversation.id,

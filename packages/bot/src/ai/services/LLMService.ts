@@ -934,6 +934,9 @@ export class LLMService {
         if (response.reasoningContent) {
           assistantMsg.reasoning_content = response.reasoningContent;
         }
+        if (response.thinkingBlocks?.length) {
+          assistantMsg.thinking_blocks = response.thinkingBlocks;
+        }
         currentMessages.push(assistantMsg);
         for (const msg of toolMessages) {
           currentMessages.push(msg);

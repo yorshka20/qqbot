@@ -153,6 +153,40 @@ describe('PromptMessageAssembler', () => {
     expect(summaryTurn?.role).toBe('user');
   });
 
+  it('renders a bot entry reasoning as a <thought> block ahead of the delivered text', () => {
+    const assembler = new PromptMessageAssembler();
+    const entries: ConversationMessageEntry[] = [
+      {
+        messageId: '1',
+        userId: 1001,
+        nickname: '测试用户甲',
+        content: '在吗',
+        isBotReply: false,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      {
+        messageId: '2',
+        userId: 0,
+        content: '在的',
+        isBotReply: true,
+        reasoning: '甲是在打招呼，轻松回应即可。',
+        createdAt: new Date('2026-01-01T00:00:01.000Z'),
+      },
+    ];
+
+    const messages = assembler.buildNormalMessages({
+      sceneSystem: 'scene',
+      historyEntries: entries,
+      finalUserBlocks: { currentQuery: 'q' },
+    });
+
+    const botTurn = messages.find((m) => m.role === 'assistant');
+    expect(botTurn?.content).toBe('[1/01 09:00] <thought>\n甲是在打招呼，轻松回应即可。\n</thought>\n在的');
+    // A user entry never renders a thought block, whatever its fields carry.
+    const userTurn = messages.find((m) => m.role === 'user' && String(m.content).includes('在吗'));
+    expect(String(userTurn?.content)).not.toContain('<thought>');
+  });
+
   it('timestamps every turn, but tags only the user turn with a speaker', () => {
     const assembler = new PromptMessageAssembler();
     const entries: ConversationMessageEntry[] = [

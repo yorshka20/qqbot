@@ -23,6 +23,29 @@ export function isAssembledEnvelope(msg: ChatMessage): boolean {
   return contentToPlainString(msg.content ?? '').includes(`<${CURRENT_QUERY_TAG}>`);
 }
 
+/**
+ * The <thought> block for a bot entry carrying its persisted reasoning, or '' when
+ * there is none. One owner for the format — shared by {@link PromptMessageAssembler}'s
+ * plain-text serializer and the vision branch that rebuilds entries as ContentPart[],
+ * which previously would each carry a copy of this rule. Ends with a newline so the
+ * delivered text follows on its own line. base.system.txt documents the block for
+ * the model.
+ */
+export function buildBotThoughtBlock(entry: Pick<ConversationMessageEntry, 'isBotReply' | 'reasoning'>): string {
+  if (!entry.isBotReply) {
+    return '';
+  }
+  const thought = normalizeBlockText(entry.reasoning ?? '');
+  return thought ? `<thought>\n${thought}\n</thought>\n` : '';
+}
+
+function normalizeBlockText(value: string): string {
+  return value
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+$/gm, '')
+    .trim();
+}
+
 export interface FinalUserBlocks {
   memoryContext?: string;
   ragContext?: string;
@@ -240,7 +263,10 @@ export class PromptMessageAssembler {
     if (!core) return '';
     const prefix = buildHistoryEntryPrefix(entry);
     const lead = prefix ? `${prefix} ` : '';
-    return imageTags && text ? `${lead}${text}\n${imageTags}` : `${lead}${core}`;
+    const body = imageTags && text ? `${text}\n${imageTags}` : core;
+    // Bot turns carry the reasoning that produced them, ahead of the delivered text,
+    // so later turns read the stance directly instead of inferring it from the output.
+    return `${lead}${buildBotThoughtBlock(entry)}${body}`;
   }
 
   private extractText(segments?: MessageSegment[]): string {
@@ -267,9 +293,6 @@ export class PromptMessageAssembler {
   }
 
   private normalize(value: string): string {
-    return value
-      .replace(/\r\n/g, '\n')
-      .replace(/[ \t]+$/gm, '')
-      .trim();
+    return normalizeBlockText(value);
   }
 }

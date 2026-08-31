@@ -13,6 +13,7 @@ import type {
   ContentPart,
   ConversationHistoryRole,
   StreamingHandler,
+  ThinkingBlockEcho,
   ToolDefinition,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
@@ -95,12 +96,14 @@ type AnthropicToolResultBlock = {
   is_error?: boolean;
 };
 type AnthropicThinkingBlock = { type: 'thinking'; thinking: string; signature?: string };
+type AnthropicRedactedThinkingBlock = { type: 'redacted_thinking'; data: string };
 type AnthropicContentBlock =
   | AnthropicTextBlock
   | AnthropicImageBlock
   | AnthropicToolUseBlock
   | AnthropicToolResultBlock
-  | AnthropicThinkingBlock;
+  | AnthropicThinkingBlock
+  | AnthropicRedactedThinkingBlock;
 type AnthropicContent = string | AnthropicContentBlock[];
 type AnthropicClientTool = {
   name: string;
@@ -190,6 +193,19 @@ function extractAnthropicReasoning(blocks: AnthropicContentBlock[]): string | un
     .join('\n\n')
     .trim();
   return text || undefined;
+}
+
+/**
+ * Thinking blocks of a response, verbatim, for echo-back on the next tool round.
+ * The API requires the tool_use assistant turn to come back with its thinking blocks
+ * intact (signatures unmodified); without them the model re-derives its reasoning
+ * from scratch every round.
+ */
+function extractThinkingBlockEchoes(blocks: AnthropicContentBlock[]): ThinkingBlockEcho[] {
+  return blocks.filter(
+    (block): block is AnthropicThinkingBlock | AnthropicRedactedThinkingBlock =>
+      block.type === 'thinking' || block.type === 'redacted_thinking',
+  );
 }
 
 /** Convert our ChatMessage content (string | ContentPart[]) to Anthropic message content. */
@@ -378,6 +394,11 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
           model: data.model,
         },
       };
+
+      const thinkingBlocks = extractThinkingBlockEchoes(data.content);
+      if (thinkingBlocks.length > 0) {
+        result.thinkingBlocks = thinkingBlocks;
+      }
 
       const toolUseBlocks = data.content.filter((block): block is AnthropicToolUseBlock => block.type === 'tool_use');
       if (toolUseBlocks.length > 0) {
@@ -675,6 +696,16 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
 
       if (message.role === 'assistant' && message.tool_calls?.length) {
         const content: AnthropicContentBlock[] = [];
+        // Replay this turn's thinking blocks verbatim, ahead of text/tool_use — the
+        // order the API produced them in. Only Anthropic responses carry
+        // thinking_blocks, so presence implies this provider produced the turn.
+        for (const block of message.thinking_blocks ?? []) {
+          if (block.type === 'redacted_thinking') {
+            content.push({ type: 'redacted_thinking', data: block.data ?? '' });
+          } else {
+            content.push({ type: 'thinking', thinking: block.thinking ?? '', signature: block.signature });
+          }
+        }
         const assistantText = contentToPlainString(message.content).trim();
         if (assistantText) {
           content.push(...toAnthropicTextBlocks(assistantText));

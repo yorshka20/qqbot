@@ -56,7 +56,10 @@ export class ProactiveReplyGenerationService {
    * Generate a single proactive reply for group participation.
    * All injectable text (preference, thread, RAG, memory) is provided via context from the context layer.
    */
-  async generateProactiveReply(context: ProactiveReplyInjectContext, providerName?: string): Promise<string> {
+  async generateProactiveReply(
+    context: ProactiveReplyInjectContext,
+    providerName?: string,
+  ): Promise<AIGenerateResponse> {
     const useVision = Boolean(context.messageImages?.length);
     const capabilities = await this.resolveProviderAndCapabilities(context, providerName, useVision);
     const { tools, toolUsageInstructions } = this.getToolsAndInstructions(
@@ -80,8 +83,7 @@ export class ProactiveReplyGenerationService {
       ? await this.attachVisionImagesToLastUserMessage(messages, context.messageImages ?? [])
       : messages;
 
-    const response = await this.executeLLM(proactiveMessages, context, capabilities, tools, useVision);
-    return response.text;
+    return this.executeLLM(proactiveMessages, context, capabilities, tools, useVision);
   }
 
   // ---------------------------------------------------------------------------
@@ -232,7 +234,7 @@ export class ProactiveReplyGenerationService {
           },
           effectiveProviderName,
         );
-        return { text: toolUseResponse.text };
+        return { text: toolUseResponse.text, reasoningContent: toolUseResponse.reasoningContent };
       }
       return this.visionService.generateWithVisionMessages(
         messages,

@@ -746,7 +746,8 @@ export class ProactiveConversationService {
     if (messageImages.length > 0) {
       injectContext.messageImages = messageImages;
     }
-    const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
+    const replyResponse = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
+    const replyText = replyResponse.text;
     if (!replyText) {
       logger.warn('[ProactiveConversationService] Empty proactive reply');
       return;
@@ -768,6 +769,7 @@ export class ProactiveConversationService {
       messageSeq: sendResult?.message_seq,
       ...(parsed.subtext !== undefined ? { subtext: parsed.subtext } : {}),
       ...(parsed.replyTags !== undefined ? { replyTags: parsed.replyTags } : {}),
+      ...(replyResponse.reasoningContent !== undefined ? { reasoning: replyResponse.reasoningContent } : {}),
     });
   }
 
@@ -795,7 +797,8 @@ export class ProactiveConversationService {
         injectContext.messageImages = messageImages;
       }
     }
-    const replyText = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
+    const replyResponse = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
+    const replyText = replyResponse.text;
     if (!replyText) {
       logger.warn('[ProactiveConversationService] Empty proactive reply (existing thread)');
       return;
@@ -822,6 +825,7 @@ export class ProactiveConversationService {
       messageSeq: sendResult?.message_seq,
       ...(parsed.subtext !== undefined ? { subtext: parsed.subtext } : {}),
       ...(parsed.replyTags !== undefined ? { replyTags: parsed.replyTags } : {}),
+      ...(replyResponse.reasoningContent !== undefined ? { reasoning: replyResponse.reasoningContent } : {}),
     });
   }
 
