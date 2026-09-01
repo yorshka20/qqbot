@@ -128,11 +128,20 @@ export class AgendaCommand implements CommandHandler {
       return { success: true, segments: mb.build() };
     }
 
+    // schedule.md wins over the DB on every startup sync, so a file-sourced item must be
+    // toggled there too or the change is undone by the next restart.
+    const inFile = this.isFileSourced(item)
+      ? await this.scheduleFileService.setItemEnabledByName(item.name, enabled)
+      : true;
+
     await this.agendaService.setEnabled(item.id, enabled);
     logger.info(`[AgendaCommand] ${enabled ? 'Enabled' : 'Disabled'} item "${item.name}" (${item.id})`);
 
     const mb = new MessageBuilder();
     mb.text(`✅ 已${enabled ? '启用' : '禁用'}日程「${item.name}」`);
+    if (!inFile) {
+      mb.text('\n⚠️ schedule.md 里找不到同名任务段，改动只落在任务库，重启同步后以文件为准。');
+    }
     return { success: true, segments: mb.build() };
   }
 

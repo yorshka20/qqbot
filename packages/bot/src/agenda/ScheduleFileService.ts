@@ -26,6 +26,7 @@
 //   - Intent = paragraph text after metadata block (non-list, non-empty)
 //   - File-sourced items (metadata.source === 'file') are tombstone (disabled) when removed from file
 //   - Manual DB items (no source tag) are never touched by sync
+//   - `enabled` is owned by the file: every sync rewrites the DB flag from `- 启用:`
 //   - `---` separators are cosmetic, ignored by parser
 
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -73,6 +74,9 @@ export interface AppendItemData {
 
 /** JSON metadata tag that marks a DB item as originating from the schedule file */
 const FILE_SOURCE_META = { source: 'file' } as const;
+
+/** Metadata line inside a `## ` section: `- key: value` or `- key: \`value\`` */
+const META_LINE_RE = /^-\s+([^:：]+)[：:]\s+`?([^`\n]+)`?\s*$/;
 
 /** Parsed section metadata keys (camelCase only). Raw file keys are normalized to these. */
 interface ScheduleSectionMeta {
@@ -256,6 +260,50 @@ export class ScheduleFileService {
     return found;
   }
 
+  /**
+   * Set the `启用` metadata line of a named section, inserting it when absent.
+   *
+   * syncFromFile() rewrites every file-sourced item's `enabled` from this file on each
+   * startup, so schedule.md — not the DB — is the authoritative store for that flag: a
+   * DB-only toggle would be reverted on the next restart.
+   */
+  async setItemEnabledByName(name: string, enabled: boolean): Promise<boolean> {
+    const content = await this.readFile();
+    if (!content) return false;
+
+    const lines = content.split('\n');
+    const heading = lines.findIndex((l) => l.startsWith('## ') && l.replace(/^##\s+/, '').trim() === name);
+    if (heading === -1) return false;
+
+    const enabledLine = `- 启用: \`${enabled}\``;
+    let lastMeta = heading;
+    let replaced = false;
+
+    for (let i = heading + 1; i < lines.length && !replaced; i++) {
+      const line = lines[i];
+      const meta = line.match(META_LINE_RE);
+      if (!meta) {
+        // Blank lines may sit inside the metadata block; any other text ends it
+        if (line.trim()) break;
+        continue;
+      }
+      if (this.normalizeMetaKey(meta[1].trim()) === 'enabled') {
+        lines[i] = enabledLine;
+        replaced = true;
+      } else {
+        lastMeta = i;
+      }
+    }
+
+    if (!replaced) {
+      lines.splice(lastMeta + 1, 0, enabledLine);
+    }
+
+    await writeFile(this.scheduleFilePath, lines.join('\n'), 'utf-8');
+    logger.info(`[ScheduleFileService] Set "${name}" enabled=${enabled} in ${this.scheduleFilePath}`);
+    return true;
+  }
+
   // ─── Parsing ─────────────────────────────────────────────────────────────────
 
   parseSchedule(content: string): ParsedScheduleItem[] {
@@ -294,7 +342,7 @@ export class ScheduleFileService {
       }
 
       // Metadata: `- key: value` or `- key: \`value\`` (keys normalized to camelCase)
-      const metaMatch = line.match(/^-\s+([^:：]+)[：:]\s+`?([^`\n]+)`?\s*$/);
+      const metaMatch = line.match(META_LINE_RE);
       if (metaMatch && inMetaBlock) {
         const rawKey = metaMatch[1].trim();
         const value = metaMatch[2].trim();
