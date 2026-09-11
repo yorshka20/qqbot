@@ -17,7 +17,8 @@ import type { ReplyStage } from '../types';
  * Provider prefix routing is primarily done in MessageTriggerPlugin (PREPROCESS)
  * and passed via resolvedProviderPrefix metadata. ProviderRouter is kept as a
  * fallback for messages that reach the pipeline without going through the plugin.
- * This stage resolves vision-capable provider when images are present, checks
+ * This stage keeps the turn on the routed provider when it can see the message's
+ * images and falls back to the configured vision provider when it cannot, checks
  * tool-use support, and assembles OpenAI-compatible tool definitions.
  */
 export class ProviderSelectionStage implements ReplyStage {
@@ -66,29 +67,22 @@ export class ProviderSelectionStage implements ReplyStage {
     ctx.userMessage = userMessage;
     ctx.usedExplicitProvider = usedExplicitProvider;
 
-    // When images are present, prefer a vision-capable provider; otherwise use the routed provider.
+    // The provider that answers this turn: the routed one, else the session/default LLM.
+    const routedProvider = await this.llmService.getAvailableProvider(providerName, sessionId);
+
     const hasImages = ctx.messageImages.length > 0;
-    if (hasImages) {
-      const visionProvider = await this.visionService.getAvailableProviderName(providerName, sessionId);
-      ctx.selectedProviderName = visionProvider ?? providerName;
-      ctx.providerHasVision = !!visionProvider;
-    } else {
-      ctx.selectedProviderName = providerName;
-      ctx.providerHasVision = false;
-    }
+    const imageRouting = hasImages
+      ? await this.visionService.routeImageTurn(routedProvider, providerName, sessionId)
+      : null;
+    ctx.selectedProviderName = imageRouting?.providerName ?? providerName;
+    ctx.providerHasVision = imageRouting?.canSeeImages ?? false;
 
-    // Capabilities: check if the effective provider supports tool use
     const effectiveProvider = ctx.selectedProviderName ?? 'default';
-    const providerCanUseTools = await this.checkProviderToolUseSupport(effectiveProvider, sessionId);
-
-    // Detect native function-calling + native web search support for toolList suppression
-    const resolvedProvider = await this.llmService.getAvailableProvider(
-      effectiveProvider === 'default' ? undefined : effectiveProvider,
-      sessionId,
-    );
-    const providerCapabilities = resolvedProvider ? (resolvedProvider as unknown as AIProvider).getCapabilities() : [];
-    ctx.providerHasFunctionCalling = providerCapabilities.includes('function_calling');
-    ctx.effectiveNativeSearchEnabled = providerCapabilities.includes('native_web_search');
+    // Re-resolve only when the images handed the turn to a different provider.
+    const resolvedProvider =
+      ctx.selectedProviderName === providerName
+        ? routedProvider
+        : await this.llmService.getAvailableProvider(ctx.selectedProviderName, sessionId);
 
     // Store resolved provider name and model in metadata so prompt producers can inject
     // them into the system prompt for LLM self-identification.
@@ -97,6 +91,14 @@ export class ProviderSelectionStage implements ReplyStage {
     const resolvedModel = resolvedProviderInstance?.getDefaultModel?.();
     ctx.hookContext.metadata.set('promptProviderName', resolvedProviderName);
     if (resolvedModel) ctx.hookContext.metadata.set('promptModelName', resolvedModel);
+
+    // Capabilities of the provider that will actually serve the turn
+    const providerCanUseTools = resolvedProviderInstance
+      ? this.llmService.providerSupportsToolUse(resolvedProviderName)
+      : false;
+    const providerCapabilities = resolvedProviderInstance ? resolvedProviderInstance.getCapabilities() : [];
+    ctx.providerHasFunctionCalling = providerCapabilities.includes('function_calling');
+    ctx.effectiveNativeSearchEnabled = providerCapabilities.includes('native_web_search');
 
     // Resolve source and admin status for tool catalog filtering
     const source = hookContext.source;
@@ -130,17 +132,7 @@ export class ProviderSelectionStage implements ReplyStage {
 
     // Log
     logger.info(
-      `[ProviderSelectionStage] Provider routing | reason=${reason} | confidence=${confidence} | explicitProvider=${usedExplicitProvider} | provider=${providerName ?? 'default'}`,
+      `[ProviderSelectionStage] Provider routing | reason=${reason} | confidence=${confidence} | explicitProvider=${usedExplicitProvider} | provider=${providerName ?? 'default'} | resolved=${resolvedProviderName} | images=${ctx.messageImages.length}`,
     );
-  }
-
-  private async checkProviderToolUseSupport(providerNameOrDefault: string, sessionId?: string): Promise<boolean> {
-    const provider = await this.llmService.getAvailableProvider(
-      providerNameOrDefault === 'default' ? undefined : providerNameOrDefault,
-      sessionId,
-    );
-    if (!provider) return false;
-    const resolvedName = 'name' in provider ? (provider as { name: string }).name : providerNameOrDefault;
-    return this.llmService.providerSupportsToolUse(resolvedName);
   }
 }

@@ -1,6 +1,7 @@
 // Vision Service - provides vision/multimodal capability
 
 import type { AIManager } from '../AIManager';
+import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { VisionImage } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
 import { isVisionCapability } from '../capabilities/VisionCapability';
@@ -69,6 +70,28 @@ export class VisionService {
     }
 
     return await provider.generateWithVision(prompt, normalizedImages, options);
+  }
+
+  /**
+   * Route a turn whose message carries images.
+   *
+   * The provider already answering the turn keeps it whenever it can see images itself —
+   * handing a multimodal provider's turn to the configured vision provider would answer
+   * with a model the session never asked for, and drops the answering provider's own
+   * context (tool history, thinking round-trip). Only a text-only provider gives the turn
+   * away; when nothing vision-capable is configured the turn stays put and the images are
+   * rendered as text placeholders.
+   */
+  async routeImageTurn(
+    answeringProvider: LLMCapability | null,
+    providerName?: string,
+    sessionId?: string,
+  ): Promise<{ providerName: string | undefined; canSeeImages: boolean }> {
+    if (isVisionCapability(answeringProvider)) {
+      return { providerName, canSeeImages: true };
+    }
+    const visionProviderName = await this.getAvailableProviderName(providerName, sessionId);
+    return { providerName: visionProviderName ?? providerName, canSeeImages: visionProviderName !== null };
   }
 
   async getAvailableProviderName(providerName?: string, sessionId?: string): Promise<string | null> {

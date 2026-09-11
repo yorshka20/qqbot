@@ -101,9 +101,12 @@ export class ProactiveReplyGenerationService {
     nativeFunctionCalling: boolean;
   }> {
     const sessionId = context.sessionId;
-    const effectiveProviderName = useVision
-      ? ((await this.visionService.getAvailableProviderName(providerName, sessionId)) ?? providerName)
-      : providerName;
+    let effectiveProviderName = providerName;
+    if (useVision) {
+      const answeringProvider = await this.llmService.getAvailableProvider(providerName, sessionId);
+      const routing = await this.visionService.routeImageTurn(answeringProvider, providerName, sessionId);
+      effectiveProviderName = routing.providerName;
+    }
     const canUseToolUse = useVision
       ? Boolean(effectiveProviderName && (await this.llmService.supportsToolUse(effectiveProviderName, sessionId)))
       : await this.llmService.supportsToolUse(effectiveProviderName, sessionId);

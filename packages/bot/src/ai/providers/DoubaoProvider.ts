@@ -17,6 +17,7 @@ import type {
   StreamingHandler,
   ToolDefinition,
 } from '../types';
+import { visionImageToDataUrl } from '../utils/imageUtils';
 import { clampMaxTokens } from './maxTokens';
 
 // ---------------------------------------------------------------------------
@@ -767,16 +768,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     const content: ArkInputContentPart[] = [{ type: 'input_text', text: prompt }];
 
     for (const image of images) {
-      let imageUrl: string;
-      if (image.base64) {
-        const mimeType = image.mimeType || 'image/jpeg';
-        imageUrl = `data:${mimeType};base64,${image.base64}`;
-      } else if (image.url) {
-        imageUrl = image.url;
-      } else {
-        throw new Error('Invalid image format. Images should be normalized by VisionService (url or base64 required).');
-      }
-      content.push({ type: 'input_image', image_url: imageUrl });
+      content.push({ type: 'input_image', image_url: visionImageToDataUrl(image) });
     }
     return content;
   }

@@ -27,6 +27,7 @@ import type {
   ToolDefinition,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
+import { visionImageToDataUrl } from '../utils/imageUtils';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
 import { clampMaxTokens } from './maxTokens';
 
@@ -457,17 +458,7 @@ export class OpenAIProvider
   ): ChatMessage[] {
     const content: ContentPart[] = [{ type: 'text', text: prompt }];
     for (const image of images) {
-      let imageUrl: string;
-      if (image.url) {
-        imageUrl = image.url;
-      } else if (image.base64) {
-        imageUrl = `data:${image.mimeType || 'image/jpeg'};base64,${image.base64}`;
-      } else if (image.file) {
-        throw new Error('File path images not directly supported. Please use URL or base64.');
-      } else {
-        throw new Error('Invalid image format. Must provide url, base64, or file.');
-      }
-      content.push({ type: 'image_url', image_url: { url: imageUrl } });
+      content.push({ type: 'image_url', image_url: { url: visionImageToDataUrl(image) } });
     }
 
     const messages: ChatMessage[] = [];

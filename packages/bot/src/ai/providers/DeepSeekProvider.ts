@@ -4,16 +4,18 @@ import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
-import type { CapabilityType } from '../capabilities/types';
+import type { CapabilityType, VisionImage } from '../capabilities/types';
+import type { VisionCapability } from '../capabilities/VisionCapability';
 import type {
   AIGenerateOptions,
   AIGenerateResponse,
   ChatMessage,
-  ChatMessageRole,
+  ContentPart,
   StreamingHandler,
   ToolDefinition,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
+import { visionImageToDataUrl } from '../utils/imageUtils';
 import { clampMaxTokens } from './maxTokens';
 
 /** DeepSeek API max_tokens valid range [1, 8192] */
@@ -39,9 +41,9 @@ export interface DeepSeekProviderConfig {
 
 /**
  * DeepSeek Provider implementation
- * Implements LLM capability for text generation
+ * Implements LLM and Vision capabilities
  */
-export class DeepSeekProvider extends AIProvider implements LLMCapability {
+export class DeepSeekProvider extends AIProvider implements LLMCapability, VisionCapability {
   readonly name = 'deepseek';
   override readonly supportsToolUse = true;
   private config: DeepSeekProviderConfig;
@@ -55,8 +57,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
     this.baseUrl = config.baseURL || 'https://api.deepseek.com';
 
     // Explicitly declare supported capabilities
-    // DeepSeek currently supports LLM text generation only
-    this._capabilities = ['llm', 'function_calling'];
+    this._capabilities = ['llm', 'function_calling', 'vision'];
 
     // Set context configuration
     this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
@@ -120,7 +121,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
 
   /**
    * Get capabilities supported by this provider
-   * DeepSeek supports LLM text generation
+   * DeepSeek supports LLM text generation and Vision (multimodal)
    */
   getCapabilities(): CapabilityType[] {
     return this._capabilities;
@@ -171,6 +172,11 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
           out.reasoning_content = m.reasoning_content;
         }
         return out;
+      }
+      // Image parts survive only on user turns: the API rejects an image in a system or
+      // assistant message with a 400 (https://api-docs.deepseek.com/guides/vision).
+      if (m.role === 'user' && Array.isArray(m.content)) {
+        return { role: 'user', content: m.content };
       }
       return {
         role: m.role,
@@ -395,12 +401,9 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
     try {
       logger.info(`[STATS] [DeepSeekProvider] Generating stream with model: ${model}`);
 
-      let messages: Array<{ role: ChatMessageRole; content: string }>;
+      let messages: Array<Record<string, unknown>>;
       if (options?.messages?.length) {
-        messages = DeepSeekProvider.withSystemPrompt(options.messages, options.systemPrompt).map((m) => ({
-          role: m.role,
-          content: contentToPlainString(m.content),
-        }));
+        messages = this.mapMessagesToApi(DeepSeekProvider.withSystemPrompt(options.messages, options.systemPrompt));
       } else {
         const history = await this.loadHistory(options);
         messages = [];
@@ -500,5 +503,58 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability {
       logger.error('[DeepSeekProvider] Stream generation failed:', err);
       throw err;
     }
+  }
+
+  /**
+   * Generate from full messages (history + current). Content can be string or ContentPart[].
+   */
+  async generateWithVisionMessages(messages: ChatMessage[], options?: AIGenerateOptions): Promise<AIGenerateResponse> {
+    return this.generate('', { ...options, messages });
+  }
+
+  /**
+   * Generate text with vision (multimodal input).
+   * Images ride on the user turn as OpenAI-style image_url parts.
+   */
+  async generateWithVision(
+    prompt: string,
+    images: VisionImage[],
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    return this.generate(prompt, {
+      ...options,
+      messages: [{ role: 'user', content: DeepSeekProvider.buildVisionContent(prompt, images) }],
+    });
+  }
+
+  /**
+   * Generate text with vision and streaming support.
+   */
+  async generateStreamWithVision(
+    prompt: string,
+    images: VisionImage[],
+    handler: StreamingHandler,
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    return this.generateStream(prompt, handler, {
+      ...options,
+      messages: [{ role: 'user', content: DeepSeekProvider.buildVisionContent(prompt, images) }],
+    });
+  }
+
+  /**
+   * Explain image(s): describe image content as text. Prompt is the full rendered text from the dedicated explain-image template.
+   */
+  async explainImages(images: VisionImage[], prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
+    return this.generateWithVision(prompt, images, options);
+  }
+
+  /** Build the user-turn content array for vision (text + image_url parts). */
+  private static buildVisionContent(prompt: string, images: VisionImage[]): ContentPart[] {
+    const content: ContentPart[] = [{ type: 'text', text: prompt }];
+    for (const image of images) {
+      content.push({ type: 'image_url', image_url: { url: visionImageToDataUrl(image) } });
+    }
+    return content;
   }
 }
