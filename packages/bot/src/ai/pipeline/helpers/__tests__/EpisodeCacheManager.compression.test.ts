@@ -210,7 +210,7 @@ describe('EpisodeCacheManager — background compression', () => {
 
   it('counts a bot entry reasoning toward the char budget', async () => {
     // Content alone is far under the char trigger; content + persisted reasoning is far
-    // over it. Reasoning is rendered into the prompt as a <thought> block, so a budget
+    // over it. Reasoning is replayed into the prompt as its own turn, so a budget
     // that ignored it would let the window blow the prompt size unfolded.
     const history = Array.from({ length: 40 }, (_, i) => ({
       ...makeEntry(i, 20),

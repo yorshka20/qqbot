@@ -8,7 +8,7 @@ import type { AIManager } from '../AIManager';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import { isLLMCapability } from '../capabilities/LLMCapability';
 import type { ProviderSelector } from '../ProviderSelector';
-import { splitEchoedThoughtBlock } from '../prompt/PromptMessageAssembler';
+import { foldReasoningIntoContent } from '../prompt/PromptMessageAssembler';
 import { TokenRateLimiter, type TokenRateLimiterConfig } from '../rateLimit';
 import { TOKEN_BUDGET } from '../tokenBudget';
 import type {
@@ -484,7 +484,7 @@ export class LLMService {
         async () => {
           const hardTimeoutMs = options?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
           return await withHardTimeout(
-            provider.generate(prompt, options),
+            provider.generate(prompt, this.optionsForProvider(provider, options)),
             hardTimeoutMs,
             `generateFixed:${providerName}`,
           );
@@ -538,7 +538,7 @@ export class LLMService {
         async () => {
           const hardTimeoutMs = effectiveOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
           return await withHardTimeout(
-            provider.generate(prompt, effectiveOptions),
+            provider.generate(prompt, this.optionsForProvider(provider, effectiveOptions)),
             hardTimeoutMs,
             `generate:${resolvedName}`,
           );
@@ -551,7 +551,6 @@ export class LLMService {
       if (result.usage) {
         this.rateLimiter.recordUsage(result.usage.totalTokens, resolvedName);
       }
-      this.recoverReplyFromReasoningChannel(result, resolvedName);
       this.logLLMUsage(resolvedName, prompt, effectiveOptions, result);
       this.emitTrace('generate', resolvedName, prompt, effectiveOptions, result, startedAt);
       // Mark provider as healthy on success
@@ -571,7 +570,11 @@ export class LLMService {
         sessionId,
         (p) => {
           const t = fallbackOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-          return withHardTimeout(p.generate(prompt, fallbackOptions), t, `generate-fallback`);
+          return withHardTimeout(
+            p.generate(prompt, this.optionsForProvider(p, fallbackOptions)),
+            t,
+            `generate-fallback`,
+          );
         },
         prompt,
       );
@@ -651,9 +654,9 @@ export class LLMService {
   ): Promise<AIGenerateResponse> {
     const cap = provider as { generateLite?: (p: string, o?: AIGenerateOptions) => Promise<AIGenerateResponse> };
     if (typeof cap.generateLite === 'function') {
-      return await cap.generateLite(prompt, options);
+      return await cap.generateLite(prompt, this.optionsForProvider(provider, options));
     }
-    return await provider.generate(prompt, options);
+    return await provider.generate(prompt, this.optionsForProvider(provider, options));
   }
 
   /**
@@ -697,7 +700,11 @@ export class LLMService {
 
     const startedAt = Date.now();
     try {
-      const result = await provider.generateStream(prompt, handler, effectiveOptions);
+      const result = await provider.generateStream(
+        prompt,
+        handler,
+        this.optionsForProvider(provider, effectiveOptions),
+      );
       // Mark provider as healthy on success
       this.healthCheckManager?.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
@@ -714,7 +721,7 @@ export class LLMService {
       return this.generateWithFallback(
         resolvedName,
         sessionId,
-        (p) => p.generateStream(prompt, handler, fallbackOptions),
+        (p) => p.generateStream(prompt, handler, this.optionsForProvider(p, fallbackOptions)),
         prompt,
       );
     }
@@ -1121,6 +1128,28 @@ export class LLMService {
   }
 
   /**
+   * Options adapted to what this provider does with an assistant turn's reasoning.
+   *
+   * Reasoning is carried on `reasoning_content` so it never appears in the text a model
+   * reads as its own output format. A provider that declares `echoesReasoningNatively`
+   * puts the field on its own API channel; for the rest the field would be dropped, so it
+   * is folded into the turn's text here.
+   *
+   * This has to be decided against the provider that will actually run, not the one the
+   * turn was assembled for — `generateWithFallback` hands the call to a different provider
+   * after a failure, and its options object is already built by then.
+   */
+  private optionsForProvider(provider: unknown, options?: AIGenerateOptions): AIGenerateOptions | undefined {
+    if (!options?.messages?.length) {
+      return options;
+    }
+    if ((provider as { echoesReasoningNatively?: boolean }).echoesReasoningNatively) {
+      return options;
+    }
+    return { ...options, messages: foldReasoningIntoContent(options.messages) };
+  }
+
+  /**
    * Check if a named provider supports tool use.
    * Queries the provider instance first (AIProvider.supportsToolUse property),
    * then falls back to the configured toolUseProviders list for backward compatibility.
@@ -1187,7 +1216,6 @@ export class LLMService {
         const result = await fn(altProvider, altName);
         result.resolvedProviderName = altName;
         this.stampResolvedModel(result, altProvider, undefined);
-        this.recoverReplyFromReasoningChannel(result, altName);
         return result;
       } catch (altErr) {
         logger.warn(`[LLMService] Fallback provider "${altName}" also failed:`, altErr);
@@ -1195,30 +1223,6 @@ export class LLMService {
     }
     logger.error('[LLMService] All providers failed, returning fallback response');
     return this.getFallbackResponse(prompt);
-  }
-
-  /**
-   * Restore the split a reasoning model failed to make. Assistant history demonstrates
-   * `<thought>…</thought>` followed by the delivered text as a single stream, so a model
-   * whose API carries reasoning on its own channel sometimes follows that shape instead of
-   * the channel: it writes the closing tag and the whole reply into the reasoning channel
-   * and never opens the content channel, leaving `text` empty with a normal stop reason.
-   * The reply is real output, so recover it here rather than letting an empty string
-   * travel on as if the model had nothing to say.
-   */
-  private recoverReplyFromReasoningChannel(result: AIGenerateResponse, providerName: string): void {
-    if (result.text?.trim() || result.functionCalls?.length || !result.reasoningContent) {
-      return;
-    }
-    const split = splitEchoedThoughtBlock(result.reasoningContent);
-    if (!split) {
-      return;
-    }
-    logger.warn(
-      `[LLMService] Provider "${providerName}" returned the reply inside its reasoning channel; recovered ${split.reply.length} chars from the <thought> block`,
-    );
-    result.text = split.reply;
-    result.reasoningContent = split.reasoning;
   }
 
   private providerSupportsNativeWebSearch(providerName: string): boolean {

@@ -45,7 +45,7 @@ export const EPISODE_WINDOW_COMPRESS_TARGET_ENTRIES = 96;
  *   best-effort, and one that cannot fit the prompt is allowed to fail rather than
  *   shrink the window for everyone.
  * Counted chars include each bot entry's persisted reasoning (`entry.reasoning`), which is
- * rendered into the prompt as a <thought> block and is often longer than the reply itself.
+ * replayed into the prompt on the turn's reasoning channel and is often longer than the reply itself.
  */
 export const EPISODE_WINDOW_COMPRESS_TRIGGER_CHARS = 96_000;
 export const EPISODE_WINDOW_COMPRESS_TARGET_CHARS = 48_000;

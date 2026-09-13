@@ -30,6 +30,17 @@ export abstract class AIProvider {
   readonly isRelay: boolean = false;
 
   /**
+   * Whether this provider replays a prior assistant turn's `reasoning_content` on its own
+   * API channel. Providers that do get the reasoning as a field and never see it in the
+   * text; for the rest LLMService folds it into the turn's text before the call, since a
+   * dropped field would lose the reasoning entirely.
+   *
+   * Only declare `true` once the wire format actually carries the field — declaring a
+   * capability the mapper does not implement silently discards the reasoning.
+   */
+  readonly echoesReasoningNatively: boolean = false;
+
+  /**
    * Returns the default model this provider is configured with, used for system
    * prompt self-identification. Reads the common `config.model` field that all
    * concrete providers store on `this.config` — relay providers may return

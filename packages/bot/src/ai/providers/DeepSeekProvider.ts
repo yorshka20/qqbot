@@ -46,6 +46,8 @@ export interface DeepSeekProviderConfig {
 export class DeepSeekProvider extends AIProvider implements LLMCapability, VisionCapability {
   readonly name = 'deepseek';
   override readonly supportsToolUse = true;
+  // mapMessagesToApi puts an assistant turn's reasoning_content on the wire field.
+  override readonly echoesReasoningNatively = true;
   private config: DeepSeekProviderConfig;
   private baseUrl: string;
   private _capabilities: CapabilityType[];

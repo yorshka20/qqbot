@@ -27,45 +27,42 @@ const THOUGHT_OPEN_TAG = '<thought>';
 const THOUGHT_CLOSE_TAG = '</thought>';
 
 /**
- * The <thought> block for a bot entry carrying its persisted reasoning, or '' when
- * there is none. One owner for the format — shared by {@link PromptMessageAssembler}'s
- * plain-text serializer and the vision branch that rebuilds entries as ContentPart[],
- * which previously would each carry a copy of this rule. Ends with a newline so the
- * delivered text follows on its own line. base.system.txt documents the block for
- * the model.
- */
-export function buildBotThoughtBlock(entry: Pick<ConversationMessageEntry, 'isBotReply' | 'reasoning'>): string {
-  if (!entry.isBotReply) {
-    return '';
-  }
-  const thought = normalizeBlockText(entry.reasoning ?? '');
-  return thought ? `${THOUGHT_OPEN_TAG}\n${thought}\n${THOUGHT_CLOSE_TAG}\n` : '';
-}
-
-/**
- * Read a {@link buildBotThoughtBlock} block back out of a model's reasoning channel,
- * returning null when it carries no closing tag or nothing follows it.
+ * Fold each history assistant turn's `reasoning_content` into its text, for providers with
+ * no native channel for it.
  *
- * Every assistant turn in the assembled history demonstrates `<thought>…</thought>` followed
- * by the delivered text as one stream, so a model whose API splits reasoning from content on
- * its own channel may follow the demonstrated shape instead: it writes the closing tag and
- * then the entire reply on the reasoning channel and never opens the content channel. The
- * reply is only recoverable by reading back the format this module writes, which is why the
- * inverse lives here rather than in any single provider.
+ * Reasoning rides on the `reasoning_content` field, which providers that replay it natively
+ * put on their own API channel. The rest would drop the field silently, so LLMService folds
+ * it in here instead — the reasoning is worth more to cross-turn continuity than the cost of
+ * it appearing in the text.
+ *
+ * That cost is real: whatever sits in an assistant message is read as a demonstration of
+ * output format, and a model whose API splits reasoning from content can follow the folded
+ * shape instead of the channel — writing the closing tag and then the whole reply into its
+ * reasoning channel, leaving content empty. Every provider known to split that way carries
+ * the field natively and so never sees this form; base.system.txt tells the rest that the
+ * block is injected context rather than a shape to reproduce.
+ *
+ * Tool-loop turns are left alone: their reasoning is replayed by each provider's own
+ * mechanism (Anthropic thinking blocks, Gemini thought signatures), and folding it into the
+ * text would duplicate it.
  */
-export function splitEchoedThoughtBlock(reasoning: string): { reasoning: string; reply: string } | null {
-  const closeAt = reasoning.lastIndexOf(THOUGHT_CLOSE_TAG);
-  if (closeAt < 0) {
-    return null;
-  }
-  const reply = normalizeBlockText(reasoning.slice(closeAt + THOUGHT_CLOSE_TAG.length));
-  if (!reply) {
-    return null;
-  }
-  const head = reasoning.slice(0, closeAt);
-  const openAt = head.lastIndexOf(THOUGHT_OPEN_TAG);
-  const thought = normalizeBlockText(openAt < 0 ? head : head.slice(openAt + THOUGHT_OPEN_TAG.length));
-  return { reasoning: thought, reply };
+export function foldReasoningIntoContent(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((msg) => {
+    if (msg.role !== 'assistant' || msg.tool_calls?.length) {
+      return msg;
+    }
+    const reasoning = normalizeBlockText(msg.reasoning_content ?? '');
+    if (!reasoning) {
+      return msg;
+    }
+    const block = `${THOUGHT_OPEN_TAG}\n${reasoning}\n${THOUGHT_CLOSE_TAG}\n`;
+    // A turn rebuilt for vision carries ContentPart[]; flattening it to prepend the block
+    // would drop its images, so the block goes in as its own leading text part.
+    const content = Array.isArray(msg.content)
+      ? [{ type: 'text' as const, text: block.trimEnd() }, ...msg.content]
+      : `${block}${contentToPlainString(msg.content ?? '')}`;
+    return { ...msg, content, reasoning_content: undefined };
+  });
 }
 
 function normalizeBlockText(value: string): string {
@@ -237,10 +234,15 @@ export class PromptMessageAssembler {
         continue;
       }
       historyMessageIndices.push(messages.length);
-      messages.push({
-        role: entry.isBotReply ? 'assistant' : 'user',
-        content,
-      });
+      if (entry.isBotReply) {
+        // The reasoning travels as a field, never in the text: an assistant message is read
+        // as a demonstration of output format. Providers without a native channel for it get
+        // it folded in by {@link foldReasoningIntoContent} at the provider boundary.
+        const reasoning = this.normalize(entry.reasoning ?? '');
+        messages.push({ role: 'assistant', content, ...(reasoning ? { reasoning_content: reasoning } : {}) });
+        continue;
+      }
+      messages.push({ role: 'user', content });
     }
 
     messages.push({
@@ -293,9 +295,7 @@ export class PromptMessageAssembler {
     const prefix = buildHistoryEntryPrefix(entry);
     const lead = prefix ? `${prefix} ` : '';
     const body = imageTags && text ? `${text}\n${imageTags}` : core;
-    // Bot turns carry the reasoning that produced them, ahead of the delivered text,
-    // so later turns read the stance directly instead of inferring it from the output.
-    return `${lead}${buildBotThoughtBlock(entry)}${body}`;
+    return `${lead}${body}`;
   }
 
   private extractText(segments?: MessageSegment[]): string {

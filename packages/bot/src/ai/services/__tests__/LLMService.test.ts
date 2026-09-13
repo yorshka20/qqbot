@@ -473,69 +473,58 @@ describe('LLMService resolvedModel stamping', () => {
 
       expect(res.reasoningContent).toBeUndefined();
     });
+  });
 
-    it('recovers a reply the model wrote into its reasoning channel behind the thought terminator', async () => {
-      const provider = {
-        name: 'mock',
-        getCapabilities: () => ['llm'],
-        isAvailable: () => true,
-        supportsToolUse: true,
-        generate: async (): Promise<AIGenerateResponse> => ({
-          text: '',
-          reasoningContent: '<thought>\n甲在问插件的事。\n</thought>\n没装，也没这种东西可装。',
-        }),
-      };
-      const service = createService(provider);
-      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
-        toolExecutor: async () => 'ok',
-      });
-
-      expect(res.text).toBe('没装，也没这种东西可装。');
-      expect(res.reasoningContent).toBe('甲在问插件的事。');
-    });
-
-    it('leaves an empty reply alone when the reasoning carries no thought terminator', async () => {
-      const provider = {
-        name: 'mock',
-        getCapabilities: () => ['llm'],
-        isAvailable: () => true,
-        supportsToolUse: true,
-        generate: async (): Promise<AIGenerateResponse> => ({ text: '', reasoningContent: '想了半天也没想好' }),
-      };
-      const service = createService(provider);
-      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
-        toolExecutor: async () => 'ok',
-      });
-
-      expect(res.text).toBe('');
-      expect(res.reasoningContent).toBe('想了半天也没想好');
-    });
-
-    it('keeps a tool-call round untouched even when its reasoning closes a thought block', async () => {
-      let round = 0;
-      const provider = {
-        name: 'mock',
-        getCapabilities: () => ['llm'],
-        isAvailable: () => true,
-        supportsToolUse: true,
-        generate: async (): Promise<AIGenerateResponse> => {
-          round++;
-          return round === 1
-            ? {
-                text: '',
-                reasoningContent: '<thought>\n先查一下。\n</thought>\n准备调用工具',
-                functionCalls: [{ name: 'noop', arguments: '{}', toolCallId: 'c1' }],
-              }
-            : { text: 'final answer' };
+  describe('reasoning echo at the provider boundary', () => {
+    function captureProvider(echoesReasoningNatively: boolean) {
+      const seen: AIGenerateOptions[] = [];
+      return {
+        seen,
+        provider: {
+          name: 'mock',
+          echoesReasoningNatively,
+          getCapabilities: () => ['llm'],
+          isAvailable: () => true,
+          supportsToolUse: false,
+          generate: async (_p: string, o?: AIGenerateOptions): Promise<AIGenerateResponse> => {
+            if (o) seen.push(o);
+            return { text: 'ok' };
+          },
         },
       };
-      const service = createService(provider);
-      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
-        toolExecutor: async () => 'ok',
-      });
+    }
 
-      expect(res.text).toBe('final answer');
-      expect(res.reasoningContent).toBe('<thought>\n先查一下。\n</thought>\n准备调用工具');
+    function serviceFor(provider: unknown) {
+      const aiManager = {
+        getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+        getProvidersForCapability: () => [],
+        getDefaultProvider: () => provider,
+      } as unknown as AIManager;
+      return new LLMService(aiManager, undefined, undefined, {
+        toolUseProviders: [],
+        fallback: { fallbackOrder: [] },
+      });
+    }
+
+    const history = [
+      { role: 'user' as const, content: '在吗' },
+      { role: 'assistant' as const, content: '在的', reasoning_content: '甲是在打招呼，轻松回应即可。' },
+    ];
+
+    it('leaves the field alone for a provider that replays it natively', async () => {
+      const { seen, provider } = captureProvider(true);
+      await serviceFor(provider).generate('hi', { messages: history });
+
+      expect(seen[0].messages?.[1].content).toBe('在的');
+      expect(seen[0].messages?.[1].reasoning_content).toBe('甲是在打招呼，轻松回应即可。');
+    });
+
+    it('folds the field into the text for a provider that would drop it', async () => {
+      const { seen, provider } = captureProvider(false);
+      await serviceFor(provider).generate('hi', { messages: history });
+
+      expect(seen[0].messages?.[1].content).toBe('<thought>\n甲是在打招呼，轻松回应即可。\n</thought>\n在的');
+      expect(seen[0].messages?.[1].reasoning_content).toBeUndefined();
     });
   });
 });

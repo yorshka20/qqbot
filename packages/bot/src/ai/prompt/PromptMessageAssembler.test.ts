@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { ConversationMessageEntry } from '@/conversation/history';
-import { buildBotThoughtBlock, PromptMessageAssembler, splitEchoedThoughtBlock } from './PromptMessageAssembler';
+import { foldReasoningIntoContent, PromptMessageAssembler } from './PromptMessageAssembler';
 
 
 describe('PromptMessageAssembler', () => {
@@ -153,7 +153,7 @@ describe('PromptMessageAssembler', () => {
     expect(summaryTurn?.role).toBe('user');
   });
 
-  it('renders a bot entry reasoning as a <thought> block ahead of the delivered text', () => {
+  it('carries a bot entry reasoning on the reasoning_content field, never in the text', () => {
     const assembler = new PromptMessageAssembler();
     const entries: ConversationMessageEntry[] = [
       {
@@ -181,10 +181,12 @@ describe('PromptMessageAssembler', () => {
     });
 
     const botTurn = messages.find((m) => m.role === 'assistant');
-    expect(botTurn?.content).toBe('[1/01 09:00] <thought>\n甲是在打招呼，轻松回应即可。\n</thought>\n在的');
-    // A user entry never renders a thought block, whatever its fields carry.
+    // The assistant turn's text demonstrates the output shape, so it holds the reply alone.
+    expect(botTurn?.content).toBe('[1/01 09:00] 在的');
+    expect(botTurn?.reasoning_content).toBe('甲是在打招呼，轻松回应即可。');
+    // A user entry never carries reasoning, whatever its fields hold.
     const userTurn = messages.find((m) => m.role === 'user' && String(m.content).includes('在吗'));
-    expect(String(userTurn?.content)).not.toContain('<thought>');
+    expect(userTurn?.reasoning_content).toBeUndefined();
   });
 
   it('timestamps every turn, but tags only the user turn with a speaker', () => {
@@ -224,30 +226,84 @@ describe('PromptMessageAssembler', () => {
     expect(botTurn?.content).toBe('[1/01 09:00] hi there');
     expect(String(botTurn?.content)).not.toContain('[speaker:');
   });
+
+  it('maps each history entry to its own message index', () => {
+    const assembler = new PromptMessageAssembler();
+    const entries: ConversationMessageEntry[] = [
+      {
+        messageId: '1',
+        userId: 1001,
+        nickname: '测试用户甲',
+        content: '在吗',
+        isBotReply: false,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      {
+        messageId: '2',
+        userId: 0,
+        content: '在的',
+        isBotReply: true,
+        reasoning: '甲是在打招呼，轻松回应即可。',
+        createdAt: new Date('2026-01-01T00:00:01.000Z'),
+      },
+    ];
+
+    const { messages, historyMessageIndices } = assembler.buildNormalMessagesWithIndex({
+      sceneSystem: 'scene',
+      historyEntries: entries,
+      finalUserBlocks: { currentQuery: 'q' },
+    });
+
+    expect(messages[historyMessageIndices[0]].content).toBe('[1/01 09:00] [speaker:测试用户甲:1001] 在吗');
+    expect(messages[historyMessageIndices[1]].content).toBe('[1/01 09:00] 在的');
+  });
 });
 
-describe('splitEchoedThoughtBlock', () => {
-  it('round-trips a block written by buildBotThoughtBlock', () => {
-    const block = buildBotThoughtBlock({ isBotReply: true, reasoning: '甲是在打招呼，轻松回应即可。' });
-    const split = splitEchoedThoughtBlock(`${block}在的`);
+describe('foldReasoningIntoContent', () => {
+  it('folds a history assistant turn reasoning ahead of its text and clears the field', () => {
+    const folded = foldReasoningIntoContent([
+      { role: 'user', content: '[1/01 09:00] [speaker:测试用户甲:1001] 在吗' },
+      { role: 'assistant', content: '[1/01 09:00] 在的', reasoning_content: '甲是在打招呼，轻松回应即可。' },
+    ]);
 
-    expect(split).toEqual({ reasoning: '甲是在打招呼，轻松回应即可。', reply: '在的' });
+    expect(folded[0]).toEqual({ role: 'user', content: '[1/01 09:00] [speaker:测试用户甲:1001] 在吗' });
+    expect(folded[1].content).toBe('<thought>\n甲是在打招呼，轻松回应即可。\n</thought>\n[1/01 09:00] 在的');
+    expect(folded[1].reasoning_content).toBeUndefined();
   });
 
-  it('splits on the terminator even when the opening tag was never emitted', () => {
-    const split = splitEchoedThoughtBlock('先想想该怎么答。\n</thought>\n没装。');
-
-    expect(split).toEqual({ reasoning: '先想想该怎么答。', reply: '没装。' });
+  it('leaves a turn without reasoning untouched', () => {
+    const msgs = [{ role: 'assistant' as const, content: '在的' }];
+    expect(foldReasoningIntoContent(msgs)[0]).toBe(msgs[0]);
   });
 
-  it('returns null when there is no terminator or nothing follows it', () => {
-    expect(splitEchoedThoughtBlock('想了半天也没想好')).toBeNull();
-    expect(splitEchoedThoughtBlock('<thought>\n想好了\n</thought>\n  \n')).toBeNull();
+  it('keeps a vision turn ContentPart[] intact, prepending the block as its own part', () => {
+    const folded = foldReasoningIntoContent([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: '[1/01 09:00] 看图说话' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,x' } },
+        ],
+        reasoning_content: '这张图是截图。',
+      },
+    ]);
+
+    expect(folded[0].content).toEqual([
+      { type: 'text', text: '<thought>\n这张图是截图。\n</thought>' },
+      { type: 'text', text: '[1/01 09:00] 看图说话' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,x' } },
+    ]);
   });
 
-  it('splits on the last terminator so an earlier quoted one does not win', () => {
-    const split = splitEchoedThoughtBlock('上一轮写了 </thought> 这个标签\n</thought>\n正文');
-
-    expect(split?.reply).toBe('正文');
+  it('leaves a tool-call turn alone — its reasoning is replayed by the provider itself', () => {
+    const msgs = [
+      {
+        role: 'assistant' as const,
+        content: '',
+        reasoning_content: '先查一下。',
+        tool_calls: [{ id: 'c1', name: 'noop', arguments: '{}' }],
+      },
+    ];
+    expect(foldReasoningIntoContent(msgs)[0]).toBe(msgs[0]);
   });
 });

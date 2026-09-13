@@ -218,8 +218,8 @@ export class GenerationStage implements ReplyStage {
     );
 
     // The turn's reasoning rides on metadata to DatabasePersistenceSystem, which
-    // persists it on the bot-reply row; the next turn's prompt renders it into the
-    // assistant history entry as a <thought> block.
+    // persists it on the bot-reply row; the next turn's prompt replays it on this
+    // turn's reasoning channel.
     if (r.reasoningContent) {
       context.metadata.set('replyReasoning', r.reasoningContent);
     }
