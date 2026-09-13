@@ -23,6 +23,9 @@ export function isAssembledEnvelope(msg: ChatMessage): boolean {
   return contentToPlainString(msg.content ?? '').includes(`<${CURRENT_QUERY_TAG}>`);
 }
 
+const THOUGHT_OPEN_TAG = '<thought>';
+const THOUGHT_CLOSE_TAG = '</thought>';
+
 /**
  * The <thought> block for a bot entry carrying its persisted reasoning, or '' when
  * there is none. One owner for the format — shared by {@link PromptMessageAssembler}'s
@@ -36,7 +39,33 @@ export function buildBotThoughtBlock(entry: Pick<ConversationMessageEntry, 'isBo
     return '';
   }
   const thought = normalizeBlockText(entry.reasoning ?? '');
-  return thought ? `<thought>\n${thought}\n</thought>\n` : '';
+  return thought ? `${THOUGHT_OPEN_TAG}\n${thought}\n${THOUGHT_CLOSE_TAG}\n` : '';
+}
+
+/**
+ * Read a {@link buildBotThoughtBlock} block back out of a model's reasoning channel,
+ * returning null when it carries no closing tag or nothing follows it.
+ *
+ * Every assistant turn in the assembled history demonstrates `<thought>…</thought>` followed
+ * by the delivered text as one stream, so a model whose API splits reasoning from content on
+ * its own channel may follow the demonstrated shape instead: it writes the closing tag and
+ * then the entire reply on the reasoning channel and never opens the content channel. The
+ * reply is only recoverable by reading back the format this module writes, which is why the
+ * inverse lives here rather than in any single provider.
+ */
+export function splitEchoedThoughtBlock(reasoning: string): { reasoning: string; reply: string } | null {
+  const closeAt = reasoning.lastIndexOf(THOUGHT_CLOSE_TAG);
+  if (closeAt < 0) {
+    return null;
+  }
+  const reply = normalizeBlockText(reasoning.slice(closeAt + THOUGHT_CLOSE_TAG.length));
+  if (!reply) {
+    return null;
+  }
+  const head = reasoning.slice(0, closeAt);
+  const openAt = head.lastIndexOf(THOUGHT_OPEN_TAG);
+  const thought = normalizeBlockText(openAt < 0 ? head : head.slice(openAt + THOUGHT_OPEN_TAG.length));
+  return { reasoning: thought, reply };
 }
 
 function normalizeBlockText(value: string): string {

@@ -10,6 +10,7 @@ import type { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookContext } from '@/hooks/types';
 import { getLanRelayRuntime } from '@/lan';
+import type { MessageSegment } from '@/message/types';
 import { getProtocolAdapter, isProtocolRegistered } from '@/protocol/ProtocolRegistry';
 import { logger } from '@/utils/logger';
 
@@ -37,6 +38,11 @@ export class SendSystem implements System {
     return true;
   }
 
+  /** True when at least one segment carries something a recipient can see or hear. */
+  private static hasDeliverableContent(segments: MessageSegment[]): boolean {
+    return segments.some((segment) => segment.type !== 'text' || String(segment.data.text ?? '').trim() !== '');
+  }
+
   initialize(_context: SystemContext): void {
     this.hookManager.addHandler('onError', this.handleError.bind(this), getHookPriority('onError', 'NORMAL'));
   }
@@ -44,8 +50,13 @@ export class SendSystem implements System {
   async execute(context: HookContext): Promise<boolean> {
     const replyContent = getReplyContent(context);
 
-    // Nothing to send
-    if (!replyContent?.segments || replyContent.segments.length === 0) {
+    // Nothing to send. A reply whose only segments are blank text carries nothing either:
+    // the direct send path drops it at the protocol, but a forward wraps it into a visible
+    // empty card, so emptiness has to be rejected here rather than left to the transport.
+    if (!replyContent?.segments || !SendSystem.hasDeliverableContent(replyContent.segments)) {
+      if (replyContent?.segments?.length) {
+        logger.warn(`[SendSystem] Reply from "${replyContent.source}" carries no content; nothing sent`);
+      }
       return true;
     }
 

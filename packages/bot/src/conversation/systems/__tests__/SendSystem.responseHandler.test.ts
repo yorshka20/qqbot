@@ -114,4 +114,22 @@ describe('SendSystem responseHandler dispatch', () => {
     expect(hookNames).toContain('onMessageBeforeSend');
     expect(hookNames).toContain('onMessageSent');
   });
+
+  it('drops a reply whose only segment is blank text instead of shipping an empty message', async () => {
+    const ctx = makeContext('qq-private', { source: 'ai', segments: [{ type: 'text', data: { text: '  \n' } }] });
+    await system.execute(ctx);
+
+    expect(sendFromContextMock).not.toHaveBeenCalled();
+    expect(hookExecuteMock).not.toHaveBeenCalled();
+  });
+
+  it('still sends a media-only reply, which carries no text by design', async () => {
+    const ctx = makeContext('qq-private', {
+      source: 'ai',
+      segments: [{ type: 'image', data: { uri: 'base64://x', sub_type: 'normal', summary: '' } }],
+    });
+    await system.execute(ctx);
+
+    expect(sendFromContextMock).toHaveBeenCalledTimes(1);
+  });
 });

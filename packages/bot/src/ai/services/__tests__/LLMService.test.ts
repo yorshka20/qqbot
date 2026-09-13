@@ -473,5 +473,69 @@ describe('LLMService resolvedModel stamping', () => {
 
       expect(res.reasoningContent).toBeUndefined();
     });
+
+    it('recovers a reply the model wrote into its reasoning channel behind the thought terminator', async () => {
+      const provider = {
+        name: 'mock',
+        getCapabilities: () => ['llm'],
+        isAvailable: () => true,
+        supportsToolUse: true,
+        generate: async (): Promise<AIGenerateResponse> => ({
+          text: '',
+          reasoningContent: '<thought>\n甲在问插件的事。\n</thought>\n没装，也没这种东西可装。',
+        }),
+      };
+      const service = createService(provider);
+      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        toolExecutor: async () => 'ok',
+      });
+
+      expect(res.text).toBe('没装，也没这种东西可装。');
+      expect(res.reasoningContent).toBe('甲在问插件的事。');
+    });
+
+    it('leaves an empty reply alone when the reasoning carries no thought terminator', async () => {
+      const provider = {
+        name: 'mock',
+        getCapabilities: () => ['llm'],
+        isAvailable: () => true,
+        supportsToolUse: true,
+        generate: async (): Promise<AIGenerateResponse> => ({ text: '', reasoningContent: '想了半天也没想好' }),
+      };
+      const service = createService(provider);
+      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        toolExecutor: async () => 'ok',
+      });
+
+      expect(res.text).toBe('');
+      expect(res.reasoningContent).toBe('想了半天也没想好');
+    });
+
+    it('keeps a tool-call round untouched even when its reasoning closes a thought block', async () => {
+      let round = 0;
+      const provider = {
+        name: 'mock',
+        getCapabilities: () => ['llm'],
+        isAvailable: () => true,
+        supportsToolUse: true,
+        generate: async (): Promise<AIGenerateResponse> => {
+          round++;
+          return round === 1
+            ? {
+                text: '',
+                reasoningContent: '<thought>\n先查一下。\n</thought>\n准备调用工具',
+                functionCalls: [{ name: 'noop', arguments: '{}', toolCallId: 'c1' }],
+              }
+            : { text: 'final answer' };
+        },
+      };
+      const service = createService(provider);
+      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        toolExecutor: async () => 'ok',
+      });
+
+      expect(res.text).toBe('final answer');
+      expect(res.reasoningContent).toBe('<thought>\n先查一下。\n</thought>\n准备调用工具');
+    });
   });
 });

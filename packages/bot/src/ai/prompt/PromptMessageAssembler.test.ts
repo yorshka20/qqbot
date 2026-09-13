@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { ConversationMessageEntry } from '@/conversation/history';
-import { PromptMessageAssembler } from './PromptMessageAssembler';
+import { buildBotThoughtBlock, PromptMessageAssembler, splitEchoedThoughtBlock } from './PromptMessageAssembler';
 
 
 describe('PromptMessageAssembler', () => {
@@ -223,5 +223,31 @@ describe('PromptMessageAssembler', () => {
     // messages are the same person.
     expect(botTurn?.content).toBe('[1/01 09:00] hi there');
     expect(String(botTurn?.content)).not.toContain('[speaker:');
+  });
+});
+
+describe('splitEchoedThoughtBlock', () => {
+  it('round-trips a block written by buildBotThoughtBlock', () => {
+    const block = buildBotThoughtBlock({ isBotReply: true, reasoning: '甲是在打招呼，轻松回应即可。' });
+    const split = splitEchoedThoughtBlock(`${block}在的`);
+
+    expect(split).toEqual({ reasoning: '甲是在打招呼，轻松回应即可。', reply: '在的' });
+  });
+
+  it('splits on the terminator even when the opening tag was never emitted', () => {
+    const split = splitEchoedThoughtBlock('先想想该怎么答。\n</thought>\n没装。');
+
+    expect(split).toEqual({ reasoning: '先想想该怎么答。', reply: '没装。' });
+  });
+
+  it('returns null when there is no terminator or nothing follows it', () => {
+    expect(splitEchoedThoughtBlock('想了半天也没想好')).toBeNull();
+    expect(splitEchoedThoughtBlock('<thought>\n想好了\n</thought>\n  \n')).toBeNull();
+  });
+
+  it('splits on the last terminator so an earlier quoted one does not win', () => {
+    const split = splitEchoedThoughtBlock('上一轮写了 </thought> 这个标签\n</thought>\n正文');
+
+    expect(split?.reply).toBe('正文');
   });
 });
