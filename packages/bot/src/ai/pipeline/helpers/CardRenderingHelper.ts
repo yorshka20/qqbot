@@ -6,7 +6,7 @@ import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
 import { CardRenderingService } from '@/services/card';
-import { cardDeckToHistoryText, cardDeckToText } from '@/services/card/cardText';
+import { cardDeckToText } from '@/services/card/cardText';
 import { type CardData, parseCardDeck } from '@/services/card/cardTypes';
 import { hasSkipCardMarker } from '@/utils/contentMarkers';
 import { logger } from '@/utils/logger';
@@ -46,7 +46,8 @@ export class CardRenderingHelper {
    * Render pre-parsed CardData[] → image segments. Skips JSON extraction entirely.
    * `textForHistory` is the deck rendered as readable text (not JSON): it becomes
    * the persisted "what the bot said" for this turn, which the next turn's LLM
-   * reads back as its own words.
+   * reads back as its own words — so it carries the card's prose and nothing that
+   * would read as output syntax (see cardText.ts).
    */
   async renderParsedCards(
     cards: CardData[],
@@ -57,7 +58,7 @@ export class CardRenderingHelper {
     const base64Image = await this.cardRenderingService.renderCardData(cards, provider, model);
     const messageBuilder = new MessageBuilder();
     messageBuilder.image({ data: base64Image });
-    return { segments: messageBuilder.build(), textForHistory: cardDeckToHistoryText(cards) };
+    return { segments: messageBuilder.build(), textForHistory: cardDeckToText(cards) };
   }
 
   /**

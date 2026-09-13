@@ -4,16 +4,16 @@
 // text is what the next turn's LLM reads as "what I said" — raw JSON there
 // forces the model to re-parse its own past output and reads as garbage in any
 // history-derived context (RAG, summaries). This renders the deck as the plain
-// text a reader of the card would see, prefixed with a [卡片] marker so the
-// model knows the content went out as a card image.
+// text a reader of the card would see.
+//
+// It carries no "this was a card" marker: an assistant turn is read as a
+// demonstration of output format, so a marker there teaches the model to type it
+// instead of calling send_card. The delivery channel is recorded on the user side
+// by the audit ledger (`<recent_actions>` → 调用了 send_card).
 
 import type { CardData } from './cardTypes';
 
-export function cardDeckToHistoryText(cards: CardData[]): string {
-  return `[卡片]\n${cardDeckToText(cards)}`;
-}
-
-/** Deck → plain readable text, no marker. Also used to degrade card JSON that leaked into prose. */
+/** Deck → plain readable text. Also used to degrade card JSON that leaked into prose. */
 export function cardDeckToText(cards: CardData[]): string {
   return cards
     .map((card) => cardToText(card))
