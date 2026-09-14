@@ -116,11 +116,11 @@ export interface NovelAIProviderConfig {
   type: 'novelai';
   accessToken: string; // NovelAI access token
   baseURL?: string; // Default: "https://image.novelai.net" (api.novelai.net was deprecated on 2024-04-05)
-  model?: string; // Model name: 'nai-diffusion-4-5-curated', 'nai-diffusion-4-5-full', 'nai-diffusion-3' (default: 'nai-diffusion-4-5-curated')
-  defaultSteps?: number; // Default inference steps
-  defaultWidth?: number; // Default image width
-  defaultHeight?: number; // Default image height
-  defaultGuidanceScale?: number; // Default guidance scale
+  model?: string; // Model name: 'nai-diffusion-5-full', 'nai-diffusion-5-curated', 'nai-diffusion-4-5-full', 'nai-diffusion-4-5-curated', 'nai-diffusion-4-full', 'nai-diffusion-4-curated-preview' (default: 'nai-diffusion-5-full')
+  defaultSteps?: number; // Default inference steps (default: 23)
+  defaultWidth?: number; // Default image width (multiple of 64)
+  defaultHeight?: number; // Default image height (multiple of 64)
+  defaultGuidanceScale?: number; // Default guidance scale; falls back to the model's own default (V5: 7, V4.5: 5)
   defaultStrength?: number; // Default strength for img2img (0-1)
   defaultNoise?: number; // Default noise for img2img
   resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/novelai')

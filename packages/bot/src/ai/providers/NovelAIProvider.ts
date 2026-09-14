@@ -19,6 +19,20 @@ import { resizeImageToBase64WithMaxSide } from '../utils/imageResize';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
 
 /**
+ * Guidance scale the NovelAI web client defaults to, per model. Doubles as the set of
+ * accepted models: the inpainting checkpoints are left out because this provider has no
+ * mask input, so the `infill` action is unreachable.
+ */
+const MODEL_DEFAULT_SCALE: Record<string, number> = {
+  'nai-diffusion-4-5-curated': 5,
+  'nai-diffusion-4-5-full': 5,
+  'nai-diffusion-4-curated-preview': 5.5,
+  'nai-diffusion-4-full': 5.5,
+  'nai-diffusion-5-curated': 7,
+  'nai-diffusion-5-full': 7,
+};
+
+/**
  * NovelAI Provider implementation
  * Text-to-image and image-to-image generation using NovelAI API (V4+ only)
  */
@@ -32,22 +46,33 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
   /** Serialize API requests: NovelAI allows only one concurrent request. */
   private requestQueue: Promise<void> = Promise.resolve();
 
-  // Basic defaults for V4.5
-  private static readonly DEFAULT_STEPS = 28;
+  private static readonly DEFAULT_BASE_URL = 'https://image.novelai.net';
+  private static readonly DEFAULT_MODEL = 'nai-diffusion-5-full';
+  private static readonly DEFAULT_STEPS = 23;
   private static readonly DEFAULT_WIDTH = 832;
   private static readonly DEFAULT_HEIGHT = 1216;
-  private static readonly DEFAULT_GUIDANCE_SCALE = 5.0;
+
+  /** The only sampler this provider emits; every other wire default below is derived from it. */
+  private static readonly SAMPLER = 'k_euler_ancestral';
+
+  /** Dimensions must be multiples of 64. */
+  private static readonly SIZE_ALIGN = 64;
+
+  /**
+   * Bounds of the Opus image allowance. A generation is covered by it only while it stays at
+   * a single sample within `width * height <= 1048576` and `steps <= 28`; crossing either
+   * bound silently bills the request in Anlas instead. Callers reach this provider through
+   * shared, cross-provider option plumbing that knows nothing about NovelAI's pricing, so the
+   * request is clamped here rather than trusted.
+   */
+  private static readonly FREE_MAX_PIXELS = 1048576;
+  private static readonly FREE_MAX_STEPS = 28;
+
+  private static readonly DEFAULT_NEGATIVE_PROMPT = 'low quality, bad anatomy, text, blurry, worst quality';
 
   constructor(config: NovelAIProviderConfig) {
     super();
-    this.config = {
-      baseURL: 'https://image.novelai.net',
-      defaultSteps: NovelAIProvider.DEFAULT_STEPS,
-      defaultWidth: NovelAIProvider.DEFAULT_WIDTH,
-      defaultHeight: NovelAIProvider.DEFAULT_HEIGHT,
-      defaultGuidanceScale: NovelAIProvider.DEFAULT_GUIDANCE_SCALE,
-      ...config,
-    };
+    this.config = config;
 
     this._capabilities = ['text2img', 'img2img'];
 
@@ -372,6 +397,183 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
     });
   }
 
+  /** NovelAI rejects dimensions that are not multiples of 64. */
+  private static alignSize(value: number): number {
+    const aligned = Math.round(value / NovelAIProvider.SIZE_ALIGN) * NovelAIProvider.SIZE_ALIGN;
+    return Math.max(NovelAIProvider.SIZE_ALIGN, aligned);
+  }
+
+  /** Align downwards, so the result can only ever shrink the area it is applied to. */
+  private static floorSize(value: number): number {
+    const aligned = Math.floor(value / NovelAIProvider.SIZE_ALIGN) * NovelAIProvider.SIZE_ALIGN;
+    return Math.max(NovelAIProvider.SIZE_ALIGN, aligned);
+  }
+
+  /**
+   * Shrink a request until it fits the Opus allowance. Both sides scale by the same factor so
+   * the aspect ratio survives, and each floors to a multiple of 64 — flooring only ever loses
+   * area, so the result cannot land back above the pixel bound.
+   */
+  private static clampToFreeAllowance(
+    width: number,
+    height: number,
+    steps: number,
+  ): { width: number; height: number; steps: number } {
+    const clampedSteps = Math.min(steps, NovelAIProvider.FREE_MAX_STEPS);
+    if (width * height <= NovelAIProvider.FREE_MAX_PIXELS) {
+      return { width, height, steps: clampedSteps };
+    }
+    const ratio = Math.sqrt(NovelAIProvider.FREE_MAX_PIXELS / (width * height));
+    return {
+      width: NovelAIProvider.floorSize(width * ratio),
+      height: NovelAIProvider.floorSize(height * ratio),
+      steps: clampedSteps,
+    };
+  }
+
+  private static randomSeed(): number {
+    return Math.floor(Math.random() * 4294967295);
+  }
+
+  /**
+   * Resolve the model to send and the guidance scale it is tuned for. The scale travels with
+   * the model because each generation defaults to a different one (V5 is 7, V4.5 is 5).
+   */
+  private resolveModel(requested?: string): { model: string; defaultScale: number } {
+    const model = requested || this.config.model || NovelAIProvider.DEFAULT_MODEL;
+    const defaultScale = MODEL_DEFAULT_SCALE[model];
+    if (defaultScale === undefined) {
+      throw new Error(
+        `Unsupported model: ${model}. NovelAIProvider supports ${Object.keys(MODEL_DEFAULT_SCALE).join(', ')}`,
+      );
+    }
+    return { model, defaultScale };
+  }
+
+  /**
+   * Build `parameters` in the shape the NovelAI web client sends (params_version 4).
+   *
+   * `noise_schedule` is karras because V5 overrides the field to karras whatever the sampler,
+   * and karras is also what k_euler_ancestral falls back to on V4; the two ancestral-noise
+   * switches ride along with that sampler on any non-native schedule. SMEA (`sm`, `sm_dyn`,
+   * `autoSmea`) has no field here because no V4-or-later model supports it — the web client
+   * drops those keys, and pins `dynamic_thresholding` to false, for the same reason.
+   */
+  private buildParameters(args: {
+    width: number;
+    height: number;
+    steps: number;
+    scale: number;
+    seed: number;
+    prompt: string;
+    negativePrompt: string;
+    image?: { base64: string; strength: number; noise: number };
+  }): Record<string, unknown> {
+    const parameters: Record<string, unknown> = {
+      params_version: 4,
+      width: args.width,
+      height: args.height,
+      scale: args.scale,
+      sampler: NovelAIProvider.SAMPLER,
+      steps: args.steps,
+      seed: args.seed,
+      n_samples: 1,
+      noise_schedule: 'karras',
+      deliberate_euler_ancestral_bug: false,
+      prefer_brownian: true,
+      // 'none': NovelAI's undesired-content and quality presets are text the web client
+      // prepends locally, so honouring them here would layer tags on top of the caller's
+      // prompt instead of leaving it authoritative.
+      ucPresetId: 'none',
+      qualityPresetId: 'none',
+      dynamic_thresholding: false,
+      controlnet_strength: 1,
+      legacy: false,
+      legacy_v3_extend: false,
+      legacy_uc: false,
+      add_original_image: true,
+      cfg_rescale: 0,
+      use_coords: false,
+      normalize_reference_strength_multiple: true,
+      inpaintImg2ImgStrength: 1,
+      v4_prompt: {
+        caption: { base_caption: args.prompt, char_captions: [] },
+        use_coords: false,
+        use_order: true,
+      },
+      v4_negative_prompt: {
+        caption: { base_caption: args.negativePrompt, char_captions: [] },
+        legacy_uc: false,
+      },
+    };
+
+    if (args.image) {
+      // strength and noise are only accepted alongside an input image.
+      parameters.image = args.image.base64;
+      parameters.strength = args.image.strength;
+      parameters.noise = args.image.noise;
+    }
+
+    return parameters;
+  }
+
+  /**
+   * Single exit to the NovelAI API for both actions: POST the request, then unwrap the ZIP
+   * archive it answers with.
+   */
+  private async requestImage(args: {
+    action: 'generate' | 'img2img';
+    model: string;
+    prompt: string;
+    parameters: Record<string, unknown>;
+    metadata: Record<string, unknown>;
+  }): Promise<ProviderImageGenerationResponse> {
+    const { action, model, prompt, parameters, metadata } = args;
+
+    const baseURL = this.config.baseURL ?? NovelAIProvider.DEFAULT_BASE_URL;
+    const fullUrl = baseURL.endsWith('/') ? `${baseURL}ai/generate-image` : `${baseURL}/ai/generate-image`;
+
+    const response = await fetch(fullUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.config.accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/zip',
+      },
+      body: JSON.stringify({ action, model, input: prompt, parameters }),
+      signal: AbortSignal.timeout(300000),
+    });
+
+    const httpError = await this.handleHttpError(response, prompt);
+    if (httpError) {
+      return httpError;
+    }
+
+    // The archive must be read to completion before extraction: NovelAI streams it with a
+    // data descriptor, so a partial read is indistinguishable from a corrupt ZIP.
+    logger.info(`[NovelAIProvider] Downloading complete ZIP file...`);
+    const buffer = await this.downloadComplete(response);
+    logger.info(`[NovelAIProvider] ZIP file download complete (${buffer.length} bytes)`);
+
+    try {
+      const { relativePath, base64: base64Image } = await this.extractImageFromZip(buffer);
+      if (!relativePath && !base64Image) {
+        return this.handleNoImageData(prompt);
+      }
+
+      const imageData: { relativePath?: string; base64?: string } = {};
+      if (relativePath) {
+        imageData.relativePath = relativePath;
+      } else if (base64Image) {
+        imageData.base64 = base64Image;
+      }
+
+      return { images: [imageData], metadata };
+    } catch (extractError) {
+      return this.handleExtractionError(extractError, prompt);
+    }
+  }
+
   /**
    * Generate image from text prompt
    */
@@ -384,134 +586,44 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
       try {
         logger.info(`[NovelAIProvider] Starting image generation for prompt: ${prompt}`);
 
-        const width = options?.width || this.config.defaultWidth;
-        const height = options?.height || this.config.defaultHeight;
-        const guidanceScale = options?.guidance_scale || this.config.defaultGuidanceScale;
-        const seed =
-          options?.seed !== undefined && options.seed >= 0 ? options.seed : Math.floor(Math.random() * 4294967295);
-        // V4+ models only
-        const model = this.config.model || 'nai-diffusion-4-5-full';
+        const { model, defaultScale } = this.resolveModel(options?.model);
+        const requestedWidth = NovelAIProvider.alignSize(
+          options?.width ?? this.config.defaultWidth ?? NovelAIProvider.DEFAULT_WIDTH,
+        );
+        const requestedHeight = NovelAIProvider.alignSize(
+          options?.height ?? this.config.defaultHeight ?? NovelAIProvider.DEFAULT_HEIGHT,
+        );
+        const requestedSteps = options?.steps ?? this.config.defaultSteps ?? NovelAIProvider.DEFAULT_STEPS;
+        const scale = options?.guidance_scale ?? this.config.defaultGuidanceScale ?? defaultScale;
+        const seed = options?.seed !== undefined && options.seed >= 0 ? options.seed : NovelAIProvider.randomSeed();
 
-        // Validate model is V4+
-        if (!model.startsWith('nai-diffusion-4')) {
-          throw new Error(
-            `Unsupported model: ${model}. NovelAIProvider only supports V4+ models (e.g., nai-diffusion-4-5-full)`,
+        const clamped = NovelAIProvider.clampToFreeAllowance(requestedWidth, requestedHeight, requestedSteps);
+        const { width, height, steps } = clamped;
+        if (width !== requestedWidth || height !== requestedHeight || steps !== requestedSteps) {
+          logger.warn(
+            `[NovelAIProvider] Clamped to the Opus allowance: ${requestedWidth}x${requestedHeight}@${requestedSteps} steps -> ${width}x${height}@${steps} steps`,
           );
         }
 
         logger.info(
-          `[NovelAIProvider] Parameters: model=${model}, size=${width}x${height}, steps=28, scale=${guidanceScale}, seed=${seed}`,
+          `[NovelAIProvider] Parameters: model=${model}, size=${width}x${height}, steps=${steps}, scale=${scale}, seed=${seed}`,
         );
 
-        // Parameters according to latest NovelAI API documentation
-        // According to swagger: v4_prompt and v4_negative_prompt are used instead of prompt/negative_prompt
-        const parameters: Record<string, unknown> = {
-          params_version: 3,
-          width: 832,
-          height: 1216,
-          scale: 5,
-          sampler: 'k_euler_ancestral',
-          steps: 28,
-          seed,
-          n_samples: 1,
-          strength: 0.7,
-          noise: 0,
-          ucPreset: 1,
-          qualityToggle: true,
-          autoSmea: false,
-          sm: false,
-          sm_dyn: false,
-          dynamic_thresholding: false,
-          controlnet_strength: 1,
-          legacy: false,
-          add_original_image: true,
-          cfg_rescale: 0,
-          noise_schedule: 'karras',
-          legacy_v3_extend: false,
-          skip_cfg_above_sigma: null,
-          use_coords: false,
-          legacy_uc: false,
-          normalize_reference_strength_multiple: true,
-          inpaintImg2ImgStrength: 1,
-          // V4.5 specific prompt structure (replaces "prompt" field)
-          v4_prompt: {
-            caption: {
-              base_caption: prompt,
-              char_captions: [],
-            },
-            use_coords: false,
-            use_order: true,
-          },
-          // V4.5 specific negative prompt structure (replaces "negative_prompt" field)
-          v4_negative_prompt: {
-            caption: {
-              base_caption: options?.negative_prompt || 'low quality, bad anatomy, text, blurry, worst quality',
-              char_captions: [],
-            },
-            use_coords: false,
-            use_order: true,
-          },
-        };
-
-        const requestBody: Record<string, unknown> = {
+        return await this.requestImage({
           action: 'generate',
           model,
-          input: prompt, // Required input field for the API
-          parameters,
-        };
-
-        const baseURL = this.config.baseURL || 'https://image.novelai.net';
-        // Use /ai/generate-image endpoint as per swagger spec (returns ZIP file)
-        const fullUrl = baseURL.endsWith('/') ? `${baseURL}ai/generate-image` : `${baseURL}/ai/generate-image`;
-
-        const response = await fetch(fullUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.config.accessToken}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/zip', // NovelAI returns ZIP file
-          },
-          body: JSON.stringify(requestBody),
-          signal: AbortSignal.timeout(300000),
+          prompt,
+          parameters: this.buildParameters({
+            width,
+            height,
+            steps,
+            scale,
+            seed,
+            prompt,
+            negativePrompt: options?.negative_prompt || NovelAIProvider.DEFAULT_NEGATIVE_PROMPT,
+          }),
+          metadata: { prompt, model, numImages: 1, width, height, steps, guidanceScale: scale, seed },
         });
-
-        // Handle HTTP errors
-        const httpError = await this.handleHttpError(response, prompt);
-        if (httpError) {
-          return httpError;
-        }
-
-        // CRITICAL: Must completely download the ZIP stream before attempting to extract
-        // This ensures all chunks are received and prevents corruption
-        logger.info(`[NovelAIProvider] Downloading complete ZIP file...`);
-        const buffer = await this.downloadComplete(response);
-        logger.info(`[NovelAIProvider] ZIP file download complete (${buffer.length} bytes)`);
-
-        // Extract image from ZIP and save to local file
-        // extractImageFromZip will handle the complete ZIP buffer and save the first image
-        try {
-          const { relativePath, base64: base64Image } = await this.extractImageFromZip(buffer);
-
-          // Prefer relative path over base64 for better performance
-          if (!relativePath && !base64Image) {
-            // This should not happen, but handle it gracefully
-            return this.handleNoImageData(prompt);
-          }
-
-          const imageData: { relativePath?: string; base64?: string } = {};
-          if (relativePath) {
-            imageData.relativePath = relativePath;
-          } else if (base64Image) {
-            imageData.base64 = base64Image;
-          }
-
-          return {
-            images: [imageData],
-            metadata: { prompt, numImages: 1, width, height, steps: 28, guidanceScale },
-          };
-        } catch (extractError) {
-          return this.handleExtractionError(extractError, prompt);
-        }
       } catch (error) {
         return this.handleGeneralError(error, prompt);
       }
@@ -542,126 +654,43 @@ export class NovelAIProvider extends AIProvider implements Text2ImageCapability,
       try {
         logger.info(`[NovelAIProvider] Starting img2img for prompt: ${prompt}`);
 
+        const { model, defaultScale } = this.resolveModel(options?.model);
+        // Steps, scale and size follow the configured defaults and ignore per-call overrides.
+        // No img2img is covered by the Opus allowance, so this one always spends Anlas; the
+        // price scales with all three, which keeps the amount an operator decision and caps
+        // steps at the same ceiling a free generation would get.
+        const steps = Math.min(
+          this.config.defaultSteps ?? NovelAIProvider.DEFAULT_STEPS,
+          NovelAIProvider.FREE_MAX_STEPS,
+        );
+        const scale = defaultScale;
         const seed =
-          typeof options?.seed === 'number' && options.seed >= 0
-            ? options.seed
-            : Math.floor(Math.random() * 4294967295);
-        const model = this.config.model || 'nai-diffusion-4-5-full';
-
-        if (!model.startsWith('nai-diffusion-4')) {
-          throw new Error(
-            `Unsupported model: ${model}. NovelAIProvider only supports V4+ models (e.g., nai-diffusion-4-5-full)`,
-          );
-        }
-
-        // Do not change steps/scale/size from fixed values to avoid extra Anlas cost (Opus free tier: 28 steps, no img2img; img2img always uses Anlas).
+          typeof options?.seed === 'number' && options.seed >= 0 ? options.seed : NovelAIProvider.randomSeed();
         const strength = options?.strength ?? this.config.defaultStrength ?? 0.5;
         const noise = options?.noise ?? this.config.defaultNoise ?? 0;
 
-        const {
-          base64: imageBase64,
-          width: imgWidth,
-          height: imgHeight,
-        } = await this.loadAndResizeImageForImg2Img(image);
+        const { base64: imageBase64, width, height } = await this.loadAndResizeImageForImg2Img(image);
 
         logger.info(
-          `[NovelAIProvider] img2img params: model=${model}, size=${imgWidth}x${imgHeight} (maxSide=832), strength=${strength}, noise=${noise}, seed=${seed}`,
+          `[NovelAIProvider] img2img params: model=${model}, size=${width}x${height} (maxSide=${NovelAIProvider.IMG2IMG_MAX_SIDE}), steps=${steps}, scale=${scale}, strength=${strength}, noise=${noise}, seed=${seed}`,
         );
 
-        const parameters: Record<string, unknown> = {
-          params_version: 3,
-          width: imgWidth,
-          height: imgHeight,
-          scale: 5,
-          sampler: 'k_euler_ancestral',
-          steps: 28,
-          seed,
-          n_samples: 1,
-          ucPreset: 1,
-          qualityToggle: true,
-          autoSmea: false,
-          sm: false,
-          sm_dyn: false,
-          dynamic_thresholding: false,
-          controlnet_strength: 1,
-          legacy: false,
-          add_original_image: true,
-          cfg_rescale: 0,
-          noise_schedule: 'karras',
-          legacy_v3_extend: false,
-          skip_cfg_above_sigma: null,
-          use_coords: false,
-          legacy_uc: false,
-          normalize_reference_strength_multiple: true,
-          inpaintImg2ImgStrength: 1,
-          image: imageBase64,
-          strength,
-          noise,
-          v4_prompt: {
-            caption: { base_caption: prompt, char_captions: [] },
-            use_coords: false,
-            use_order: true,
-          },
-          v4_negative_prompt: {
-            caption: {
-              base_caption:
-                (options?.negative_prompt as string | undefined) ||
-                'low quality, bad anatomy, text, blurry, worst quality',
-              char_captions: [],
-            },
-            use_coords: false,
-            use_order: true,
-          },
-        };
-
-        const requestBody: Record<string, unknown> = {
+        return await this.requestImage({
           action: 'img2img',
           model,
-          input: prompt,
-          parameters,
-        };
-
-        const baseURL = this.config.baseURL || 'https://image.novelai.net';
-        const fullUrl = baseURL.endsWith('/') ? `${baseURL}ai/generate-image` : `${baseURL}/ai/generate-image`;
-
-        const response = await fetch(fullUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.config.accessToken}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/zip',
-          },
-          body: JSON.stringify(requestBody),
-          signal: AbortSignal.timeout(300000),
+          prompt,
+          parameters: this.buildParameters({
+            width,
+            height,
+            steps,
+            scale,
+            seed,
+            prompt,
+            negativePrompt: (options?.negative_prompt as string | undefined) || NovelAIProvider.DEFAULT_NEGATIVE_PROMPT,
+            image: { base64: imageBase64, strength, noise },
+          }),
+          metadata: { prompt, model, numImages: 1, width, height, steps, strength, noise, seed },
         });
-
-        const httpError = await this.handleHttpError(response, prompt);
-        if (httpError) {
-          return httpError;
-        }
-
-        logger.info(`[NovelAIProvider] Downloading complete ZIP file...`);
-        const buffer = await this.downloadComplete(response);
-        logger.info(`[NovelAIProvider] ZIP file download complete (${buffer.length} bytes)`);
-
-        try {
-          const { relativePath, base64: base64Image } = await this.extractImageFromZip(buffer);
-          if (!relativePath && !base64Image) {
-            return this.handleNoImageData(prompt);
-          }
-          const imageData: { relativePath?: string; base64?: string } = {};
-          if (relativePath) {
-            imageData.relativePath = relativePath;
-          } else if (base64Image) {
-            imageData.base64 = base64Image;
-          }
-          return {
-            images: [imageData],
-            metadata: { prompt, numImages: 1, width: imgWidth, height: imgHeight, steps: 28, strength, noise },
-          };
-        } catch (extractError) {
-          return this.handleExtractionError(extractError, prompt);
-        }
       } catch (error) {
         return this.handleGeneralError(error, prompt);
       }

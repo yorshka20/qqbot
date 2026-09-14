@@ -776,11 +776,16 @@
         "type": "novelai",
         "accessToken": "your_novelai_access_token_here",
         "baseURL": "https://image.novelai.net",
-        "model": "nai-diffusion-4-5-full", // Options: "nai-diffusion-4-5-curated", "nai-diffusion-4-5-full", "nai-diffusion-3"
-        "defaultSteps": 45,
+        // Options: "nai-diffusion-5-full", "nai-diffusion-5-curated", "nai-diffusion-4-5-full",
+        // "nai-diffusion-4-5-curated", "nai-diffusion-4-full", "nai-diffusion-4-curated-preview"
+        "model": "nai-diffusion-5-full",
+        // The Opus allowance covers a generation at <= 1048576 px and <= 28 steps; past
+        // either threshold it spends Anlas instead.
+        "defaultSteps": 23,
         "defaultWidth": 832,
         "defaultHeight": 1216,
-        "defaultGuidanceScale": 5.0
+        // Omit to use the model's own default guidance scale (V5: 7, V4.5: 5)
+        "defaultGuidanceScale": 7.0
       }
       // Gemini provider (LLM, vision, text2img, img2img). Config by capability, same pattern as laozhang.
       // "gemini": {
