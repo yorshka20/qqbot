@@ -223,14 +223,17 @@ export class ImagePromptService {
       throw new Error('options.prompt must be provided by caller');
     }
 
-    // Apply limits to steps and guidance_scale after merge
+    // steps and guidance_scale stay unset unless the caller asked for a value: every provider
+    // carries its own configured default, and filling one in here makes that config
+    // unreachable — which also hides per-provider cost limits behind a cross-provider number.
     return {
       ...mergedOptions,
-      steps: Math.min(mergedOptions.steps || ImagePromptService.DEFAULT_STEPS, ImagePromptService.MAX_STEPS),
-      guidance_scale: Math.min(
-        mergedOptions.guidance_scale || ImagePromptService.DEFAULT_GUIDANCE_SCALE,
-        ImagePromptService.MAX_GUIDANCE_SCALE,
-      ),
+      ...(mergedOptions.steps === undefined
+        ? {}
+        : { steps: Math.min(mergedOptions.steps, ImagePromptService.MAX_STEPS) }),
+      ...(mergedOptions.guidance_scale === undefined
+        ? {}
+        : { guidance_scale: Math.min(mergedOptions.guidance_scale, ImagePromptService.MAX_GUIDANCE_SCALE) }),
     };
   }
 
