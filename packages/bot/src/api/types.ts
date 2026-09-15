@@ -33,6 +33,18 @@ export interface ForwardMessageInput {
   senderId?: number;
 }
 
+/**
+ * One message inside a merged-forward, already flattened to text by the protocol
+ * adapter. A nested forward renders as its own `[Forward:...]` token, so drilling
+ * further down is another explicit fetch rather than unbounded recursion here.
+ */
+export interface ForwardedMessageNode {
+  senderName: string;
+  /** Unix milliseconds. */
+  time: number;
+  text: string;
+}
+
 /** Target for sending a message — extracted from context by MessageAPI. */
 export interface SendTarget {
   messageType: 'private' | 'group';

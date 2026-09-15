@@ -5,6 +5,18 @@ import type { IncomingSegment } from '@saltify/milky-types';
 import { extractUrlsFromLightAppPayload } from './utils/lightAppParser';
 
 /**
+ * Flatten one piece of forwarded-message metadata for the `[Forward:...]` token.
+ *
+ * Bracket characters are removed because `MessageUtils.extractUserText` strips
+ * bracketed tokens before keyword matching: forwarded content has to stay inside
+ * one balanced pair, or a quoted chat log could fire a wake word the sender never
+ * typed.
+ */
+function flattenForwardText(value: string): string {
+  return value.replace(/[[\]]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Utility class for parsing Milky message segments
  * This can be reused across the codebase for converting segments to text
  */
@@ -36,8 +48,18 @@ export class MilkyMessageSegmentParser {
             return `[Video:${segment.data.duration}s]`;
           case 'file':
             return `[File:${segment.data.file_name}]`;
-          case 'forward':
-            return `[Forward:${segment.data.title}]`;
+          case 'forward': {
+            const head = [
+              flattenForwardText(segment.data.title),
+              flattenForwardText(segment.data.summary),
+              `forward_id=${segment.data.forward_id}`,
+            ].filter(Boolean);
+            const preview = segment.data.preview.map(flattenForwardText).filter(Boolean);
+            if (preview.length > 0) {
+              head.push(`preview: ${preview.join(' / ')}`);
+            }
+            return `[Forward:${head.join(' | ')}]`;
+          }
           case 'market_face':
             return `[MarketFace:${segment.data.summary}]`;
           case 'light_app': {

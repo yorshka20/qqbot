@@ -10,7 +10,7 @@ import type { MessageSegment } from '@/message/types';
 import { getProtocolAdapter } from '@/protocol/ProtocolRegistry';
 import { logger } from '@/utils/logger';
 import type { APIClient } from '../APIClient';
-import type { ForwardMessageInput, SendMessageResult, SendTarget } from '../types';
+import type { ForwardedMessageNode, ForwardMessageInput, SendMessageResult, SendTarget } from '../types';
 
 /** Maximum text length per message. Messages exceeding this are automatically split. */
 const MAX_TEXT_LENGTH = 1500;
@@ -405,6 +405,23 @@ export class MessageAPI {
     } catch (error) {
       logger.warn(
         `[MessageAPI] get_resource_temp_url failed | resourceId=${resourceId.substring(0, 30)}... | error=${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Read the messages inside a merged-forward by the `forward_id` carried in its
+   * `[Forward:...]` placeholder.
+   * @returns The forwarded messages, or null when the protocol cannot read them.
+   */
+  async getForwardedMessages(forwardId: string, context: MessageAPIContext): Promise<ForwardedMessageNode[] | null> {
+    const protocol = this.extractProtocol(context);
+    try {
+      return await getProtocolAdapter(protocol).fetchForwardedMessages(forwardId);
+    } catch (error) {
+      logger.warn(
+        `[MessageAPI] get_forwarded_messages failed | forwardId=${forwardId.substring(0, 16)}... | error=${error instanceof Error ? error.message : 'Unknown error'}`,
       );
       return null;
     }

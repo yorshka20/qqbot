@@ -24,6 +24,7 @@ export { ListBotFeaturesToolExecutor } from './ListBotFeaturesToolExecutor';
 export { MemoryNoteToolExecutor } from './MemoryNoteToolExecutor';
 export { RagSearchToolExecutor } from './RagSearchToolExecutor';
 export { ReadFileToolExecutor } from './ReadFileToolExecutor';
+export { ReadForwardToolExecutor } from './ReadForwardToolExecutor';
 export { ReplyToolExecutor } from './ReplyToolExecutor';
 export { ResearchToolExecutor } from './ResearchToolExecutor';
 export { RunShellToolExecutor } from './RunShellToolExecutor';

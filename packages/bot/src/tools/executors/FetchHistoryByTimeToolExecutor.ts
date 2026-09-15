@@ -11,6 +11,7 @@ import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 import { resolveConversationScope } from './conversationScope';
+import { clampInt } from './toolParams';
 
 /** Hard ceiling on how many messages one window may load from the DB */
 const MAX_FETCH_LIMIT = 2000;
@@ -75,13 +76,6 @@ function parseTimeInput(input: string): Date | null {
   }
 
   return null;
-}
-
-function clampInt(raw: unknown, fallback: number, min: number, max: number): number {
-  if (typeof raw !== 'number' || Number.isNaN(raw)) {
-    return fallback;
-  }
-  return Math.min(Math.max(Math.trunc(raw), min), max);
 }
 
 @Tool({

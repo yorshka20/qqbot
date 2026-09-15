@@ -2,7 +2,7 @@
 // Transport-agnostic — only holds connection reference, config, and abstract declarations.
 
 import { EventEmitter } from 'node:events';
-import type { APIContext, ForwardMessageInput, SendMessageResult, SendTarget } from '@/api/types';
+import type { APIContext, ForwardedMessageNode, ForwardMessageInput, SendMessageResult, SendTarget } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import type { Connection } from '@/core/connection';
 import type { NormalizedMessageEvent } from '@/events/types';
@@ -91,6 +91,14 @@ export abstract class ProtocolAdapter extends EventEmitter {
     _peerId: number | string,
     _scene: string,
   ): Promise<NormalizedMessageEvent | null> {
+    return null;
+  }
+
+  /**
+   * Fetch the messages inside a merged-forward by its forward id.
+   * Override in adapters whose protocol can read forward content.
+   */
+  async fetchForwardedMessages(_forwardId: string): Promise<ForwardedMessageNode[] | null> {
     return null;
   }
 

@@ -1,7 +1,8 @@
 // Milky protocol adapter implementation
 
+import type { IncomingForwardedMessage } from '@saltify/milky-types';
 import { HttpClient } from '@/api/http/HttpClient';
-import type { ForwardMessageInput, SendMessageResult, SendTarget } from '@/api/types';
+import type { ForwardedMessageNode, ForwardMessageInput, SendMessageResult, SendTarget } from '@/api/types';
 import { APIContext } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import type { WebSocketConnection } from '@/core/connection';
@@ -15,6 +16,7 @@ import { WebSocketProtocolAdapter } from '../base/WebSocketProtocolAdapter';
 import { MilkyAPIConverter } from './MilkyAPIConverter';
 import { MilkyAPIResponseHandler } from './MilkyAPIResponseHandler';
 import { MilkyEventNormalizer } from './MilkyEventNormalizer';
+import { MilkyMessageSegmentParser } from './MilkyMessageSegmentParser';
 import { segmentsToMilkyOutgoing } from './MilkySegmentConverter';
 
 /**
@@ -140,6 +142,26 @@ export class MilkyAdapter extends WebSocketProtocolAdapter {
       );
       return null;
     }
+  }
+
+  /**
+   * Read the content of a merged-forward via the get_forwarded_messages API.
+   * Each node is flattened with the same segment parser that renders live
+   * messages, so a nested forward comes back as its own `[Forward:...]` token
+   * carrying the id needed to open it.
+   */
+  override async fetchForwardedMessages(forwardId: string): Promise<ForwardedMessageNode[] | null> {
+    const ctx = new APIContext('get_forwarded_messages', { forward_id: forwardId }, 'milky', 20000);
+    const response = await this.sendAPI<{ messages?: IncomingForwardedMessage[] }>(ctx);
+    const messages = response?.messages;
+    if (!messages) {
+      return null;
+    }
+    return messages.map((m) => ({
+      senderName: m.sender_name,
+      time: m.time * 1000,
+      text: MilkyMessageSegmentParser.segmentsToText(m.segments),
+    }));
   }
 
   /**
