@@ -26,6 +26,7 @@
     "lint": "biome check packages/*/src",
     "lint:fix": "biome check --write packages/*/src",
     "format": "biome format --write packages/*/src",
+    "nai-usage": "NO_FILE_LOG=1 bun run packages/bot/src/cli/nai-usage.ts",
     "smoke-test": "NO_FILE_LOG=1 bun run packages/bot/src/cli/smoke-test.ts",
     "cluster:e2e": "bun run --filter @qqbot/bot cluster:e2e",
     "cluster:e2e:claude": "bun run --filter @qqbot/bot cluster:e2e:claude",
