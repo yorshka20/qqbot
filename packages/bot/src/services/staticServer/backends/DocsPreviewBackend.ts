@@ -121,6 +121,9 @@ function mimeForPath(filePath: string): string {
   const map: Record<string, string> = {
     '.md': 'text/markdown; charset=utf-8',
     '.txt': 'text/plain; charset=utf-8',
+    '.log': 'text/plain; charset=utf-8',
+    '.jsonl': 'text/plain; charset=utf-8',
+    '.ndjson': 'text/plain; charset=utf-8',
     '.json': 'application/json; charset=utf-8',
     '.jsonc': 'text/plain; charset=utf-8',
     '.html': 'text/html; charset=utf-8',

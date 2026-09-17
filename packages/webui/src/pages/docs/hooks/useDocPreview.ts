@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { docsRawUrl } from '../../../api';
 import { type DumpFile, isLLMDump, parseDump } from '../dump/parseDump';
+import { type LogFile, parseLog } from '../log/parseLog';
 import { previewMode, type SelectedDoc } from '../utils';
 
 marked.setOptions({ breaks: true, gfm: true });
@@ -15,6 +16,7 @@ export interface DocPreviewState {
   html: string | null;
   text: string | null;
   dump: DumpFile | null;
+  log: LogFile | null;
   blobUrl: string | null;
   blobKind: BlobKind | null;
 }
@@ -25,6 +27,7 @@ export function useDocPreview(rootId: string, selected: SelectedDoc | null, root
   const [html, setHtml] = useState<string | null>(null);
   const [text, setText] = useState<string | null>(null);
   const [dump, setDump] = useState<DumpFile | null>(null);
+  const [log, setLog] = useState<LogFile | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [blobKind, setBlobKind] = useState<BlobKind | null>(null);
 
@@ -41,6 +44,7 @@ export function useDocPreview(rootId: string, selected: SelectedDoc | null, root
     setHtml(null);
     setText(null);
     setDump(null);
+    setLog(null);
     setBlobUrl(null);
     setBlobKind(null);
 
@@ -73,6 +77,13 @@ export function useDocPreview(rootId: string, selected: SelectedDoc | null, root
           return;
         }
 
+        if (mode === 'log') {
+          const raw = await res.text();
+          if (cancelled) return;
+          setLog(parseLog(raw));
+          return;
+        }
+
         if (mode === 'text') {
           const raw = await res.text();
           if (cancelled) return;
@@ -100,5 +111,5 @@ export function useDocPreview(rootId: string, selected: SelectedDoc | null, root
     };
   }, [selected, rootId, rootExists]);
 
-  return { loading, error, html, text, dump, blobUrl, blobKind };
+  return { loading, error, html, text, dump, log, blobUrl, blobKind };
 }

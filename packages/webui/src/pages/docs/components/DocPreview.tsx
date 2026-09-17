@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { docsRawUrl } from '../../../api';
 import { DumpView } from '../dump/DumpView';
 import type { DocPreviewState } from '../hooks/useDocPreview';
+import { LogView } from '../log/LogView';
 import type { SelectedDoc } from '../utils';
 
 export function DocPreview({
@@ -14,7 +15,7 @@ export function DocPreview({
   selected: SelectedDoc | null;
   preview: DocPreviewState;
 }) {
-  const { loading, error, html, text, dump, blobUrl, blobKind } = preview;
+  const { loading, error, html, text, dump, log, blobUrl, blobKind } = preview;
 
   return (
     <div className="flex-1 min-w-0 flex flex-col bg-zinc-50 dark:bg-zinc-900">
@@ -22,7 +23,7 @@ export function DocPreview({
         {selected ? selected.name : '选择左侧文件以预览'}
       </div>
       <div className="flex-1 min-h-0 overflow-auto p-4">
-        {!selected && <p className="text-sm text-zinc-500">只读预览；支持 Markdown、文本、图片与 PDF。</p>}
+        {!selected && <p className="text-sm text-zinc-500">只读预览；支持 Markdown、日志、文本、图片与 PDF。</p>}
         {selected && loading && (
           <div className="flex justify-center py-16 text-zinc-500">
             <Loader2 className="w-8 h-8 animate-spin" />
@@ -30,6 +31,7 @@ export function DocPreview({
         )}
         {selected && error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         {selected && !loading && !error && dump !== null && <DumpView key={selected.path} dump={dump} />}
+        {selected && !loading && !error && log !== null && <LogView key={selected.path} log={log} />}
         {selected && !loading && !error && html !== null && (
           <article
             className="prose prose-zinc dark:prose-invert max-w-none prose-pre:bg-zinc-100 dark:prose-pre:bg-zinc-800 prose-pre:whitespace-pre-wrap prose-pre:break-words"

@@ -1,6 +1,6 @@
 import type { FileItem } from '../../types';
 
-export type PreviewMode = 'markdown' | 'text' | 'image' | 'pdf' | 'binary';
+export type PreviewMode = 'markdown' | 'log' | 'text' | 'image' | 'pdf' | 'binary';
 
 /**
  * Newest first, dirs before files. Name-descending as the tiebreak keeps
@@ -24,6 +24,7 @@ export function previewMode(contentType: string, filename: string): PreviewMode 
   if (ct.startsWith('image/')) return 'image';
   if (ct.includes('pdf')) return 'pdf';
   if (ct.includes('markdown') || lower.endsWith('.md')) return 'markdown';
+  if (lower.endsWith('.log')) return 'log';
   if (
     ct.startsWith('text/') ||
     ct.includes('json') ||
