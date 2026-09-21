@@ -7,7 +7,13 @@ import { ConnectionManager } from './connection/ConnectionManager';
 
 export interface BotEvents {
   ready: () => void;
+  /**
+   * Fatal only. EventEmitter throws an unlistened `error`, so anything the bot recovers from
+   * on its own must not be reported here — see `connectionError`.
+   */
   error: (error: Error) => void;
+  /** A protocol connection fault the transport is already retrying. Safe to leave unlistened. */
+  connectionError: (protocol: string, error: Error) => void;
 }
 
 export declare interface Bot {
@@ -116,7 +122,11 @@ export class Bot extends EventEmitter {
 
     this.connectionManager.on('connectionError', (protocol, error) => {
       logger.error(`[Bot] Connection error for protocol ${protocol}:`, error);
-      this.emit('error', error);
+      // Never re-emit this as `error`. EventEmitter throws an unlistened `error`, which turns
+      // a connection fault the transport has already scheduled a retry for into an uncaught
+      // exception — and the process boundary then exits. One blip at startup would otherwise
+      // cost a full PM2 restart_delay of downtime instead of a 1s reconnect.
+      this.emit('connectionError', protocol, error);
     });
   }
 
