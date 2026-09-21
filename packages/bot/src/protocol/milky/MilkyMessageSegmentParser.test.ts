@@ -56,3 +56,24 @@ describe('MilkyMessageSegmentParser forward placeholder', () => {
     expect(text).toContain('forward_id=');
   });
 });
+
+describe('MilkyMessageSegmentParser face rendering', () => {
+  const face = (faceId: string): IncomingSegment => ({ type: 'face', data: { face_id: faceId, is_large: false } });
+
+  it('renders a face by name so the model can read what was sent', () => {
+    expect(MilkyMessageSegmentParser.segmentsToText([face('267')])).toBe('[表情:头秃]');
+  });
+
+  it('falls back to the raw id for a face newer than the table', () => {
+    expect(MilkyMessageSegmentParser.segmentsToText([face('489')])).toBe('[表情:#489]');
+  });
+
+  it('stays inside one bracket pair so it cannot fire a wake word', () => {
+    const text = MilkyMessageSegmentParser.segmentsToText([
+      { type: 'text', data: { text: '在吗' } },
+      face('178'),
+    ]);
+
+    expect(MessageUtils.extractUserText(text)).toBe('在吗');
+  });
+});

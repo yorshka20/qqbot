@@ -230,6 +230,7 @@ The bot automatically handles database schema initialization. For SQLite, tables
 - **Tool System**: `packages/bot/src/tools/ToolManager.ts`
 - **Plugin Manager**: `packages/bot/src/plugins/PluginManager.ts`
 - **Session Memo Store**: `packages/bot/src/conversation/memo/SessionMemoStore.ts` — LLM-writable per-session memo/blackboard with TTL + pin. Complements AuditEventStore (bot-written) and MemoryService (long-term).
+- **QQ Face Table**: `packages/bot/src/message/qqFace.ts` + `qqFaces.json` — id↔name table, `[表情:名字]` marker expansion, reaction id resolution, prompt vocabulary.
 - **Session Memo Tool**: `packages/bot/src/tools/executors/SessionMemoToolExecutor.ts` — `session_memo` tool exposed to LLM at reply stage (`action=add|delete|list`).
 - **Configuration**: `config.jsonc` (local, not committed)
 
@@ -240,6 +241,8 @@ Non-obvious specifics that are easy to get wrong:
 - **Card rendering**: `convert_to_card` output is a JSON array of cards; a single card is `[card]`. The comparison card takes `leftHeader` / `rightHeader` from data, not fixed labels.
 - **Reply trigger**: centralized in `MessageTriggerPlugin`; the type lives on `replyTriggerType` (`at` | `reaction` | `wakeWordConfig` | `wakeWordPreference` | `providerName`).
 - **Whitelist config**: per-group limited permissions use the `groups` key (array of `{ id, capabilities }`). `groupIds` must stay a plain string array — putting objects there breaks lookup.
+- **QQ faces**: `[表情:名字]` is the canonical text form of a `face` segment in both directions — inbound rendering, the marker the LLM writes, and what lands in history. The name↔id table is `packages/bot/src/message/qqFaces.json`; never hand-write a face list beside it.
+- **Reactions (贴表情)**: every reaction goes through `ReactionPlugin.react()`, which owns the whitelist capability check and the per-group cooldown. Callers (the `react` tool, proactive analysis) never send one directly.
 
 ## Where Conventions Live
 

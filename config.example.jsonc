@@ -235,6 +235,17 @@
           "muteProactiveDurationMinutes": 10
         }
       },
+      // Reaction Plugin - lets the bot put a QQ reaction ("贴表情") on a group message.
+      // The LLM chooses: the `react` tool while it is replying, or the proactive analysis'
+      // `reaction` field between replies. Needs the group's `reaction` whitelist capability.
+      {
+        "name": "reaction",
+        "enabled": true,
+        "config": {
+          // Minimum gap between two reactions in the same group (default: 60000)
+          "minIntervalMsPerGroup": 60000
+        }
+      },
       // Nudge Plugin - automatically replies with bot status when bot is nudged (戳一戳)
       {
         "name": "nudge",

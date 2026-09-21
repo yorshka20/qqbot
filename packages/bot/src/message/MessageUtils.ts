@@ -113,7 +113,7 @@ export class MessageUtils {
   /**
    * Reduce a flattened message to the user-authored free text only, for keyword
    * matching. Milky serialises non-text segments as `[Image:...]`,
-   * `[MarketFace:...]`, `[Forward:<title>]`, `[Face:id]`, etc. (possibly with
+   * `[MarketFace:...]`, `[Forward:<title>]`, `[表情:名字]`, etc. (possibly with
    * nested brackets, e.g. `[Image:[动画表情]]`) and mentions as `@<id>`.
    *
    * These machine-generated tokens must not reach `includes()` matching: a

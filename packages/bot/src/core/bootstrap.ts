@@ -11,6 +11,7 @@ import { AvatarService } from '@qqbot/avatar';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { createBaselineProducer } from '@/ai/prompt/producers/BaselineProducer';
+import { createFaceUsageProducer } from '@/ai/prompt/producers/FaceUsageProducer';
 import { createModelIdentityProducer } from '@/ai/prompt/producers/ModelIdentityProducer';
 import { createProviderPatchProducer } from '@/ai/prompt/producers/ProviderPatchProducer';
 import { createSceneProducer } from '@/ai/prompt/producers/SceneProducer';
@@ -199,9 +200,10 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     registry.register(createModelIdentityProducer());
     registry.register(createProviderPatchProducer({ promptManager }));
     registry.register(createSceneProducer({ promptManager, wakeWords }));
+    registry.register(createFaceUsageProducer({ promptManager }));
     registry.register(createToolInstructProducer({ promptManager }));
     logger.info(
-      '[Bootstrap] Core prompt producers registered (baseline, model-identity, provider-patch, scene, tool-instruct)',
+      '[Bootstrap] Core prompt producers registered (baseline, model-identity, provider-patch, scene, face-usage, tool-instruct)',
     );
   }
 

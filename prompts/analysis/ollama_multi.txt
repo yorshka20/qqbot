@@ -27,6 +27,7 @@
   "threadShouldEndId": "应结束的 thread id，否则为空字符串",
   "messageIds": [应加入该 thread 的消息序号，与近期群消息 [id:序号] 对应],
   "preferenceKey": "人设键名，createNew 为 true 时必填，但只能填一种；replyInThreadId 有值时可省略；shouldJoin 为 false 时为空字符串",
+  "reaction": {"messageId": 序号, "face": "表情名"} 或 null,
   "searchQueries": ["关键词1", "关键词2"] 或 []
 }
 
@@ -47,6 +48,8 @@
 **createNew**：最新消息为**新话题**且**存在明确提问或求助意向**、有参与价值时设为 true，此时 replyInThreadId 必须为空，messageIds 可为空数组。
 
 **messageIds**：replyInThreadId 有值时必须填写，列出近期群消息中应加入该 thread 的所有消息序号，确保触发本次回复的消息都进入 thread 上下文。新建 thread 时可为空数组。
+
+**reaction**：与 shouldJoin / thread 判断相互独立——贴表情是"看见了、认可了"，不是"要说话"。**恰恰是那些不值得开口的消息最适合贴表情**：有意思的吐槽、好笑的事、值得共情的抱怨，回一句会打断节奏，贴个表情刚刚好。`messageId` 用 `[id:序号]` 的序号，只能选用户发的消息；`face` 填 QQ 表情名（笑哭 / 头秃 / 赞 / 暗中观察 / 吃瓜 / 辣眼睛 / 大怨种 / 汪汪 / 崇拜 / 比心 等）。没有特别值得表态的就填 null，**宁可不贴也不要凑**——每个群有冷却，贴多了跟刷屏一样。
 
 **threadShouldEndId**：仅在以下情况填写，否则必须为空字符串：
 - 话题已自然结束（问题已解决、讨论已收尾）；

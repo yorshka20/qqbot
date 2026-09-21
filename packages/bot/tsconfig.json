@@ -28,6 +28,7 @@
   ],
   "include": [
     "src/**/*",
+    "src/**/*.json",
     "types/**/*",
     "scripts/builds/**/*",
     "build.config.ts"

@@ -51,7 +51,7 @@ These keys are initialized when the message processing starts and remain constan
 
 - **Type**: `string`
 - **Set By**: `MessagePipeline.process()` (initialization)
-- **Read By**: `WhitelistPlugin`, `EchoPlugin`, `ReactionPlugin`, `DatabasePersistenceSystem`
+- **Read By**: `WhitelistPlugin`, `EchoPlugin`, `DatabasePersistenceSystem`
 - **Purpose**: Bot's own user ID for self-message detection and @bot checks
 - **Lifecycle**: Initialized at start, used throughout all stages
 
@@ -73,7 +73,7 @@ These keys control whether and how the message should be processed.
 
 - **Type**: `boolean`
 - **Set By**: `WhitelistPlugin` (RECEIVE stage only) when: bot message, private not in user whitelist, or group not in group whitelist.
-- **Read By**: `Lifecycle`, `HookManager`, `ProactiveConversationPlugin` (only flag used to skip proactive), `TaskSystem`, and plugins that respect access control (Echo, LightApp, MemoryTrigger, Reaction).
+- **Read By**: `Lifecycle`, `HookManager`, `ProactiveConversationPlugin` (only flag used to skip proactive), `TaskSystem`, and plugins that respect access control (Echo, LightApp, MemoryTrigger).
 - **Purpose**: Access denied; no reply and no proactive; PREPROCESS and COMPLETE still run (e.g. non-whitelist group gets DB/RAG persistence and GroupDownload via event).
 - **Lifecycle**: Set in RECEIVE; Lifecycle skips to COMPLETE when this or `postProcessOnly` is set after each stage.
 
@@ -89,7 +89,7 @@ These keys control whether and how the message should be processed.
 
 - **Type**: `boolean`
 - **Set By**: `WhitelistPlugin` (RECEIVE stage) when group is in group whitelist
-- **Read By**: `ReactionPlugin`, `HookManager` (ProactiveConversationPlugin skips only on `whitelistDenied`, not on `postProcessOnly`/`whitelistGroup`)
+- **Read By**: `HookManager` (ProactiveConversationPlugin skips only on `whitelistDenied`, not on `postProcessOnly`/`whitelistGroup`)
 - **Purpose**: Indicates whether the message is from a whitelisted group
 - **Lifecycle**: Set in RECEIVE, used by plugins that need group whitelist status
 
@@ -201,7 +201,7 @@ succeeds — so one generation cannot flood the chat.
 ### PREPROCESS Stage
 
 - **Set**: `postProcessOnly` (MessageTriggerPlugin when no direct reply trigger), `context.reply` (EchoPlugin)
-- **Read**: `botSelfId`, `whitelistGroup` (ReactionPlugin), `whitelistDenied` (HookManager)
+- **Read**: `whitelistDenied` (HookManager)
 
 ### PROCESS Stage
 

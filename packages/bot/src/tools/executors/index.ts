@@ -23,6 +23,7 @@ export { GetMemoryToolExecutor } from './GetMemoryToolExecutor';
 export { ListBotFeaturesToolExecutor } from './ListBotFeaturesToolExecutor';
 export { MemoryNoteToolExecutor } from './MemoryNoteToolExecutor';
 export { RagSearchToolExecutor } from './RagSearchToolExecutor';
+export { ReactToolExecutor } from './ReactToolExecutor';
 export { ReadFileToolExecutor } from './ReadFileToolExecutor';
 export { ReadForwardToolExecutor } from './ReadForwardToolExecutor';
 export { ReplyToolExecutor } from './ReplyToolExecutor';

@@ -1,190 +1,114 @@
-// Reaction Plugin - sends reaction when message contains configured keywords
+// Reaction Plugin - owns every reaction ("贴表情") the bot puts on a group message.
 
-import { hasWhitelistCapability, isNoReplyPath } from '@/context/HookContextHelpers';
 import type { NormalizedMessageEvent } from '@/events/types';
-import type { HookContext, HookResult } from '@/hooks/types';
+import { reactionLabel, resolveReactionId } from '@/message/qqFace';
 import type { NormalizedMilkyMessageEvent } from '@/protocol/milky/types';
 import { logger } from '@/utils/logger';
-import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
-import { Hook, RegisterPlugin } from '../decorators';
+import { groupHasWhitelistCapability, WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
+import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 interface ReactionPluginConfig {
-  /**
-   * Map of keyword to reaction ID
-   * Key: keyword (case-insensitive)
-   * Value: reaction ID (emoji code like "76" for 👍, or emoji character like "👍" which will be converted to code)
-   * Example: { "": "76", "hello": "👍" }
-   */
-  reactions?: Record<string, string>;
+  /** Minimum gap between two reactions in the same group. Default: 60s. */
+  minIntervalMsPerGroup?: number;
 }
 
+const DEFAULT_MIN_INTERVAL_MS = 60_000;
+
+export interface ReactionRequest {
+  groupId: number | string;
+  /** Milky addresses a message by its per-group sequence number, not by message id. */
+  messageSeq: number;
+  /** Face name (`笑哭`), `#<id>` escape, literal emoji (`👍`), or a raw id. */
+  face: string;
+}
+
+export type ReactionOutcome = { ok: true; faceId: string; label: string } | { ok: false; reason: string };
+
+/**
+ * Reaction Plugin
+ *
+ * This is the single place a reaction is sent from, so the whitelist capability and the
+ * per-group rate limit are enforced once, whatever asked for the reaction (the `react` tool
+ * during a reply, the proactive analysis between replies).
+ *
+ * It deliberately registers no message hook. Reactions used to fire from a keyword table at
+ * PREPROCESS, which matched the *name* of an emotion ("笑哭", "可爱") rather than the emotion
+ * — over 8 days it fired 7 times, several of them on unrelated words, while group members sent
+ * 826 faces the bot could not read. Choosing a reaction is a judgement about what was said,
+ * so the model makes it.
+ */
 @RegisterPlugin({
   name: 'reaction',
-  version: '1.0.0',
-  description: 'Sends group message reaction when message contains configured keywords',
+  version: '2.0.0',
+  description: 'Sends group message reactions on behalf of the LLM',
 })
 export class ReactionPlugin extends PluginBase {
-  /**
-   * Map of keyword (lowercase) to reaction ID (code)
-   * Populated from config.reactions
-   */
-  private keywordToReactionMap: Map<string, string> = new Map();
+  private minIntervalMs = DEFAULT_MIN_INTERVAL_MS;
+  private lastReactionAtByGroup = new Map<string, number>();
 
   async onInit(): Promise<void> {
-    // Load plugin-specific configuration
-    try {
-      const pluginConfig = this.pluginConfig?.config as ReactionPluginConfig | undefined;
-
-      // Load keyword to reaction mappings
-      this.keywordToReactionMap.clear();
-      if (pluginConfig?.reactions && typeof pluginConfig.reactions === 'object') {
-        for (const [keyword, reaction] of Object.entries(pluginConfig.reactions)) {
-          const keywordLower = keyword.toLowerCase();
-          this.keywordToReactionMap.set(keywordLower, reaction);
-        }
-      }
-    } catch (error) {
-      logger.error('[ReactionPlugin] Error loading config:', error);
-      this.enabled = false;
+    const pluginConfig = this.pluginConfig?.config as ReactionPluginConfig | undefined;
+    if (pluginConfig?.minIntervalMsPerGroup != null && pluginConfig.minIntervalMsPerGroup >= 0) {
+      this.minIntervalMs = pluginConfig.minIntervalMsPerGroup;
     }
   }
 
   /**
-   * Hook: onMessagePreprocess
-   * Executed during PREPROCESS stage
-   * Checks if message contains any configured keyword and sends corresponding reaction for whitelisted group messages (even without @bot)
+   * Resolve the message sequence a reaction can target.
+   *
+   * Only Milky carries one; on other protocols a reaction cannot be addressed at all, which is
+   * why callers check this before offering the action rather than failing after the fact.
    */
-  @Hook({
-    stage: 'onMessagePreprocess',
-    priority: 'NORMAL',
-    order: 10,
-    applicableSources: ['qq-private', 'qq-group', 'discord'],
-  })
-  onMessagePreprocess(context: HookContext): HookResult {
+  static messageSeqOf(message: NormalizedMessageEvent): number | undefined {
+    const seq = (message as NormalizedMilkyMessageEvent).messageSeq;
+    return typeof seq === 'number' && seq > 0 ? seq : undefined;
+  }
+
+  /** Send one reaction. Returns why it was refused instead of throwing, so callers can tell the model. */
+  async react(request: ReactionRequest): Promise<ReactionOutcome> {
     if (!this.enabled) {
-      return true;
+      return { ok: false, reason: 'reaction plugin disabled' };
     }
 
-    // Whitelist is highest constraint: never respond in non-whitelist groups
-    if (isNoReplyPath(context)) {
-      return true;
+    const groupId = String(request.groupId);
+    if (!groupId || !request.messageSeq) {
+      return { ok: false, reason: 'missing groupId or messageSeq' };
     }
 
-    const messageId = context.message?.id || context.message?.messageId || 'unknown';
-
-    if (this.keywordToReactionMap.size === 0) {
-      return true;
+    if (!groupHasWhitelistCapability(groupId, WHITELIST_CAPABILITY.reaction)) {
+      return { ok: false, reason: 'group not allowed to receive reactions' };
     }
 
-    // Ignore bot's own messages
-    const botSelfId = context.metadata.get('botSelfId');
-    const messageUserId = context.message.userId?.toString();
-    if (botSelfId && messageUserId && botSelfId === messageUserId) {
-      return true;
+    const faceId = resolveReactionId(request.face);
+    if (!faceId) {
+      return { ok: false, reason: `unknown face "${request.face}"` };
     }
 
-    // Only process group messages
-    if (context.message.messageType !== 'group' || !context.message.groupId) {
-      return true;
+    const now = Date.now();
+    const last = this.lastReactionAtByGroup.get(groupId);
+    if (last !== undefined && now - last < this.minIntervalMs) {
+      const waitSec = Math.ceil((this.minIntervalMs - (now - last)) / 1000);
+      return { ok: false, reason: `rate limited, ${waitSec}s until the next reaction in this group` };
     }
 
-    // Only send reaction when group has reaction capability (whitelisted and not limited, or limited with reaction)
-    if (!hasWhitelistCapability(context, WHITELIST_CAPABILITY.reaction)) {
-      return true;
-    }
-
-    // Check if message contains any configured keyword (case-insensitive)
-    const messageText = context.message.message.toLowerCase();
-    let matchedKeyword: string | undefined;
-    let matchedReaction: string | undefined;
-
-    for (const [keyword, reaction] of this.keywordToReactionMap.entries()) {
-      if (messageText.includes(keyword)) {
-        matchedKeyword = keyword;
-        matchedReaction = reaction;
-        break;
-      }
-    }
-
-    if (!matchedKeyword || !matchedReaction) {
-      return true;
-    }
-
-    logger.info(
-      `[ReactionPlugin] Keyword "${matchedKeyword}" detected in whitelisted group | messageId=${messageId} | groupId=${context.message.groupId} | reaction=${matchedReaction}`,
-    );
-
-    // Send reaction asynchronously (don't block message processing)
-    this.sendReaction(context, matchedReaction).catch((error) => {
-      logger.error(`[ReactionPlugin] Failed to send reaction | messageId=${messageId}:`, error);
-    });
-
-    return true;
-  }
-
-  /**
-   * Type guard to check if message is from Milky protocol
-   */
-  private isMilkyMessage(message: NormalizedMessageEvent): message is NormalizedMilkyMessageEvent {
-    return 'messageSeq' in message && typeof (message as NormalizedMilkyMessageEvent).messageSeq === 'number';
-  }
-
-  /**
-   * Send reaction to the message
-   * @param context Hook context containing message information
-   * @param reactionId Reaction ID (emoji code) to send
-   */
-  private async sendReaction(context: HookContext, reactionId: string): Promise<void> {
-    if (!this.context) {
-      logger.error('[ReactionPlugin] Plugin context not available');
-      return;
-    }
-
-    const groupId = context.message.groupId;
-
-    if (!groupId) {
-      logger.warn('[ReactionPlugin] Missing groupId, cannot send reaction');
-      return;
-    }
-
-    // For Milky protocol, we need message_seq (number) instead of message_id
-    // Check if message is from Milky protocol and has messageSeq
-    let messageSeq: number | undefined;
-
-    if (this.isMilkyMessage(context.message)) {
-      messageSeq = context.message.messageSeq;
-    }
-
-    if (!messageSeq) {
-      logger.warn(
-        `[ReactionPlugin] Missing messageSeq (required for Milky protocol), cannot send reaction | messageId=${context.message?.id || context.message?.messageId || 'unknown'}`,
-      );
-      return;
-    }
-
+    const label = reactionLabel(faceId);
     try {
-      logger.debug(
-        `[ReactionPlugin] Sending reaction | groupId=${groupId} | messageSeq=${messageSeq} | reaction=${reactionId}`,
-      );
-
       await this.api.call(
         'send_group_message_reaction',
-        {
-          group_id: groupId,
-          message_seq: messageSeq,
-          reaction: reactionId,
-          is_add: true,
-        },
+        { group_id: Number(groupId), message_seq: request.messageSeq, reaction: faceId, is_add: true },
         'milky',
       );
-
-      logger.info(
-        `[ReactionPlugin] Reaction sent successfully | messageSeq=${messageSeq} | groupId=${groupId} | reaction=${reactionId}`,
-      );
     } catch (error) {
-      logger.error(`[ReactionPlugin] Error sending reaction | messageSeq=${messageSeq} | groupId=${groupId}:`, error);
-      // Don't throw - just log the error, don't interrupt message processing
+      logger.error(`[ReactionPlugin] Send failed | groupId=${groupId} | messageSeq=${request.messageSeq}:`, error);
+      return { ok: false, reason: error instanceof Error ? error.message : String(error) };
     }
+
+    // Recorded only after a successful send, so a failed attempt does not spend the window.
+    this.lastReactionAtByGroup.set(groupId, now);
+    logger.info(
+      `[ReactionPlugin] Reacted | groupId=${groupId} | messageSeq=${request.messageSeq} | face=${label} (${faceId})`,
+    );
+    return { ok: true, faceId, label };
   }
 }

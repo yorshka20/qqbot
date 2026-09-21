@@ -4,6 +4,7 @@ import { replaceReplyWithSegments } from '@/context/HookContextHelpers';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import { stripFaceMarkers } from '@/message/qqFace';
 import type { MessageSegment } from '@/message/types';
 import { CardRenderingService } from '@/services/card';
 import { cardDeckToText } from '@/services/card/cardText';
@@ -71,9 +72,13 @@ export class CardRenderingHelper {
     content: string,
     providerName?: string,
   ): Promise<{ segments: MessageSegment[]; textForHistory: string }> {
-    const card: CardData = { type: 'markdown', content };
+    // A face marker cannot survive this path: the card is an image, so the marker would be
+    // painted into it as literal text. Stripping before both the render and the history text
+    // keeps what was said and what was recorded the same.
+    const prose = stripFaceMarkers(content);
+    const card: CardData = { type: 'markdown', content: prose };
     const result = await this.renderParsedCards([card], providerName);
-    return { segments: result.segments, textForHistory: content };
+    return { segments: result.segments, textForHistory: prose };
   }
 
   // ---------------------------------------------------------------------------

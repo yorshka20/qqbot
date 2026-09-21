@@ -43,6 +43,23 @@ export const PreliminaryAnalysisSchema = z.object({
     .unknown()
     .optional()
     .transform((v) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)),
+  reaction: z
+    .unknown()
+    .optional()
+    .transform((v): { messageId: string; face: string } | undefined => {
+      if (typeof v !== 'object' || v === null) {
+        return undefined;
+      }
+      const raw = v as { messageId?: unknown; face?: unknown };
+      const messageId =
+        typeof raw.messageId === 'number'
+          ? String(raw.messageId)
+          : typeof raw.messageId === 'string'
+            ? raw.messageId.trim()
+            : '';
+      const face = typeof raw.face === 'string' ? raw.face.trim() : '';
+      return messageId && face ? { messageId, face } : undefined;
+    }),
   searchQueries: z
     .unknown()
     .optional()

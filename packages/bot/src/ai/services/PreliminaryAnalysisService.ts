@@ -23,6 +23,7 @@ const DEFAULT_ANALYSIS_RESULT: PreliminaryAnalysisResult = {
   createNew: undefined,
   threadShouldEndId: undefined,
   messageIds: undefined,
+  reaction: undefined,
   preferenceKey: undefined,
   searchQueries: undefined,
 };

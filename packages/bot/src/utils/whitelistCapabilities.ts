@@ -1,3 +1,9 @@
+import type { Config } from '@/core/config';
+import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
+import type { PluginManager } from '@/plugins/PluginManager';
+import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
+
 /**
  * Whitelist capability names for per-group limited permissions.
  * When a group has limited capabilities (whitelistGroupCapabilities set), only these features are allowed.
@@ -10,7 +16,7 @@ export const WHITELIST_CAPABILITY = {
   command: 'command',
   /** Proactive conversation: schedule and send proactive replies in this group. */
   proactive: 'proactive',
-  /** Keyword reaction (e.g. send a reaction image on matched keyword). */
+  /** Reaction ("贴表情") on a group message, sent through ReactionPlugin.react(). */
   reaction: 'reaction',
   /** SubAgent spawn on keyword match. */
   subagent: 'subagent',
@@ -29,3 +35,31 @@ export const WHITELIST_CAPABILITY_KEYS: WhitelistCapability[] = [
   WHITELIST_CAPABILITY.subagent,
   WHITELIST_CAPABILITY.echo,
 ];
+
+/**
+ * Capability check for callers that hold a groupId but no HookContext — a notice handler, a
+ * scheduled analysis, a tool executor. Mirrors `hasWhitelistCapability`, which reads the same
+ * decision off metadata the WhitelistPlugin hook already wrote.
+ *
+ * The config fallback covers the window before the plugin is registered: an empty `groupIds`
+ * means the whitelist is not in use, so nothing is gated.
+ */
+export function groupHasWhitelistCapability(groupId: string, capability: WhitelistCapability): boolean {
+  const id = String(groupId);
+  const whitelistPlugin = getContainer()
+    .resolve<PluginManager>(DITokens.PLUGIN_MANAGER)
+    ?.getPluginAs<WhitelistPlugin>('whitelist');
+
+  if (!whitelistPlugin) {
+    const config = getContainer().resolve<Config>(DITokens.CONFIG);
+    const groupIds = (config.getPluginConfig('whitelist') as { groupIds?: string[] } | undefined)?.groupIds;
+    return !Array.isArray(groupIds) || groupIds.length === 0 || groupIds.includes(id);
+  }
+
+  const caps = whitelistPlugin.getGroupCapabilities(id);
+  if (caps === undefined) {
+    return false;
+  }
+  // Empty means the group is whitelisted without restriction.
+  return caps.length === 0 || caps.includes(capability);
+}

@@ -3,6 +3,7 @@
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedMessageEvent } from '@/events/types';
+import { renderFaceToken } from '@/message/qqFace';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
@@ -211,8 +212,14 @@ export function hasImages(segments: MessageSegment[]): boolean {
  */
 export function extractTextFromSegments(segments: MessageSegment[]): string {
   return segments
-    .filter((segment) => segment.type === 'text')
-    .map((segment) => (segment.type === 'text' ? segment.data.text : ''))
+    .map((segment) => {
+      if (segment.type === 'text') {
+        return segment.data.text;
+      }
+      // A face carries meaning the way a word does, and this feeds what gets persisted as
+      // "what the bot said". Dropping it would erase the face from the model's own history.
+      return segment.type === 'face' ? renderFaceToken(segment.data.id) : '';
+    })
     .join('');
 }
 

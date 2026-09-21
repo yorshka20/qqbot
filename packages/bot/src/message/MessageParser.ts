@@ -1,5 +1,6 @@
 // Parse message segments to text/objects
 
+import { renderFaceToken } from './qqFace';
 import type { MessageSegment } from './types';
 
 export class MessageParser {
@@ -12,7 +13,7 @@ export class MessageParser {
           case 'at':
             return `@${segment.data.qq}`;
           case 'face':
-            return `[Face:${segment.data.id}]`;
+            return renderFaceToken(segment.data.id);
           case 'image':
             return `[Image:${segment.data.summary || segment.data.uri || segment.data.resource_id || 'N/A'}]`;
           case 'reply':

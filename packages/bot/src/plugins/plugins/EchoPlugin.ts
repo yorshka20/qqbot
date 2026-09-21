@@ -118,7 +118,7 @@ export class EchoPlugin extends PluginBase {
    * Build the text to synthesize from the message's text segments only.
    *
    * context.message.message is the *serialized* form (MessageParser.segmentsToText), which
-   * renders non-text segments as synthetic markers like [Reply:123], @123456, [Face:1]. Feeding
+   * renders non-text segments as synthetic markers like [Reply:123], @123456, [表情:笑哭]. Feeding
    * those to a TTS provider reads the brackets aloud or skews prosody/intonation. Reconstructing
    * from text segments drops every marker at the source — and, unlike regex-stripping the string,
    * never touches brackets the user actually typed.

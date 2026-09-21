@@ -2,6 +2,7 @@
 // Can be reused by other parts of the system that need to parse Milky segments
 
 import type { IncomingSegment } from '@saltify/milky-types';
+import { renderFaceToken } from '@/message/qqFace';
 import { extractUrlsFromLightAppPayload } from './utils/lightAppParser';
 
 /**
@@ -37,7 +38,7 @@ export class MilkyMessageSegmentParser {
           case 'mention_all':
             return '@全体成员';
           case 'face':
-            return `[Face:${segment.data.face_id}]`;
+            return renderFaceToken(segment.data.face_id);
           case 'image':
             return `[Image:${segment.data.summary || segment.data.resource_id}]`;
           case 'reply':

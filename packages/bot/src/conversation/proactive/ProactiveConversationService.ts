@@ -20,11 +20,11 @@ import type { MemoryService } from '@/memory/MemoryService';
 import type { MessageSegment } from '@/message/types';
 import { parseSubtextTags } from '@/persona/prompt/subtextTagParser';
 import type { PluginManager } from '@/plugins/PluginManager';
-import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
+import type { ReactionPlugin } from '@/plugins/plugins/ReactionPlugin';
 import type { RetrievalService } from '@/services/retrieval';
 import { logger } from '@/utils/logger';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
-import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
+import { groupHasWhitelistCapability, WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import type { ThreadContextCompressionService } from '../thread';
 import { isReadableTextForThread, type ProactiveThread, type ThreadService } from '../thread';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
@@ -230,24 +230,7 @@ export class ProactiveConversationService {
    * Used to gate runAnalysis before any LLM calls so we do not waste tokens.
    */
   private groupHasProactiveCapability(groupId: string): boolean {
-    const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
-    const whitelistPlugin = pluginManager?.getPluginAs<WhitelistPlugin>('whitelist');
-    if (!whitelistPlugin) {
-      const whitelistConfig = this.config.getPluginConfig('whitelist') as { groupIds?: string[] } | undefined;
-      const groupIds = Array.isArray(whitelistConfig?.groupIds) ? whitelistConfig.groupIds : [];
-      if (groupIds.length === 0) {
-        return true;
-      }
-      return groupIds.includes(groupId);
-    }
-    const caps = whitelistPlugin.getGroupCapabilities(groupId);
-    if (caps === undefined) {
-      return false;
-    }
-    if (caps.length === 0) {
-      return true;
-    }
-    return caps.includes(WHITELIST_CAPABILITY.proactive);
+    return groupHasWhitelistCapability(groupId, WHITELIST_CAPABILITY.proactive);
   }
 
   /**
@@ -303,6 +286,10 @@ export class ProactiveConversationService {
 
     // Step 7: Apply AI-requested thread end (result.threadShouldEndId) with grace period for recent activity.
     await this.applyThreadShouldEndFromResult(result);
+
+    // Step 7b: Apply the reaction, if analysis picked one. Independent of shouldJoin — a message
+    // worth acknowledging is usually one that is not worth interrupting the room for.
+    await this.applyReactionFromResult(result, groupId, filteredEntries);
 
     // Step 8: If analysis says do not join, schedule compression and exit.
     if (!result.shouldJoin) {
@@ -562,6 +549,45 @@ export class ProactiveConversationService {
     const newestUserEntry = [...filteredEntries].reverse().find((e) => !e.isBotReply);
     if (newestUserEntry?.messageId) {
       this.lastNewThreadBoundaryByGroup.set(groupId, newestUserEntry.messageId);
+    }
+  }
+
+  /**
+   * Send the reaction analysis asked for, addressing the entry by the same `[id:i]` index the
+   * prompt showed it.
+   *
+   * ReactionPlugin owns the whitelist check and the per-group cooldown, so a refusal here is
+   * expected traffic rather than an error — this path is speculative by design.
+   */
+  private async applyReactionFromResult(
+    result: PreliminaryAnalysisResult,
+    groupId: string,
+    filteredEntries: ConversationMessageEntry[],
+  ): Promise<void> {
+    const reaction = result.reaction;
+    if (!reaction) {
+      return;
+    }
+
+    const index = parseInt(reaction.messageId, 10);
+    const entry = Number.isNaN(index) ? undefined : filteredEntries[index];
+    if (!entry || entry.isBotReply || !entry.messageSeq) {
+      logger.debug(
+        `[ProactiveConversationService] Reaction target unusable | groupId=${groupId} | messageId=${reaction.messageId}`,
+      );
+      return;
+    }
+
+    const plugin = getContainer()
+      .resolve<PluginManager>(DITokens.PLUGIN_MANAGER)
+      .getPluginAs<ReactionPlugin>('reaction');
+    if (!plugin) {
+      return;
+    }
+
+    const outcome = await plugin.react({ groupId, messageSeq: entry.messageSeq, face: reaction.face });
+    if (!outcome.ok) {
+      logger.debug(`[ProactiveConversationService] Reaction skipped | groupId=${groupId} | ${outcome.reason}`);
     }
   }
 

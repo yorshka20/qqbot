@@ -16,6 +16,8 @@ import { formatConversationEntriesToText, formatEntriesForSummaryInput } from '.
 export interface ConversationMessageEntry {
   /** Stable message ID from database (Message.id). Used for dedup boundary tracking. */
   messageId: string;
+  /** Per-group sequence number (Milky). The only handle a reaction can be addressed by. */
+  messageSeq?: number;
   userId: number | string;
   nickname?: string;
   content: string;
@@ -417,6 +419,7 @@ export class ConversationHistoryService {
     const nickname = sender?.nickname ?? sender?.card;
     return {
       messageId: msg.id,
+      messageSeq: msg.messageSeq,
       userId: msg.userId,
       nickname: typeof nickname === 'string' ? nickname : undefined,
       content: msg.content,
