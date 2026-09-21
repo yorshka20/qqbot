@@ -1,4 +1,4 @@
-/** biome-ignore-all lint/suspicious/noArrayIndexKey: <explanation> */
+/** biome-ignore-all lint/suspicious/noArrayIndexKey: payload rows are positional and have no stable id */
 
 export function QdrantPayloadView({ payload }: { payload: Record<string, unknown> }) {
   const entries = Object.entries(payload);

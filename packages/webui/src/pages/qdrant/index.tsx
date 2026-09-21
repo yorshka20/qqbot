@@ -1,8 +1,8 @@
 /**
  * Qdrant Explorer page (route entry) — browse collections and perform vector search.
  */
-/** biome-ignore-all lint/suspicious/noArrayIndexKey: <explanation> */
-/** biome-ignore-all lint/a11y/noLabelWithoutControl: <explanation> */
+/** biome-ignore-all lint/suspicious/noArrayIndexKey: search hits are positional and have no stable id */
+/** biome-ignore-all lint/a11y/noLabelWithoutControl: labels caption their own field group, not one control */
 
 import { Database, Loader2, Search } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';

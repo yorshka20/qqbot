@@ -186,7 +186,7 @@ export function InsightsPage() {
             </button>
 
             {sourceDropdownOpen && (
-              // biome-ignore lint/a11y/noStaticElementInteractions: <explanation>
+              // biome-ignore lint/a11y/noStaticElementInteractions: dropdown panel stops mousedown so the outside-click handler does not close it before the option click lands
               <div
                 className="absolute top-full left-0 mt-1 z-50 w-64 max-h-72 overflow-auto rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 shadow-lg"
                 onMouseDown={(e) => e.stopPropagation()}
