@@ -17,6 +17,18 @@ export interface HttpClientOptions {
   tlsPreCheck?: boolean;
   /** Timeout (ms) for the TLS pre-flight handshake. Default: 10000 (10s). */
   connectTimeout?: number;
+  /**
+   * Whether requests may reuse pooled keep-alive sockets. Default: true.
+   *
+   * Set to false for servers that retire idle connections on a short timer
+   * (Node/Express defaults to `Keep-Alive: timeout=5`). Reuse is racy against
+   * such a peer: when its idle timer fires while a request is being written to
+   * the pooled socket, the peer answers with a FIN and Bun's fetch rejects with
+   * "The socket connection was closed unexpectedly" without retrying on a fresh
+   * connection. A client whose requests are not safely repeatable cannot
+   * recover from that, so it must not pool in the first place.
+   */
+  keepAlive?: boolean;
 }
 
 export interface RequestOptions {
@@ -56,6 +68,7 @@ export class HttpClient {
   private retryDelay: number;
   private tlsPreCheck: boolean;
   private connectTimeout: number;
+  private keepAlive: boolean;
 
   constructor(options: HttpClientOptions = {}) {
     this.baseURL = options.baseURL || '';
@@ -68,6 +81,7 @@ export class HttpClient {
     this.retryDelay = options.retryDelay || 1000;
     this.tlsPreCheck = options.tlsPreCheck ?? false;
     this.connectTimeout = options.connectTimeout ?? 10000;
+    this.keepAlive = options.keepAlive ?? true;
   }
 
   /**
@@ -325,6 +339,10 @@ export class HttpClient {
       headers: options.headers,
       body: options.body,
       signal: options.signal,
+      // Only narrow the default: passing `keepalive: true` explicitly carries
+      // extra semantics in the fetch spec, while omitting it keeps Bun's
+      // pooling behaviour untouched.
+      ...(this.keepAlive ? {} : { keepalive: false }),
     });
   }
 

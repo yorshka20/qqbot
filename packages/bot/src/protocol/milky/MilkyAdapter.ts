@@ -46,6 +46,12 @@ export class MilkyAdapter extends WebSocketProtocolAdapter {
       baseURL: apiUrl,
       defaultHeaders,
       defaultTimeout: 10000, // 10 seconds default timeout (can be overridden per request)
+      // The Milky API is an Express server advertising `Keep-Alive: timeout=5`,
+      // and protocol calls are spaced by whatever the pipeline is doing, so a
+      // pooled socket is routinely retired mid-flight. Sends are not repeatable
+      // (a retry could double-post), so the pool has to go rather than the
+      // failure be retried.
+      keepAlive: false,
     });
   }
 
