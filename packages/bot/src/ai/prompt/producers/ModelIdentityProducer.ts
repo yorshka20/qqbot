@@ -3,40 +3,47 @@ import type {
   PromptInjectionContext,
   PromptInjectionProducer,
 } from '@/conversation/promptInjection/types';
+import type { PromptManager } from '../PromptManager';
+
+/** Template carrying the wording; the producer only supplies this turn's values. */
+const TEMPLATE_ID = 'llm.model_identity';
+/**
+ * Head of the baseline layer — right after base.system (0), so the identity sits
+ * with the other runtime-environment facts (date, admin) and ahead of persona.
+ */
+const PRIORITY_MODEL_IDENTITY = 1;
 
 /**
- * Baseline producer — injects a one-line self-identification statement so the
- * LLM knows which model it is running as. Knowing one's own identity provides
- * a positive constraint: the model tends to behave more consistently with its
- * own capabilities and training when it is explicitly told who it is.
+ * Model-identity producer — renders `llm.model_identity` for the provider and
+ * model resolved for this turn. Knowing one's own identity provides a positive
+ * constraint: the model tends to behave more consistently with its own
+ * capabilities and training when it is explicitly told who it is.
  *
- * The fragment is placed at priority 1 inside the baseline layer (after
- * base.system at priority 0, before persona-stable at priority 10) so it sits
- * close to the other runtime-environment facts (date, admin).
+ * The identity is per-turn, which the template has to say. Routing picks a
+ * provider per turn (explicit prefix, vision handoff, health swap), so the
+ * history a model reads contains assistant turns written by other models.
  *
  * Provider name and model are written to hookContext.metadata by
  * ProviderSelectionStage, which runs before PromptAssemblyStage. The cache
  * key is already per-provider, so injecting provider/model here does not
  * invalidate prefix-match caches.
  */
-export function createModelIdentityProducer(): PromptInjectionProducer {
+export function createModelIdentityProducer(deps: { promptManager: PromptManager }): PromptInjectionProducer {
+  const { promptManager } = deps;
   return {
     name: 'model-identity',
     layer: 'baseline',
-    priority: 1,
+    priority: PRIORITY_MODEL_IDENTITY,
     produce(ctx: PromptInjectionContext): PromptInjection | null {
+      // The stage always resolves a provider name, and only sometimes a model,
+      // so provider absence means the stage never ran for this turn.
       const provider = ctx.hookContext.metadata.get('promptProviderName');
-      const model = ctx.hookContext.metadata.get('promptModelName');
-      if (!provider && !model) return null;
-      let fragment: string;
-      if (provider && model) {
-        fragment = `你的底层语言模型为 ${model}（${provider} 提供）。`;
-      } else if (model) {
-        fragment = `你的底层语言模型为 ${model}。`;
-      } else {
-        fragment = `你由 ${provider} 的语言模型驱动。`;
-      }
-      return { producerName: 'model-identity', priority: 1, fragment };
+      if (!provider) return null;
+      const fragment = promptManager.render(TEMPLATE_ID, {
+        provider,
+        model: ctx.hookContext.metadata.get('promptModelName') ?? '',
+      });
+      return fragment ? { producerName: 'model-identity', priority: PRIORITY_MODEL_IDENTITY, fragment } : null;
     },
   };
 }

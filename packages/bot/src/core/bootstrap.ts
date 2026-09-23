@@ -197,7 +197,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
     const wakeWords =
       (config.getPluginConfig('messageTrigger') as { wakeWords?: string[] } | undefined)?.wakeWords ?? [];
     registry.register(createBaselineProducer({ promptManager }));
-    registry.register(createModelIdentityProducer());
+    registry.register(createModelIdentityProducer({ promptManager }));
     registry.register(createProviderPatchProducer({ promptManager }));
     registry.register(createSceneProducer({ promptManager, wakeWords }));
     registry.register(createFaceUsageProducer({ promptManager }));
