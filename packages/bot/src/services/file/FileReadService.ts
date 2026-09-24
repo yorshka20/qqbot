@@ -17,8 +17,18 @@ import { dirname, extname, isAbsolute, join, normalize, relative, resolve, sep }
 import type { FileReadServiceConfig } from '@/core/config/types/bot';
 import { logger } from '@/utils/logger';
 
-/** Max file content length before truncation (chars) */
+/** Default cap for the human `/cat` path. The read_file tool passes its own. */
 const MAX_CONTENT_LENGTH = 15000;
+
+export interface ReadFileLimit {
+  maxChars: number;
+  notice: string;
+}
+
+const DEFAULT_READ_FILE_LIMIT: ReadFileLimit = {
+  maxChars: MAX_CONTENT_LENGTH,
+  notice: '...(内容已截断)',
+};
 
 export interface ListDirectoryResult {
   success: boolean;
@@ -30,6 +40,7 @@ export interface ReadFileResult {
   success: boolean;
   content: string;
   error?: string;
+  truncated?: boolean;
 }
 
 /** Raw file entry for programmatic directory scanning */
@@ -88,6 +99,17 @@ function isEnvFileSegment(segment: string): boolean {
   return segment === '.env' || segment.startsWith('.env.');
 }
 
+/** A filter safe to hand to grep as a basename. Slashes would be a path, a leading dash a flag. */
+function classifyWalkFilter(filter: string): 'dir' | 'file' | 'skip' {
+  if (!filter || filter.startsWith('-') || filter.includes('/') || filter.includes('\\') || filter.includes('\0')) {
+    return 'skip';
+  }
+  if (filter.includes('.') || filter.includes('*')) {
+    return 'file';
+  }
+  return 'dir';
+}
+
 // path.extname() keeps the leading dot (".jsonc"); config lists the bare suffix ("jsonc").
 function normalizeExtension(ext: string): string {
   const bare = ext.trim().toLowerCase();
@@ -128,10 +150,37 @@ export class FileReadService {
    * True when the path touches a hardcoded-secret location. Matches on whole path
    * segments so a sibling like `config.dist/` is unaffected, and applies to the
    * directory itself as well as anything under it.
+   *
+   * `.git/config` and `.git/credentials` are the same class: a remote URL with
+   * an embedded token lives there, and a sibling like `.git/HEAD` does not.
    */
   private static isAlwaysDenied(resolvedPath: string): boolean {
     const segments = resolvedPath.split(sep);
-    return segments.some((s) => (ALWAYS_DENIED_SEGMENTS as readonly string[]).includes(s) || isEnvFileSegment(s));
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      if ((ALWAYS_DENIED_SEGMENTS as readonly string[]).includes(segment) || isEnvFileSegment(segment)) {
+        return true;
+      }
+      if (segment === '.git' && (segments[i + 1] === 'config' || segments[i + 1] === 'credentials')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Secret check for a command argument, which may be `rev:path` rather than a
+   * path that exists on disk. The path half is judged on its own so a missing
+   * worktree file still cannot be printed out of git history.
+   */
+  touchesSecret(userPath: string): boolean {
+    const normalized = userPath.replaceAll('\\', '/');
+    const forms = [normalized];
+    const colon = normalized.lastIndexOf(':');
+    if (colon > 0 && colon < normalized.length - 1) {
+      forms.push(normalized.slice(colon + 1));
+    }
+    return forms.some((form) => FileReadService.isAlwaysDenied(form));
   }
 
   /**
@@ -174,6 +223,60 @@ export class FileReadService {
     }
 
     return { resolved };
+  }
+
+  /**
+   * Resolve a directory or file for a recursive walk.
+   *
+   * Same containment and secret denial as `resolvePath`. Configured filters match
+   * a whole path segment, not a substring: a filter named `logs` blocks the logs
+   * directory and still allows `logger.ts`, and `data` blocks `data/` and still
+   * allows `database/`.
+   */
+  resolveWalkPath(userPath: string): { resolved: string; error?: string } {
+    const normalized = normalize(userPath).replace(/^(\.\/)+/, '');
+    const resolved = resolve(this.projectRoot, normalized);
+    const relFromRoot = relative(this.projectRoot, resolved);
+    if (relFromRoot.startsWith('..') || isAbsolute(relFromRoot)) {
+      return { resolved: '', error: '路径超出项目根目录' };
+    }
+    if (FileReadService.isAlwaysDenied(resolved)) {
+      return { resolved: '', error: 'unavailable path' };
+    }
+    const segments = relFromRoot === '' ? [] : relFromRoot.split(sep);
+    for (const filter of this.filterPaths) {
+      const kind = classifyWalkFilter(filter);
+      if (kind === 'skip') {
+        continue;
+      }
+      if (segments.includes(filter)) {
+        return { resolved: '', error: 'unavailable path' };
+      }
+    }
+    return { resolved };
+  }
+
+  /**
+   * grep arguments that keep a recursive walk out of secret trees and the
+   * configured denylist. `--exclude-dir` matches a directory basename, so it
+   * stays consistent with `resolveWalkPath`.
+   *
+   * `.git` is included because BSD grep descends into the object store, and
+   * that spend of the output cap happens before any source match. Callers that
+   * were asked to search `.git` itself must drop this flag: on this grep it
+   * also suppresses the start directory when that directory is named `.git`.
+   */
+  grepExcludeArgs(): string[] {
+    const args = ['--exclude-dir=config.d', '--exclude-dir=.git', '--exclude=.env', '--exclude=.env.*'];
+    for (const filter of this.filterPaths) {
+      const kind = classifyWalkFilter(filter);
+      if (kind === 'dir') {
+        args.push(`--exclude-dir=${filter}`);
+      } else if (kind === 'file') {
+        args.push(`--exclude=${filter}`);
+      }
+    }
+    return args;
   }
 
   /**
@@ -259,7 +362,7 @@ export class FileReadService {
    * @param path - File path (within project root)
    * When noCheck is true, filterPaths and hidden-path checks are skipped (caller must restrict who uses noCheck).
    */
-  readFile(path: string, noCheck = false): ReadFileResult {
+  readFile(path: string, noCheck = false, limit: ReadFileLimit = DEFAULT_READ_FILE_LIMIT): ReadFileResult {
     const { resolved, error } = this.resolvePath(path, noCheck, true);
     if (error) {
       return { success: false, content: '', error };
@@ -277,11 +380,13 @@ export class FileReadService {
       }
 
       let content = readFileSync(resolved, 'utf-8');
-      if (content.length > MAX_CONTENT_LENGTH) {
-        content = `${content.slice(0, MAX_CONTENT_LENGTH)}\n\n...(内容已截断)`;
+      let truncated = false;
+      if (content.length > limit.maxChars) {
+        content = `${content.slice(0, limit.maxChars)}\n\n${limit.notice}`;
+        truncated = true;
       }
 
-      return { success: true, content };
+      return { success: true, content, truncated };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('ENOENT')) {

@@ -54,6 +54,17 @@ describe('FileReadService secret-path denial', () => {
     expect(svc().resolvePath('package.json').error).toBeUndefined();
   });
 
+  it('refuses .git/config but still allows other files in .git', () => {
+    const s = svc();
+    expect(s.resolvePath('.git/config', false, true).error).toBe('unavailable path');
+    expect(s.resolvePath('.git/credentials', false, true).error).toBe('unavailable path');
+    expect(s.resolvePath('.git/HEAD', false, true).error).toBeUndefined();
+    expect(s.resolvePath('.git', false, true).error).toBeUndefined();
+    expect(s.touchesSecret('HEAD:.git/config')).toBe(true);
+    expect(s.touchesSecret('HEAD:config.d/ai.jsonc')).toBe(true);
+    expect(s.touchesSecret('HEAD:package.json')).toBe(false);
+  });
+
   it('still blocks traversal outside the project root', () => {
     expect(svc().resolvePath('../../etc/passwd').error).toBeDefined();
   });
@@ -112,5 +123,30 @@ describe('FileReadService extension filter', () => {
     expect(svc.readFile('notes.jsonc').error).toBe('unsupported file extension');
     expect(svc.readFile('README').success).toBe(true);
     expect(svc.readFile('README').content).toContain('plain');
+  });
+});
+
+describe('FileReadService default content cap', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fileread-cap-'));
+  const reader = new FileReadService({ root: dir, filterPaths: [], filterExtensions: [] });
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('keeps a file at the default cap intact', () => {
+    writeFileSync(join(dir, 'exact.txt'), 'x'.repeat(15000));
+    const result = reader.readFile('exact.txt');
+    expect(result.truncated).toBe(false);
+    expect(result.content).toBe('x'.repeat(15000));
+  });
+
+  it('slices past the default cap and marks the cut', () => {
+    writeFileSync(join(dir, 'over.txt'), `${'x'.repeat(15000)}Z`);
+    const result = reader.readFile('over.txt');
+    expect(result.truncated).toBe(true);
+    expect(result.content.startsWith('x'.repeat(15000))).toBe(true);
+    expect(result.content.endsWith('...(内容已截断)')).toBe(true);
+    expect(result.content.includes('Z')).toBe(false);
   });
 });

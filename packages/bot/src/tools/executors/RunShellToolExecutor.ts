@@ -16,7 +16,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 - config.d、.env 等密钥路径与项目外路径不可访问；git 的写操作子命令（commit/push/checkout 等）不可用。
 - 与 execute_command 不同：execute_command 代理的是 bot 斜杠命令，本工具执行的是仓库检查命令。`,
   executor: 'run_shell',
-  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true } },
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
   parameters: {
     command: {
       type: 'string',
@@ -32,7 +32,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
     'ls packages/bot/src/tools',
   ],
   whenToUse:
-    '需要查看本地仓库状态时调用：最近提交、某次提交的改动、分支情况、按关键词搜代码、浏览目录、读小文件。读大段文件内容优先 read_file（有更好的截断），语义化代码搜索优先 search_code。',
+    '需要查看本地仓库状态时调用：最近提交、某次提交的改动、分支情况、浏览目录、读小文件。读大段文件内容优先 read_file。按关键词搜代码优先 search_code（pattern / path / glob / context，同 grep）。',
 })
 @injectable()
 export class RunShellToolExecutor extends BaseToolExecutor {

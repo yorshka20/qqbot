@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it } from 'bun:test';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { FileReadService } from '@/services/file';
 import { ReadOnlyShellService } from '../ReadOnlyShellService';
 
@@ -64,6 +68,7 @@ describe('ReadOnlyShellService — git policy', () => {
   it('rejects file-writing and pager-executing flags', () => {
     expect(service.run('git log --output=/tmp/x').success).toBe(false);
     expect(service.run('git grep -Oless foo').success).toBe(false);
+    expect(service.run('git grep --no-index secret').error).toContain('参数不可用');
   });
 
   it('rejects ref creation via bare positionals on branch/tag', () => {
@@ -134,5 +139,59 @@ describe('ReadOnlyShellService — search hardening', () => {
     // plain grep ignores .gitignore; the forced --exclude-dir must keep secrets out
     const r = service.run('grep -rl apiKey config.d');
     expect(r.success).toBe(false);
+  });
+});
+
+describe('ReadOnlyShellService — secret bytes never reach output', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'shell-secret-')));
+  const marker = 'synthetic-shell-secret';
+  const local = new ReadOnlyShellService(
+    new FileReadService({ root: dir, filterPaths: [], filterExtensions: [] }),
+    dir,
+  );
+
+  const git = (args: string[]) => {
+    const result = spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
+    if (result.status !== 0) {
+      throw new Error(result.stderr);
+    }
+  };
+
+  git(['init', '-q']);
+  git(['config', 'user.email', 't@example.com']);
+  git(['config', 'user.name', 't']);
+  mkdirSync(join(dir, 'config.d'));
+  writeFileSync(join(dir, 'config.d', 'ai.jsonc'), `${marker}\n`);
+  writeFileSync(join(dir, '.env'), `${marker}\n`);
+  writeFileSync(join(dir, '.gitignore'), 'config.d/*\n.env\n');
+  writeFileSync(join(dir, 'src.txt'), 'public hello\n');
+  git(['config', 'remote.origin.url', `https://user:${marker}@example.com/repo.git`]);
+  git(['add', 'src.txt', '.gitignore']);
+  git(['commit', '-qm', 'init']);
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function leaked(command: string): boolean {
+    const result = local.run(command);
+    return `${result.output ?? ''}\n${result.error ?? ''}`.includes(marker);
+  }
+
+  it('does not cat or head the credential file', () => {
+    expect(leaked('cat .git/config')).toBe(false);
+    expect(leaked('head .git/config')).toBe(false);
+    expect(local.run('cat .git/HEAD').success).toBe(true);
+    expect(local.run('ls .git').success).toBe(true);
+  });
+
+  it('does not show secret files through a recursive search or a git revision', () => {
+    expect(leaked('grep -r synthetic-shell-secret .')).toBe(false);
+    expect(leaked("rg -g '**/*' synthetic-shell-secret .")).toBe(false);
+    expect(leaked('git grep --no-index synthetic-shell-secret')).toBe(false);
+    git(['add', '-f', 'config.d/ai.jsonc']);
+    git(['commit', '-qm', 'secret']);
+    expect(leaked('git show HEAD:config.d/ai.jsonc')).toBe(false);
+    expect(local.run('git show HEAD:src.txt').output).toContain('public hello');
   });
 });

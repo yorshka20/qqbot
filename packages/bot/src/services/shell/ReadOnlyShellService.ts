@@ -57,6 +57,9 @@ const GIT_FORBIDDEN_FLAGS: RegExp[] = [
   /^--open-files-in-pager/,
   /^--upload-pack/,
   /^--receive-pack/,
+  // Searches the worktree the way grep does, including gitignored secret files.
+  // The forced grep excludes never get a chance to run.
+  /^--no-index($|=)/,
 ];
 
 /** branch/tag flags that mutate refs. */
@@ -213,6 +216,9 @@ export class ReadOnlyShellService {
       }
       for (const cand of candidates) {
         if (!cand || cand === '-' || cand === '--') continue;
+        if (this.fileReadService.touchesSecret(cand)) {
+          return `不可访问的路径：${cand}（unavailable path）`;
+        }
         const abs = resolve(this.projectRoot, cand);
         if (!existsSync(abs)) continue;
         let real = abs;
@@ -237,12 +243,15 @@ export class ReadOnlyShellService {
   /** Forced hardening args appended after user args. */
   private finalizeArgs(bin: string, args: string[]): string[] {
     if (bin === 'grep') {
-      // plain grep ignores .gitignore — keep recursive searches out of the secret dirs
-      return [...args, '--exclude-dir=config.d', '--exclude=.env', '--exclude=.env.*'];
+      // plain grep ignores .gitignore and descends into .git. Exclude the secret
+      // dirs by name; `.git/config` is where a credentialed remote URL lives.
+      return [...args, '--exclude-dir=config.d', '--exclude-dir=.git', '--exclude=.env', '--exclude=.env.*'];
     }
     if (bin === 'rg') {
-      // rg honors .gitignore already; these hold even if that changes
-      return [...args, '--iglob', '!config.d/**', '--iglob', '!**/.env*'];
+      // Appended last so a caller glob such as `**/*` cannot pull .git or a
+      // secret dir back in. rg's own defaults already skip these; the globs
+      // hold when a flag overrides that default.
+      return [...args, '--iglob', '!config.d/**', '--iglob', '!**/.env*', '--glob', '!.git/**'];
     }
     return args;
   }
