@@ -617,7 +617,6 @@ export class OpenAIProvider
       }
       const ext = imageCfg?.outputFormat ?? 'png';
       const mime = ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png';
-      const inputFidelity = imageCfg?.inputFidelity ?? 'high';
       // gpt-image models accept multiple reference images; upload each and pass them together.
       const uploads = await Promise.all(
         sourceImages.map(async (img, idx) =>
@@ -626,8 +625,12 @@ export class OpenAIProvider
       );
 
       logger.info(
-        `[OpenAIProvider] generateImageFromImage | model=${model} size=${size} quality=${quality} images=${uploads.length} inputFidelity=${inputFidelity}`,
+        `[OpenAIProvider] generateImageFromImage | model=${model} size=${size} quality=${quality} images=${uploads.length}`,
       );
+      // gpt-image-2 returns 400 if input_fidelity is present. The model always
+      // processes image inputs at high fidelity and does not accept the knob
+      // (gpt-image-1 / 1.5 still do). Omit it.
+      // https://developers.openai.com/api/docs/guides/image-prompting
       const response = await this.client.images.edit({
         model,
         image: uploads,
@@ -638,7 +641,6 @@ export class OpenAIProvider
         background: imageCfg?.background ?? 'auto',
         output_format: imageCfg?.outputFormat ?? 'png',
         output_compression: imageCfg?.outputCompression,
-        input_fidelity: inputFidelity,
       });
 
       const images: Array<{ relativePath?: string; base64?: string }> = [];
@@ -662,7 +664,6 @@ export class OpenAIProvider
           model,
           size,
           quality,
-          inputFidelity,
           usage: response.usage,
         },
       };

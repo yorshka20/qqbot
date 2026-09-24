@@ -31,7 +31,6 @@ export interface OpenAIImageConfig {
   outputFormat?: 'png' | 'jpeg' | 'webp';
   outputCompression?: number; // 0-100, only for jpeg/webp
   moderation?: 'low' | 'auto';
-  inputFidelity?: 'high' | 'low'; // edits-only; how strictly to preserve the input
 }
 
 export interface OpenAIProviderConfig {

@@ -762,8 +762,8 @@
       //     "quality": "auto",         // "low" | "medium" | "high" | "auto"
       //     "background": "auto",      // "transparent" | "opaque" | "auto"
       //     "outputFormat": "png",     // "png" | "jpeg" | "webp"
-      //     "moderation": "auto",      // "low" | "auto"
-      //     "inputFidelity": "high"    // "high" | "low" — edits only; high keeps facial features of reference images
+      //     "moderation": "auto"       // "low" | "auto"
+      //     // gpt-image-2 rejects input_fidelity. Image inputs are always high fidelity.
       //   }
       // },
       // Local Text2Image provider example (connects to local Python server)

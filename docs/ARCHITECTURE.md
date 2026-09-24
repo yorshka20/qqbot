@@ -562,7 +562,7 @@ through the same `MessageAPI.sendFromContext` egress `SendSystem` uses.
 
 `ImageRequestAssembler` sits in front of every `generateImageFromImage` call. Callers pass the user prompt, every reference image taken from the triggering message and the message it replies to, and any preset ids. The assembler appends each preset's precise description to the prompt and its local images after the message images. Providers then apply their own limits: gpt-image and Gemini take the whole list; NovelAI denoises from the first image only.
 
-Presets are directories under `data/image-presets/<id>/preset.json` (`name` plus `aliases` for the chat model to match user wording, `description` sent verbatim to the image model, `images` relative to that directory). The `generate_image` tool cites them by id; `/gpt2` passes every image on the message or its reply and does not take preset ids itself. `input_fidelity` is an OpenAI edits parameter (`image.inputFidelity`) and is not part of the assembled payload.
+Presets are directories under `data/image-presets/<id>/preset.json` (`name` plus `aliases` for the chat model to match user wording, `description` sent verbatim to the image model, `images` relative to that directory). The `generate_image` tool cites them by id; `/gpt2` passes every image on the message or its reply and does not take preset ids itself. `gpt-image-2` edits omit `input_fidelity`: that model rejects the parameter and always reads image inputs at high fidelity.
 
 ### AI Reply Pipeline
 
