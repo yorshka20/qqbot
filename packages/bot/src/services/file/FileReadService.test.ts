@@ -2,11 +2,13 @@
 //
 // config.d/ holds every provider API key. It was readable because filterPaths still
 // named `config.json` from the single-file config era, and the filterExtensions list
-// never matched (extname() yields ".jsonc", the config listed "jsonc"). Anything this
-// service returns can reach an LLM prompt, so the denial lives in code and must hold
-// even for privileged (noCheck) callers.
+// did not match (extname() yields ".jsonc", the config listed "jsonc"; comparison now
+// strips that dot). Anything this service returns can reach an LLM prompt, so the
+// denial lives in code and must hold even for privileged (noCheck) callers.
 
-import { describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FileReadService } from './FileReadService';
 
@@ -56,22 +58,59 @@ describe('FileReadService secret-path denial', () => {
     expect(svc().resolvePath('../../etc/passwd').error).toBeDefined();
   });
 
-  // End-to-end against the real deployed config shape, including the two defects
-  // that let secrets through: filterPaths still names the single-file `config.json`,
-  // and filterExtensions never matches because extname() returns a leading dot.
-  it('blocks config.d under the live config, whose own filters do not cover it', () => {
+  // filterPaths still names the single-file `config.json`, so it does not cover config.d.
+  // Extension denial is a separate gate and is not what blocks this path.
+  it('blocks config.d under the live config, whose path filters do not cover it', () => {
     const live = new FileReadService({
       root: process.cwd(),
       filterPaths: ['node_modules', 'output', 'dist', 'data', 'logs', 'config.json'],
       filterExtensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'jsonc', 'txt', 'log'],
     });
 
-    // Sanity: neither configured filter would have stopped this path on its own.
     expect('config.d/ai.jsonc'.includes('config.json')).toBe(false);
-    expect(['jpg', 'jsonc', 'txt'].includes('.jsonc')).toBe(false);
 
     const result = live.readFile('config.d/ai.jsonc');
     expect(result.success).toBe(false);
     expect(result.content ?? '').toBe('');
+  });
+});
+
+describe('FileReadService extension filter', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fileread-ext-'));
+  writeFileSync(join(dir, 'notes.jsonc'), '{}\n');
+  writeFileSync(join(dir, 'notes.md'), 'ok\n');
+  writeFileSync(join(dir, 'README'), 'plain\n');
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('blocks a bare configured suffix even though extname() includes a dot', () => {
+    const svc = new FileReadService({
+      root: dir,
+      filterPaths: [],
+      filterExtensions: ['jsonc'],
+    });
+
+    const blocked = svc.readFile('notes.jsonc');
+    expect(blocked.success).toBe(false);
+    expect(blocked.error).toBe('unsupported file extension');
+    expect(blocked.content).toBe('');
+
+    const allowed = svc.readFile('notes.md');
+    expect(allowed.success).toBe(true);
+    expect(allowed.content).toContain('ok');
+  });
+
+  it('treats a dotted or uppercase config entry as the same suffix', () => {
+    const svc = new FileReadService({
+      root: dir,
+      filterPaths: [],
+      filterExtensions: ['.JSONC'],
+    });
+
+    expect(svc.readFile('notes.jsonc').error).toBe('unsupported file extension');
+    expect(svc.readFile('README').success).toBe(true);
+    expect(svc.readFile('README').content).toContain('plain');
   });
 });

@@ -88,6 +88,15 @@ function isEnvFileSegment(segment: string): boolean {
   return segment === '.env' || segment.startsWith('.env.');
 }
 
+// path.extname() keeps the leading dot (".jsonc"); config lists the bare suffix ("jsonc").
+function normalizeExtension(ext: string): string {
+  const bare = ext.trim().toLowerCase();
+  if (bare.startsWith('.')) {
+    return bare.slice(1);
+  }
+  return bare;
+}
+
 export class FileReadService {
   private readonly projectRoot: string;
   private readonly filterPaths: string[];
@@ -96,7 +105,7 @@ export class FileReadService {
   constructor(config?: FileReadServiceConfig) {
     this.projectRoot = resolve(config?.root ?? process.cwd());
     this.filterPaths = config?.filterPaths ?? [];
-    this.filterExtensions = config?.filterExtensions ?? [];
+    this.filterExtensions = (config?.filterExtensions ?? []).map(normalizeExtension).filter((ext) => ext.length > 0);
   }
 
   /**
@@ -262,8 +271,8 @@ export class FileReadService {
         return { success: false, content: '', error: '路径不是文件' };
       }
 
-      const ext = extname(resolved).toLowerCase();
-      if (this.filterExtensions.includes(ext)) {
+      const ext = normalizeExtension(extname(resolved));
+      if (ext.length > 0 && this.filterExtensions.includes(ext)) {
         return { success: false, content: '', error: 'unsupported file extension' };
       }
 
