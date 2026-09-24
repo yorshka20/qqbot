@@ -1049,7 +1049,9 @@
       // Providers are attempted directly with no pre-flight health probe:
       // metered backends (Serper) would be billed just to be asked whether
       // they work, and the next real search answers that for free.
-      // "fallbackOrder": ["searxng"],
+      // Leave empty until a second provider is actually usable. A self-hosted
+      // SearXNG instance gets blocked and is not a fallback.
+      "fallbackOrder": [],
       "mode": "direct", // "direct" (SearXNG API) or "mcp" (MCP server). Only applies to the searxng provider.
       "autoTrigger": true, // Automatically trigger search when needed
       "triggerStrategy": "llm", // "llm" (use LLM to judge) | "keywords" | "none"
