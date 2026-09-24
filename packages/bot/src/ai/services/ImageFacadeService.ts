@@ -8,6 +8,7 @@ import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } f
 import type { I2VPromptResult } from '../schemas';
 import type { ImageGenerationService } from './ImageGenerationService';
 import type { ImagePromptService } from './ImagePromptService';
+import { ImageRequestAssembler } from './ImageRequestAssembler';
 
 /**
  * Image generation facade — wraps {@link ImageGenerationService} and
@@ -20,6 +21,7 @@ export class ImageFacadeService {
     private hookManager: HookManager,
     private imageGenerationService: ImageGenerationService,
     private imagePromptService: ImagePromptService,
+    private presetsRoot?: string,
   ) {}
 
   /**
@@ -87,17 +89,28 @@ export class ImageFacadeService {
         if (!prompt?.trim()) {
           throw new Error('prompt must be provided for image transformation');
         }
-        if (!images.length) {
+        // Preprocess the user's wording first, then append preset descriptions
+        // verbatim. The other order would let the enricher rewrite the precise text.
+        const userPrompt = await this.resolveImageToImagePrompt(prompt, sessionId, useLLMPreprocess, templateName);
+        const assembled = ImageRequestAssembler.assemble(
+          {
+            prompt: userPrompt,
+            messageImages: images,
+            presetIds: options?.presetIds,
+          },
+          this.presetsRoot,
+        );
+        if (!assembled.referenceImages.length) {
           throw new Error('at least one source image must be provided for image transformation');
         }
-        const finalPrompt = await this.resolveImageToImagePrompt(prompt, sessionId, useLLMPreprocess, templateName);
+        const presetLabel = assembled.presets.map((preset) => preset.id).join(',') || '-';
         logger.info(
-          `[ImageFacadeService] Generating image from ${images.length} image(s) | prompt="${finalPrompt}" | providerName=${providerName ?? 'default'}`,
+          `[ImageFacadeService] Generating image from ${assembled.referenceImages.length} image(s) | presets=${presetLabel} | prompt="${assembled.prompt}" | providerName=${providerName ?? 'default'}`,
         );
         return this.imageGenerationService.generateImageFromImage(
-          images,
-          finalPrompt,
-          options,
+          assembled.referenceImages,
+          assembled.prompt,
+          optionsForProvider(options),
           sessionId,
           providerName,
         );
@@ -162,7 +175,7 @@ export class ImageFacadeService {
     }
   }
 
-  /** Resolves final prompt for img2img: optional LLM preprocessing. */
+  /** Resolves the user prompt for img2img: optional LLM preprocessing. Preset text is appended later. */
   private async resolveImageToImagePrompt(
     prompt: string,
     sessionId: string | undefined,
@@ -182,4 +195,13 @@ export class ImageFacadeService {
     logger.debug(`[ImageFacadeService] Image-from-image LLM preprocessing | input="${prompt}"`);
     return prepared.prompt;
   }
+}
+
+/** Drop preset ids before the provider call. Assembly already consumed them. */
+function optionsForProvider(options?: Image2ImageOptions): Image2ImageOptions | undefined {
+  if (!options) {
+    return undefined;
+  }
+  const { presetIds: _presetIds, ...rest } = options;
+  return rest;
 }

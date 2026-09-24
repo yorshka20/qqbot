@@ -177,6 +177,8 @@ export interface OpenAIProviderConfig {
 }
 
 const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
+/** gpt-image edits accept at most this many reference images. */
+const GPT_IMAGE_MAX_REFERENCES = 16;
 
 /**
  * OpenAI Provider implementation
@@ -608,8 +610,14 @@ export class OpenAIProvider
     const quality = imageCfg?.quality ?? 'auto';
 
     try {
+      if (sourceImages.length > GPT_IMAGE_MAX_REFERENCES) {
+        throw new Error(
+          `gpt-image accepts at most ${GPT_IMAGE_MAX_REFERENCES} reference images (got ${sourceImages.length})`,
+        );
+      }
       const ext = imageCfg?.outputFormat ?? 'png';
       const mime = ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png';
+      const inputFidelity = imageCfg?.inputFidelity ?? 'high';
       // gpt-image models accept multiple reference images; upload each and pass them together.
       const uploads = await Promise.all(
         sourceImages.map(async (img, idx) =>
@@ -618,7 +626,7 @@ export class OpenAIProvider
       );
 
       logger.info(
-        `[OpenAIProvider] generateImageFromImage | model=${model} size=${size} quality=${quality} images=${uploads.length}`,
+        `[OpenAIProvider] generateImageFromImage | model=${model} size=${size} quality=${quality} images=${uploads.length} inputFidelity=${inputFidelity}`,
       );
       const response = await this.client.images.edit({
         model,
@@ -630,7 +638,7 @@ export class OpenAIProvider
         background: imageCfg?.background ?? 'auto',
         output_format: imageCfg?.outputFormat ?? 'png',
         output_compression: imageCfg?.outputCompression,
-        // input_fidelity: imageCfg?.inputFidelity ?? 'low',
+        input_fidelity: inputFidelity,
       });
 
       const images: Array<{ relativePath?: string; base64?: string }> = [];
@@ -654,7 +662,7 @@ export class OpenAIProvider
           model,
           size,
           quality,
-          inputFidelity: imageCfg?.inputFidelity ?? 'low',
+          inputFidelity,
           usage: response.usage,
         },
       };

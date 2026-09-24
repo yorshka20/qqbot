@@ -58,6 +58,20 @@ export function normalizeVisibility(input: ToolScope[] | ToolVisibility | undefi
 }
 
 /**
+ * Overlay applied when a spec is serialized for the model.
+ * Lets a tool publish state that lives on disk (preset catalogs, and the like)
+ * without a second registration. Applied onto a copy; the stored spec is unchanged.
+ */
+export interface ToolModelDescription {
+  /** Appended to the static description. */
+  descriptionSuffix?: string;
+  /** Replaces `whenToUse` for this serialization. */
+  whenToUse?: string;
+  /** Per-parameter replacements merged onto a copy of `parameters`. */
+  parameterOverrides?: ToolSpec['parameters'];
+}
+
+/**
  * Tool specification — the rich internal definition of a tool.
  * Distinct from ToolDefinition (src/ai/types.ts) which is the slim
  * OpenAI-compatible schema sent to the LLM.
@@ -120,6 +134,12 @@ export interface ToolSpec {
    * request); read a cached health flag, never probe.
    */
   available?: () => boolean;
+
+  /**
+   * Recomputed every time the catalog is serialized. Must be cheap and synchronous.
+   * A throwing overlay is ignored and the static spec is sent instead.
+   */
+  describeForModel?: () => ToolModelDescription;
 }
 
 /**

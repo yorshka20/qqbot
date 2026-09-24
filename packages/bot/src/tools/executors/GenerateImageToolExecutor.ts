@@ -2,12 +2,13 @@
 // from a natural-language description. This is the first-class tool counterpart to the user-facing
 // /gpt2 and /banana commands: the LLM no longer has to guess command names through execute_command.
 //
-// Two modes, chosen automatically from the triggering message:
-//   - If the message (or the message it replies to) carries one or more images, those are passed
-//     as reference inputs and we run img2img. Multiple images are supported as multi-image
-//     reference (compose / combine / edit) on providers that allow it (OpenAI gpt-image, Gemini).
-//     The user's prompt is taken literally as the edit instruction — NOT scene-enriched, since the
+// Two modes, chosen from the triggering message plus any cited reference presets:
+//   - If the message (or the message it replies to) carries images, or the call cites presets,
+//     those references are passed through ImageRequestAssembler and we run img2img. The assembler
+//     is provider-neutral: gpt-image and Gemini receive every reference image, NovelAI would use
+//     the first. The user's prompt is the edit instruction — NOT scene-enriched, since the
 //     enrichment template rewrites input into a from-scratch scene and would discard the source.
+//     Preset descriptions are appended after that, verbatim.
 //   - Otherwise we run text2img and enrich the loose description via text2img.generate_banana, which
 //     preserves any detail the user already gave and fills in what's missing.
 //
@@ -17,6 +18,7 @@
 
 import { inject, injectable } from 'tsyringe';
 import type { AIService, Image2ImageOptions, Text2ImageOptions } from '@/ai';
+import { ImageRequestAssembler } from '@/ai/services/ImageRequestAssembler';
 import { extractImagesFromMessageAndReply, visionImageToString } from '@/ai/utils/imageUtils';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService } from '@/conversation/history';
@@ -26,7 +28,7 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
-import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
+import type { ToolCall, ToolExecutionContext, ToolModelDescription, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 
 const ENRICH_TEMPLATE = 'text2img.generate_banana';
@@ -41,10 +43,47 @@ const PROVIDER_MAP = {
 
 type ProviderKey = keyof typeof PROVIDER_MAP;
 
+/** Live preset catalog for the tool schema. Precise descriptions stay out of this view. */
+export function describeGenerateImageForModel(): ToolModelDescription {
+  const presets = ImageRequestAssembler.list();
+  const empty =
+    '本地参考 preset 的 id 列表（data/image-presets/<id>/preset.json）。当前没有可用 preset。画面需要复用某个常驻角色或元素时才填，openai 与 gemini 共用同一套拼装。';
+  if (presets.length === 0) {
+    return {
+      parameterOverrides: {
+        presets: {
+          type: 'array',
+          required: false,
+          items: { type: 'string' },
+          description: empty,
+        },
+      },
+    };
+  }
+  const catalog = presets
+    .map((preset) => {
+      const aliases = preset.aliases.length > 0 ? `；${preset.aliases.join('、')}` : '';
+      return `- ${preset.id}（${preset.name}${aliases}，${preset.imageCount} 张参考图）`;
+    })
+    .join('\n');
+  return {
+    parameterOverrides: {
+      presets: {
+        type: 'array',
+        required: false,
+        items: { type: 'string', enum: presets.map((preset) => preset.id) },
+        description:
+          '用户这句话里出现了下列任一称呼时，填入对应 id。用户另外贴了姿势图或场景图也要填。没出现这些称呼就留空。系统会附上参考图和精确描述，不要把精确描述抄进 prompt。\n' +
+          catalog,
+      },
+    },
+  };
+}
+
 @Tool({
   name: 'generate_image',
   description:
-    '根据自然语言描述生成图片并直接发送给用户。你只需把用户想要的画面用一句话写进 prompt，系统会自动润色补全细节（无需写长 prompt）。若用户消息里带了图片（或回复了一张带图的消息），系统会自动把这些图作为参考图进行「图生图」（改图/合成/风格迁移），支持多张参考图，你无需自己传图。支持 gemini（默认，画质高、懂中文与文字渲染）和 openai 两种绘图引擎。',
+    '根据自然语言描述生成图片并直接发送给用户。你只需把用户想要的画面用一句话写进 prompt，系统会自动润色补全细节（无需写长 prompt）。若用户消息里带了图片（或回复了一张带图的消息），系统会自动把这些图作为参考图进行「图生图」（改图/合成/风格迁移），支持多张参考图，你无需自己传图。需要复用某个常驻角色或元素时，在 presets 里引用它的 id，系统会附上对应的本地参考图和精确描述。支持 gemini（默认，画质高、懂中文与文字渲染）和 openai 两种绘图引擎，两边共用同一套参考拼装。',
   executor: 'generate_image',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
   parameters: {
@@ -65,7 +104,15 @@ type ProviderKey = keyof typeof PROVIDER_MAP;
       required: false,
       description: '画面比例，如 "16:9"(横)、"9:16"(竖/手机壁纸)、"1:1"(方/头像)。省略则由系统按内容判断。',
     },
+    presets: {
+      type: 'array',
+      required: false,
+      items: { type: 'string' },
+      description:
+        '本地参考 preset 的 id 列表。画面涉及某个常驻角色或元素时填写，系统会附上它的参考图和精确描述。',
+    },
   },
+  describeForModel: describeGenerateImageForModel,
   examples: [
     '画一只坐在窗台上的橘猫',
     '生成一张赛博朋克城市夜景的手机壁纸',
@@ -102,23 +149,30 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
     const providerKey: ProviderKey = call.parameters?.provider === 'openai' ? 'openai' : 'gemini';
     const { providerName, model } = PROVIDER_MAP[providerKey];
     const aspectRatio = (call.parameters?.aspect_ratio as string | undefined)?.trim();
+    const presetIds = readPresetIds(call.parameters?.presets);
+    if (typeof presetIds === 'string') {
+      return this.error(presetIds, presetIds);
+    }
 
-    const sourceImages = await this.collectSourceImages(hookContext.message);
+    const messageImages = await this.collectSourceImages(hookContext.message);
+    const useReferences = messageImages.length > 0 || presetIds.length > 0;
 
     let response: Awaited<ReturnType<AIService['generateImg']>>;
     try {
-      if (sourceImages.length > 0) {
+      if (useReferences) {
         // img2img: prompt is the edit instruction, used literally (no scene enrichment).
+        // Preset images and descriptions are attached by ImageRequestAssembler inside the facade.
         logger.info(
-          `[GenerateImageToolExecutor] img2img | provider=${providerName} images=${sourceImages.length} | prompt=${prompt.substring(0, 50)}...`,
+          `[GenerateImageToolExecutor] img2img | provider=${providerName} messageImages=${messageImages.length} presets=${presetIds.join(',') || '-'} | prompt=${prompt.substring(0, 50)}...`,
         );
         const img2imgOptions: Image2ImageOptions = {
           ...(model ? { model } : {}),
           ...(aspectRatio ? { aspectRatio } : {}),
+          ...(presetIds.length > 0 ? { presetIds } : {}),
         };
         response = await this.aiService.generateImageFromImage(
           hookContext,
-          sourceImages,
+          messageImages,
           prompt,
           img2imgOptions,
           providerName,
@@ -152,7 +206,7 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
     const segments = buildMessageFromResponse(response, '[GenerateImageToolExecutor]').build();
     const sendResult = await this.messageAPI.sendFromContext(segments, hookContext.message, 60000);
 
-    const mode = sourceImages.length > 0 ? `图生图（参考${sourceImages.length}张）` : '文生图';
+    const mode = useReferences ? `图生图（消息图${messageImages.length}张，preset ${presetIds.length}个）` : '文生图';
     logger.info(
       `[GenerateImageToolExecutor] Sent ${response.images.length} image(s) | provider=${providerName} | mode=${mode}`,
     );
@@ -163,7 +217,13 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
 
     return this.success(
       `已用 ${providerKey} 完成${mode}并把图片发给用户了。你只需补一句简短自然的说明即可，不要重复描述画面内容。`,
-      { provider: providerKey, mode, sourceImageCount: sourceImages.length, imageCount: response.images.length },
+      {
+        provider: providerKey,
+        mode,
+        sourceImageCount: messageImages.length,
+        presetIds,
+        imageCount: response.images.length,
+      },
     );
   }
 
@@ -217,3 +277,24 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
 }
 
 type HookMessage = Parameters<typeof extractImagesFromMessageAndReply>[0];
+
+/** Returns an error string when the value is present but not a string array. */
+function readPresetIds(value: unknown): string[] | string {
+  if (value == null) {
+    return [];
+  }
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string')) {
+    return 'presets 必须是字符串 id 数组';
+  }
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const entry of value) {
+    const id = entry.trim();
+    if (!id || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}

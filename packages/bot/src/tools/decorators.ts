@@ -1,6 +1,13 @@
 // Tool decorator for automatic registration
 
-import { normalizeVisibility, type ToolExecutor, type ToolScope, type ToolSpec, type ToolVisibility } from './types';
+import {
+  normalizeVisibility,
+  type ToolExecutor,
+  type ToolModelDescription,
+  type ToolScope,
+  type ToolSpec,
+  type ToolVisibility,
+} from './types';
 
 /**
  * Tool decorator options
@@ -16,6 +23,8 @@ export interface ToolOptions {
   whenToUse?: string;
   /** See {@link ToolSpec.available} — runtime gate for a tool backed by a service. */
   available?: () => boolean;
+  /** See {@link ToolSpec.describeForModel}. */
+  describeForModel?: () => ToolModelDescription;
 }
 
 /**
@@ -96,5 +105,6 @@ export function metadataToToolSpec(metadata: ToolMetadata): ToolSpec {
     triggerKeywords: metadata.triggerKeywords,
     whenToUse: metadata.whenToUse,
     available: metadata.available,
+    describeForModel: metadata.describeForModel,
   };
 }

@@ -118,6 +118,22 @@ export class ToolManager {
   }
 
   /**
+   * Read a spec's model overlay. A throwing overlay must not drop the tool —
+   * the static description is still a valid schema.
+   */
+  private static describeForModel(spec: ToolSpec): ReturnType<NonNullable<ToolSpec['describeForModel']>> | undefined {
+    if (!spec.describeForModel) {
+      return undefined;
+    }
+    try {
+      return spec.describeForModel();
+    } catch (error) {
+      logger.warn(`[ToolManager] describeForModel for "${spec.name}" threw; using the static spec:`, error);
+      return undefined;
+    }
+  }
+
+  /**
    * Evaluate a tool's `available` gate. A throwing predicate hides the tool
    * rather than breaking the whole catalog — one misbehaving extension point
    * must not cost the model every other tool.
@@ -181,12 +197,19 @@ export class ToolManager {
    */
   toToolDefinitions(specs: ToolSpec[]): ToolDefinition[] {
     return specs.map((spec) => {
+      const view = ToolManager.describeForModel(spec);
+      const parameters = { ...(spec.parameters ?? {}), ...(view?.parameterOverrides ?? {}) };
+      const whenToUse = view?.whenToUse ?? spec.whenToUse;
+      const description = view?.descriptionSuffix
+        ? `${spec.description}\n${view.descriptionSuffix}`
+        : spec.description;
+
       type ItemSchema = NonNullable<NonNullable<ToolSpec['parameters']>[string]['items']>;
       const properties: Record<string, { type: string; description?: string; enum?: string[]; items?: ItemSchema }> =
         {};
       const required: string[] = [];
 
-      for (const [key, def] of Object.entries(spec.parameters || {})) {
+      for (const [key, def] of Object.entries(parameters)) {
         const prop: { type: string; description?: string; enum?: string[]; items?: ItemSchema } = {
           type: def.type,
           description: def.description || '',
@@ -203,10 +226,10 @@ export class ToolManager {
         }
       }
 
-      const descriptionParts = [spec.description];
-      const whenToUse = spec.whenToUse?.trim();
-      if (whenToUse) {
-        descriptionParts.push(`适用时机：${whenToUse}`);
+      const descriptionParts = [description];
+      const whenToUseText = whenToUse?.trim();
+      if (whenToUseText) {
+        descriptionParts.push(`适用时机：${whenToUseText}`);
       }
       const examples = (spec.examples ?? []).map((e) => e.trim()).filter(Boolean);
       if (examples.length > 0) {

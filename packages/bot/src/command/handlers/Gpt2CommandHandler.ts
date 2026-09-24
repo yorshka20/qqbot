@@ -16,9 +16,10 @@ import { createHookContextForCommand } from '../utils/HookContextBuilder';
 /**
  * /gpt2 — text2img + img2img via OpenAI gpt-image-2.
  *
- * Single mode: if the message (or its referenced reply) carries an image, we
- * route to `/v1/images/edits`; otherwise to `/v1/images/generations`. Mirrors
- * the BananaCommand auto-switch so users don't need a second command.
+ * Single mode: if the message or the message it replies to carries images, every
+ * one of them is a reference and we route to `/v1/images/edits`; otherwise to
+ * `/v1/images/generations`. Mirrors the BananaCommand auto-switch so users
+ * don't need a second command.
  *
  * Routes through `AIService` with provider hardcoded to `'openai'`; OpenAIProvider
  * must have `image.enabled: true` configured for `text2img` + `img2img` to be
@@ -90,14 +91,16 @@ export class Gpt2Command implements CommandHandler {
       if (images.length > 0) {
         logger.info(`[Gpt2Command] img2img with ${images.length} image(s)`);
 
-        let inputImage: string;
-        try {
-          inputImage = visionImageToString(images[0]!);
-        } catch (error) {
-          return {
-            success: false,
-            error: `Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          };
+        const inputImages: string[] = [];
+        for (const image of images) {
+          try {
+            inputImages.push(visionImageToString(image));
+          } catch (error) {
+            return {
+              success: false,
+              error: `Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            };
+          }
         }
 
         const img2imgOptions: Image2ImageOptions = {
@@ -107,7 +110,7 @@ export class Gpt2Command implements CommandHandler {
 
         const response = await this.aiService.generateImageFromImage(
           hookContext,
-          [inputImage],
+          inputImages,
           prompt,
           img2imgOptions,
           'openai',

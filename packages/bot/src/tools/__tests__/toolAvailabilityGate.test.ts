@@ -55,6 +55,49 @@ describe('tool availability gate', () => {
     expect(manager.getToolsByScope('reply').map((t) => t.name)).toEqual(['search']);
   });
 
+  it('applies describeForModel onto a copy of the spec', () => {
+    const spec: ToolSpec = {
+      name: 'generate_image',
+      description: 'draw',
+      executor: 'generate_image',
+      visibility: { reply: true },
+      parameters: {
+        presets: { type: 'array', required: false, description: 'static', items: { type: 'string' } },
+      },
+      describeForModel: () => ({
+        parameterOverrides: {
+          presets: {
+            type: 'array',
+            required: false,
+            description: 'live catalog',
+            items: { type: 'string', enum: ['hero'] },
+          },
+        },
+      }),
+    };
+    const [definition] = new ToolManager().toToolDefinitions([spec]);
+    expect(definition?.parameters.properties.presets?.description).toBe('live catalog');
+    expect(definition?.parameters.properties.presets?.items).toEqual({ type: 'string', enum: ['hero'] });
+    expect(spec.parameters?.presets?.description).toBe('static');
+  });
+
+  it('keeps the static spec when describeForModel throws', () => {
+    const spec: ToolSpec = {
+      name: 'generate_image',
+      description: 'draw',
+      executor: 'generate_image',
+      visibility: { reply: true },
+      parameters: {
+        presets: { type: 'array', required: false, description: 'static', items: { type: 'string' } },
+      },
+      describeForModel: () => {
+        throw new Error('catalog unreadable');
+      },
+    };
+    const [definition] = new ToolManager().toToolDefinitions([spec]);
+    expect(definition?.parameters.properties.presets?.description).toBe('static');
+  });
+
   it('treats a tool without a predicate as always available', () => {
     const manager = managerWith([
       { name: 'search', description: 'web search', executor: 'search', visibility: { reply: true } },

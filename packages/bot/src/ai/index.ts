@@ -31,6 +31,7 @@ export { OllamaProvider } from './providers/OllamaProvider';
 export { OpenAIProvider } from './providers/OpenAIProvider';
 export { RunPodProvider } from './providers/RunPodProvider';
 export { ImageGenerationService } from './services/ImageGenerationService';
+export { ImageRequestAssembler, ImageRequestAssemblyError } from './services/ImageRequestAssembler';
 export { type LLMFallbackConfig, LLMService, type LLMServiceConfig } from './services/LLMService';
 export { VisionService } from './services/VisionService';
 export type { AIGenerateOptions, AIGenerateResponse, PromptTemplate, StreamingHandler, SystemPrompt } from './types';

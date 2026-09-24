@@ -49,6 +49,11 @@ export interface Image2ImageOptions {
   imageSize?: string;
   numImages?: number;
   model?: string; // Model to use for generation
+  /**
+   * Ids of local reference presets. Consumed by ImageRequestAssembler before the
+   * provider call; providers never see this field.
+   */
+  presetIds?: string[];
   [key: string]: unknown; // Allow provider-specific options
 }
 
