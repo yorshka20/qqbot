@@ -1,0 +1,14 @@
+{
+  "name": "deepseek-q",
+  "aliases": [
+    "鲸鱼娘",
+    "大肥鱼",
+    "deepseek娘",
+    "Q版鲸鱼娘",
+    "Q版deepseek"
+  ],
+  "description": "CHARACTER REFERENCE — follow the attached image as the definitive design. Keep all details below consistent.\n\nIdentity: a chibi anime whale girl (DeepSeek whale-girl mascot, community fan character), cute and slightly smug/tsundere personality. Chibi proportions, about 2.5–3 heads tall, large head, small body.\n\nHair: extremely long, voluminous, wavy hair reaching below the knees. Color is a vertical gradient: deep navy/indigo (#2B3A8C-ish) at the crown, transitioning to bright cornflower/sky blue at the wavy tips. Glossy anime highlights on top. Messy side-swept bangs with one strand falling between the eyes. A single large looping ahoge (antenna hair strand) curling up from the top of the head.\n\nWhale features (important):\n- A pair of whale fins on the sides of the head at ear level, sticking out horizontally like small wings. Upper side is dark navy, underside is white/pale blue with ribbed ridges, like a humpback whale's flipper. They are FINS, not feathered wings and not animal ears.\n- A large whale tail emerging from the lower back under the skirt, curving behind her. Navy upper side, white underside along the tail body, ending in a broad blue whale fluke with fine striated lines and a lighter blue gradient.\n\nHeadwear: a white frilly maid headdress (lace ruffle with small scalloped/dot pattern) on a dark navy headband. A small bright-blue ribbon bow with a gold center bead on each side of the headdress, just above the head fins.\n\nFace: large round eyes, deep blue irises with lighter blue gradient at the bottom and white sparkle highlights, dark upper lashes, soft pink blush on cheeks, tiny mouth. Default expression: calm, slightly blank/pouty.\n\nOutfit (navy-and-white maid dress):\n- Dark navy long-sleeved dress with slightly puffed sleeves, white ruffled cuffs with a thin gold trim line.\n- White frilled collar, a dark navy bow at the neck with a gold-framed blue oval brooch in the center.\n- Bodice with a white vertical front panel with small buttons; white ruffled apron straps over the shoulders.\n- White apron with ruffled lace edges, featuring a small blue cartoon whale spouting water printed in the center.\n- Navy skirt with ornate gold embroidered vine/scroll border near the hem, small gold ribbon bows on the skirt, a small gold shell-like ornament at the back hem.\n- Layered white lace petticoat ruffles peeking out under the skirt.\n- White frilly ankle socks, dark navy Mary Jane shoes with straps.\n\nColor palette: navy/indigo, cornflower blue, sky blue, white, small gold accents. No other dominant colors.\n\nArt style: clean modern anime chibi illustration, crisp dark-navy line art (not black), soft cel shading, glossy hair highlights, bright and clean colors, high detail on lace and embroidery.",
+  "images": [
+    "reference.png"
+  ]
+}

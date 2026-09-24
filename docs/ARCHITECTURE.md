@@ -562,7 +562,7 @@ through the same `MessageAPI.sendFromContext` egress `SendSystem` uses.
 
 `ImageRequestAssembler` sits in front of every `generateImageFromImage` call. Callers pass the user prompt, every reference image taken from the triggering message and the message it replies to, and any preset ids. The assembler appends each preset's precise description to the prompt and its local images after the message images. Providers then apply their own limits: gpt-image and Gemini take the whole list; NovelAI denoises from the first image only.
 
-Presets are directories under `data/image-presets/<id>/preset.json` (`name` plus `aliases` for the chat model to match user wording, `description` sent verbatim to the image model, `images` relative to that directory). The `generate_image` tool cites them by id; `/gpt2` passes every image on the message or its reply and does not take preset ids itself. `gpt-image-2` edits omit `input_fidelity`: that model rejects the parameter and always reads image inputs at high fidelity.
+Presets are directories under `image-presets/<id>/preset.json` at the repo root, tracked the same way as `prompts/` (`name` plus `aliases` for the chat model to match user wording, `description` sent verbatim to the image model, `images` relative to that directory). The `generate_image` tool cites them by id; `/gpt2` passes every image on the message or its reply and does not take preset ids itself. `comfyu/` stays separate: those files are ComfyUI node graphs for the SDXL and Wan pipelines, and the assembler treats every child directory as a subject preset. `gpt-image-2` edits omit `input_fidelity`: that model rejects the parameter and always reads image inputs at high fidelity.
 
 ### AI Reply Pipeline
 

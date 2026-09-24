@@ -47,7 +47,7 @@ type ProviderKey = keyof typeof PROVIDER_MAP;
 export function describeGenerateImageForModel(): ToolModelDescription {
   const presets = ImageRequestAssembler.list();
   const empty =
-    '本地参考 preset 的 id 列表（data/image-presets/<id>/preset.json）。当前没有可用 preset。画面需要复用某个常驻角色或元素时才填，openai 与 gemini 共用同一套拼装。';
+    '本地参考 preset 的 id 列表（image-presets/<id>/preset.json）。当前没有可用 preset。画面需要复用某个常驻角色或元素时才填，openai 与 gemini 共用同一套拼装。';
   if (presets.length === 0) {
     return {
       parameterOverrides: {

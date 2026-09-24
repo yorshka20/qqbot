@@ -7,10 +7,13 @@
 // own limits: gpt-image and Gemini accept the whole list; NovelAI denoises
 // from the first image only.
 //
-// Presets live in `data/image-presets/<id>/preset.json`:
+// Presets live in `image-presets/<id>/preset.json` at the repo root, tracked
+// like prompts/:
 //   { "name": "...", "aliases": ["..."], "description": "...", "images": ["a.png"] }
 // `images` are paths relative to that directory. Omit `images` to use every
 // png/jpeg/webp/gif in the directory, sorted by filename.
+// ComfyUI graphs stay in `comfyu/`: those are SD/Wan node graphs, and this
+// scanner treats every child directory as a subject preset.
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -112,7 +115,7 @@ export class ImageRequestAssembler {
   }
 
   private static presetsRoot(): string {
-    return join(getRepoRoot(), 'data', 'image-presets');
+    return join(getRepoRoot(), 'image-presets');
   }
 
   private static scan(root: string): { valid: ImagePreset[]; invalid: Map<string, string> } {
