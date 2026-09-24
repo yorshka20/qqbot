@@ -26,6 +26,7 @@ import {
   handleNoCandidates,
   handleNoImageData,
 } from '../utils/geminiErrorHandler';
+import { assertGeminiReferenceCount } from '../utils/geminiImageRequest';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
 
 /**
@@ -653,8 +654,8 @@ export class LaozhangProvider
   }
 
   /**
-   * Generate image from image based on prompt (image-to-image generation)
-   * Supports single image input
+   * Image-to-image via Gemini generateContent.
+   * Every source image is one inlineData part after the text instruction.
    */
   async generateImageFromImage(
     sourceImages: string[],
@@ -673,7 +674,8 @@ export class LaozhangProvider
         `[LaozhangProvider] Starting image-to-image transformation for prompt: ${prompt} | images=${sourceImages.length}`,
       );
 
-      const model = this.getText2ImgModel();
+      assertGeminiReferenceCount(sourceImages.length);
+      const model = options?.model ?? this.getText2ImgModel();
       const aspectRatio = this.resolveAspectRatioForImage2Image(options);
       const imageSize = this.resolveImageSize(options);
 

@@ -4,8 +4,9 @@
 // triggering message (and the message it replies to), and any preset ids.
 // This module appends each preset's precise description to the prompt and its
 // local reference images after the message images. Providers then apply their
-// own limits: gpt-image and Gemini accept the whole list; NovelAI denoises
-// from the first image only.
+// own limits: gpt-image takes up to 16; Gemini generateContent (Laozhang and
+// GeminiProvider) takes up to 14 inline images; NovelAI denoises from the
+// first image only.
 //
 // Presets live in `image-presets/<id>/preset.json` at the repo root, tracked
 // like prompts/:

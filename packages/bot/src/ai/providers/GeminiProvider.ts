@@ -33,6 +33,7 @@ import {
   handleNoCandidates,
   handleNoImageData,
 } from '../utils/geminiErrorHandler';
+import { assertGeminiReferenceCount, geminiImageConfig } from '../utils/geminiImageRequest';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
 import { clampMaxTokens } from './maxTokens';
 
@@ -937,6 +938,7 @@ export class GeminiProvider
       const width = options?.width ?? this.getDefaultWidth();
       const height = options?.height ?? this.getDefaultHeight();
 
+      assertGeminiReferenceCount(sourceImages.length);
       const downloaded = await Promise.all(
         sourceImages.map((img) =>
           ResourceDownloader.downloadImageToBase64WithMimeType(img, {
@@ -949,12 +951,21 @@ export class GeminiProvider
       const imageParts = downloaded.map(({ data, mimeType }) => ({
         inlineData: { mimeType, data },
       }));
-
+      // Same generateContent edit as Laozhang: text, then one inline image per
+      // reference. Without responseModalities the model may caption the
+      // references instead of returning an image. imageConfig carries aspect
+      // ratio and size; width/height are not fields on this API.
+      // https://ai.google.dev/gemini-api/docs/image-generation
+      const imageConfig = geminiImageConfig(options);
       const response = await this.callWithHardTimeout(
         () =>
           this.getClient().models.generateContent({
             model,
             contents: [{ text: prompt }, ...imageParts],
+            config: {
+              responseModalities: ['IMAGE'],
+              ...(imageConfig ? { imageConfig } : {}),
+            },
           }),
         GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS,
         'img2img',
