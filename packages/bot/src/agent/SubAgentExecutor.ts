@@ -119,8 +119,8 @@ export class SubAgentExecutor {
         tools,
         {
           temperature: 0.7,
-          maxTokens: session.config.maxTokens ?? 1500,
-          maxToolRounds: session.config.maxToolRounds ?? 5,
+          ...(session.config.maxTokens !== undefined ? { maxTokens: session.config.maxTokens } : {}),
+          ...(session.config.maxToolRounds === null ? {} : { maxToolRounds: session.config.maxToolRounds ?? 5 }),
           // The preset's config.timeout is the upper bound on how long this subagent may take.
           // Propagate it as the LLM HTTP + hard-timeout so a single source of truth governs
           // both the wait-poll budget (SubAgentManager.wait) and the inner provider call.

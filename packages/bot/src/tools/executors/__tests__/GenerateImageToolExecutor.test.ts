@@ -4,7 +4,7 @@ import type { AIService } from '@/ai';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { ToolCall, ToolExecutionContext } from '@/tools/types';
-import { GenerateImageToolExecutor } from '../GenerateImageToolExecutor';
+import { describeGenerateImageForModel, GenerateImageToolExecutor } from '../GenerateImageToolExecutor';
 
 function executorWith(aiService: Partial<AIService>): GenerateImageToolExecutor {
   return new GenerateImageToolExecutor(
@@ -100,5 +100,13 @@ describe('generate_image reference inputs', () => {
     const result = await executor.execute(call({ prompt: '一只猫' }), contextWith([]));
     expect(result.success).toBe(true);
     expect(text2img).toBe(1);
+  });
+});
+
+describe('describeGenerateImageForModel', () => {
+  it('tells the model to cite a preset id the task names, not only a spoken alias', () => {
+    const description = describeGenerateImageForModel().parameterOverrides?.presets?.description ?? '';
+    expect(description).toContain('deepseek-q');
+    expect(description).toContain('任务');
   });
 });

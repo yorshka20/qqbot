@@ -42,8 +42,8 @@ export interface SubAgentConfig {
   providerModels?: Record<string, string>; // Model override keyed by provider name; matches the provider picked from providerName arrays.
 
   // LLM generation parameters
-  maxTokens?: number; // Max tokens for LLM generation (default: 1500)
-  maxToolRounds?: number; // Max tool call rounds (default: 5)
+  maxTokens?: number; // Output-token cap. Unset leaves the provider's own default.
+  maxToolRounds?: number | null; // Round cap. Unset uses 5. null means no cap.
 
   // Prompt overrides
   systemTemplate?: string; // Override system prompt template key (e.g. 'subagent.group_report.system')

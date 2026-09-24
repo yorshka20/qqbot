@@ -2,28 +2,32 @@
 // dispatched by agenda items with `执行: action group_report`.
 //
 // The plugin registers it in onEnable and drops it in onDisable, so the agenda framework
-// holds no reference to a disabled plugin. The handler itself only supplies the schedule-side
-// context (which group, which identity) to runGroupReport and then plants keyword mines from
-// the finished analysis — reading the day once and deriving both is the whole point of
-// running them together (see keywordMines.ts).
+// holds no reference to a disabled plugin. The handler supplies the schedule-side context
+// (which group, which identity) to runGroupReport. Keyword mines stay on that report.
+// The comic is a second subagent: same system prompt and the same chat-log prefix,
+// with the drawing task appended after the log.
 
 import type { ActionHandler, ActionHandlerContext } from '@/agenda/ActionHandlerRegistry';
 import type { AgendaService } from '@/agenda/AgendaService';
+import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
+import { drawReportComic } from './drawReportComic';
 import { plantKeywordMines } from './keywordMines';
 import { resolveReportProvider, runGroupReport } from './runReport';
 
 /** Keyword mines planted after the report when `actionParams` says nothing else */
-const DEFAULT_KEYWORD_MINES = 5;
+const DEFAULT_KEYWORD_MINES = 3;
 
-/** `actionParams` accepted by this handler (schedule.md: `- 参数: \`{"keywordMines":5}\``) */
+/** `actionParams` accepted by this handler */
 interface HandlerParams {
   /** How many keyword mines to plant from the finished report; 0 disables */
   keywordMines?: number;
+  /** Image preset ids for the comic. Omit or leave empty to skip the comic. */
+  comicPresets?: unknown;
 }
 
 export class GroupReportActionHandler implements ActionHandler {
@@ -41,16 +45,19 @@ export class GroupReportActionHandler implements ActionHandler {
     const userId = ctx.userId ?? ctx.eventContext.botSelfId;
 
     try {
-      const { report, userMessages, date } = await runGroupReport({
+      const { report, userMessages, date, promptPrefix } = await runGroupReport({
         groupId,
         groupName,
         userId,
         protocol: ctx.protocol,
       });
 
-      const mineCount = this.parseParams(ctx.item.actionParams).keywordMines ?? DEFAULT_KEYWORD_MINES;
+      const params = this.parseParams(ctx.item.actionParams);
+      const mineCount = params.keywordMines ?? DEFAULT_KEYWORD_MINES;
+      const container = getContainer();
+      const providerName = resolveReportProvider();
+
       if (mineCount > 0 && report) {
-        const container = getContainer();
         // The report image is already in the group by now, so a failure here must not
         // report the whole run as failed — mines are a best-effort follow-up.
         await plantKeywordMines({
@@ -64,12 +71,33 @@ export class GroupReportActionHandler implements ActionHandler {
           report,
           messages: userMessages,
           count: mineCount,
-          providerName: resolveReportProvider(),
+          providerName,
         }).catch((err) => {
           logger.error('[GroupReportActionHandler] Keyword mine planting failed:', err);
         });
       }
-      // Return void — render_group_report already sent the image to the group
+
+      const comicPresets = readComicPresets(params.comicPresets);
+      if (comicPresets.length > 0 && promptPrefix) {
+        const caption = await drawReportComic({
+          aiService: container.resolve<AIService>(DITokens.AI_SERVICE),
+          promptManager: container.resolve<PromptManager>(DITokens.PROMPT_MANAGER),
+          groupId,
+          userId,
+          protocol: ctx.protocol,
+          promptPrefix,
+          presetIds: comicPresets,
+          providerName,
+        }).catch((err) => {
+          logger.error('[GroupReportActionHandler] Report comic failed:', err);
+          return '';
+        });
+        // The image was sent by generate_image. This line is the agent's caption.
+        if (caption) {
+          return caption;
+        }
+      }
+      // Return void — render_group_report already sent the report image to the group
     } catch (err) {
       logger.error('[GroupReportActionHandler] Report generation failed:', err);
       return '❌ 群日报生成失败';
@@ -87,4 +115,11 @@ export class GroupReportActionHandler implements ActionHandler {
       return {};
     }
   }
+}
+
+function readComicPresets(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((entry): entry is string => typeof entry === 'string');
 }

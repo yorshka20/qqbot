@@ -9,6 +9,8 @@
 // into the prompt; the LLM only does semantic analysis. Up to BATCH_SIZE user messages go
 // through the subagent in a single pass (it calls render_group_report itself); beyond that the
 // messages are split into batches analysed by direct LLM calls, merged, then rendered directly.
+// The single-pass user message starts with promptPrefix (stats + log, no task). The comic
+// call appends a different task to that same string so the provider prefix cache can hit.
 
 import { getRolePreset } from '@/agent/SubAgentRolePresets';
 import type { AIService } from '@/ai/AIService';
@@ -39,6 +41,7 @@ import {
   normalizeMemberComments,
   normalizeTopics,
 } from './normalizeReport';
+import { type GroupChatPrefixVars, renderGroupChatPrefix, withTaskSuffix } from './reportPrompt';
 import type { FeaturedMessage, GroupReportData, MemberHighlight, ReportTopic } from './types';
 
 /** Max messages to fetch from DB for report analysis (high to ensure full-day stats accuracy) */
@@ -64,6 +67,11 @@ export interface GroupReportRunResult {
   userMessages: ConversationMessageEntry[];
   /** The report that was rendered; absent when there was nothing to report or every analysis attempt failed */
   report?: GroupReportData;
+  /**
+   * User-message prefix shared with the comic call: stats and yesterday's log,
+   * no task text. Empty when there was nothing to analyse.
+   */
+  promptPrefix: string;
 }
 
 /** Services the run needs; resolved once so the private steps don't each hit the container. */
@@ -114,16 +122,31 @@ export async function runGroupReport(request: GroupReportRunRequest): Promise<Gr
 
   if (userMessages.length === 0) {
     logger.info(`${TAG} No user messages yesterday for group ${request.groupId}, skipping`);
-    return { date: dateStr, userMessages };
+    return { date: dateStr, userMessages, promptPrefix: '' };
   }
+
+  const memberStatsText = stats.userStats
+    .map((u) => `- ${u.nickname}(${u.userId}): ${u.messageCount}条消息`)
+    .join('\n');
+  const prefixVars = {
+    groupName: request.groupName,
+    date: dateStr,
+    totalMessages: String(stats.totalMessages),
+    activeMembers: String(stats.activeMembers),
+    highlightTimeRange: stats.highlightTimeRange,
+    hourlyActivityJson: JSON.stringify(stats.hourlyActivity),
+    memberStats: memberStatsText,
+    chatHistory: formatMessagesForContext(yesterdayMessages),
+  };
+  const promptPrefix = renderGroupChatPrefix(deps.promptManager, prefixVars);
 
   const report =
     userMessages.length <= BATCH_SIZE
-      ? await runSinglePass(deps, request, yesterdayMessages, stats, dateStr)
+      ? await runSinglePass(deps, request, promptPrefix, prefixVars, stats)
       : await runBatchedAnalysis(deps, request, userMessages, stats, dateStr);
 
   logger.info(`${TAG} Report generation completed for group ${request.groupId}`);
-  return { date: dateStr, userMessages, report };
+  return { date: dateStr, userMessages, report, promptPrefix };
 }
 
 /**
@@ -133,26 +156,16 @@ export async function runGroupReport(request: GroupReportRunRequest): Promise<Gr
 async function runSinglePass(
   deps: RunnerDeps,
   request: GroupReportRunRequest,
-  yesterdayMessages: ConversationMessageEntry[],
+  promptPrefix: string,
+  prefixVars: GroupChatPrefixVars,
   stats: GroupReportStats,
-  dateStr: string,
 ): Promise<GroupReportData | undefined> {
-  const memberStatsText = stats.userStats
-    .map((u) => `- ${u.nickname}(${u.userId}): ${u.messageCount}条消息`)
-    .join('\n');
-
   const preset = getRolePreset('group_report');
-  const description = deps.promptManager.render('subagent.group_report.task', {
+  const task = deps.promptManager.render('subagent.group_report.task', {
+    ...prefixVars,
     message: '生成昨日群聊每日汇报',
-    groupName: request.groupName,
-    date: dateStr,
-    totalMessages: String(stats.totalMessages),
-    activeMembers: String(stats.activeMembers),
-    highlightTimeRange: stats.highlightTimeRange,
-    hourlyActivityJson: JSON.stringify(stats.hourlyActivity),
-    memberStats: memberStatsText,
-    chatHistory: formatMessagesForContext(yesterdayMessages),
   });
+  const description = withTaskSuffix(promptPrefix, task);
 
   // Store pre-computed stats so the tool executor uses them (bypasses LLM data corruption)
   deps.reportToolExecutor.setPrecomputedStats(request.groupId, {

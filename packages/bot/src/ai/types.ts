@@ -337,7 +337,7 @@ export interface ToolResult {
 /** Tool Use generation options */
 export interface ToolUseGenerateOptions extends AIGenerateOptions {
   tools?: ToolDefinition[];
-  maxToolRounds?: number; // Maximum rounds of tool calling (default: 3)
+  maxToolRounds?: number; // Tool-round cap. Unset means no cap.
   toolExecutor?: (call: FunctionCall) => Promise<unknown>; // Function to execute tool calls
   // Invoked once per round with the provider/model that actually served it, before the
   // round's tool calls run — lets callers stamp the real model into context for tools

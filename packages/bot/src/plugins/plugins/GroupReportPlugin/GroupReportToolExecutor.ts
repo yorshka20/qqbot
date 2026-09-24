@@ -7,7 +7,11 @@ import { BrowserService } from '@/services/browser/BrowserService';
 import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import { normalizeHourlyActivity } from './computeStats';
-import { normalizeFeaturedMessages, normalizeMemberHighlights, normalizeTopics } from './normalizeReport';
+import {
+  normalizeFeaturedMessages,
+  normalizeMemberHighlights,
+  normalizeTopics,
+} from './normalizeReport';
 import { avatarUrl, renderReportHTML } from './renderReportHTML';
 import type { GroupReportData, HourlyActivity } from './types';
 

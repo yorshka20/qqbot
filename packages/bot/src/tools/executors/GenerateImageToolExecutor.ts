@@ -73,7 +73,7 @@ export function describeGenerateImageForModel(): ToolModelDescription {
         required: false,
         items: { type: 'string', enum: presets.map((preset) => preset.id) },
         description:
-          '用户这句话里出现了下列任一称呼时，填入对应 id。用户另外贴了姿势图或场景图也要填。没出现这些称呼就留空。系统会附上参考图和精确描述，不要把精确描述抄进 prompt。\n' +
+          '填入对应 id 的两种情况：用户这句话里出现了下列任一称呼；当前任务明确写出了某个 id（子任务、定时任务点名的 id 同样要填）。可以填多个。系统会附上参考图和精确描述，不要把精确描述抄进 prompt。称呼和任务都没点名就留空。\n' +
           catalog,
       },
     },
@@ -108,8 +108,7 @@ export function describeGenerateImageForModel(): ToolModelDescription {
       type: 'array',
       required: false,
       items: { type: 'string' },
-      description:
-        '本地参考 preset 的 id 列表。画面涉及某个常驻角色或元素时填写，系统会附上它的参考图和精确描述。',
+      description: '本地参考 preset 的 id 列表。画面涉及某个常驻角色或元素时填写，系统会附上它的参考图和精确描述。',
     },
   },
   describeForModel: describeGenerateImageForModel,

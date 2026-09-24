@@ -745,7 +745,7 @@ export class LLMService {
     }
 
     const sessionId = options?.sessionId;
-    const maxRounds = options?.maxToolRounds ?? 3;
+    const maxRounds = options?.maxToolRounds;
     const toolExecutor = options?.toolExecutor;
 
     let provider = await this.getAvailableProvider(providerName, sessionId);
@@ -819,7 +819,7 @@ export class LLMService {
     const accReasoning: string[] = [];
     const seenReasoning = new Set<string>();
 
-    while (round < maxRounds) {
+    while (maxRounds === undefined || round < maxRounds) {
       // Generate with tools
       const response = await this.generateMessagesWithToolSupport(currentMessages, tools, options, currentProviderName);
       sawUsage = this.accumulateUsage(accUsage, response.usage) || sawUsage;

@@ -1,0 +1,20 @@
+**当前群名称**: {{groupName}}
+**日期**: {{date}}
+
+## 预计算统计数据（由系统精确计算，请直接使用）
+
+以下统计数据已由系统从完整聊天记录中精确计算，请直接使用这些数字，不要自行重新统计：
+
+- 总消息数: {{totalMessages}}
+- 活跃成员数: {{activeMembers}}
+- 最活跃时段: {{highlightTimeRange}}
+- 24小时活跃度（JSON）: {{hourlyActivityJson}}
+
+### 成员发言统计（按消息数排序）
+{{memberStats}}
+
+## 昨日聊天记录
+
+以下是昨日完整聊天记录（格式: [时间] 昵称(userId): 内容）：
+
+{{chatHistory}}
