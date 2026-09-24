@@ -12,7 +12,6 @@
  * providers that otherwise share a wire format; see each exported helper.
  */
 
-import { readFile } from 'node:fs/promises';
 import type { CredentialProbeResult } from '../types';
 
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -171,49 +170,62 @@ export async function checkGeminiCredential(input: {
   return result.ok ? { ok: true, ...fields } : { ok: false, ...fields, reason: result.reason };
 }
 
-interface ClaudeOAuthCredentials {
-  claudeAiOauth?: {
-    expiresAt?: number;
-    refreshTokenExpiresAt?: number;
-    subscriptionType?: string;
+/**
+ * `claude auth status --json`. The CLI owns where the subscription login lives
+ * and whether it is still usable; this only reads the status fields. Account
+ * identifiers in the same payload (email, org) are not copied into the result.
+ */
+export function interpretClaudeAuthStatus(stdout: string, exitCode: number | null): CredentialProbeResult {
+  const credentialSource = 'claude auth status';
+  const parsed = parseClaudeAuthStatus(stdout);
+  if (!parsed) {
+    const exit = exitCode === null ? 'unknown' : String(exitCode);
+    return { ok: false, credentialSource, reason: `claude auth status failed (exit ${exit})` };
+  }
+
+  const authMethod = typeof parsed.authMethod === 'string' ? parsed.authMethod : '';
+  if (parsed.loggedIn === true) {
+    const plan =
+      typeof parsed.subscriptionType === 'string' && parsed.subscriptionType ? `, ${parsed.subscriptionType}` : '';
+    const method = authMethod || 'unknown';
+    return { ok: true, credentialSource: `${credentialSource}: ${method}${plan}` };
+  }
+
+  return {
+    ok: false,
+    credentialSource,
+    reason: 'Claude Code is not logged in — run `claude auth login`',
   };
 }
 
-/**
- * Claude Code subscription login, which stores an OAuth pair rather than an
- * API key. There is no free endpoint that validates a subscription token, so
- * the check is local: the login is usable while either token is unexpired,
- * because the CLI silently exchanges the refresh token when the access token
- * has lapsed. Only both being expired means the worker will fail to start.
- */
-export async function checkClaudeOAuthLogin(input: {
-  credentialsPath: string;
-  now: number;
-}): Promise<CredentialProbeResult> {
-  const credentialSource = input.credentialsPath;
-  let parsed: ClaudeOAuthCredentials;
+function parseClaudeAuthStatus(stdout: string): Record<string, unknown> | null {
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const direct = asRecord(tryParseJson(trimmed));
+  if (direct) {
+    return direct;
+  }
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start === -1 || end <= start) {
+    return null;
+  }
+  return asRecord(tryParseJson(trimmed.slice(start, end + 1)));
+}
+
+function tryParseJson(text: string): unknown {
   try {
-    parsed = JSON.parse(await readFile(input.credentialsPath, 'utf-8')) as ClaudeOAuthCredentials;
-  } catch (err) {
-    const detail = err instanceof Error && 'code' in err && err.code === 'ENOENT' ? 'not found' : 'unreadable';
-    return {
-      ok: false,
-      credentialSource,
-      reason: `no API key in template.env and the Claude Code login is ${detail} — run \`claude login\``,
-    };
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
   }
+}
 
-  const oauth = parsed.claudeAiOauth;
-  if (!oauth) {
-    return { ok: false, credentialSource, reason: 'credentials file has no claudeAiOauth entry — run `claude login`' };
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
   }
-
-  const accessValid = typeof oauth.expiresAt === 'number' && oauth.expiresAt > input.now;
-  const refreshValid = typeof oauth.refreshTokenExpiresAt === 'number' && oauth.refreshTokenExpiresAt > input.now;
-  if (!accessValid && !refreshValid) {
-    return { ok: false, credentialSource, reason: 'Claude Code login has expired — run `claude login`' };
-  }
-
-  const plan = oauth.subscriptionType ? ` (${oauth.subscriptionType})` : '';
-  return { ok: true, credentialSource: `${credentialSource}${plan}` };
+  return null;
 }

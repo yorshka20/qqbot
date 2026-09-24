@@ -55,6 +55,7 @@ async function verifyOneTemplate(
   const start = Date.now();
   try {
     const result = await backend.verifyCredentials({
+      command: template.command,
       env: resolveTemplateEnv(template),
       args: template.args,
       timeoutMs,

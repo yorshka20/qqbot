@@ -649,18 +649,19 @@ worker 在 spawn 后**几秒内**退出、且 stdout 为空或只有一行报错
    解析顺序**取出实际生效的凭据，再打一次供应商的模型元数据端点（不是推理端点）。probe 不
    接入 ContextHub / WorkerRegistry / TaskRecord，不产生任务记录。
 
-**为什么不起真实 CLI**：agent CLI 每次调用都会把完整 system prompt + tool schema 一并发给
-模型——codex 实测一次 `codex exec` 固定 11.8k input token 换回 9 个 output token，与 prompt
-多短无关。所以 spawn 式 probe 会按 enabled 模板数在每次集群启动时产生付费调用，而它能多证明
-的只有「CLI harness 本身能跑通」这个近乎静态的属性，已由第 1 层的 binary 检查覆盖。凭据是否
-有效才是会随时间变化、值得每次启动都查的那一半。
+**为什么不起真实 agent turn**：agent CLI 每次调用都会把完整 system prompt + tool schema
+一并发给模型——codex 实测一次 `codex exec` 固定 11.8k input token 换回 9 个 output token，与
+prompt 多短无关。所以带 prompt 的 spawn 会按 enabled 模板数在每次集群启动时产生付费调用，而它
+能多证明的只有「CLI harness 本身能跑通」这个近乎静态的属性，已由第 1 层的 binary 检查覆盖。
+凭据是否有效才是会随时间变化、值得每次启动都查的那一半。`claude auth status` 是例外：它是
+CLI 自己的本地子命令，不进模型，用来回答订阅登录是否还在，同时不让探针去复刻 CLI 的凭证存储。
 
 各 backend 的检查方式（端点选择是实测结论，不能想当然按 wire format 类推）：
 
 | backend | 端点 | 凭据来源 |
 |---|---|---|
 | `codex-cli` | `GET /v1/models/<model>`（模型权限）+ `POST /v1/responses`（端点授权，见上方 note） | `<CODEX_HOME>/auth.json` 中 `auth_mode=apikey` 时**优先于** `OPENAI_API_KEY` |
-| `claude-cli` | 有 key 时 `GET {ANTHROPIC_BASE_URL}/v1/models`；订阅登录时改为本地读 `.credentials.json` 的过期时间 | `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`，都没有则 `claude login` 的 OAuth |
+| `claude-cli` | 有 key 时 `GET {ANTHROPIC_BASE_URL}/v1/models`；订阅登录时跑 `claude auth status --json`（本地子命令，不进模型）。`loggedIn: true` 即可用 | `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`，都没有则 `claude auth login` 的登录态 |
 | `minimax-cli` | 复用 claude-cli 的检查，base URL 换成 MiniMax 的 `/anthropic` façade（该 façade 实现了 `/v1/models`） | `ANTHROPIC_API_KEY` |
 | `deepseek-cli` | `GET https://api.deepseek.com/models`——**原生端点**，因为 DeepSeek 的 `/anthropic` façade 对 `/v1/models` 返回 404 | `ANTHROPIC_AUTH_TOKEN` |
 | `gemini-cli` | `GET /v1beta/models/<model>` | `GEMINI_API_KEY` / `GOOGLE_API_KEY` |

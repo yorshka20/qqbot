@@ -11,8 +11,6 @@
  * against any Anthropic-compatible endpoint when env vars are overridden.
  */
 
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { spawn } from 'bun';
 import { logger } from '@/utils/logger';
 import type {
@@ -22,7 +20,7 @@ import type {
   WorkerBackend,
   WorkerSpawnConfig,
 } from '../types';
-import { checkAnthropicCredential, checkClaudeOAuthLogin } from './providerCredentialCheck';
+import { checkAnthropicCredential, interpretClaudeAuthStatus } from './providerCredentialCheck';
 
 const ANTHROPIC_DEFAULT_BASE_URL = 'https://api.anthropic.com';
 
@@ -89,9 +87,10 @@ export class ClaudeCliBackend implements WorkerBackend {
   /**
    * Two credential shapes reach the same binary: an explicit key (what the
    * anthropic-compat façades supply, and what a self-hosted endpoint needs),
-   * or the subscription login written by `claude login`. A key can be checked
-   * against whichever endpoint it targets; a subscription login has no free
-   * endpoint that validates it, so that path falls back to a local check.
+   * or the subscription login written by `claude auth login`. A key can be
+   * checked against whichever endpoint it targets. A subscription login has
+   * no free endpoint, and the CLI keeps that credential in its own store, so
+   * the probe asks `claude auth status` — a local subcommand, not an agent turn.
    */
   async verifyCredentials(config: CredentialProbeConfig): Promise<CredentialProbeResult> {
     const apiKey = config.env.ANTHROPIC_API_KEY || config.env.ANTHROPIC_AUTH_TOKEN;
@@ -104,8 +103,7 @@ export class ClaudeCliBackend implements WorkerBackend {
       });
     }
 
-    const configDir = config.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
-    return checkClaudeOAuthLogin({ credentialsPath: join(configDir, '.credentials.json'), now: Date.now() });
+    return runClaudeAuthStatus(config.command, config.env, config.timeoutMs);
   }
 
   /**
@@ -184,5 +182,43 @@ export class ClaudeCliBackend implements WorkerBackend {
 
     const finalMessage = resultText ?? lastAssistantText ?? raw;
     return { finalMessage, rawEvents: events };
+  }
+}
+
+async function runClaudeAuthStatus(
+  command: string,
+  env: Record<string, string>,
+  timeoutMs: number,
+): Promise<CredentialProbeResult> {
+  const credentialSource = 'claude auth status';
+  try {
+    const proc = spawn({
+      cmd: [command, 'auth', 'status', '--json'],
+      env,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const exited = await Promise.race([
+      proc.exited,
+      new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), timeoutMs);
+      }),
+    ]);
+    if (timer) {
+      clearTimeout(timer);
+    }
+    if (exited === 'timeout') {
+      proc.kill();
+      return { ok: false, credentialSource, reason: 'claude auth status timed out' };
+    }
+    const stdout = await new Response(proc.stdout).text();
+    return interpretClaudeAuthStatus(stdout, exited);
+  } catch (err) {
+    return {
+      ok: false,
+      credentialSource,
+      reason: `claude auth status failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
 }

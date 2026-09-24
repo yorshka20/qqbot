@@ -402,6 +402,8 @@ export interface ParsedWorkerOutput {
  * model its own flag spelling pins.
  */
 export interface CredentialProbeConfig {
+  /** The template command, the same binary `spawn` receives. */
+  command: string;
   /** process.env + template.env — the same merge `spawn` receives. */
   env: Record<string, string>;
   args: string[];
@@ -431,10 +433,10 @@ export interface WorkerBackend {
   name: string;
   spawn(config: WorkerSpawnConfig): Promise<import('bun').Subprocess>;
   /**
-   * Confirm the credential this backend's CLI would authenticate with,
-   * without spawning it. Runs on every cluster start, so implementations must
-   * stay free: consult a provider's model-metadata endpoint or a local
-   * credential file, never an inference endpoint.
+   * Confirm the credential this backend's CLI would authenticate with.
+   * Runs on every cluster start, so implementations must stay free: a provider
+   * model-metadata request, a local credential file, or a CLI subcommand that
+   * does not start an agent turn. Never an inference endpoint.
    */
   verifyCredentials(config: CredentialProbeConfig): Promise<CredentialProbeResult>;
   /**
