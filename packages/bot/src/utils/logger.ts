@@ -402,7 +402,7 @@ const disableFileLog = process.env.NO_FILE_LOG === '1';
 let defaultLogger: Logger = disableFileLog ? new ConsoleOnlyLogger(defaultLogLevel) : new FileLogger(defaultLogLevel);
 
 export function setLogLevel(level: LogLevel): void {
-  defaultLogger = new FileLogger(level);
+  defaultLogger = disableFileLog ? new ConsoleOnlyLogger(level) : new FileLogger(level);
 }
 
 export function getLogger(): Logger {

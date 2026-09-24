@@ -1,3 +1,8 @@
+[test]
+# `bun test` is a builtin and never runs the package.json "test" script.
+# The logger opens a file at import time, so this has to run first.
+preload = ["./scripts/test-preload.ts"]
+
 [install]
 # Automatically install peer dependencies
 auto = true

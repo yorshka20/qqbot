@@ -195,7 +195,7 @@ This boots the real app through `packages/bot/src/core/bootstrap.ts` and verifie
 **Env vars:**
 - `LOG_LEVEL` — default `info`, set `debug` for verbose logs
 - `CONFIG_PATH` — override config location (file or directory)
-- `NO_FILE_LOG=1` — suppress file logging (used by smoke-test / CI)
+- `NO_FILE_LOG=1` — suppress file logging (smoke-test, nai-usage, and `bun test` via `bunfig.toml` preload)
 
 Path alias: `@/` → `packages/bot/src/`.
 
