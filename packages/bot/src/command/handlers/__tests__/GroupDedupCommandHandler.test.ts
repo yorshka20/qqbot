@@ -7,9 +7,14 @@ import type { AIService } from '@/ai';
 import { GroupDedupCommandHandler } from '@/command/handlers/GroupDedupCommandHandler';
 import type { CommandContext } from '@/command/types';
 import { FileReadService } from '@/services/file';
+import * as repoRoot from '@/utils/repoRoot';
 
+// bun's module mock is process-wide, so it must behave like the real module whenever this
+// file's temp root is not set; otherwise every later test file sees an undefined repo root.
+const realGetRepoRoot = repoRoot.getRepoRoot;
 vi.mock('@/utils/repoRoot', () => ({
-  getRepoRoot: () => process.env.__TEST_REPO_ROOT__,
+  ...repoRoot,
+  getRepoRoot: () => process.env.__TEST_REPO_ROOT__ ?? realGetRepoRoot(),
 }));
 
 function createContext(): CommandContext {
