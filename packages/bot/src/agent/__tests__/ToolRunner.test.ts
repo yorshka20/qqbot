@@ -6,7 +6,6 @@ import { FileReadService } from '@/services/file';
 import { ToolInitializer } from '@/tools/ToolInitializer';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
-import type { SubAgentManager } from '../SubAgentManager';
 import { ToolRunner } from '../ToolRunner';
 import type { SubAgentSession } from '../types';
 import { SubAgentType } from '../types';
@@ -51,8 +50,7 @@ describe('ToolRunner', () => {
       }),
       execute: async () => mockResult,
     } as unknown as ToolManager;
-    const subAgentManager = {} as unknown as SubAgentManager;
-    const runner = new ToolRunner(toolManager, subAgentManager, new HookManager());
+    const runner = new ToolRunner(toolManager, new HookManager());
     const session = createMockSession();
 
     // ToolResult contract: `reply` is the authoritative LLM-facing message;
@@ -70,7 +68,7 @@ describe('ToolRunner', () => {
       }),
       execute: async () => ({ success: true, reply: 'text-only reply' }),
     } as unknown as ToolManager;
-    const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
+    const runner = new ToolRunner(toolManager, new HookManager());
     const session = createMockSession();
 
     const result = await runner.run({ name: 'reply_only_tool', arguments: '{}' }, session);
@@ -82,7 +80,7 @@ describe('ToolRunner', () => {
       allowOverride: true,
     });
     const toolManager = ToolInitializer.createToolManager();
-    const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
+    const runner = new ToolRunner(toolManager, new HookManager());
     const session = createMockSession();
 
     const result = (await runner.run(
@@ -102,7 +100,7 @@ describe('ToolRunner', () => {
       allowOverride: true,
     });
     const toolManager = ToolInitializer.createToolManager();
-    const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
+    const runner = new ToolRunner(toolManager, new HookManager());
     const session = createMockSession();
 
     const result = await runner.run({ name: 'read_file', arguments: '{"path":"README.md","action":"read"}' }, session);
@@ -131,7 +129,7 @@ describe('ToolRunner', () => {
       allowOverride: true,
     });
     const toolManager = ToolInitializer.createToolManager();
-    const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
+    const runner = new ToolRunner(toolManager, new HookManager());
     const session = createMockSession();
 
     const result = await runner.run({ name: 'fetch_page', arguments: '{"url":"https://example.com"}' }, session);
@@ -146,7 +144,7 @@ describe('ToolRunner', () => {
       getTool: () => ({ name: 'unknown_tool', executor: 'unknown_tool' }),
       getExecutor: () => null,
     } as unknown as ToolManager;
-    const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
+    const runner = new ToolRunner(toolManager, new HookManager());
     const session = createMockSession();
 
     await expect(runner.run({ name: 'unknown_tool', arguments: '{}' }, session)).rejects.toThrow(
@@ -154,81 +152,4 @@ describe('ToolRunner', () => {
     );
   });
 
-  it('run spawn_subagent spawns, executes, waits and returns result when waitForCompletion true', async () => {
-    let capturedParentId: string | undefined;
-    let capturedTask: { description: string; input: unknown; parentContext?: unknown } | undefined;
-    const childSessionId = 'agent:child-id';
-    const childOutput = 'child result';
-
-    const subAgentManager = {
-      spawn: async (
-        parentId: string | undefined,
-        _type: SubAgentType,
-        task: { description: string; input: unknown; parentContext?: unknown },
-      ) => {
-        capturedParentId = parentId;
-        capturedTask = task;
-        return childSessionId;
-      },
-      execute: async (sessionId: string) => {
-        expect(sessionId).toBe(childSessionId);
-      },
-      wait: async (sessionId: string) => {
-        expect(sessionId).toBe(childSessionId);
-        return childOutput;
-      },
-    } as unknown as SubAgentManager;
-    const toolManager = { getTool: () => null, getExecutor: () => null } as unknown as ToolManager;
-    const runner = new ToolRunner(toolManager, subAgentManager, new HookManager());
-    const session = createMockSession({ id: 'agent:parent-id' });
-
-    const result = await runner.run(
-      {
-        name: 'spawn_subagent',
-        arguments: JSON.stringify({
-          type: 'research',
-          description: 'Research task',
-          input: { q: 1 },
-          waitForCompletion: true,
-        }),
-      },
-      session,
-    );
-
-    expect(capturedParentId).toBe('agent:parent-id');
-    expect(capturedTask?.description).toBe('Research task');
-    expect(capturedTask?.input).toEqual({ q: 1 });
-    expect(result).toEqual({ sessionId: childSessionId, status: 'completed', result: childOutput });
-  });
-
-  it('run spawn_subagent passes parentContext from session.context to spawn', async () => {
-    let capturedTask: { parentContext?: { userId: number; groupId?: number; messageType: string } } | undefined;
-    const subAgentManager = {
-      spawn: async (
-        _parentId: string | undefined,
-        _type: SubAgentType,
-        task: { description: string; input: unknown; parentContext?: unknown },
-      ) => {
-        capturedTask = task as typeof capturedTask;
-        return 'agent:child';
-      },
-      execute: async () => {},
-      wait: async () => 'done',
-    } as unknown as SubAgentManager;
-    const toolManager = { getTool: () => null, getExecutor: () => null } as unknown as ToolManager;
-    const runner = new ToolRunner(toolManager, subAgentManager, new HookManager());
-    const session = createMockSession({
-      context: { sessionId: 's', userId: 999, groupId: 888, messageType: 'group' },
-    });
-
-    await runner.run(
-      {
-        name: 'spawn_subagent',
-        arguments: JSON.stringify({ type: 'generic', description: 'd', waitForCompletion: true }),
-      },
-      session,
-    );
-
-    expect(capturedTask?.parentContext).toEqual({ userId: 999, groupId: 888, messageType: 'group' });
-  });
 });

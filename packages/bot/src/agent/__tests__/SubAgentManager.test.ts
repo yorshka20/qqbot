@@ -5,6 +5,7 @@ import type { SubAgentExecutor } from '@/agent/SubAgentExecutor';
 import { SubAgentExecutor as SubAgentExecutorImpl } from '@/agent/SubAgentExecutor';
 import type { IToolRunner } from '@/agent/ToolRunner';
 import type { SubAgentSession } from '@/agent/types';
+import type { Config } from '@/core/config';
 import { createAIManagerWithProvider, getIntegrationProvider } from '@/ai/services/__tests__/integrationTestHelpers';
 import { LLMService } from '@/ai/services/LLMService';
 import type { FunctionCall, ToolDefinition } from '@/ai/types';
@@ -15,6 +16,8 @@ import { createLLMService } from '@/ai/services/__tests__/createLLMService';
 // ---------------------------------------------------------------------------
 // Unit tests (no real LLM; mock executor)
 // ---------------------------------------------------------------------------
+
+const NO_AI_CONFIG = { getAIConfig: () => undefined } as unknown as Config;
 
 describe('SubAgentManager', () => {
   it('spawn returns sessionId and listByParent finds the session', async () => {
@@ -35,29 +38,19 @@ describe('SubAgentManager', () => {
     expect(byParent[0].status).toBe('pending');
   });
 
-  it('execute calls executor and returns result', async () => {
+  it('updateSessionStatus records completion and output', async () => {
     const manager = new SubAgentManager();
     const sessionId = await manager.spawn(undefined, SubAgentType.ANALYSIS, {
       description: 'analyze',
       input: {},
     });
 
-    const mockResult = 'analysis complete';
-    const executor = {
-      execute: async (session: SubAgentSession) => {
-        manager.updateSessionStatus(session.id, 'completed', mockResult);
-        return mockResult;
-      },
-    } as unknown as SubAgentExecutor;
-
-    manager.setExecutor(executor);
-
-    const result = await manager.execute(sessionId);
-    expect(result).toBe(mockResult);
+    manager.updateSessionStatus(sessionId, 'running');
+    manager.updateSessionStatus(sessionId, 'completed', 'analysis complete');
 
     const session = manager.getStatus(sessionId);
     expect(session?.status).toBe('completed');
-    expect(session?.task.output).toBe(mockResult);
+    expect(session?.task.output).toBe('analysis complete');
   });
 
   it('wait returns task.output after session is completed', async () => {
@@ -67,19 +60,11 @@ describe('SubAgentManager', () => {
       input: {},
     });
 
-    const mockOutput = 'subagent output';
-    const executor = {
-      execute: async (session: SubAgentSession) => {
-        manager.updateSessionStatus(session.id, 'completed', mockOutput);
-        return mockOutput;
-      },
-    } as unknown as SubAgentExecutor;
-
-    manager.setExecutor(executor);
-    await manager.execute(sessionId);
+    manager.updateSessionStatus(sessionId, 'running');
+    manager.updateSessionStatus(sessionId, 'completed', 'subagent output');
 
     const output = await manager.wait(sessionId);
-    expect(output).toBe(mockOutput);
+    expect(output).toBe('subagent output');
   });
 
   it('wait throws if session not found', async () => {
@@ -87,14 +72,17 @@ describe('SubAgentManager', () => {
     await expect(manager.wait('non-existent-id')).rejects.toThrow('Sub-agent session not found');
   });
 
-  it('execute throws if executor not set', async () => {
+  it('executor rejects a session that is no longer pending', async () => {
     const manager = new SubAgentManager();
     const sessionId = await manager.spawn(undefined, SubAgentType.RESEARCH, {
       description: 'd',
       input: {},
     });
+    manager.updateSessionStatus(sessionId, 'running');
+    const unused = {} as never;
+    const executor = new SubAgentExecutorImpl(unused, manager, unused, unused, unused, unused, NO_AI_CONFIG);
 
-    await expect(manager.execute(sessionId)).rejects.toThrow('SubAgentExecutor not set');
+    await expect(executor.execute(sessionId)).rejects.toThrow('is not pending');
   });
 });
 
@@ -171,8 +159,8 @@ describe.skipIf(!getIntegrationProvider('doubao'))('SubAgentManager integration 
     // No message context in tests, so isAdminTurn() short-circuits to false and
     // never reaches this; supplied to satisfy the constructor.
     { checkPermission: () => false } as unknown as import('@/permission').PermissionChecker,
+    NO_AI_CONFIG,
   );
-  manager.setExecutor(executor);
 
   test(
     'spawn + execute: sub-agent runs real LLM and returns text',
@@ -185,7 +173,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('SubAgentManager integration 
       expect(typeof sessionId).toBe('string');
       expect(sessionId.startsWith('agent:')).toBe(true);
 
-      const result = await manager.execute(sessionId);
+      const result = await executor.execute(sessionId);
       expect(result).toBeDefined();
       expect(typeof result).toBe('string');
       expect(result.trim()).toContain('42');
@@ -205,7 +193,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('SubAgentManager integration 
         input: { query: 'Beijing weather' },
       });
 
-      const result = await manager.execute(sessionId);
+      const result = await executor.execute(sessionId);
       expect(result).toBeDefined();
       expect(typeof result).toBe('string');
       expect(result.length).toBeGreaterThan(0);

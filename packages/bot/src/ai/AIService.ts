@@ -3,7 +3,6 @@
 import { inject, singleton } from 'tsyringe';
 import { SubAgentExecutor } from '@/agent/SubAgentExecutor';
 import { SubAgentManager } from '@/agent/SubAgentManager';
-import { ToolRunner } from '@/agent/ToolRunner';
 import type { SubAgentConfig, SubAgentType } from '@/agent/types';
 import { ProviderSelector } from '@/ai/ProviderSelector';
 import { ProviderRouter } from '@/ai/routing/ProviderRouter';
@@ -67,7 +66,6 @@ export class AIService {
   private proactiveReplyService: ProactiveReplyGenerationService;
   private imageFacadeService: ImageFacadeService;
   private cardRenderingService: CardRenderingService;
-  private subAgentManager: SubAgentManager;
   private visionService: VisionService;
 
   constructor(
@@ -86,10 +84,10 @@ export class AIService {
     @inject(DITokens.PERMISSION_CHECKER) permissionChecker: PermissionChecker,
     @inject(PromptInjectionRegistry) registry: PromptInjectionRegistry,
     @inject(DITokens.CONFIG) config: Config,
+    @inject(SubAgentManager) private readonly subAgentManager: SubAgentManager,
+    @inject(SubAgentExecutor) private readonly subAgentExecutor: SubAgentExecutor,
   ) {
     const aiConfig = config.getAIConfig();
-    const subagentProviderName = aiConfig?.taskProviders?.subagent;
-    const subagentModel = aiConfig?.taskProviders?.subagentModel;
     const chatConfig = aiConfig?.chat;
 
     this.visionService = new VisionService(aiManager, providerSelector);
@@ -100,22 +98,6 @@ export class AIService {
       promptManager,
       aiManager.getDefaultProvider('llm')?.name || 'deepseek',
     );
-
-    // Sub-agent
-    const subAgentManager = new SubAgentManager();
-    this.subAgentManager = subAgentManager;
-    const toolRunner = new ToolRunner(toolManager, subAgentManager, hookManager);
-    const subAgentExecutor = new SubAgentExecutor(
-      llmService,
-      subAgentManager,
-      toolManager,
-      toolRunner,
-      promptManager,
-      permissionChecker,
-      subagentProviderName,
-      subagentModel,
-    );
-    subAgentManager.setExecutor(subAgentExecutor);
 
     // Reply generation pipeline
     const episodeCacheManager = new EpisodeCacheManager(conversationHistoryService);
@@ -164,10 +146,6 @@ export class AIService {
 
   // --- Sub-agent ---
 
-  getSubAgentManager(): SubAgentManager {
-    return this.subAgentManager;
-  }
-
   async spawnSubAgent(
     type: SubAgentType,
     task: {
@@ -206,7 +184,7 @@ export class AIService {
     parentId?: string,
   ): Promise<string> {
     const sessionId = await this.subAgentManager.spawn(parentId, type, task, configOverrides);
-    await this.subAgentManager.execute(sessionId);
+    await this.subAgentExecutor.execute(sessionId);
     return this.subAgentManager.wait(sessionId);
   }
 

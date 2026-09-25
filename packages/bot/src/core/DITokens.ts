@@ -54,7 +54,6 @@ export const DITokens = {
   // ── AI / LLM (required) ──
   AI_MANAGER: defineToken('AIManager', { required: true }),
   PROMPT_MANAGER: defineToken('PromptManager', { required: true }),
-  SUB_AGENT_MANAGER: defineToken('SubAgentManager', { required: true }),
 
   // ── Conversation pipeline (required) ──
 

@@ -1,40 +1,34 @@
-// SubAgent Manager - manages sub-agent lifecycle
+// SubAgent Manager - the registry of sub-agent sessions
 
+import { singleton } from 'tsyringe';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
-import type { SubAgentExecutor } from './SubAgentExecutor';
 import type { AggregatedResult, SubAgentConfig, SubAgentSession, SubAgentType } from './types';
 
 /**
  * SubAgent Manager
- * Manages sub-agent lifecycle, execution, and concurrency control
+ * Registry of sub-agent sessions: spawning (depth and concurrency limits), status
+ * bookkeeping, waiting and cleanup. Running a session is SubAgentExecutor's job; the
+ * registry never calls it, so the dependency runs one way (executor → manager).
  */
+@singleton()
 export class SubAgentManager {
   private sessions = new Map<string, SubAgentSession>();
   private runningCount = 0;
-  private executor: SubAgentExecutor | null = null;
-  private readonly MAX_CONCURRENT: number;
-  private readonly MAX_DEPTH: number;
-  private readonly DEFAULT_CONFIG: Partial<SubAgentConfig>;
+  private readonly MAX_CONCURRENT = 8;
+  private readonly MAX_DEPTH = 5;
+  private readonly DEFAULT_CONFIG: Partial<SubAgentConfig> = {
+    maxDepth: 2,
+    maxChildren: 5,
+    timeout: 300000, // 5 minutes
+    inheritSoul: false,
+    inheritMemory: false,
+    inheritPreference: false,
+    allowedTools: [],
+    restrictedTools: [],
+  };
 
-  constructor(config?: {
-    maxConcurrent?: number;
-    maxDepth?: number;
-    defaultConfig?: Partial<SubAgentConfig>;
-  }) {
-    this.MAX_CONCURRENT = config?.maxConcurrent ?? 8;
-    this.MAX_DEPTH = config?.maxDepth ?? 5;
-    this.DEFAULT_CONFIG = config?.defaultConfig ?? {
-      maxDepth: 2,
-      maxChildren: 5,
-      timeout: 300000, // 5 minutes
-      inheritSoul: false,
-      inheritMemory: false,
-      inheritPreference: false,
-      allowedTools: [],
-      restrictedTools: [],
-    };
-
+  constructor() {
     logger.info(`[SubAgentManager] Initialized with maxConcurrent=${this.MAX_CONCURRENT}, maxDepth=${this.MAX_DEPTH}`);
   }
 
@@ -124,30 +118,6 @@ export class SubAgentManager {
     logger.info(`[SubAgentManager] Spawned sub-agent: ${sessionId} (type=${type}, depth=${depth})`);
 
     return sessionId;
-  }
-
-  /**
-   * Set the executor (injected after construction to avoid circular dependency)
-   */
-  setExecutor(executor: SubAgentExecutor): void {
-    this.executor = executor;
-  }
-
-  /**
-   * Execute sub-agent using SubAgentExecutor
-   */
-  async execute(sessionId: string): Promise<string> {
-    if (!this.executor) {
-      throw new Error('SubAgentExecutor not set on SubAgentManager');
-    }
-    const session = this.sessions.get(sessionId);
-    if (!session) {
-      throw new Error(`Sub-agent session not found: ${sessionId}`);
-    }
-    if (session.status !== 'pending') {
-      throw new Error(`Sub-agent ${sessionId} is not pending (status: ${session.status})`);
-    }
-    return this.executor.execute(session);
   }
 
   /**

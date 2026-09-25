@@ -1,15 +1,18 @@
 // SubAgent Executor - executes sub-agents with isolated context
 
+import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, FunctionCall, ToolDefinition, ToolUseGenerateResponse } from '@/ai/types';
 import { getCurrentMessageContext } from '@/context/MessageContextStorage';
+import type { Config } from '@/core/config';
+import { DITokens } from '@/core/DITokens';
 import type { PermissionChecker } from '@/permission';
 import type { ToolManager } from '@/tools/ToolManager';
 import { getCurrentDateHourForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
-import type { SubAgentManager } from './SubAgentManager';
-import type { IToolRunner } from './ToolRunner';
+import { SubAgentManager } from './SubAgentManager';
+import { type IToolRunner, ToolRunner } from './ToolRunner';
 import type { SubAgentConfig, SubAgentContext, SubAgentSession, SubAgentType } from './types';
 
 /** Template name mapping: SubAgentType → prompt template key */
@@ -27,9 +30,11 @@ const SUBAGENT_TASK_TEMPLATES: Partial<Record<SubAgentType, string>> = {
 
 /**
  * SubAgent Executor
- * Executes sub-agents with isolated context and tool permissions.
- * Tool execution is done only via injected ToolRunner (no fallback callback).
+ * Runs a spawned sub-agent session with isolated context and tool permissions, keeping
+ * its status in SubAgentManager. Tool calls go through the injected ToolRunner, except
+ * `spawn_subagent`, which recurses into this executor.
  */
+@singleton()
 export class SubAgentExecutor {
   // Tool restrictions by depth
   private readonly TOOL_RESTRICTIONS_BY_DEPTH: Record<number, string[]> = {
@@ -41,16 +46,22 @@ export class SubAgentExecutor {
     5: ['spawn_subagent', 'file_write', 'send_message', 'http_request'], // Depth 5 - most restricted
   };
 
+  private readonly defaultProviderName: string | string[] | undefined;
+  private readonly defaultModel: string | undefined;
+
   constructor(
-    private llmService: LLMService,
-    private subAgentManager: SubAgentManager,
-    private toolManager: ToolManager,
-    private toolRunner: IToolRunner,
-    private promptManager: PromptManager,
-    private permissionChecker: PermissionChecker,
-    private defaultProviderName?: string | string[],
-    private defaultModel?: string,
-  ) {}
+    @inject(LLMService) private llmService: LLMService,
+    @inject(SubAgentManager) private subAgentManager: SubAgentManager,
+    @inject(DITokens.TOOL_MANAGER) private toolManager: ToolManager,
+    @inject(ToolRunner) private toolRunner: IToolRunner,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+    @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
+    @inject(DITokens.CONFIG) config: Config,
+  ) {
+    const taskProviders = config.getAIConfig()?.taskProviders;
+    this.defaultProviderName = taskProviders?.subagent;
+    this.defaultModel = taskProviders?.subagentModel;
+  }
 
   /**
    * Admin status of the turn that spawned this subagent, used to gate adminOnly
@@ -89,9 +100,16 @@ export class SubAgentExecutor {
   }
 
   /**
-   * Execute sub-agent
+   * Run a pending sub-agent session to completion and return its output.
    */
-  async execute(session: SubAgentSession): Promise<string> {
+  async execute(sessionId: string): Promise<string> {
+    const session = this.subAgentManager.getStatus(sessionId);
+    if (!session) {
+      throw new Error(`Sub-agent session not found: ${sessionId}`);
+    }
+    if (session.status !== 'pending') {
+      throw new Error(`Sub-agent ${sessionId} is not pending (status: ${session.status})`);
+    }
     this.subAgentManager.updateSessionStatus(session.id, 'running');
 
     try {
@@ -128,7 +146,8 @@ export class SubAgentExecutor {
           // far too short for structured-JSON workloads (e.g. group_report 8K-token output).
           timeout: session.config.timeout,
           model,
-          toolExecutor: (call: FunctionCall) => this.toolRunner.run(call, session),
+          toolExecutor: (call: FunctionCall) =>
+            call.name === 'spawn_subagent' ? this.spawnChild(call, session) : this.toolRunner.run(call, session),
         },
         providerName,
       );
@@ -265,5 +284,44 @@ export class SubAgentExecutor {
    */
   private parseResult(result: ToolUseGenerateResponse): string {
     return result.text;
+  }
+
+  /** The `spawn_subagent` tool: spawn a child of `session` and optionally run it to completion. */
+  private async spawnChild(call: FunctionCall, session: SubAgentSession): Promise<unknown> {
+    let args: { type?: string; description?: string; input?: unknown; waitForCompletion?: boolean } = {};
+    try {
+      args = JSON.parse(call.arguments) as typeof args;
+    } catch {
+      args = {};
+    }
+    const type = (args.type ?? 'generic') as SubAgentType;
+    const description = typeof args.description === 'string' ? args.description : '';
+    const input = args.input ?? {};
+    const waitForCompletion = args.waitForCompletion !== false;
+
+    const parentContext =
+      session.context.userId !== undefined ||
+      session.context.groupId !== undefined ||
+      session.context.messageType !== undefined
+        ? {
+            userId: typeof session.context.userId === 'number' ? session.context.userId : 0,
+            groupId: typeof session.context.groupId === 'number' ? session.context.groupId : undefined,
+            messageType: (session.context.messageType ?? 'private') as 'private' | 'group',
+            protocol: session.context.protocol,
+            conversationId: session.context.conversationId,
+            messageId: session.context.messageId,
+          }
+        : undefined;
+    const sessionId = await this.subAgentManager.spawn(session.id, type, { description, input, parentContext });
+
+    if (waitForCompletion) {
+      await this.execute(sessionId);
+      const output = await this.subAgentManager.wait(sessionId);
+      return { sessionId, status: 'completed' as const, result: output };
+    }
+
+    // execute() already logs a failure and records it on the session; the caller polls that.
+    this.execute(sessionId).catch(() => undefined);
+    return { sessionId, status: 'spawned' as const };
   }
 }

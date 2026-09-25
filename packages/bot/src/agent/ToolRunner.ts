@@ -1,17 +1,18 @@
 // ToolRunner - executes tool calls for SubAgent through ToolManager.execute
 
+import { inject, singleton } from 'tsyringe';
 import type { FunctionCall } from '@/ai/types';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
 import { deriveSourceFromEvent } from '@/conversation/sources';
+import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
-import type { HookManager } from '@/hooks/HookManager';
+import { HookManager } from '@/hooks/HookManager';
 import { createDefaultHookMetadata } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
-import type { SubAgentManager } from './SubAgentManager';
-import type { SubAgentSession, SubAgentType } from './types';
+import type { SubAgentSession } from './types';
 
 /**
  * Runs a single tool call in SubAgent context.
@@ -19,24 +20,20 @@ import type { SubAgentSession, SubAgentType } from './types';
  * onToolExecuted) DO fire — on a synthetic hook context whose
  * `context.metadata` carries `subAgentSessionId`, which is how session-level
  * hook consumers (e.g. the audit ledger) tell subagent-internal calls apart.
- * Special-cases spawn_subagent via SubAgentManager.
+ * `spawn_subagent` never reaches here: SubAgentExecutor handles it itself.
  */
 export interface IToolRunner {
   run(call: FunctionCall, session: SubAgentSession): Promise<unknown>;
 }
 
+@singleton()
 export class ToolRunner implements IToolRunner {
   constructor(
-    private toolManager: ToolManager,
-    private subAgentManager: SubAgentManager,
-    private hookManager: HookManager,
+    @inject(DITokens.TOOL_MANAGER) private toolManager: ToolManager,
+    @inject(HookManager) private hookManager: HookManager,
   ) {}
 
   async run(call: FunctionCall, session: SubAgentSession): Promise<unknown> {
-    if (call.name === 'spawn_subagent') {
-      return this.runSpawnSubAgent(call, session);
-    }
-
     const toolSpec = this.toolManager.getTool(call.name);
     if (!toolSpec) {
       logger.warn(`[ToolRunner] No tool spec for: ${call.name}`);
@@ -138,47 +135,5 @@ export class ToolRunner implements IToolRunner {
       return result.reply;
     }
     return result.data ?? '';
-  }
-
-  private async runSpawnSubAgent(call: FunctionCall, session: SubAgentSession): Promise<unknown> {
-    const args = this.parseArguments(call.arguments) as {
-      type?: string;
-      description?: string;
-      input?: unknown;
-      waitForCompletion?: boolean;
-    };
-    const type = (args.type ?? 'generic') as SubAgentType;
-    const description = typeof args.description === 'string' ? args.description : '';
-    const input = args.input ?? {};
-    const waitForCompletion = args.waitForCompletion !== false;
-
-    const parentId = session.id;
-    const parentContext =
-      session.context.userId !== undefined ||
-      session.context.groupId !== undefined ||
-      session.context.messageType !== undefined
-        ? {
-            userId: typeof session.context.userId === 'number' ? session.context.userId : 0,
-            groupId: typeof session.context.groupId === 'number' ? session.context.groupId : undefined,
-            messageType: (session.context.messageType ?? 'private') as 'private' | 'group',
-            protocol: session.context.protocol,
-            conversationId: session.context.conversationId,
-            messageId: session.context.messageId,
-          }
-        : undefined;
-    const sessionId = await this.subAgentManager.spawn(parentId, type, {
-      description,
-      input,
-      parentContext,
-    });
-
-    if (waitForCompletion) {
-      await this.subAgentManager.execute(sessionId);
-      const output = await this.subAgentManager.wait(sessionId);
-      return { sessionId, status: 'completed' as const, result: output };
-    }
-
-    void this.subAgentManager.execute(sessionId);
-    return { sessionId, status: 'spawned' as const };
   }
 }

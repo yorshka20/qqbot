@@ -5,7 +5,6 @@
 // outside the container, factories that assemble a registry from config, an interface
 // token, and the fan-out multi-provider list.
 
-import { AIService } from '@/ai/AIService';
 import { createAIManager } from '@/ai/createAIManager';
 import type { APIClient } from '@/api/APIClient';
 import { AuditEventStore } from '@/conversation/audit/AuditEventStore';
@@ -31,8 +30,6 @@ export function registerProviders(config: Config, apiClient: APIClient): void {
   container.registerSingletonFactory(DITokens.TTS_MANAGER, (c) =>
     createTTSManager(config, c.resolve(HealthCheckManager)),
   );
-  // Tool executors (e.g. ResearchToolExecutor) inject the AI facade's sub-agent manager.
-  container.registerSingletonFactory(DITokens.SUB_AGENT_MANAGER, (c) => c.resolve(AIService).getSubAgentManager());
 
   container.registerAlias(DITokens.PERMISSION_CHECKER, DefaultPermissionChecker);
   // Undecorated on purpose: its options parameter exists for tests, and tsyringe builds a

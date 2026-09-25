@@ -145,7 +145,7 @@ The system is organized into the following layers:
 6. **Hook Layer** (`src/hooks/`): 14 hook points for pipeline interception
 7. **Command Layer** (`src/command/`): Prefix-based commands with permission levels
 8. **AI Layer** (`src/ai/`): Multi-provider LLM integration, reply pipeline, image generation
-9. **Agent Layer** (`src/agent/`): Sub-agent spawning and tool execution
+9. **Agent Layer** (`src/agent/`): Sub-agent spawning and tool execution — `SubAgentManager` is the session registry (spawn limits, status, wait), `SubAgentExecutor` runs a session (and handles `spawn_subagent` by recursing into itself), `ToolRunner` runs every other tool call. Dependencies run one way (executor → manager, executor → runner); `AIService`, `ResearchToolExecutor` and the sub-agent trigger plugins inject the two services directly
 10. **Tool Layer** (`src/tools/`): LLM-callable tools with @Tool() decorator
 11. **Memory Layer** (`src/memory/`): Per-user/per-group long-term memory with LLM extraction
 12. **Context Layer** (`src/context/`): HookContext building, conversation context management
@@ -217,7 +217,7 @@ DIContainer.verifyRequiredTokens()
 
 - A service is a `@singleton()` class that names every constructor dependency with an explicit `@inject(...)` — the class itself (`@inject(HookManager)`) or a `DITokens` string. It is built on first resolve, dependencies first, so registration order is irrelevant and most services need no registration at all. Configuration values are read from the injected `Config` inside the constructor, not passed in.
 - Every parameter needs its `@inject`: Biome rewrites a class used only as a type into `import type`, after which decorator metadata no longer carries it and injection breaks silently.
-- `DITokens` string tokens remain for what a class cannot declare for itself: values built outside the container (`CONFIG`, `API_CLIENT`), factories that assemble a registry from config (`AI_MANAGER` via `ai/createAIManager.ts`, `TOOL_MANAGER` via `ToolInitializer.createToolManager()`, `SUB_AGENT_MANAGER`), an interface (`PERMISSION_CHECKER`), the fan-out multi-provider list (`FANOUT_CONTEXTS`), config-gated optional services, and instances produced by startup steps (agenda, persona, SQLite stores, TTS, avatar, bilibili, cluster, event router). All of those registrations live in `core/wiring.ts` or at the startup step that creates the instance.
+- `DITokens` string tokens remain for what a class cannot declare for itself: values built outside the container (`CONFIG`, `API_CLIENT`), factories that assemble a registry from config (`AI_MANAGER` via `ai/createAIManager.ts`, `TOOL_MANAGER` via `ToolInitializer.createToolManager()`, `TTS_MANAGER` via `services/tts/createTTSManager.ts`), an interface (`PERMISSION_CHECKER`), the fan-out multi-provider list (`FANOUT_CONTEXTS`), config-gated optional services, and instances produced by startup steps (agenda, persona, SQLite stores, TTS, avatar, bilibili, cluster, event router). All of those registrations live in `core/wiring.ts` or at the startup step that creates the instance.
 - To expose a `@singleton()` class under a string token use `registerAlias(token, Cls)` (`useToken`); `registerSingleton(token, Cls)` would build a second instance.
 - A service module must not import its own consumers. Decorator registries (command handlers, builtin plugins, avatar plugins) are side-effect imported by `bootstrap.ts`, not by `CommandManager` / `PluginManager`; otherwise the consumer → service → consumer cycle makes class-token injection fail with a TDZ error that depends on which module loads first.
 - A service whose constructor reads the database adapter (`ConversationConfigService`) must first be resolved after `DatabaseManager.initialize()`, which is the first step of `ConversationInitializer.initialize`.
@@ -582,7 +582,6 @@ through the same `MessageAPI.sendFromContext` egress `SendSystem` uses.
 | `ProactiveReplyGenerationService` | Proactive group reply generation |
 | `ImageFacadeService` | Image generation (text2img, img2img, i2v) with hook lifecycle |
 | `ImageRequestAssembler` | Builds the img2img payload (prompt + reference images) before a provider maps it onto its API |
-| `SubAgentManager` | Sub-agent spawning and execution |
 | `VisionService` | Image understanding and explanation |
 
 ### Image request assembly
