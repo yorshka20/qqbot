@@ -16,7 +16,7 @@ import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
 import { asObject } from './normalizeReport';
 
-const TASK_TEMPLATE = 'group_report.keyword_mines';
+const TASK_TEMPLATE = 'fanout.group_day.tasks.mines';
 const DEFAULT_COUNT = 3;
 /** Candidates requested beyond `count`, to absorb the ones verbatim validation drops */
 const CANDIDATE_SLACK = 4;

@@ -477,7 +477,7 @@ export class MemoryExtractService {
    * the same rules as memory.extract, without its own copy of the messages.
    */
   renderPrefixedExtractTask(): string {
-    return this.promptManager.render('memory.daily_extract', this.getScopeTemplateVars());
+    return this.promptManager.render('fanout.group_day.tasks.memory', this.getScopeTemplateVars());
   }
 
   /**

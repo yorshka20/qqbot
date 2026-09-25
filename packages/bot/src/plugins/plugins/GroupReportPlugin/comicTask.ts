@@ -14,7 +14,7 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { asArray, asObject } from './normalizeReport';
 
-const TASK_TEMPLATE = 'group_report.comic';
+const TASK_TEMPLATE = 'fanout.group_day.tasks.comic';
 
 export interface ComicTaskParams {
   /** Image preset ids that exist on disk, in the order the schedule named them */

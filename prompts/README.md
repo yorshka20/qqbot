@@ -35,6 +35,11 @@ prompts/
 │   └── ...
 ├── providers/        # Optional per-provider system patches (see below)
 │   └── gemini.system.txt
+├── fanout/           # Shared-prefix task runs (src/fanout/), one directory per context
+│   └── group_day/
+│       ├── system.txt   # Shared by every task of a run
+│       ├── context.txt  # The shared prefix (yesterday's chat)
+│       └── tasks/       # One suffix per task, named after the task: report, comic, mines, memory
 ├── vision/
 ├── text2img/
 └── img2img/

@@ -19,7 +19,7 @@ import {
 } from './normalizeReport';
 import type { GroupReportData, MemberHighlight } from './types';
 
-const TASK_TEMPLATE = 'group_report.report';
+const TASK_TEMPLATE = 'fanout.group_day.tasks.report';
 const MAX_TOPICS = 5;
 const MAX_MEMBER_HIGHLIGHTS = 6;
 const MAX_FEATURED_MESSAGES = 5;

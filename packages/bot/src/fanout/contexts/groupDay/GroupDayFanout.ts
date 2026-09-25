@@ -21,7 +21,7 @@ import { computeGroupDayStats, formatChatLog, type GroupDayStats } from './stats
 /** Upper bound on messages read for one day; the day's single context is built from these. */
 export const MAX_FETCH_LIMIT = 2000;
 
-const CONTEXT_TEMPLATE = 'group_day.context';
+const CONTEXT_TEMPLATE = 'fanout.group_day.context';
 
 export interface GroupDayContext {
   groupId: string;
@@ -37,7 +37,7 @@ export interface GroupDayContext {
 export class GroupDayFanout extends BaseFanout<GroupDayContext> {
   static readonly NAME = 'group_day';
   readonly name = GroupDayFanout.NAME;
-  protected readonly systemTemplate = 'group_day.system';
+  protected readonly systemTemplate = 'fanout.group_day.system';
 
   constructor(
     @inject(FanoutServices) services: FanoutServices,

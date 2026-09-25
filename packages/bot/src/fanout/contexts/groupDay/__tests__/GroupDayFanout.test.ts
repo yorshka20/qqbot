@@ -131,7 +131,7 @@ describe('group_day prefix', () => {
     fanout.registerTask(captureTask('comic', comicSuffix, seen));
     fanout.registerTask(captureTask('memory', memorySuffix, seen));
     fanout.registerTask(captureTask('mines', minesSuffix, seen));
-    fanout.registerTask(captureTask('report', promptManager.render('group_report.report'), seen));
+    fanout.registerTask(captureTask('report', promptManager.render('fanout.group_day.tasks.report'), seen));
 
     await fanout.run(TARGET, { comic: {}, memory: {}, mines: {}, report: {} });
 
