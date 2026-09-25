@@ -34,7 +34,6 @@ import { WebSocketConnection } from '@/core/connection';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { HealthCheckManager } from '@/core/health';
-import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
 import { LivemodeInterceptor } from '@/integrations/avatar/livemode/LivemodeInterceptor';
@@ -514,7 +513,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   // has had a chance to register its tokens. Throws on any missing
   // `required: true` token in `DITokens.ts` so smoke-test fails loud
   // instead of letting consumers null-deref later.
-  new ServiceRegistry().verifyServices();
+  getContainer().verifyRequiredTokens();
 
   logger.info('[Bootstrap] All initialization stages completed');
 

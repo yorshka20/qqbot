@@ -35,8 +35,7 @@ export class ConversationManager {
   }
 
   private getBotSelfIdFromConfig(): string {
-    // CONFIG is required (DITokens.ts) — registered first thing in
-    // ServiceRegistry.registerInfrastructureServices.
+    // CONFIG is required (DITokens.ts) — the first thing ConversationInitializer registers.
     const config = getContainer().resolve<Config>(DITokens.CONFIG);
     return config.getConfig().bot.selfId;
   }

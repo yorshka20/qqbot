@@ -16,7 +16,6 @@ import type { Config, ProtocolName } from '../core/config';
 import { getContainer } from '../core/DIContainer';
 import { DITokens } from '../core/DITokens';
 import { HealthCheckManager } from '../core/health';
-import { ServiceRegistry } from '../core/ServiceRegistry';
 import { EventInitializer } from '../events/EventInitializer';
 import type { NormalizedEvent, NormalizedMessageEvent } from '../events/types';
 import { PluginInitializer } from '../plugins/PluginInitializer';
@@ -642,7 +641,7 @@ class DebugCLI {
     // Register EventRouter so PluginManager factory can resolve it via context.events
     getContainer().registerInstance(DITokens.EVENT_ROUTER, this.eventRouter, { allowOverride: true });
 
-    new ServiceRegistry().verifyServices();
+    getContainer().verifyRequiredTokens();
 
     // Resolve PluginManager from container (factory was registered in start(); deps now available)
     this.printInfo('Initializing plugin system...');
@@ -711,7 +710,7 @@ class DebugCLI {
     // Register EventRouter so PluginManager factory can resolve it via context.events
     getContainer().registerInstance(DITokens.EVENT_ROUTER, this.eventRouter, { allowOverride: true });
 
-    new ServiceRegistry().verifyServices();
+    getContainer().verifyRequiredTokens();
 
     // Initialize protocol adapter system (BEFORE starting bot)
     ProtocolAdapterInitializer.initialize(this.config, connectionManager, this.eventRouter, this.apiClient);

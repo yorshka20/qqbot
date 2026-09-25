@@ -126,7 +126,7 @@ RAG is configured under `rag` in `BotConfig`:
 ## DI Integration
 
 - **Token**: `RETRIEVAL_SERVICE`
-- **Registration**: `registerRetrievalService(mcpConfig, ragConfig)` in `ServiceRegistry`
+- **Registration**: `bootstrap.ts` builds the service and registers it under `RETRIEVAL_SERVICE`
 - **Post-init**: `connectSearchTransports()` is awaited once after the DI graph is up, so the MCP transport (which spawns a child process and handshakes) becomes usable. HTTP-based transports need no such step.
 
 ---

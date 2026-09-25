@@ -204,7 +204,7 @@ Single source of truth for application initialization order. Both `src/index.ts`
 Config → APIClient → PromptInitializer → PluginInitializer (factory) →
 HealthCheckManager → RetrievalService → StaticServer →
 ProjectRegistry → ClaudeCodeInitializer → ConversationInitializer →
-ClusterManager → EventInitializer → ServiceRegistry.verify() →
+ClusterManager → EventInitializer → DIContainer.verifyRequiredTokens() →
 ProtocolAdapterInitializer → PluginInitializer.loadPlugins() →
 TTSManager (from tts.* config) + attachHealthManager → AvatarService (optional)
 ```

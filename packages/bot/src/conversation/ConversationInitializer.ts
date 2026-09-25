@@ -27,7 +27,6 @@ import { GlobalConfigManager } from '@/core/config/GlobalConfigManager';
 import { type DIContainer, getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { type HealthCheckManager, ProviderHealthAdapter } from '@/core/health';
-import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { type SystemContext, SystemRegistry } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import { FanoutInitializer } from '@/fanout/FanoutInitializer';
@@ -109,8 +108,8 @@ export class ConversationInitializer {
     const commandPrefixes = ['/', '!'];
 
     // Phase 1: Infrastructure Setup
-    const serviceRegistry = new ServiceRegistry();
-    serviceRegistry.registerInfrastructureServices(config, apiClient);
+    container.registerInstance(DITokens.CONFIG, config);
+    container.registerInstance(DITokens.API_CLIENT, apiClient);
 
     // Phase 2: Create baseline infra services.
     // DatabaseManager must be initialized before ConversationConfigService.
@@ -206,12 +205,18 @@ export class ConversationInitializer {
     // Phase 3: Service Configuration
     await ConversationInitializer.configureServices(services, config);
 
-    // Phase 3.5: Register AIManager with health check manager (for aggregate health)
-    serviceRegistry.registerAIManagerHealthCheck(services.aiManager);
+    // Phase 3.5: Register AIManager with health check manager (for aggregate health; it checks
+    // every provider it manages). HEALTH_CHECK_MANAGER is registered by bootstrap beforehand.
+    const healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
+    healthCheckManager.registerService(services.aiManager, {
+      cacheDuration: 120000, // AI providers are usually stable
+      timeout: 10000,
+      retries: 0,
+      checkInterval: 3600000,
+    });
 
     // Phase 3.6: Register each AI provider individually with HealthCheckManager
     // Skip providers that opt out (e.g. serverless providers to avoid cold-start costs)
-    const healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
     for (const provider of services.aiManager.getAllProviders()) {
       if (provider.skipHealthCheck) {
         logger.info(
@@ -284,7 +289,7 @@ export class ConversationInitializer {
 
     // File reading service is used by file-related task executors.
     const fileReadService = new FileReadService(config.getFileReadServiceConfig());
-    serviceRegistry.registerFileReadService(fileReadService);
+    container.registerInstance(DITokens.FILE_READ_SERVICE, fileReadService);
 
     // AIService is the facade used by systems/hooks for generation and analysis.
     const messageAPI = new MessageAPI(apiClient);
@@ -336,7 +341,7 @@ export class ConversationInitializer {
       },
       aiConfig.chat,
     );
-    serviceRegistry.registerAIServiceCapabilities(aiService);
+    container.registerInstance(DITokens.AI_SERVICE, aiService);
     // Expose SubAgentManager to DI so tool executors (e.g. ResearchToolExecutor) can inject it.
     container.registerInstance(DITokens.SUB_AGENT_MANAGER, aiService.getSubAgentManager());
 
@@ -362,7 +367,11 @@ export class ConversationInitializer {
       databaseManager,
       promptManager: container.resolve<PromptManager>(DITokens.PROMPT_MANAGER),
     });
-    serviceRegistry.registerAgendaServices(agendaComponents);
+    container.registerInstance(DITokens.AGENDA_SERVICE, agendaComponents.agendaService);
+    container.registerInstance(DITokens.AGENT_LOOP, agendaComponents.agentLoop);
+    container.registerInstance(DITokens.INTERNAL_EVENT_BUS, agendaComponents.internalEventBus);
+    container.registerInstance(DITokens.AGENDA_REPORTER, agendaComponents.reporter);
+    container.registerInstance(DITokens.SCHEDULE_FILE_SERVICE, agendaComponents.scheduleFileService);
 
     // Mind framework: phenotype ODE + modulation adapter for avatar.
     // Must run AFTER agenda so it can share the same InternalEventBus;
@@ -372,7 +381,9 @@ export class ConversationInitializer {
       rawConfig: config.getPersonaConfig(),
       internalEventBus: agendaComponents.internalEventBus,
     });
-    serviceRegistry.registerPersonaServices(mindComponents);
+    container.registerInstance(DITokens.PERSONA_SERVICE, mindComponents.personaService);
+    container.registerInstance(DITokens.PERSONA_CONFIG, mindComponents.config);
+    container.registerInstance(DITokens.PERSONA_MODULATION_PROVIDER, mindComponents.modulationProvider);
 
     const completeServices: CompleteServices = {
       ...services,
@@ -381,7 +392,8 @@ export class ConversationInitializer {
       conversationConfigService,
       globalConfigManager,
     };
-    serviceRegistry.registerConversationServices(completeServices);
+    container.registerInstance(DITokens.CONTEXT_MANAGER, contextManager);
+    container.registerInstance(DITokens.COMMAND_MANAGER, services.commandManager);
 
     // Phase 6: Component assembly.
     const components = ConversationInitializer.assembleComponents(completeServices, commandPrefixes, container);
@@ -647,7 +659,7 @@ export class ConversationInitializer {
     container.registerInstance(DITokens.LIFECYCLE, lifecycle);
 
     // INTERNAL_EVENT_BUS is required (DITokens.ts) — registered earlier in
-    // this same initializer via `serviceRegistry.registerAgendaServices`.
+    // this same initializer, right after the agenda is built.
     const pipeline = new MessagePipeline(
       lifecycle,
       services.hookManager,

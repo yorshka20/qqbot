@@ -3,6 +3,7 @@
 
 import { container, type DependencyContainer } from 'tsyringe';
 import { logger } from '@/utils/logger';
+import { DITokens, getRequiredTokens, getTokenMeta } from './DITokens';
 
 /**
  * Global DI Container Manager
@@ -99,6 +100,34 @@ export class DIContainer {
    */
   getRegisteredTokens(): string[] {
     return Array.from(this.registeredTokens);
+  }
+
+  /**
+   * Throw when a required-by-contract token (see DITokens.ts) is still unregistered, so
+   * bootstrap and `bun run smoke-test` fail loud instead of degrading into a null deref
+   * later. Optional tokens gated off in this run are only logged.
+   */
+  verifyRequiredTokens(): void {
+    const missing = getRequiredTokens().filter((token) => !this.isRegistered(token));
+    if (missing.length > 0) {
+      throw new Error(
+        `[DIContainer] Bootstrap left required DI tokens unregistered: ${missing.join(', ')}. ` +
+          'Either fix the registration order or, if the token is feature-gated, mark it ' +
+          '`required: false, gatedBy: ...` in DITokens.ts.',
+      );
+    }
+
+    const skipped: string[] = [];
+    for (const token of Object.values(DITokens)) {
+      const meta = getTokenMeta(token);
+      if (meta && !meta.required && !this.isRegistered(token)) {
+        skipped.push(`${token} (${meta.gatedBy})`);
+      }
+    }
+    if (skipped.length > 0) {
+      logger.debug(`[DIContainer] Optional tokens not registered: ${skipped.join('; ')}`);
+    }
+    logger.debug('[DIContainer] All required services are registered');
   }
 
   /**

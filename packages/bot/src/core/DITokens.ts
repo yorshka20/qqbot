@@ -3,7 +3,7 @@
 // (required vs optional).
 //
 // Why this exists:
-//   - `verifyServices()` in `ServiceRegistry` needs to know which tokens MUST
+//   - `DIContainer.verifyRequiredTokens()` needs to know which tokens MUST
 //     be registered after bootstrap; it throws on missing required tokens so
 //     `bun run smoke-test` catches DI drift.
 //   - Plugin authors need to know which tokens are safe to `container.resolve`
@@ -12,7 +12,7 @@
 //
 // Contract per metadata flag:
 //   - required: true  → bootstrap always registers this token. Consumers
-//     should `container.resolve()` directly. `verifyServices()` throws if
+//     should `container.resolve()` directly. `verifyRequiredTokens()` throws if
 //     it's missing.
 //   - required: false → registered only when a feature/adapter/config is
 //     active. Field `gatedBy` documents the gate. Consumers MUST guard with
@@ -44,7 +44,7 @@ function defineToken<V extends string>(value: V, meta: TokenMeta): V {
 
 export const DITokens = {
   // ── Core infrastructure (required) ──
-  /** App-wide config object. Registered first by `ServiceRegistry.registerInfrastructureServices`. */
+  /** App-wide config object. Registered first by `ConversationInitializer`. */
   CONFIG: defineToken('Config', { required: true }),
   /** Outbound API client (HTTP). Registered alongside CONFIG. */
   API_CLIENT: defineToken('APIClient', { required: true }),
@@ -185,7 +185,7 @@ export const DITokens = {
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];
 
-/** Returns every token whose `required: true`. Used by `verifyServices()`. */
+/** Returns every token whose `required: true`. Used by `DIContainer.verifyRequiredTokens()`. */
 export function getRequiredTokens(): readonly string[] {
   const out: string[] = [];
   for (const [token, meta] of TOKEN_META) {
