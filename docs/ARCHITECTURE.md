@@ -21,11 +21,12 @@ This document describes the architecture of the QQ Bot framework, a production-r
 13. [AI Service](#ai-service)
 14. [Tool System](#tool-system)
 15. [Memory System](#memory-system)
-16. [Database Layer](#database-layer)
-17. [Cluster System](#cluster-system)
-18. [MCP Surfaces](#mcp-surfaces)
-19. [Error Handling](#error-handling)
-20. [Development Workflow](#development-workflow)
+16. [Fan-out](#fan-out)
+17. [Database Layer](#database-layer)
+18. [Cluster System](#cluster-system)
+19. [MCP Surfaces](#mcp-surfaces)
+20. [Error Handling](#error-handling)
+21. [Development Workflow](#development-workflow)
 
 ## System Overview
 
@@ -154,10 +155,11 @@ The system is organized into the following layers:
 16. **Cluster Layer** (`src/cluster/`): Agent cluster for multi-worker coordination
 17. **Message Layer** (`src/message/`): Message construction, parsing, and caching
 18. **Agenda Layer** (`src/agenda/`): Scheduled and event/message-triggered task execution (`cron` / `once` / `onEvent` / `onMessage` triggers, with optional TTL + fire-budget lifecycle; the LLM can self-register ephemeral tasks via `schedule_task` / `watch_messages` tools)
-19. **LAN Layer** (`src/lan/`): LAN relay and local network communication
-20. **Utils Layer** (`src/utils/`): Logging, error handling, shared utilities
-21. **CLI Layer** (`src/cli/`): Smoke-test, dev tooling
-22. **Tests Layer** (`src/__tests__/`): Integration and unit tests
+19. **Fan-out Layer** (`src/fanout/`): Shared-prefix task runs — one long context, several tasks appended after it, one request envelope so every task after the first hits the provider's prefix cache (see [Fan-out](#fan-out))
+20. **LAN Layer** (`src/lan/`): LAN relay and local network communication
+21. **Utils Layer** (`src/utils/`): Logging, error handling, shared utilities
+22. **CLI Layer** (`src/cli/`): Smoke-test, dev tooling
+23. **Tests Layer** (`src/__tests__/`): Integration and unit tests
 
 ## Component Details
 
@@ -562,7 +564,7 @@ through the same `MessageAPI.sendFromContext` egress `SendSystem` uses.
 
 `ImageRequestAssembler` sits in front of every `generateImageFromImage` call. Callers pass the user prompt, every reference image taken from the triggering message and the message it replies to, and any preset ids. The assembler appends each preset's precise description to the prompt and its local images after the message images. Providers then apply their own limits: gpt-image takes up to 16; Laozhang and GeminiProvider both post the list to Gemini `generateContent` (one text part, then one inline image per reference, at most 14) with `responseModalities: IMAGE`; NovelAI denoises from the first image only.
 
-Presets are directories under `image-presets/<id>/preset.json` at the repo root, tracked the same way as `prompts/` (`name` plus `aliases` for the chat model to match user wording, `description` sent verbatim to the image model, `images` relative to that directory). The `generate_image` tool cites them by id, in the reply turn and in a subagent: a task that names an id is a citation, the same as a user saying an alias. `/gpt2` passes every image on the message or its reply and does not take preset ids itself. The scheduled `group_report` action can list `comicPresets`. Keyword mines stay on the report. The comic is a second call that reuses the report's system prompt and the user-message prefix through the chat log, and appends a different task; that subagent draws 1–3 images, citing one of those ids per image. `comfyu/` stays separate: those files are ComfyUI node graphs for the SDXL and Wan pipelines, and the assembler treats every child directory as a subject preset. `gpt-image-2` edits omit `input_fidelity`: that model rejects the parameter and always reads image inputs at high fidelity.
+Presets are directories under `image-presets/<id>/preset.json` at the repo root, tracked the same way as `prompts/` (`name` plus `aliases` for the chat model to match user wording, `description` sent verbatim to the image model, `images` relative to that directory). The `generate_image` tool cites them by id, in the reply turn and in a subagent: a task that names an id is a citation, the same as a user saying an alias. `/gpt2` passes every image on the message or its reply and does not take preset ids itself. The daily comic is the `comic` task of the `group_day` fan-out (see [Fan-out](#fan-out)); its schedule params list `presets`, and the task draws 1–3 images through `generate_image`, citing one of those ids per image. `comfyu/` stays separate: those files are ComfyUI node graphs for the SDXL and Wan pipelines, and the assembler treats every child directory as a subject preset. `gpt-image-2` edits omit `input_fidelity`: that model rejects the parameter and always reads image inputs at high fidelity.
 
 ### AI Reply Pipeline
 
@@ -686,7 +688,7 @@ services get a sync health flag: `generate_image`, `research` / `search`,
 
 ### Plugin-registered tools
 
-A plugin can register a `ToolSpec` + executor pair directly (`toolManager.registerTool` / `registerExecutor`) instead of using the `@Tool()` decorator. Use this when the tool must not exist unless the plugin is enabled in config, or when its description depends on runtime state the decorator cannot see (`SqlQueryPlugin` embeds the live table list; `GroupReportPlugin` registers a subagent-only renderer).
+A plugin can register a `ToolSpec` + executor pair directly (`toolManager.registerTool` / `registerExecutor`) instead of using the `@Tool()` decorator. Use this when the tool must not exist unless the plugin is enabled in config, or when its description depends on runtime state the decorator cannot see (`SqlQueryPlugin` embeds the live table list).
 
 Registration belongs in `onInit()` gated on `this.enabled`, **not** in `onEnable()` — smoke-test runs `onInit` and skips `onEnable`, so anything registered in `onEnable` is never validated. `loadConfig()` populates `this.enabled` before `onInit` runs, so the gate still honours config.
 
@@ -741,9 +743,25 @@ Name: Alice
 
 Core scopes: `instruction`, `rule`, `preference`, `identity`, `fact`, and custom scopes.
 
+### Extraction
+
+Daily extraction is the `memory` task of the `group_day` fan-out: it reads yesterday's full chat log from the shared prefix, and `MemoryExtractService.consolidateExtractOutput` merges the facts (with any buffered `memory_note` entries) into the `auto` layer through `memory.analyze`, which runs on the memory plugin's own `extractProvider`. There is no idle-triggered extraction. Full-history and since-date backfills (MemoryTrigger / `/memory` commands) still build their own windows with `memory.extract`.
+
 ### Optional RAG Support
 
 When RAG is configured, `MemoryRAGService` uses Ollama embeddings + Qdrant vector search to perform semantic retrieval instead of keyword matching.
+
+## Fan-out
+
+`src/fanout/` runs several tasks on one shared context. `core/` holds the framework (`BaseFanout`, `SharedPrefixRunner`, `FanoutManager`, types); `contexts/` holds one directory per concrete shared context (`contexts/groupDay/`). DeepSeek's prefix cache compares the request from its first byte, and the tool list and `response_format` are rendered ahead of the messages, so tasks only share a cache when the whole envelope matches: provider, model, system prompt, tool list, JSON mode. The module is built so a task cannot change the envelope.
+
+- **`BaseFanout<C>`** — the base class. A subclass is an `@injectable()` class that passes `FanoutServices` (LLM, tools, hooks, prompts, config — everything the base needs, one injected dependency) to `super` and injects only what its own context needs. It supplies `name`, `systemTemplate`, `resolveModel()` and `buildContext(target)` (the context object plus the rendered prefix). The base owns the task registry, one run per target at a time, the envelope (system prompt, and the name-sorted union of the selected tasks' tools) and the synthetic `HookContext` tools run under (the bot itself, in the target chat).
+- **`FanoutTask<C, P>`** — a task names the tools it may call, parses its own params, returns a suffix and handles the output. The model sees the whole union; a call to a tool outside the task's own list is refused at execution time, since trimming the list per task would change the envelope. No task uses JSON mode; structured output is JSON in text.
+- **`SharedPrefixRunner`** — runs tasks in name order. The first task runs alone until its first LLM round returns (that request writes the cache), then the rest start concurrently. Each task logs `fanout=… task=… promptTokens=… cachedPromptTokens=…`.
+- **Registration** — `contexts/index.ts` lists every concrete fan-out (`FANOUT_CONTEXTS`). `FanoutInitializer` registers each as a DI singleton and hands it to `FanoutManager`, before the agenda and before plugins load. Triggers look a fan-out up by name through the manager; task owners resolve the class from DI (`getContainer().resolve(GroupDayFanout)`) and get the same instance.
+- **Triggers** — the agenda action `fanout` (`参数: {"fanout": "group_day", "tasks": {"report": {}, "comic": {"presets": […]}, "mines": {"count": 3}, "memory": {}}}`), and `/group_report`, which runs the report task alone.
+
+`group_day` (`GroupDayFanout`) is yesterday's chat in one group: `prompts/group_day/context.txt` renders the group name, date, code-computed stats and the day's log (`[HH:MM] nickname(userId): content`, bot replies excluded, 200-character cut, at most 2000 messages). Its provider is `ai.taskProviders.groupDay` (+ `groupDayModel`). Tasks: `report` (GroupReportPlugin — semantic JSON only; every count on the card comes from the stats), `comic` (GroupReportPlugin — calls `generate_image`), `mines` (GroupReportPlugin — picks keywords verbatim from the log and plants one-shot `onMessage` items, each checked against the day's messages), `memory` (MemoryPlugin). Plugins register their tasks in `onEnable` and drop them in `onDisable`.
 
 ## Database Layer
 
@@ -1033,6 +1051,7 @@ qqbot/
 │   ├── core/            # Bot, Config, ConnectionManager, DI, bootstrap
 │   ├── database/        # SQLite and MongoDB adapters
 │   ├── events/          # EventRouter, EventDeduplicator, handlers
+│   ├── fanout/          # Shared-prefix task runs (BaseFanout, group_day)
 │   ├── hooks/           # HookManager and hook types
 │   ├── lan/             # LAN relay and local network communication
 │   ├── memory/          # Per-user/per-group memory service

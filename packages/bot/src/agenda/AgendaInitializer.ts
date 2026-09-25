@@ -3,24 +3,15 @@
 
 import { join } from 'node:path';
 import type { PromptManager } from '@/ai';
-import type { AIService } from '@/ai/AIService';
-import type { LLMService } from '@/ai/services/LLMService';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import type { ProtocolName } from '@/core/config/types/protocol';
+import { getContainer } from '@/core/DIContainer';
 import type { DatabaseManager } from '@/database/DatabaseManager';
-import type { HookManager } from '@/hooks/HookManager';
-import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
-import { ActionHandlerRegistry } from './ActionHandlerRegistry';
+import { type ActionHandler, ActionHandlerRegistry } from './ActionHandlerRegistry';
 import { AgendaReporter } from './AgendaReporter';
 import { AgendaService } from './AgendaService';
 import { AgentLoop } from './AgentLoop';
-import { ClusterTicketsSyncHandler } from './handlers/ClusterTicketsGitHandlers';
-import { RepeatingTicketDispatchHandler } from './handlers/RepeatingTicketDispatchHandler';
-import { RepeatingTodoWorkerHandler } from './handlers/RepeatingTodoWorkerHandler';
-import { TodoWorkerHandler } from './handlers/TodoWorkerHandler';
+import { AGENDA_ACTION_HANDLERS } from './handlers';
 import { InternalEventBus } from './InternalEventBus';
 import { ScheduleFileService } from './ScheduleFileService';
 
@@ -45,14 +36,7 @@ export interface AgendaComponents {
 export class AgendaInitializer {
   static async initialize(deps: {
     databaseManager: DatabaseManager;
-    llmService: LLMService;
-    messageAPI: MessageAPI;
-    conversationHistoryService: ConversationHistoryService;
     promptManager: PromptManager;
-    toolManager: ToolManager;
-    hookManager: HookManager;
-    aiService?: AIService;
-    preferredProtocol?: ProtocolName;
     /** Base directory for agenda data files. Defaults to `data/agenda` relative to cwd. */
     dataDir?: string;
   }): Promise<AgendaComponents> {
@@ -64,28 +48,16 @@ export class AgendaInitializer {
 
     const internalEventBus = new InternalEventBus();
 
-    const agentLoop = new AgentLoop(
-      deps.llmService,
-      deps.messageAPI,
-      deps.conversationHistoryService,
-      deps.promptManager,
-      deps.toolManager,
-      deps.hookManager,
-      deps.aiService,
-    );
-    if (deps.preferredProtocol) {
-      agentLoop.setPreferredProtocol(deps.preferredProtocol);
-    }
+    const agentLoop = getContainer().resolve(AgentLoop);
 
     const reporter = new AgendaReporter(reportsDir);
 
     // Framework-level handlers only (each backed by a core service). Plugin-owned handlers
     // register themselves via AgendaService.registerActionHandler in the plugin's onEnable.
     const actionHandlerRegistry = new ActionHandlerRegistry();
-    actionHandlerRegistry.register(new TodoWorkerHandler());
-    actionHandlerRegistry.register(new RepeatingTodoWorkerHandler());
-    actionHandlerRegistry.register(new ClusterTicketsSyncHandler());
-    actionHandlerRegistry.register(new RepeatingTicketDispatchHandler());
+    for (const type of AGENDA_ACTION_HANDLERS) {
+      actionHandlerRegistry.register(getContainer().resolve<ActionHandler>(type));
+    }
 
     const agendaService = new AgendaService(
       deps.databaseManager,

@@ -4,6 +4,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { injectable } from 'tsyringe';
 import type { ClusterManager } from '@/cluster/ClusterManager';
 import type { ClusterConfig } from '@/cluster/config';
 import type { JobRecord } from '@/cluster/types';
@@ -104,6 +105,7 @@ function jobOutcomeLine(job: JobRecord | undefined): string {
   return `status=${job.status}, tasks ${job.tasksCompleted} ok / ${job.tasksFailed} fail / ${job.taskCount} total`;
 }
 
+@injectable()
 export class RepeatingTicketDispatchHandler implements ActionHandler {
   readonly name = 'repeating_ticket_dispatch';
 

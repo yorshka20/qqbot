@@ -1,4 +1,5 @@
-// Memory Plugin - debounced memory extraction from recent messages for configured groups
+// Memory Plugin - daily memory extraction as a group_day fan-out task, full-history backfills,
+// memory backups and stale-fact cleanup.
 
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
@@ -9,19 +10,16 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { MemoryExtractUserCursor } from '@/database/models/types';
-import type { HookContext, HookResult } from '@/hooks/types';
+import { GroupDayFanout } from '@/fanout/contexts/groupDay/GroupDayFanout';
 import type { MemoryExtractService } from '@/memory';
+import { GroupDayMemoryTask } from '@/memory/GroupDayMemoryTask';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
-import { Hook, RegisterPlugin } from '../decorators';
+import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 export interface MemoryPluginConfig {
-  /** Group IDs that have memory extraction enabled. */
-  groups: string[];
-  /** Debounce delay in ms before running extract after last message. Default 600000 (10 min). Use a larger value (e.g. 10 min) to avoid extract running too often and filling the queue; small values (e.g. 10s) cause frequent group extracts and can make memory extract appear to run non-stop. */
-  debounceMs: number;
-  /** LLM provider for extract (e.g. "gemini", "deepseek", "doubao"). Required. */
+  /** LLM provider for backfill extracts and for merging extracted facts (e.g. "gemini", "deepseek"). Required. */
   extractProvider: string;
   /** Model override for the extract provider (e.g. "gemini-3.1-flash-lite"). Default: the provider's configured model. */
   extractModel?: string;
@@ -29,18 +27,14 @@ export interface MemoryPluginConfig {
   fullHistoryMaxLength?: number;
   /** Full-history progress file path (one line per "groupId:userId"). Default "data/memory_full_history_progress.txt". */
   fullHistoryProgressFile?: string;
-  /** Max messages per debounced extract run (per group). Progress is stored per user in DB (memory_extract_user_cursors) when triggered via MemoryTrigger. */
-  maxMessagesPerExtract?: number;
   /** Backup interval in ms. Default 604800000 (7 days). Set to 0 to disable. */
   backupIntervalMs?: number;
   /** Backup directory path (relative to cwd). Default "data/backups/memory". */
   backupDir?: string;
 }
 
-const DEFAULT_DEBOUNCE_MS = 6000_000; // 100 min; short debounce (e.g. 10s) causes frequent group extracts and queue buildup
 const DEFAULT_FULL_HISTORY_MAX_LENGTH = 15_000;
 const DEFAULT_FULL_HISTORY_PROGRESS_FILE = 'data/memory_full_history_progress.txt';
-const DEFAULT_MAX_MESSAGES_PER_EXTRACT = 500;
 const DEFAULT_BACKUP_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const DEFAULT_BACKUP_DIR = 'data/backup/memory';
 const MEMORY_DIR = 'data/memory';
@@ -48,13 +42,9 @@ const MEMORY_DIR = 'data/memory';
 @RegisterPlugin({
   name: 'memory',
   version: '1.0.0',
-  description: 'Memory: debounced extract from recent messages for configured groups, inject into replies',
+  description: 'Memory: daily extract on the group_day prefix, full-history backfills, backups',
 })
 export class MemoryPlugin extends PluginBase {
-  /** Group IDs that have memory extraction enabled (from config). */
-  private groupIds = new Set<string>();
-  /** Debounce delay in ms; extract runs after this idle time since last message. */
-  private debounceMs = DEFAULT_DEBOUNCE_MS;
   /** LLM provider name for extract + analyze (from config). */
   private extractProvider = '';
   private extractModel: string | undefined;
@@ -62,16 +52,12 @@ export class MemoryPlugin extends PluginBase {
   private fullHistoryMaxLength = DEFAULT_FULL_HISTORY_MAX_LENGTH;
   /** Full-history progress file path (one line per "groupId:userId"). */
   private fullHistoryProgressFile = DEFAULT_FULL_HISTORY_PROGRESS_FILE;
-  /** When using cursor (DB): cap messages per run; next debounce continues. */
-  private maxMessagesPerExtract = DEFAULT_MAX_MESSAGES_PER_EXTRACT;
 
   /** Backup interval timer. */
   private backupTimer: ReturnType<typeof setInterval> | null = null;
   private backupIntervalMs = DEFAULT_BACKUP_INTERVAL_MS;
   private backupDir = DEFAULT_BACKUP_DIR;
 
-  /** Per-group debounce timer: clear on new message, run extract when timer fires. */
-  private timersByGroup = new Map<string, ReturnType<typeof setTimeout>>();
   /** In-memory guard: groupId:userId currently running or queued for full-history extract; avoid duplicate runs. */
   private fullHistoryPendingKeys = new Set<string>();
   private conversationHistoryService!: ConversationHistoryService;
@@ -94,19 +80,16 @@ export class MemoryPlugin extends PluginBase {
 
     const pluginConfig = this.pluginConfig?.config as MemoryPluginConfig | undefined;
 
-    if (pluginConfig?.groups.length) {
-      this.groupIds = new Set(pluginConfig.groups);
-      this.debounceMs = pluginConfig.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+    if (pluginConfig) {
       // Plugin config takes precedence over AI config
       this.extractProvider = pluginConfig.extractProvider;
       this.extractModel = pluginConfig.extractModel;
       this.fullHistoryMaxLength = pluginConfig.fullHistoryMaxLength ?? DEFAULT_FULL_HISTORY_MAX_LENGTH;
       this.fullHistoryProgressFile = pluginConfig.fullHistoryProgressFile ?? DEFAULT_FULL_HISTORY_PROGRESS_FILE;
-      this.maxMessagesPerExtract = pluginConfig.maxMessagesPerExtract ?? DEFAULT_MAX_MESSAGES_PER_EXTRACT;
       this.backupIntervalMs = pluginConfig.backupIntervalMs ?? DEFAULT_BACKUP_INTERVAL_MS;
       this.backupDir = pluginConfig.backupDir ?? DEFAULT_BACKUP_DIR;
       logger.info(
-        `[MemoryPlugin] Enabled | groups=${Array.from(this.groupIds).join(', ')} debounceMs=${this.debounceMs} maxPerExtract=${this.maxMessagesPerExtract} extractProvider=${this.extractProvider}${this.extractModel ? ` model=${this.extractModel}` : ''}`,
+        `[MemoryPlugin] Configured | extractProvider=${this.extractProvider}${this.extractModel ? ` model=${this.extractModel}` : ''}`,
       );
     }
 
@@ -126,6 +109,24 @@ export class MemoryPlugin extends PluginBase {
     const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
     setTimeout(() => void this.runDailyCleanup(), 60 * 60 * 1000); // 1h after startup
     setInterval(() => void this.runDailyCleanup(), CLEANUP_INTERVAL_MS);
+  }
+
+  async onEnable(): Promise<void> {
+    await super.onEnable();
+    this.groupDay().registerTask(
+      new GroupDayMemoryTask(this.memoryExtractService, { provider: this.extractProvider, model: this.extractModel }),
+    );
+    logger.info('[MemoryPlugin] Registered group_day task: memory');
+  }
+
+  async onDisable(): Promise<void> {
+    await super.onDisable();
+    this.groupDay().unregisterTask(GroupDayMemoryTask.NAME);
+    logger.info('[MemoryPlugin] Unregistered group_day task: memory');
+  }
+
+  private groupDay(): GroupDayFanout {
+    return getContainer().resolve(GroupDayFanout);
   }
 
   /**
@@ -241,36 +242,6 @@ export class MemoryPlugin extends PluginBase {
       chunks.push(current.join('\n'));
     }
     return chunks;
-  }
-
-  /** Schedule extract for group after debounceMs; resets timer on each call. */
-  private scheduleExtract(groupId: string): void {
-    const existing = this.timersByGroup.get(groupId);
-    if (existing) {
-      clearTimeout(existing);
-    }
-    const timer = setTimeout(() => {
-      this.timersByGroup.delete(groupId);
-      void this.runExtractForGroup(groupId);
-    }, this.debounceMs);
-    this.timersByGroup.set(groupId, timer);
-  }
-
-  /**
-   * Normal (debounced) flow: get recent messages for the group and run extract (no group-level cursor; user progress is per user in memory_extract_user_cursors).
-   * Excludes bot's own messages from extract (bot selfId from config).
-   */
-  private async runExtractForGroup(groupId: string): Promise<void> {
-    const entries = await this.conversationHistoryService.getRecentMessages(groupId, this.maxMessagesPerExtract);
-    const filtered = this.botSelfId ? entries.filter((e) => String(e.userId) !== this.botSelfId) : entries;
-    if (filtered.length === 0) {
-      return;
-    }
-    const recentMessagesText = this.conversationHistoryService.formatAsText(filtered);
-    await this.memoryExtractService.extractAndUpsert(groupId, recentMessagesText, {
-      provider: this.extractProvider,
-      model: this.extractModel,
-    });
   }
 
   /**
@@ -542,29 +513,5 @@ export class MemoryPlugin extends PluginBase {
     } catch (err) {
       logger.error('[MemoryPlugin] Memory backup failed:', err);
     }
-  }
-
-  /** On message complete: schedule debounced extract for configured groups (lower frequency). */
-  @Hook({
-    stage: 'onMessageComplete',
-    priority: 'NORMAL',
-    order: 5,
-    applicableSources: ['qq-private', 'qq-group', 'discord'],
-  })
-  onMessageComplete(context: HookContext): HookResult {
-    if (!this.enabled || this.groupIds.size === 0) {
-      return true;
-    }
-    // Do not schedule memory extract for command messages; command content should not be processed by LLM.
-    if (context.command) {
-      return true;
-    }
-    const groupId = context.message?.groupId?.toString();
-    const messageType = context.message?.messageType;
-    if (messageType !== 'group' || !groupId || !this.groupIds.has(groupId)) {
-      return true;
-    }
-    this.scheduleExtract(groupId);
-    return true;
   }
 }

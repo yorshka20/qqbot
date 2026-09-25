@@ -104,6 +104,9 @@ export const DITokens = {
   AGENDA_REPORTER: defineToken('AgendaReporter', { required: true }),
   SCHEDULE_FILE_SERVICE: defineToken('ScheduleFileService', { required: true }),
 
+  // ── Fan-out (required — registered unconditionally in ConversationInitializer, before agenda) ──
+  FANOUT_MANAGER: defineToken('FanoutManager', { required: true }),
+
   // ── Persona / mind subsystem (required — PersonaInitializer always returns components) ──
   PERSONA_SERVICE: defineToken('PersonaService', { required: true }),
   PERSONA_CONFIG: defineToken('PersonaConfig', { required: true }),

@@ -64,6 +64,13 @@ export interface AutoSwitchConfig {
 export interface TaskProvidersConfig {
   /** Provider for memory extraction (MemoryPlugin) */
   memoryExtract?: string;
+  /**
+   * Provider for the group_day fan-out (daily report, comic, memory extraction). Every task
+   * of one run shares it: a different provider or model is a different prefix cache.
+   */
+  groupDay?: string;
+  /** Model override for the group_day provider (optional) */
+  groupDayModel?: string;
   /** Provider for thread/context summarization */
   summarize?: string;
   /** Provider for lightweight/fast LLM calls (prefix-invitation, analysis) */

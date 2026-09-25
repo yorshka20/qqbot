@@ -60,10 +60,17 @@ export class DIContainer {
   }
 
   /**
-   * Register a service class as singleton
+   * Register a service class as singleton, under a string token or under the class itself
+   * (then `resolve(ctor)` returns the one instance).
    */
-  registerSingleton<T>(token: string, ctor: new (...args: any[]) => T): void {
-    this._container.registerSingleton(token, ctor);
+  registerSingleton<T>(ctor: new (...args: any[]) => T): void;
+  registerSingleton<T>(token: string, ctor: new (...args: any[]) => T): void;
+  registerSingleton<T>(tokenOrCtor: string | (new (...args: any[]) => T), ctor?: new (...args: any[]) => T): void {
+    if (typeof tokenOrCtor === 'string') {
+      this._container.registerSingleton(tokenOrCtor, ctor as new (...args: any[]) => T);
+    } else {
+      this._container.registerSingleton(tokenOrCtor);
+    }
   }
 
   /**

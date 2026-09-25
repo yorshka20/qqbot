@@ -13,8 +13,9 @@
 
 执行方式（可选，默认为 intent 由 LLM 解读意图）:
   - 执行: `subagent research`        (直接触发 research 子代理)
-  - 执行: `subagent group_report`    (直接触发 group_report 子代理)
   子代理预设名称对应 prompts/subagent/{presetKey}/ 目录
+  - 执行: `action fanout`            (共享同一段上下文的一组任务，如群日报 + 漫画 + 关键词地雷 + 记忆提取)
+    参数: `{"fanout":"group_day","tasks":{"report":{},"comic":{"presets":["<preset id>"]},"mines":{"count":3},"memory":{}}}`
   - 执行: `action todo_worker`       (直接执行代码，无 LLM 参与)
   - 执行: `action repeating_ticket_dispatch` (凌晨多轮：每隔 N 分钟派发一个 ready ticket，最后私聊汇报 job 结果)
   action 处理器在 AgendaInitializer 中注册，跳过 LLM 直接运行业务逻辑

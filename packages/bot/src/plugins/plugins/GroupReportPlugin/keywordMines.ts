@@ -1,76 +1,98 @@
-// Keyword mines — onMessage watches planted from the group daily report.
+// Keyword mines — onMessage watches planted from yesterday's chat, as a group_day task.
 //
-// A mine is a keyword the group discussed yesterday plus the background the bot
-// will need when someone brings it up again. Candidates come from the report's
-// own semantic analysis rather than a second pass over the raw chat log, and
-// every keyword is checked against yesterday's messages with the same text
-// extraction the trigger uses, so a mine that could never fire is never planted.
+// A mine is a keyword the group used yesterday plus the background the bot will need
+// when someone brings it up again. The model picks candidates straight from the day's
+// log in the shared prefix, and every keyword is checked against yesterday's messages
+// with the same text extraction the trigger uses, so a mine that could never fire is
+// never planted.
 
 import type { AgendaService } from '@/agenda/AgendaService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import type { ConversationMessageEntry } from '@/conversation/history/ConversationHistoryService';
+import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
+import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
 import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
-import type { GroupReportData } from './types';
+import { asObject } from './normalizeReport';
 
-const TEMPLATE_NAME = 'subagent.group_report.keyword_mines';
+const TASK_TEMPLATE = 'group_report.keyword_mines';
+const DEFAULT_COUNT = 3;
 /** Candidates requested beyond `count`, to absorb the ones verbatim validation drops */
 const CANDIDATE_SLACK = 4;
 const MINE_TTL_MS = 24 * 3600_000;
-const GENERATE_TIMEOUT_MS = 120_000;
 
-interface MineCandidate {
+export interface MineCandidate {
   keyword: string;
   prompt: string;
 }
 
-export interface PlantKeywordMinesParams {
-  agendaService: AgendaService;
-  llmService: LLMService;
+export interface KeywordMinesParams {
+  count: number;
+}
+
+export interface KeywordMinesTaskDeps {
   promptManager: PromptManager;
+  agendaService: AgendaService;
+  /** Owner recorded on the created items: the bot itself */
+  botSelfId: string;
+}
+
+export class KeywordMinesTask implements FanoutTask<GroupDayContext, KeywordMinesParams> {
+  static readonly NAME = 'mines';
+  readonly name = KeywordMinesTask.NAME;
+  readonly tools = [];
+  readonly limits = { maxTokens: TOKEN_BUDGET.document, timeout: 240_000, maxToolRounds: 1 };
+
+  constructor(private readonly deps: KeywordMinesTaskDeps) {}
+
+  parseParams(raw: unknown): KeywordMinesParams {
+    const count = asObject(raw).count;
+    if (count === undefined) {
+      return { count: DEFAULT_COUNT };
+    }
+    if (typeof count !== 'number' || count < 1) {
+      throw new Error('mines.count must be a positive number');
+    }
+    return { count: Math.floor(count) };
+  }
+
+  suffix(_run: FanoutRun<GroupDayContext>, params: KeywordMinesParams): string {
+    return this.deps.promptManager.render(TASK_TEMPLATE, {
+      count: String(params.count),
+      candidateCount: String(params.count + CANDIDATE_SLACK),
+    });
+  }
+
+  async handle(output: FanoutTaskOutput, run: FanoutRun<GroupDayContext>, params: KeywordMinesParams): Promise<void> {
+    const candidates = parseCandidates(output.text);
+    if (candidates.length === 0) {
+      throw new Error('mines output carries no usable candidates');
+    }
+    await plantMines({
+      agendaService: this.deps.agendaService,
+      groupId: run.ctx.groupId,
+      userId: this.deps.botSelfId,
+      candidates,
+      messages: run.ctx.userMessages,
+      count: params.count,
+    });
+  }
+}
+
+export interface PlantMinesParams {
+  agendaService: AgendaService;
   groupId: string;
-  /** Owner recorded on the created items (the schedule item's user, or the bot itself) */
   userId: string;
-  groupName: string;
-  date: string;
-  report: GroupReportData;
+  candidates: MineCandidate[];
   /** Yesterday's messages — ground truth for whether a keyword can ever match */
   messages: ConversationMessageEntry[];
   count: number;
-  providerName?: string;
 }
 
-/** Pick keywords from a finished report and register one onMessage watch per keyword. */
-export async function plantKeywordMines(params: PlantKeywordMinesParams): Promise<number> {
-  const { agendaService, llmService, promptManager, groupId, userId, count } = params;
-
-  const prompt = promptManager.render(TEMPLATE_NAME, {
-    groupName: params.groupName,
-    date: params.date,
-    count: String(count),
-    candidateCount: String(count + CANDIDATE_SLACK),
-    reportDigest: buildReportDigest(params.report),
-  });
-
-  const response = await llmService.generate(
-    prompt,
-    {
-      temperature: 0.7,
-      maxTokens: TOKEN_BUDGET.analysis,
-      jsonMode: true,
-      timeout: GENERATE_TIMEOUT_MS,
-    },
-    params.providerName,
-  );
-  const candidates = parseCandidates(response.text);
-
-  if (candidates.length === 0) {
-    logger.warn('[KeywordMines] LLM returned no usable candidates');
-    return 0;
-  }
-
+/** Register one onMessage watch per candidate that yesterday's messages actually contain. */
+export async function plantMines(params: PlantMinesParams): Promise<number> {
+  const { agendaService, groupId, userId, count } = params;
   const spokenTexts = params.messages
     .filter((m) => !m.isBotReply)
     .map((m) => MessageUtils.extractUserText(m.content).toLowerCase());
@@ -78,7 +100,7 @@ export async function plantKeywordMines(params: PlantKeywordMinesParams): Promis
   const planted: string[] = [];
   const rejected: string[] = [];
 
-  for (const candidate of candidates) {
+  for (const candidate of params.candidates) {
     if (planted.length >= count) {
       break;
     }
@@ -123,31 +145,7 @@ export async function plantKeywordMines(params: PlantKeywordMinesParams): Promis
   return planted.length;
 }
 
-/** Condense the report into the background a future trigger cannot look up any more. */
-function buildReportDigest(report: GroupReportData): string {
-  const sections: string[] = [];
-
-  if (report.topics.length > 0) {
-    sections.push('【昨日话题】', ...report.topics.map((t, i) => `${i + 1}. ${t.title} —— ${t.summary}`));
-  }
-  if (report.featuredMessages.length > 0) {
-    sections.push(
-      '',
-      '【精选发言】',
-      ...report.featuredMessages.map((m) => `- ${m.nickname}: 「${m.content}」（点评: ${m.comment}）`),
-    );
-  }
-  if (report.memberHighlights.length > 0) {
-    sections.push('', '【活跃成员】', ...report.memberHighlights.map((m) => `- ${m.nickname}: ${m.comment}`));
-  }
-  if (report.totalSummary) {
-    sections.push('', '【群聊总评】', report.totalSummary);
-  }
-
-  return sections.join('\n');
-}
-
-function parseCandidates(text: string): MineCandidate[] {
+export function parseCandidates(text: string): MineCandidate[] {
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     return [];

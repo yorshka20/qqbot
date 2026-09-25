@@ -1,9 +1,13 @@
-// Pre-compute group report statistics from chat history.
-// Handles all mechanical data aggregation so the LLM only does semantic analysis.
+// Statistics and chat-log text for one group's day, computed in code so the model
+// only does semantic work and never has to count.
 
 import type { ConversationMessageEntry } from '@/conversation/history/ConversationHistoryService';
 import { DISPLAY_TIMEZONE } from '@/utils/dateTime';
-import type { HourlyActivity } from './types';
+
+export interface HourlyActivity {
+  hour: number;
+  count: number;
+}
 
 export interface UserStats {
   userId: string;
@@ -11,7 +15,7 @@ export interface UserStats {
   messageCount: number;
 }
 
-export interface GroupReportStats {
+export interface GroupDayStats {
   totalMessages: number;
   activeMembers: number;
   hourlyActivity: HourlyActivity[];
@@ -36,28 +40,10 @@ function getHourInTimezone(date: Date): number {
 }
 
 /**
- * Compute all mechanical statistics from chat messages.
- * Returns hourly activity, totals, highlight time range, and per-user stats.
+ * Hourly activity (always 24 entries, 0-23), totals, the busiest two-hour window and
+ * per-user counts. Bot replies are excluded.
  */
-/**
- * Normalize hourly activity data to always have exactly 24 entries (hours 0-23) in order.
- * Fills missing hours with 0 count. Handles LLM-corrupted data (reordered, filtered, duplicated).
- */
-export function normalizeHourlyActivity(raw: HourlyActivity[]): HourlyActivity[] {
-  const counts = new Array<number>(24).fill(0);
-  if (Array.isArray(raw)) {
-    for (const entry of raw) {
-      const hour = typeof entry.hour === 'number' ? Math.floor(entry.hour) : parseInt(String(entry.hour), 10);
-      const count = typeof entry.count === 'number' ? entry.count : parseInt(String(entry.count), 10);
-      if (hour >= 0 && hour < 24 && !Number.isNaN(count) && count >= 0) {
-        counts[hour] = count;
-      }
-    }
-  }
-  return counts.map((count, hour) => ({ hour, count }));
-}
-
-export function computeGroupReportStats(messages: ConversationMessageEntry[]): GroupReportStats {
+export function computeGroupDayStats(messages: ConversationMessageEntry[]): GroupDayStats {
   // Filter out bot replies
   const userMessages = messages.filter((m) => !m.isBotReply);
 
@@ -116,10 +102,10 @@ export function computeGroupReportStats(messages: ConversationMessageEntry[]): G
 }
 
 /**
- * Format message history as text for LLM context.
- * Filters out bot replies and formats each message as: [HH:MM] nickname(userId): content
+ * Chat log for the shared prefix, one line per user message: `[HH:MM] nickname(userId): content`.
+ * Content over 200 characters is cut, so one pasted wall of text cannot dominate the day.
  */
-export function formatMessagesForContext(messages: ConversationMessageEntry[]): string {
+export function formatChatLog(messages: ConversationMessageEntry[]): string {
   const userMessages = messages.filter((m) => !m.isBotReply);
 
   if (userMessages.length === 0) return '（昨日暂无聊天记录）';
@@ -144,16 +130,4 @@ export function formatMessagesForContext(messages: ConversationMessageEntry[]): 
       return `[${time}] ${speaker}(${userId}): ${content}`;
     })
     .join('\n');
-}
-
-/**
- * Split messages into batches of the given size.
- * Messages should already be filtered (e.g. bot replies removed).
- */
-export function splitIntoBatches<T>(items: T[], batchSize: number): T[][] {
-  const batches: T[][] = [];
-  for (let i = 0; i < items.length; i += batchSize) {
-    batches.push(items.slice(i, i + batchSize));
-  }
-  return batches;
 }

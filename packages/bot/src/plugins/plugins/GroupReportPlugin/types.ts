@@ -1,5 +1,7 @@
 // Group daily report data types
 
+import type { HourlyActivity } from '@/fanout/contexts/groupDay/stats';
+
 /** Topic discussed in the group */
 export interface ReportTopic {
   title: string;
@@ -20,12 +22,6 @@ export interface FeaturedMessage {
   nickname: string;
   content: string;
   comment: string;
-}
-
-/** Hourly activity data point */
-export interface HourlyActivity {
-  hour: number;
-  count: number;
 }
 
 /** Full group report data */

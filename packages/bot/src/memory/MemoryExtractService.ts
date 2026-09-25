@@ -14,13 +14,12 @@ import type { MemoryService } from './MemoryService';
 import { GROUP_MEMORY_USER_ID } from './MemoryService';
 
 /**
- * Extract and merge are background jobs whose prompts carry up to 500 raw group
- * messages (~50KB) or a whole memory slot, and ask a reasoning model for a
- * document-sized answer. LLMService's 120s default hard-timeout aborts them
- * mid-generation and the whole run is lost; nothing waits on these, so a longer
- * budget costs nothing.
+ * Extract and merge are background jobs whose prompts carry a day of raw group
+ * messages or a whole memory slot, and ask a reasoning model for a document-sized
+ * answer. LLMService's 120s default hard-timeout aborts them mid-generation and the
+ * whole run is lost; nothing waits on these, so a longer budget costs nothing.
  */
-const MEMORY_JOB_TIMEOUT_MS = 300_000;
+export const MEMORY_JOB_TIMEOUT_MS = 300_000;
 
 /**
  * Extract output shape from prompts/memory/extract.txt:
@@ -473,6 +472,29 @@ export class MemoryExtractService {
     return this.extractQueue;
   }
 
+  /**
+   * Task suffix for extraction appended to a shared chat-log prefix (the group_day fan-out):
+   * the same rules as memory.extract, without its own copy of the messages.
+   */
+  renderPrefixedExtractTask(): string {
+    return this.promptManager.render('memory.daily_extract', this.getScopeTemplateVars());
+  }
+
+  /**
+   * Consolidate an extract output produced elsewhere (e.g. by a fan-out task that shares
+   * another context) into group and user memory, together with any buffered notes.
+   * Queued like every other extract job.
+   */
+  async consolidateExtractOutput(
+    groupId: string,
+    extractOutput: string,
+    options: MemoryExtractServiceOptions,
+  ): Promise<void> {
+    const prev = this.extractQueue;
+    this.extractQueue = prev.then(() => this.applyExtractOutput(groupId, extractOutput, options));
+    return this.extractQueue;
+  }
+
   /** Internal: one extract+merge+upsert job for a group (run under queue). */
   private async runExtractAndUpsert(
     groupId: string,
@@ -506,6 +528,15 @@ export class MemoryExtractService {
       return;
     }
 
+    await this.applyExtractOutput(groupId, response, options);
+  }
+
+  /** Parse an extract output, fold in buffered notes, then merge and upsert each slot. */
+  private async applyExtractOutput(
+    groupId: string,
+    response: string,
+    options: MemoryExtractServiceOptions,
+  ): Promise<void> {
     // Even when extraction yields nothing, still drain buffered notes for this group so they consolidate.
     const parsed = this.parseExtractOutput(response);
 

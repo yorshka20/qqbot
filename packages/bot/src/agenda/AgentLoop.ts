@@ -2,6 +2,7 @@
 // Bot uses the schedule's intent as the "question" to the LLM; the loop runs multi-round (plan → tool calls → message) until the task is done, then sends the final reply.
 // Also supports direct subagent execution (actionType === 'subagent') which bypasses the LLM interpretation loop.
 
+import { inject, injectable } from 'tsyringe';
 import { getRolePreset } from '@/agent/SubAgentRolePresets';
 import type { PromptManager } from '@/ai';
 import type { AIService } from '@/ai/AIService';
@@ -13,6 +14,7 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
 import type { ProtocolName } from '@/core/config/types/protocol';
+import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
@@ -45,22 +47,19 @@ interface GeneratedReply {
  *
  * Also supports direct subagent spawning via `runSubAgent()` for agenda items with actionType === 'subagent'.
  */
+@injectable()
 export class AgentLoop {
-  private preferredProtocol: ProtocolName = 'milky';
+  private readonly preferredProtocol: ProtocolName = 'milky';
 
   constructor(
-    private llmService: LLMService,
-    private messageAPI: MessageAPI,
-    private conversationHistoryService: ConversationHistoryService,
-    private promptManager: PromptManager,
-    private toolManager: ToolManager,
-    private hookManager: HookManager,
-    private aiService?: AIService,
+    @inject(DITokens.LLM_SERVICE) private llmService: LLMService,
+    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+    @inject(DITokens.CONVERSATION_HISTORY_SERVICE) private conversationHistoryService: ConversationHistoryService,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+    @inject(DITokens.TOOL_MANAGER) private toolManager: ToolManager,
+    @inject(DITokens.HOOK_MANAGER) private hookManager: HookManager,
+    @inject(DITokens.AI_SERVICE) private aiService: AIService,
   ) {}
-
-  setPreferredProtocol(protocol: ProtocolName): void {
-    this.preferredProtocol = protocol;
-  }
 
   /**
    * Execute an agenda item via LLM loop (actionType === 'intent' or default).
@@ -92,11 +91,6 @@ export class AgentLoop {
    * @param eventContext - Optional event context (for onEvent items)
    */
   async runSubAgent(item: AgendaItem, eventContext: AgendaEventContext): Promise<void> {
-    if (!this.aiService) {
-      logger.error(`[AgentLoop] Cannot run subagent for item "${item.name}": AIService not available`);
-      return;
-    }
-
     const presetKey = item.actionTarget;
     if (!presetKey) {
       logger.error(`[AgentLoop] Item "${item.name}" has actionType=subagent but no actionTarget`);
@@ -297,7 +291,6 @@ export class AgentLoop {
    * Returns segments on success, null on failure or if not suitable for card rendering.
    */
   private async tryRenderCard(reply: string, sessionId: string): Promise<MessageSegment[] | null> {
-    if (!this.aiService) return null;
     try {
       const result = await this.aiService.processReplyMaybeCard(reply, sessionId);
       if (result) {

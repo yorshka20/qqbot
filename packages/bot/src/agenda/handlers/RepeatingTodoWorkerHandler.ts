@@ -2,6 +2,7 @@
 // multiple times with a configurable interval. Designed for cron-based daily
 // automated development sessions (e.g., 5 runs at 30-minute intervals starting at 2 AM).
 
+import { injectable } from 'tsyringe';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
@@ -25,6 +26,7 @@ interface RepeatingParams {
   intervalMinutes?: number;
 }
 
+@injectable()
 export class RepeatingTodoWorkerHandler implements ActionHandler {
   readonly name = 'repeating_todo_worker';
 

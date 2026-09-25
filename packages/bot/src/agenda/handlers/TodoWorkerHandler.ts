@@ -2,6 +2,7 @@
 // in a specified project. No LLM involved — resolves project from registry and
 // calls ClaudeCodeService.triggerTask() immediately.
 
+import { injectable } from 'tsyringe';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
@@ -9,6 +10,7 @@ import type { ProjectContext } from '@/services/claudeCode/types';
 import { logger } from '@/utils/logger';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
+@injectable()
 export class TodoWorkerHandler implements ActionHandler {
   readonly name = 'todo_worker';
 

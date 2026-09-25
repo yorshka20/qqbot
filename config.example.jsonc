@@ -401,12 +401,9 @@
         "name": "memory",
         "enabled": false,
         "config": {
-          "groups": [
-            "123456789"
-          ],
-          "debounceMs": 120000,
-          // Prefer a provider without a low output cap: extraction runs on a thinking
-          // model whose hidden CoT is charged against the same budget as the answer.
+          // Daily extraction is the `memory` task of the group_day fan-out: add it to the group's
+          // `action fanout` item in data/agenda/schedule.md. It runs on ai.taskProviders.groupDay.
+          // The provider below drives full-history backfills and the merge of extracted facts.
           "extractProvider": "gemini",
           "extractModel": "gemini-3.1-flash-lite", // Optional; defaults to the provider's configured model
           // Periodic memory backup (copies data/memory/ → data/backup/memory/YYYY-MM-DD/)
@@ -718,6 +715,11 @@
     "taskProviders": {
       // Provider for memory extraction (MemoryPlugin)
       // "memoryExtract": "deepseek",
+      // Provider (+ optional model) for the group_day fan-out: daily report, comic and memory
+      // extraction share one chat-log prefix, so they must share one provider and model to hit
+      // its prompt cache.
+      // "groupDay": "deepseek",
+      // "groupDayModel": "",
       // Provider for thread summarization (context compression)
       // "summarize": "deepseek",
       // Provider for lightweight/fast LLM calls (prefix-invitation, analysis)

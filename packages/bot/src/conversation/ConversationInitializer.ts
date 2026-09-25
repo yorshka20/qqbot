@@ -30,6 +30,7 @@ import { type HealthCheckManager, ProviderHealthAdapter } from '@/core/health';
 import { ServiceRegistry } from '@/core/ServiceRegistry';
 import { type SystemContext, SystemRegistry } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
+import { FanoutInitializer } from '@/fanout/FanoutInitializer';
 import { HookManager } from '@/hooks/HookManager';
 import { MemoryExtractService, MemoryRAGService, MemoryService } from '@/memory';
 import { MessageUtils } from '@/message/MessageUtils';
@@ -350,17 +351,16 @@ export class ConversationInitializer {
     // ProactiveConversationService and its dependencies are assembled via container resolution.
     ConversationInitializer.configureProactiveConversationService(container);
 
+    // Fan-out: shared-prefix task runs. Before the agenda (its `action fanout` handler needs the
+    // manager) and before plugins load (they register tasks on a fan-out in onEnable).
+    const fanoutManager = FanoutInitializer.initialize(container);
+    container.registerInstance(DITokens.FANOUT_MANAGER, fanoutManager);
+
     // Agenda framework: AgendaService + AgentLoop + InternalEventBus.
-    // With toolManager/hookManager, AgentLoop uses generateWithTools for plan→tool→message.
+    // AgentLoop resolves its services from DI; everything it injects is registered above.
     const agendaComponents = await AgendaInitializer.initialize({
       databaseManager,
-      llmService: container.resolve<LLMService>(DITokens.LLM_SERVICE),
-      messageAPI,
-      conversationHistoryService,
       promptManager: container.resolve<PromptManager>(DITokens.PROMPT_MANAGER),
-      toolManager: services.toolManager,
-      hookManager: services.hookManager,
-      aiService,
     });
     serviceRegistry.registerAgendaServices(agendaComponents);
 
@@ -452,8 +452,12 @@ export class ConversationInitializer {
     const vkbContextEngine = new VKBContextEngine(vkbCtxConfig ?? { enabled: false, baseURL: 'http://localhost:8080' });
     container.registerInstance('VKBContextEngine', vkbContextEngine);
 
+    // Registered as soon as they exist: DI consumers built before the conversation phase
+    // (FanoutServices, ahead of the agenda) resolve them from the container.
     const toolManager = new ToolManager();
     const hookManager = new HookManager();
+    container.registerInstance(DITokens.TOOL_MANAGER, toolManager);
+    container.registerInstance(DITokens.HOOK_MANAGER, hookManager);
 
     return {
       databaseManager,

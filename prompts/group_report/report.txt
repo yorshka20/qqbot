@@ -1,10 +1,9 @@
 ## 你的任务：生成昨日群聊每日汇报
 
-仔细阅读上面的聊天记录，完成语义分析，然后调用 render_group_report 把报告发到群里。
+仔细阅读上面的聊天记录，完成语义分析，把结果写成一个 JSON 对象。不要调用任何工具。统计数字由系统填进报告，你不用输出它们。
 
 ## 工作原则
 
-- **直接使用预计算数据**：totalMessages、activeMembers、hourlyActivity、highlightTimeRange 等统计字段必须原封不动使用系统提供的值
 - **点评有趣**：成员点评要幽默风趣但不冒犯人，像一个熟悉群友的老朋友在写周报
 - **精选有料**：挑选最能代表昨日群聊风格的发言，评价要有见地
 - **总评有洞察**：从聊天中提炼出有意义的观察，而不是泛泛而谈
@@ -41,7 +40,7 @@
 - 点评要**个性化**：根据这个人昨天实际说了什么来写，不要写通用的评价
 - 可以给成员起有趣的"头衔"，如"昨日话痨""摸鱼冠军""深水炸弹"等
 - 每人 1-2 句话，幽默但不冒犯
-- userId 和 messageCount 请使用上方统计数据中的真实值
+- userId 使用上方成员发言统计里的值
 
 ### 3. 精选发言（3-5 条）
 - 挑选最有趣、最有代表性、最有深度、或引发最多讨论的发言
@@ -55,23 +54,17 @@
 - 可以用比喻或有趣的类比来形容昨天的群聊风格
 - 如果消息量很少，可以调侃一下昨天大家都在忙什么
 
-## 组装报告并渲染
+## 输出格式
 
-将**系统预计算的统计数据**和**你的语义分析结果**组装为 JSON，调用 render_group_report 工具。reportData 格式：
+只输出下面这个 JSON 对象，不要输出任何其他文字：
 
 ```json
 {
-  "groupName": "{{groupName}}",
-  "date": "{{date}}",
-  "totalMessages": {{totalMessages}},
-  "activeMembers": {{activeMembers}},
-  "highlightTimeRange": "{{highlightTimeRange}}",
-  "hourlyActivity": {{hourlyActivityJson}},
   "topics": [
     {"title": "话题标题", "summary": "核心观点和讨论概括"}
   ],
   "memberHighlights": [
-    {"userId": "12345", "nickname": "群名片或昵称", "messageCount": 30, "comment": "个性化幽默点评"}
+    {"userId": "12345", "comment": "个性化幽默点评"}
   ],
   "featuredMessages": [
     {"userId": "12345", "nickname": "群名片或昵称", "content": "原始发言精华部分", "comment": "详细评价"}
@@ -80,15 +73,6 @@
 }
 ```
 
-**重要提醒**：
-- totalMessages、activeMembers、highlightTimeRange、hourlyActivity 必须使用上方预计算的精确值，不要修改
-- memberHighlights 中的 userId 和 messageCount 必须使用上方成员统计中的真实数字
+- memberHighlights 和 featuredMessages 的 userId 就是聊天记录里 `昵称(userId)` 括号中的值
 - featuredMessages.content 不超过 100 字
-- 所有文本内容不要包含未转义的引号和特殊字符（会影响 JSON 解析）
-
-## 完成
-
-render_group_report 会自动将图片发送到群内。你无需再发送额外消息。
-如果报告已成功发送，请简短回复"每日汇报已生成"。
-
-{{message}}
+- 字符串里的双引号要转义，否则 JSON 无法解析

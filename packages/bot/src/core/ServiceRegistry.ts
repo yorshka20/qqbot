@@ -10,11 +10,9 @@ import type { ContextManager } from '@/context/ContextManager';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import type { ThreadService } from '@/conversation/thread';
 import type { DatabaseManager } from '@/database/DatabaseManager';
-import type { HookManager } from '@/hooks/HookManager';
 import type { PersonaComponents } from '@/persona';
 import type { FileReadService } from '@/services/file';
 import type { RetrievalService } from '@/services/retrieval';
-import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import type { Config } from './config';
 import { getContainer } from './DIContainer';
@@ -83,20 +81,6 @@ export class ServiceRegistry {
   }
 
   /**
-   * Register task service
-   */
-  registerToolService(toolManager: ToolManager): void {
-    this.container.registerInstance(DITokens.TOOL_MANAGER, toolManager);
-  }
-
-  /**
-   * Register hook service
-   */
-  registerHookService(hookManager: HookManager): void {
-    this.container.registerInstance(DITokens.HOOK_MANAGER, hookManager);
-  }
-
-  /**
    * Register retrieval service (search + RAG)
    */
   registerRetrievalService(retrievalService: RetrievalService): void {
@@ -147,8 +131,6 @@ export class ServiceRegistry {
     aiManager: AIManager;
     contextManager: ContextManager;
     commandManager: CommandManager;
-    toolManager: ToolManager;
-    hookManager: HookManager;
   }): void {
     // DATABASE_MANAGER and AI_MANAGER may already be registered early for ProactiveConversationService DI
     if (!this.container.isRegistered(DITokens.DATABASE_MANAGER)) {
@@ -159,8 +141,6 @@ export class ServiceRegistry {
     }
     this.registerContextService(services.contextManager);
     this.registerCommandService(services.commandManager);
-    this.registerToolService(services.toolManager);
-    this.registerHookService(services.hookManager);
   }
 
   /**

@@ -2,12 +2,14 @@
 // No LLM; schedule: `执行: action cluster_tickets_sync`
 // Optional `actionParams`: JSON `{"alias":"other"}` (default alias: cluster-tickets).
 
+import { injectable } from 'tsyringe';
 import { runClusterTicketsSyncWithRegistry } from '@/cluster/clusterTicketsGitSync';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
+@injectable()
 export class ClusterTicketsSyncHandler implements ActionHandler {
   readonly name = 'cluster_tickets_sync';
 

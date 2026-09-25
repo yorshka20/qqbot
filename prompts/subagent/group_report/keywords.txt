@@ -1,1 +1,0 @@
-# 群聊每日汇报不支持关键词触发，仅通过 /group_report 命令或 schedule action 触发

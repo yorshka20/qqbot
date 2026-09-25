@@ -24,7 +24,7 @@ import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 export interface MemoryTriggerPluginConfig {
-  /** Group IDs where trigger-to-remember is enabled (should match memory-enabled groups). */
+  /** Group IDs where trigger-to-remember is enabled (usually the groups whose group_day run includes the memory task). */
   groups?: string[];
   /** Bot name or trigger phrase at start of message (e.g. "cygnus"). Case-insensitive match after trim. */
   triggerName?: string;
