@@ -286,10 +286,6 @@ export class SovitsProvider implements TTSProvider {
   }
 
   async warmup(): Promise<void> {
-    try {
-      await this.synthesize('你');
-    } catch {
-      /* swallow */
-    }
+    await this.synthesize('你');
   }
 }
