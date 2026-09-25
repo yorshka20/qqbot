@@ -49,7 +49,10 @@ export class GroupReportPlugin extends PluginBase {
     const container = getContainer();
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
     const messageAPI = container.resolve(MessageAPI);
-    const botSelfId = container.resolve<Config>(DITokens.CONFIG).getConfig().bot.selfId;
+    const config = container.resolve<Config>(DITokens.CONFIG);
+    const botSelfId = config.getConfig().bot.selfId;
+    const wakeWords =
+      (config.getPluginConfig('messageTrigger') as { wakeWords?: string[] } | undefined)?.wakeWords ?? [];
     const fanout = this.groupDay();
     fanout.registerTask(new ReportTask({ promptManager, renderer: new GroupReportRenderer(messageAPI) }));
     fanout.registerTask(
@@ -58,6 +61,7 @@ export class GroupReportPlugin extends PluginBase {
         messageAPI,
         historyService: container.resolve(ConversationHistoryService),
         botSelfId,
+        wakeWords,
       }),
     );
     fanout.registerTask(

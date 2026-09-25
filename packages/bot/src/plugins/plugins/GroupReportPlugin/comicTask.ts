@@ -26,6 +26,8 @@ export interface ComicTaskDeps {
   messageAPI: MessageAPI;
   historyService: ConversationHistoryService;
   botSelfId: string;
+  /** messageTrigger.wakeWords: how the group addresses the bot in the log. */
+  wakeWords: string[];
 }
 
 export class ComicTask implements FanoutTask<GroupDayContext, ComicTaskParams> {
@@ -46,7 +48,13 @@ export class ComicTask implements FanoutTask<GroupDayContext, ComicTaskParams> {
   }
 
   suffix(_run: FanoutRun<GroupDayContext>, params: ComicTaskParams): string {
-    return this.deps.promptManager.render(TASK_TEMPLATE, { presetIds: JSON.stringify(params.presets) });
+    const triggerWords = [...new Set(this.deps.wakeWords.map((word) => word.trim()).filter(Boolean))]
+      .map((word) => `「${word}」`)
+      .join('、');
+    return this.deps.promptManager.render(TASK_TEMPLATE, {
+      presetIds: JSON.stringify(params.presets),
+      triggerWords,
+    });
   }
 
   async handle(output: FanoutTaskOutput, run: FanoutRun<GroupDayContext>): Promise<void> {

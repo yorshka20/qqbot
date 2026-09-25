@@ -102,12 +102,14 @@ describe('ReportTask', () => {
 });
 
 describe('ComicTask', () => {
-  const task = new ComicTask({
+  const deps = {
     promptManager,
     messageAPI: {} as never,
     historyService: {} as never,
     botSelfId: '10000009',
-  });
+    wakeWords: ['wakebot'],
+  };
+  const task = new ComicTask(deps);
 
   it('keeps known preset ids in order and drops the rest', () => {
     expect(resolveComicPresetIds(['deepseek-q', 'missing', ' deepseek-anime ', 'deepseek-q'])).toEqual([
@@ -123,5 +125,22 @@ describe('ComicTask', () => {
 
   it('posts no caption when no image was drawn', async () => {
     await task.handle({ text: '一句配文', toolCalls: [] }, RUN);
+  });
+
+  it('names the configured wake words, and omits the clause when none are set', () => {
+    const named = task.suffix(RUN, { presets: ['deepseek-q'] });
+    expect(named).toContain('出现「wakebot」就是在叫你');
+    expect(named).not.toContain('{{');
+
+    const deduped = new ComicTask({ ...deps, wakeWords: ['  ', 'wakebot', 'wakebot'] }).suffix(RUN, {
+      presets: ['deepseek-q'],
+    });
+    expect(deduped).toContain('「wakebot」');
+    expect(deduped.match(/「wakebot」/g)).toHaveLength(1);
+
+    const none = new ComicTask({ ...deps, wakeWords: [] }).suffix(RUN, { presets: ['deepseek-q'] });
+    expect(none).not.toContain('就是在叫你');
+    expect(none).toContain('画到别人叫你');
+    expect(none).not.toContain('{{');
   });
 });

@@ -6,11 +6,10 @@
 //   - If the message (or the message it replies to) carries images, or the call cites presets,
 //     those references are passed through ImageRequestAssembler and we run img2img. The assembler
 //     is provider-neutral: gpt-image and Gemini receive every reference image, NovelAI would use
-//     the first. The user's prompt is the edit instruction — NOT scene-enriched, since the
-//     enrichment template rewrites input into a from-scratch scene and would discard the source.
-//     Preset descriptions are appended after that, verbatim.
-//   - Otherwise we run text2img and enrich the loose description via text2img.generate_banana, which
-//     preserves any detail the user already gave and fills in what's missing.
+//     the first. Preset descriptions are appended after the tool prompt, verbatim.
+//   - Otherwise we run text2img. The tool prompt is sent to the provider as written.
+//     A second LLM pass (text2img.generate_banana) is for user commands such as /banana, not for
+//     a prompt the calling model already wrote.
 //
 // The generated image is sent straight to the originating chat via MessageAPI.sendFromContext
 // (the same egress SendSystem uses); the tool then returns a short confirmation so the model can
@@ -29,8 +28,6 @@ import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolModelDescription, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
-
-const ENRICH_TEMPLATE = 'text2img.generate_banana';
 
 // Maps the user-facing `provider` choice to an AIService provider name + image model.
 // gemini routes through the Laozhang relay (Gemini's own image API is too expensive); both
@@ -82,7 +79,7 @@ export function describeGenerateImageForModel(): ToolModelDescription {
 @Tool({
   name: 'generate_image',
   description:
-    '根据自然语言描述生成图片并直接发送给用户。你只需把用户想要的画面用一句话写进 prompt，系统会自动润色补全细节（无需写长 prompt）。若用户消息里带了图片（或回复了一张带图的消息），系统会自动把这些图作为参考图进行「图生图」（改图/合成/风格迁移），支持多张参考图，你无需自己传图。需要复用某个常驻角色或元素时，在 presets 里引用它的 id，系统会附上对应的本地参考图和精确描述。支持 gemini（默认，画质高、懂中文与文字渲染）和 openai 两种绘图引擎，两边共用同一套参考拼装。',
+    '根据自然语言描述生成图片并直接发送给用户。prompt 会原样交给绘图模型，不会再经一轮改写，所以把画面写完整：主体、动作、表情、构图；多格要写明格数、阅读顺序和每一格。消息里带了图，或填了 preset 时，系统另附参考图和外形，不要把外形抄进 prompt。需要复用某个常驻角色或元素时，在 presets 里引用它的 id。支持 openai（默认，gpt-image-2）和 gemini，两边共用同一套参考拼装。',
   executor: 'generate_image',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
   parameters: {
@@ -90,18 +87,26 @@ export function describeGenerateImageForModel(): ToolModelDescription {
       type: 'string',
       required: true,
       description:
-        '画面描述或修改指令（中文即可）。文生图时写想要的画面，如 "一只坐在窗台上的橘猫，午后阳光"；图生图时写要怎么改这些参考图，如 "把这张图改成赛博朋克风格" 或 "把这两个人合成到同一张图里"。无需写成专业 prompt。',
+        '直接交给绘图模型的画面指令（中文即可）。写完整：主体、动作、表情、构图。多格写明格数、阅读顺序和每一格发生的事。有参考图或 preset 时不要写角色的服装、身体、配色。',
     },
     provider: {
       type: 'string',
       required: false,
       enum: ['gemini', 'openai'],
-      description: '绘图引擎，默认 gemini。用户明确点名某个引擎时才填。',
+      description: '绘图引擎，默认 openai（gpt-image-2）。用户明确点名 gemini 时才填 gemini。',
     },
     aspect_ratio: {
       type: 'string',
       required: false,
-      description: '画面比例，如 "16:9"(横)、"9:16"(竖/手机壁纸)、"1:1"(方/头像)。省略则由系统按内容判断。',
+      description:
+        '仅 gemini。画面比例，如 "16:9"(横)、"9:16"(竖)、"1:1"(方)。openai 不接受这个参数，改填 size。省略则由系统按内容判断。',
+    },
+    size: {
+      type: 'string',
+      required: false,
+      enum: ['1024x1024', '1536x1024', '1024x1536', 'auto'],
+      description:
+        '仅 openai。分辨率，不是比例：方图 "1024x1024"，横图 "1536x1024"，竖图 "1024x1536"，或 "auto"。gemini 不要填。',
     },
     presets: {
       type: 'array',
@@ -119,7 +124,7 @@ export function describeGenerateImageForModel(): ToolModelDescription {
   ],
   triggerKeywords: ['画', '生成图', '画图', '绘图', '出图', 'draw', '画个', '画张', '来张图', '改图', 'p图', '合成'],
   whenToUse:
-    '当用户希望你创作 / 生成图片，或基于消息里附带的图片做修改 / 合成时调用。把用户的意图原样用一句话写进 prompt 即可，不要自己堆砌冗长的英文 prompt——系统会负责润色，也会自动把消息里的图片当参考图。注意：若用户只是想识别/分析已有图片（而非生成新图），请改用 fetch_image。',
+    '当用户希望你创作 / 生成图片，或基于消息里附带的图片做修改 / 合成时调用。prompt 会原样交给绘图模型，把画面写完整。有参考图或 preset 时系统会附上它们，不要把外形抄进 prompt。注意：若用户只是想识别/分析已有图片（而非生成新图），请改用 fetch_image。',
 })
 @injectable()
 export class GenerateImageToolExecutor extends BaseToolExecutor {
@@ -145,9 +150,9 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
       return this.error('缺少上下文信息，无法发送图片', 'Missing hookContext.message');
     }
 
-    const providerKey: ProviderKey = call.parameters?.provider === 'openai' ? 'openai' : 'gemini';
+    const providerKey: ProviderKey = call.parameters?.provider === 'gemini' ? 'gemini' : 'openai';
     const { providerName, model } = PROVIDER_MAP[providerKey];
-    const aspectRatio = (call.parameters?.aspect_ratio as string | undefined)?.trim();
+    const frame = readFrame(providerKey, call.parameters?.aspect_ratio, call.parameters?.size);
     const presetIds = readPresetIds(call.parameters?.presets);
     if (typeof presetIds === 'string') {
       return this.error(presetIds, presetIds);
@@ -166,7 +171,7 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
         );
         const img2imgOptions: Image2ImageOptions = {
           ...(model ? { model } : {}),
-          ...(aspectRatio ? { aspectRatio } : {}),
+          ...frame,
           ...(presetIds.length > 0 ? { presetIds } : {}),
         };
         response = await this.aiService.generateImageFromImage(
@@ -177,16 +182,16 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
           providerName,
         );
       } else {
-        // text2img: enrich the user's loose description via the template.
+        // text2img: the calling model wrote this prompt. Do not run another LLM over it.
         logger.info(
           `[GenerateImageToolExecutor] text2img | provider=${providerName} | prompt=${prompt.substring(0, 50)}...`,
         );
         const text2imgOptions: Text2ImageOptions = {
           prompt,
           ...(model ? { model } : {}),
-          ...(aspectRatio ? { aspectRatio } : {}),
+          ...frame,
         };
-        response = await this.aiService.generateImg(hookContext, text2imgOptions, providerName, false, ENRICH_TEMPLATE);
+        response = await this.aiService.generateImg(hookContext, text2imgOptions, providerName, true);
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
@@ -275,6 +280,22 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
 }
 
 type HookMessage = Parameters<typeof extractImagesFromMessageAndReply>[0];
+
+const OPENAI_SIZES = new Set(['1024x1024', '1536x1024', '1024x1536', 'auto']);
+
+/** Gemini takes aspect_ratio. OpenAI takes a pixel size and rejects aspect_ratio. */
+function readFrame(
+  provider: ProviderKey,
+  aspectRatio: unknown,
+  size: unknown,
+): { aspectRatio: string } | { imageSize: string } | Record<string, never> {
+  if (provider === 'openai') {
+    const value = typeof size === 'string' ? size.trim() : '';
+    return OPENAI_SIZES.has(value) ? { imageSize: value } : {};
+  }
+  const ratio = typeof aspectRatio === 'string' ? aspectRatio.trim() : '';
+  return ratio ? { aspectRatio: ratio } : {};
+}
 
 /** Returns an error string when the value is present but not a string array. */
 function readPresetIds(value: unknown): string[] | string {

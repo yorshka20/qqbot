@@ -121,6 +121,7 @@ describe('group_day prefix', () => {
       messageAPI: {} as never,
       historyService: {} as never,
       botSelfId: '10000009',
+      wakeWords: [],
     }).suffix({} as never, { presets: ['preset-a'] });
     const minesSuffix = new KeywordMinesTask({
       promptManager,
