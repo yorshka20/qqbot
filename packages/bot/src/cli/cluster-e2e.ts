@@ -69,10 +69,9 @@ import 'reflect-metadata';
 import { spawnSync } from 'node:child_process';
 import type { ClusterManager } from '@/cluster/ClusterManager';
 import type { EventEntry, TaskRecord } from '@/cluster/types';
-import { bootstrapApp } from '@/core/bootstrap';
+import { type App, startApp } from '@/core/app';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { stopStaticServer } from '@/services/staticServer';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
 
@@ -463,7 +462,7 @@ async function main() {
   const args = parseArgs();
   logger.info(`[ClusterE2E] Starting end-to-end test (project=${args.project}, timeout=${args.timeoutSec}s)`);
 
-  const { conversationComponents } = await bootstrapApp(process.env.CONFIG_PATH, { skipPluginEnable: true });
+  const app = await startApp(process.env.CONFIG_PATH, { connect: false });
 
   // Resolve ClusterManager from DI. If cluster wasn't enabled in config,
   // bootstrap would have skipped registration entirely.
@@ -472,7 +471,7 @@ async function main() {
     cluster = getContainer().resolve<ClusterManager>(DITokens.CLUSTER_MANAGER);
   } catch {
     logger.error('[ClusterE2E] ✗ ClusterManager not registered — is `cluster.enabled` true in config?');
-    await teardown(conversationComponents);
+    await teardown(app);
     process.exit(1);
   }
 
@@ -490,12 +489,12 @@ async function main() {
   if (args.suite) {
     try {
       runProviderSuite(args, clusterConfig);
-      await teardown(conversationComponents);
+      await teardown(app);
       logger.info(`[ClusterE2E] ✅ PASS (suite mode) — all ${args.suite} provider checks passed`);
       process.exit(0);
     } catch (err) {
       logger.error('[ClusterE2E] ✗ Provider suite failed:', err);
-      await teardown(conversationComponents);
+      await teardown(app);
       process.exit(1);
     }
   }
@@ -519,7 +518,7 @@ async function main() {
   if (args.plannerMode) {
     if (!clusterConfig?.workerTemplates) {
       logger.error('[ClusterE2E] ✗ planner mode: cluster has no workerTemplates configured');
-      await teardown(conversationComponents);
+      await teardown(app);
       process.exit(1);
     }
     if (args.plannerTemplate) {
@@ -529,7 +528,7 @@ async function main() {
           `[ClusterE2E] ✗ planner mode: --planner-template "${args.plannerTemplate}" not found in workerTemplates. ` +
             `Available: ${Object.keys(clusterConfig.workerTemplates).join(', ')}`,
         );
-        await teardown(conversationComponents);
+        await teardown(app);
         process.exit(1);
       }
       if ((plannerTemplate.role || 'executor') !== 'planner') {
@@ -538,7 +537,7 @@ async function main() {
             plannerTemplate.role || 'executor'
           }". Expected role="planner".`,
         );
-        await teardown(conversationComponents);
+        await teardown(app);
         process.exit(1);
       }
       logger.info(`[ClusterE2E] Planner mode: using configured planner template "${args.plannerTemplate}"`);
@@ -549,7 +548,7 @@ async function main() {
           `[ClusterE2E] ✗ planner mode: --planner-executor "${args.plannerExecutorTemplate}" not found in workerTemplates. ` +
             `Available: ${Object.keys(clusterConfig.workerTemplates).join(', ')}`,
         );
-        await teardown(conversationComponents);
+        await teardown(app);
         process.exit(1);
       }
       // Shallow clone — same backend type / args / env / timeout, just role flipped.
@@ -578,7 +577,7 @@ async function main() {
           clusterConfig?.workerTemplates ? Object.keys(clusterConfig.workerTemplates).join(', ') : '(none)'
         }`,
       );
-      await teardown(conversationComponents);
+      await teardown(app);
       process.exit(1);
     }
     const projectEntry = clusterConfig.projects?.[args.project];
@@ -586,7 +585,7 @@ async function main() {
       logger.error(
         `[ClusterE2E] ✗ Project "${args.project}" not found in cluster.projects. Cannot override workerPreference.`,
       );
-      await teardown(conversationComponents);
+      await teardown(app);
       process.exit(1);
     }
     logger.info(
@@ -629,7 +628,7 @@ async function main() {
         `[ClusterE2E] ✗ submitTask returned null — project alias "${args.project}" probably not registered in ClaudeCodeService.projectRegistry`,
       );
       await cluster.stop();
-      await teardown(conversationComponents);
+      await teardown(app);
       process.exit(1);
     }
 
@@ -644,7 +643,7 @@ async function main() {
     if (!reachedTerminal) {
       logger.error(`[ClusterE2E] ✗ Task ${task.id} did not reach a terminal state within ${args.timeoutSec}s`);
       await cluster.stop();
-      await teardown(conversationComponents);
+      await teardown(app);
       process.exit(1);
     }
 
@@ -831,7 +830,7 @@ async function main() {
     const success = task.status === 'completed' && sentinelPass && mcpPass && plannerPass;
 
     await cluster.stop();
-    await teardown(conversationComponents);
+    await teardown(app);
 
     if (success) {
       if (args.plannerMode) {
@@ -913,19 +912,14 @@ async function main() {
     } catch {
       // best effort
     }
-    await teardown(conversationComponents);
+    await teardown(app);
     process.exit(1);
   }
 }
 
-async function teardown(components: Awaited<ReturnType<typeof bootstrapApp>>['conversationComponents']): Promise<void> {
+async function teardown(app: App): Promise<void> {
   try {
-    stopStaticServer();
-  } catch {
-    // best effort
-  }
-  try {
-    await components.databaseManager.close();
+    await app.shutdown();
   } catch {
     // best effort
   }

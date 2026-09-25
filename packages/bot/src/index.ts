@@ -2,118 +2,14 @@
 // IMPORTANT: reflect-metadata must be imported FIRST before any other imports
 import 'reflect-metadata';
 
-import type { MessageAPI } from './api/methods/MessageAPI';
-import { bootstrapApp } from './core/bootstrap';
-import { getContainer } from './core/DIContainer';
-import { DITokens } from './core/DITokens';
-import { initLanRelay } from './lan';
-import type { PluginManager } from './plugins/PluginManager';
-import { ClaudeCodeInitializer } from './services/claudeCode';
-import { killAllMcpChildren } from './services/retrieval/searxng/mcp/childReaper';
-import { stopStaticServer } from './services/staticServer';
-import type { ResourceCleanupService } from './services/video';
+import { startApp } from './core/app';
 import { logger } from './utils/logger';
 
 async function main() {
   logger.info('Starting bot...');
 
   try {
-    // ── Shared initialization (config, DI, tools, plugins, adapters, etc.) ──
-    const configPath = process.env.CONFIG_PATH;
-    const {
-      bot,
-      claudeCodeService,
-      clusterManager,
-      conversationComponents,
-      eventRouter,
-      retrievalService,
-      avatarService,
-      bilibiliLiveBridge,
-    } = await bootstrapApp(configPath);
-
-    const config = bot.getConfig();
-    const container = getContainer();
-    const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-    const pluginManager = container.resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
-    let resourceCleanupService: ResourceCleanupService | null = null;
-    try {
-      resourceCleanupService = container.resolve<ResourceCleanupService>(DITokens.RESOURCE_CLEANUP_SERVICE);
-    } catch (error) {
-      logger.warn('[Main] ResourceCleanupService is unavailable during shutdown setup:', error);
-    }
-
-    // ── Live connections (the ONLY things not covered by bootstrapApp) ──
-
-    // Start bot (opens WebSocket connections)
-    await bot.start();
-
-    // Start avatar system (connects to VTubeStudio driver, non-fatal)
-    if (avatarService) {
-      try {
-        await avatarService.start();
-      } catch (error) {
-        logger.warn('[Main] Avatar service failed to start (non-fatal):', error);
-      }
-    }
-
-    // Start bilibili live bridge only when `bilibili.live.autoConnect=true`.
-    // Default is false — the operator is expected to trigger `/live2d
-    // connect` after the stream goes live to avoid hammering bilibili's
-    // getDanmuInfo with retries while the room is offline / risk-controlled.
-    const bilibiliLiveCfg = config.getBilibiliLiveConfig();
-    if (bilibiliLiveBridge && bilibiliLiveCfg?.autoConnect === true) {
-      try {
-        await bilibiliLiveBridge.start();
-      } catch (error) {
-        logger.warn('[Main] Bilibili live bridge failed to start (non-fatal):', error);
-      }
-    } else if (bilibiliLiveBridge) {
-      logger.info('[Main] Bilibili live bridge is configured but autoConnect=false; use /live2d connect to start it');
-    }
-
-    // Pull rawDb (sqlite only) so the host can persist client internal_report
-    // envelopes into `lan_internal_reports`. Non-sqlite deployments pass null
-    // and reports just log to console.
-    let rawDb: import('bun:sqlite').Database | null = null;
-    try {
-      const adapter = conversationComponents.databaseManager.getAdapter() as unknown as {
-        getRawDb?: () => import('bun:sqlite').Database | null;
-      };
-      // Duck-type: SQLiteAdapter exposes getRawDb(); other adapters do not.
-      if (typeof adapter.getRawDb === 'function') {
-        rawDb = adapter.getRawDb();
-      }
-    } catch {
-      rawDb = null;
-    }
-    const lanRelayHandle = await initLanRelay({ config, eventRouter, messageAPI, rawDb });
-
-    // Bring up search transports that need I/O (SearXNG MCP stdio child)
-    await retrievalService.connectSearchTransports();
-
-    // Start Claude Code service (non-fatal if port is in use)
-    if (claudeCodeService) {
-      try {
-        await ClaudeCodeInitializer.start(claudeCodeService, messageAPI);
-        const protocols = config.getEnabledProtocols().map((p) => p.name);
-        ClaudeCodeInitializer.updateBotInfo(claudeCodeService, config.getConfig().bot.selfId, protocols);
-      } catch (error) {
-        logger.warn('[Main] Claude Code service failed to start (non-fatal):', error);
-      }
-    }
-
-    // Start Agent Cluster (non-fatal)
-    if (clusterManager) {
-      try {
-        await clusterManager.start();
-      } catch (error) {
-        logger.warn('[Main] Agent Cluster failed to start (non-fatal):', error);
-      }
-    }
-
-    // Plugin timers, servers and startup jobs run only once the bot is connected.
-    await pluginManager.startAll();
-
+    const app = await startApp(process.env.CONFIG_PATH, { connect: true });
     logger.info('[Main] Bot initialized and ready');
 
     // ── Graceful shutdown ──
@@ -122,30 +18,7 @@ async function main() {
       if (shuttingDown) return;
       shuttingDown = true;
       logger.info(`[Main] Received ${signal}, shutting down...`);
-      // Kill MCP child subtrees FIRST: every later step can throw or hang,
-      // and this must complete before PM2 escalates to SIGKILL, otherwise
-      // the bunx/node subtree is orphaned to init.
-      await killAllMcpChildren();
-      await pluginManager.stopAll();
-      stopStaticServer();
-      if (resourceCleanupService) {
-        await resourceCleanupService.cleanupAll();
-      }
-      if (bilibiliLiveBridge) {
-        await bilibiliLiveBridge.stop();
-      }
-      if (avatarService) {
-        await avatarService.stop();
-      }
-      if (clusterManager) {
-        await clusterManager.stop();
-      }
-      await lanRelayHandle.stop();
-      await ClaudeCodeInitializer.stop(claudeCodeService);
-      await bot.stop();
-      eventRouter.destroy();
-      await retrievalService.disconnectSearchTransports();
-      await conversationComponents.databaseManager.close();
+      await app.shutdown();
       process.exit(0);
     };
 

@@ -1,7 +1,7 @@
 // LAN relay entry point — instantiates either the host or the client based
 // on config and stores it in the module-level runtime slot.
 //
-// Called from src/index.ts AFTER bootstrapApp() and bot.start() so that the
+// Called from startApp's connect phase (core/app.ts) AFTER bootstrapApp() and bot.start() so that the
 // EventRouter and MessageAPI are fully wired before the relay starts emitting
 // events or accepting incoming connections. Returns a handle whose stop()
 // method is invoked from the shutdown signal handler.

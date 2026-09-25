@@ -3,26 +3,17 @@
 import 'reflect-metadata';
 
 import readline from 'node:readline';
-import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import type { CommandManager } from '@/command/CommandManager';
 import type { ConversationManager } from '@/conversation/ConversationManager';
-import type { EventRouter } from '@/events/EventRouter';
 import type { PluginManager } from '@/plugins/PluginManager';
-import { APIClient } from '../api/APIClient';
-import { MessageAPI } from '../api/methods/MessageAPI';
-import { ConversationInitializer } from '../conversation/ConversationInitializer';
-import { Bot } from '../core/Bot';
+import type { APIClient } from '../api/APIClient';
+import type { MessageAPI } from '../api/methods/MessageAPI';
+import { type App, startApp } from '../core/app';
 import type { Config, ProtocolName } from '../core/config';
 import { getContainer } from '../core/DIContainer';
 import { DITokens } from '../core/DITokens';
-import { HealthCheckManager } from '../core/health';
-import { EventInitializer } from '../events/EventInitializer';
 import type { NormalizedEvent, NormalizedMessageEvent } from '../events/types';
-import { PluginInitializer } from '../plugins/PluginInitializer';
-import { ProtocolAdapterInitializer } from '../protocol/ProtocolAdapterInitializer';
-import { RetrievalService } from '../services/retrieval';
-import { initStaticServer } from '../services/staticServer';
-import type { ToolManager } from '../tools';
+import { registerProtocol } from '../protocol/ProtocolRegistry';
 import { logger } from '../utils/logger';
 import { MockConnection } from './MockConnection';
 import { MockProtocolAdapter } from './MockProtocolAdapter';
@@ -35,21 +26,22 @@ interface Command {
 }
 
 class DebugCLI {
-  private bot: Bot | null = null;
-  private apiClient: APIClient;
-  private eventRouter: EventRouter | null = null;
-  private messageAPI: MessageAPI;
+  private app!: App;
+  private apiClient!: APIClient;
+  private messageAPI!: MessageAPI;
+  private config!: Config;
+  private conversationManager!: ConversationManager;
+  private commandManager!: CommandManager;
+  private pluginManager!: PluginManager;
   private rl: readline.Interface;
   private commands: Map<string, Command> = new Map();
   private isRunning = false;
+  private shutdownPromise: Promise<void> | null = null;
+  private readonly configPath: string | undefined;
   private isMockMode: boolean;
-  private config: Config;
-  private conversationManager: ConversationManager | null = null;
-  private commandManager: CommandManager | null = null;
-  private toolManager: ToolManager | null = null;
-  private pluginManager: PluginManager | null = null;
 
   constructor(configPath: string | undefined, mockMode: boolean) {
+    this.configPath = configPath;
     this.isMockMode = mockMode;
 
     // Set up readline interface
@@ -58,15 +50,6 @@ class DebugCLI {
       output: process.stdout,
       prompt: 'bot> ',
     });
-
-    // Load config
-    this.bot = mockMode ? null : new Bot(configPath);
-    this.config = this.bot ? this.bot.getConfig() : new Bot(configPath).getConfig();
-
-    // Initialize API client
-    const apiConfig = this.config.getAPIConfig();
-    this.apiClient = new APIClient(apiConfig.strategy, apiConfig.preferredProtocol);
-    this.messageAPI = new MessageAPI(this.apiClient);
 
     // Register commands
     this.registerCommands();
@@ -210,12 +193,8 @@ class DebugCLI {
       description: 'List all registered commands',
       usage: 'list-commands',
       handler: async () => {
-        if (!this.commandManager) {
-          this.printError('Command manager not initialized');
-          return;
-        }
         // Get all registered commands from CommandManager
-        const commands = this.commandManager?.getAllCommands({ userId: '0', groupId: '0', userType: 'admin' }) || [];
+        const commands = this.commandManager.getAllCommands({ userId: '0', groupId: '0', userType: 'admin' });
         if (commands.length === 0) {
           this.printInfo('No commands registered');
           return;
@@ -237,12 +216,8 @@ class DebugCLI {
       description: 'List all loaded plugins',
       usage: 'list-plugins',
       handler: async () => {
-        if (!this.pluginManager) {
-          this.printError('Plugin manager not initialized');
-          return;
-        }
         // Get all loaded plugins from PluginManager
-        const plugins = this.pluginManager?.getAllPlugins() || [];
+        const plugins = this.pluginManager.getAllPlugins();
         const enabledPluginNames = new Set(this.pluginManager.getEnabledPlugins());
         if (plugins.length === 0) {
           this.printInfo('No plugins loaded');
@@ -270,8 +245,8 @@ class DebugCLI {
 
         this.printInfo('\nBot Status:');
         this.printInfo(`  Mode: ${this.isMockMode ? 'Mock (Simulation)' : 'Real (Connected)'}`);
-        if (!this.isMockMode && this.bot) {
-          this.printInfo(`  Running: ${this.bot.isBotRunning() ? 'Yes' : 'No'}`);
+        if (!this.isMockMode) {
+          this.printInfo(`  Running: ${this.app.bot.isBotRunning() ? 'Yes' : 'No'}`);
         }
         this.printInfo(`  Configured Protocols: ${allProtocols.join(', ') || 'None'}`);
         if (!this.isMockMode) {
@@ -371,11 +346,6 @@ class DebugCLI {
     this.printSkillLoopHint(message);
 
     // Process message
-    if (!this.conversationManager) {
-      this.printError('Conversation manager not initialized');
-      return;
-    }
-
     try {
       const result = await this.conversationManager.processMessage(event);
       if (result.success) {
@@ -412,12 +382,6 @@ class DebugCLI {
       return;
     }
     this.printInfo('[ReplySystem] Message will enter unified skill-loop reply flow.');
-  }
-
-  private registerDebugCoreServices(retrievalService: RetrievalService, healthCheckManager: HealthCheckManager): void {
-    const container = getContainer();
-    container.registerInstance(DITokens.HEALTH_CHECK_MANAGER, healthCheckManager, { allowOverride: true });
-    container.registerInstance(DITokens.RETRIEVAL_SERVICE, retrievalService, { allowOverride: true });
   }
 
   private createMockMessageEvent(
@@ -509,16 +473,24 @@ class DebugCLI {
     this.isRunning = true;
 
     try {
-      // Initialize prompt system (before conversation initialization)
-      PromptInitializer.initialize(this.config);
-
-      // Plugin system: register factory before ConversationInitializer (same as main index)
-      PluginInitializer.initialize(this.config);
+      this.printInfo(
+        this.isMockMode
+          ? 'Initializing in Mock Mode (no real connections)...'
+          : 'Initializing in Real Mode (with connections)...',
+      );
+      this.app = await startApp(this.configPath, { connect: !this.isMockMode });
+      this.config = this.app.bot.getConfig();
+      const container = getContainer();
+      this.apiClient = container.resolve<APIClient>(DITokens.API_CLIENT);
+      this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+      this.pluginManager = container.resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+      this.conversationManager = this.app.conversationComponents.conversationManager;
+      this.commandManager = this.app.conversationComponents.commandManager;
 
       if (this.isMockMode) {
-        await this.initializeMockMode();
+        await this.attachMockProtocol();
       } else {
-        await this.initializeRealMode();
+        this.attachEventDisplay();
       }
 
       this.printSuccess('Bot initialized and ready!\n');
@@ -575,11 +547,8 @@ class DebugCLI {
     }
   }
 
-  private async initializeMockMode(): Promise<void> {
-    this.printInfo('Initializing in Mock Mode (no real connections)...');
-
-    // Register mock protocol adapter
-    // Get the first enabled protocol config (or use milky as default)
+  /** Route the first enabled protocol's API calls to the CLI instead of a socket. */
+  private async attachMockProtocol(): Promise<void> {
     const enabledProtocols = this.config.getEnabledProtocols();
     const protocolConfig = enabledProtocols.length > 0 ? enabledProtocols[0] : this.config.getProtocolConfig('milky');
 
@@ -589,175 +558,26 @@ class DebugCLI {
 
     const mockConnection = new MockConnection(protocolConfig);
     const mockAdapter = new MockProtocolAdapter(protocolConfig, mockConnection, this);
-
-    // Register adapter with API client
+    // Same two registrations ProtocolAdapterInitializer makes when a real protocol connects:
+    // APIClient routes API calls, ProtocolRegistry answers SendSystem's capability queries.
     this.apiClient.registerAdapter('milky', mockAdapter);
+    registerProtocol('milky', { adapter: mockAdapter });
     this.printInfo('✓ Mock protocol adapter registered');
 
-    // Create HealthCheckManager and retrieval service (services must be created and injected)
-    const healthCheckManager = new HealthCheckManager();
-    const mcpConfig = this.config.getMCPConfig();
-    const ragConfig = this.config.getRAGConfig();
-    const retrievalService = new RetrievalService(mcpConfig, ragConfig, healthCheckManager);
-    this.registerDebugCoreServices(retrievalService, healthCheckManager);
-    if (mcpConfig?.enabled) {
-      logger.info('[DebugCLI] RetrievalService initialized with search');
-    }
-
-    // Initialize and start static file server for serving generated images
-    // This must be done BEFORE ConversationInitializer because ImageGenerationService needs it
-    const staticServerConfig = this.config.getStaticServerConfig();
-    if (staticServerConfig) {
-      await initStaticServer(staticServerConfig, {
-        disabledBackendIds: this.config.getDisabledStaticBackendIds(),
-        config: this.config,
-      });
-      this.printInfo('✓ Static file server initialized');
-    }
-
-    // Initialize conversation components
-    this.printInfo('Initializing conversation system...');
-    const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient);
-    this.conversationManager = conversationComponents.conversationManager;
-    this.commandManager = conversationComponents.commandManager;
-    this.toolManager = conversationComponents.toolManager;
-
-    // Agenda framework is initialized inside ConversationInitializer; verify it's available for /schedule etc.
-    getContainer().resolve(DITokens.SCHEDULE_FILE_SERVICE);
-    this.printInfo('✓ Agenda framework initialized');
-
-    // Register RetrievalService health check
-    retrievalService.registerHealthCheck();
-    this.printInfo('✓ RetrievalService health check registered');
-
-    // Initialize event router (for plugins that might use it)
-    const eventSystem = EventInitializer.initialize(
-      this.config,
-      conversationComponents.conversationManager,
-      conversationComponents.hookManager,
-    );
-    this.eventRouter = eventSystem.eventRouter;
-
-    // Register EventRouter so PluginManager factory can resolve it via context.events
-    getContainer().registerInstance(DITokens.EVENT_ROUTER, this.eventRouter, { allowOverride: true });
-
-    getContainer().verifyRequiredTokens();
-
-    // Resolve PluginManager from container (factory was registered in start(); deps now available)
-    this.printInfo('Initializing plugin system...');
-    this.pluginManager = getContainer().resolve(DITokens.PLUGIN_MANAGER);
-
-    // Bring up search transports that need I/O (SearXNG MCP stdio child)
-    await retrievalService.connectSearchTransports();
-
-    // Load plugins
-    await PluginInitializer.loadPlugins(this.config);
+    // Search stays live in mock mode so tool calls behave as in production.
+    await this.app.retrievalService.connectSearchTransports();
   }
 
-  private async initializeRealMode(): Promise<void> {
-    if (!this.bot) {
-      throw new Error('Bot instance not initialized in real mode');
-    }
-
-    this.printInfo('Initializing in Real Mode (with connections)...');
-
-    const connectionManager = this.bot.getConnectionManager();
-
-    // Create HealthCheckManager and retrieval service (services must be created and injected)
-    const healthCheckManager = new HealthCheckManager();
-    const mcpConfig = this.config.getMCPConfig();
-    const ragConfig = this.config.getRAGConfig();
-    const retrievalService = new RetrievalService(mcpConfig, ragConfig, healthCheckManager);
-    this.registerDebugCoreServices(retrievalService, healthCheckManager);
-    if (mcpConfig?.enabled) {
-      logger.info('[DebugCLI] RetrievalService initialized with search');
-    }
-
-    // Initialize and start static file server for serving generated images
-    // This must be done BEFORE ConversationInitializer because ImageGenerationService needs it
-    const staticServerConfig = this.config.getStaticServerConfig();
-    if (staticServerConfig) {
-      await initStaticServer(staticServerConfig, {
-        disabledBackendIds: this.config.getDisabledStaticBackendIds(),
-        config: this.config,
-      });
-      this.printInfo('✓ Static file server initialized');
-    }
-
-    // Initialize conversation components
-    this.printInfo('Initializing conversation system...');
-    const conversationComponents = await ConversationInitializer.initialize(this.config, this.apiClient);
-    this.conversationManager = conversationComponents.conversationManager;
-    this.commandManager = conversationComponents.commandManager;
-    this.toolManager = conversationComponents.toolManager;
-
-    // Agenda framework is initialized inside ConversationInitializer; verify it's available for /schedule etc.
-    getContainer().resolve(DITokens.SCHEDULE_FILE_SERVICE);
-    this.printInfo('✓ Agenda framework initialized');
-
-    // Register RetrievalService health check
-    retrievalService.registerHealthCheck();
-    this.printInfo('✓ RetrievalService health check registered');
-
-    // Initialize event system (EventRouter and handlers)
-    const eventSystem = EventInitializer.initialize(
-      this.config,
-      conversationComponents.conversationManager,
-      conversationComponents.hookManager,
-    );
-    this.eventRouter = eventSystem.eventRouter;
-
-    // Register EventRouter so PluginManager factory can resolve it via context.events
-    getContainer().registerInstance(DITokens.EVENT_ROUTER, this.eventRouter, { allowOverride: true });
-
-    getContainer().verifyRequiredTokens();
-
-    // Initialize protocol adapter system (BEFORE starting bot)
-    ProtocolAdapterInitializer.initialize(this.config, connectionManager, this.eventRouter, this.apiClient);
-
-    // Resolve PluginManager from container (factory was registered in start(); deps now available)
-    this.printInfo('Initializing plugin system...');
-    this.pluginManager = getContainer().resolve(DITokens.PLUGIN_MANAGER);
-
-    // Start bot (this will trigger connection events)
-    this.printInfo('Starting bot...');
-    await this.bot.start();
-
-    // Bring up search transports that need I/O (SearXNG MCP stdio child)
-    await retrievalService.connectSearchTransports();
-
-    // Load plugins after bot is started
-    await PluginInitializer.loadPlugins(this.config);
-
-    // Set up event handlers to display events in CLI
-    const { MessageHandler } = await import('../events/handlers/MessageHandler');
-    const { NoticeHandler } = await import('../events/handlers/NoticeHandler');
-    const { RequestHandler } = await import('../events/handlers/RequestHandler');
-    const { MetaEventHandler } = await import('../events/handlers/MetaEventHandler');
-
-    const messageHandler = new MessageHandler(conversationComponents.conversationManager);
-    const noticeHandler = new NoticeHandler();
-    const requestHandler = new RequestHandler();
-    const metaEventHandler = new MetaEventHandler();
-
-    this.eventRouter.on('message', (event: NormalizedMessageEvent) => {
-      messageHandler.handle(event);
+  /** Echo incoming events to the terminal; the app's own handlers still process them. */
+  private attachEventDisplay(): void {
+    this.app.eventRouter.on('message', (event: NormalizedMessageEvent) => {
       this.displayMessageEvent(event);
     });
-
-    this.eventRouter.on('notice', (event: any) => {
-      noticeHandler.handle(event);
+    this.app.eventRouter.on('notice', (event: NormalizedEvent) => {
       this.displayEvent('NOTICE', event);
     });
-
-    this.eventRouter.on('request', (event: any) => {
-      requestHandler.handle(event);
+    this.app.eventRouter.on('request', (event: NormalizedEvent) => {
       this.displayEvent('REQUEST', event);
-    });
-
-    this.eventRouter.on('meta_event', (event: any) => {
-      metaEventHandler.handle(event);
-      // Don't display meta events by default (too noisy)
     });
   }
 
@@ -778,22 +598,20 @@ class DebugCLI {
     this.rl.prompt();
   }
 
-  private async shutdown(): Promise<void> {
-    if (!this.isRunning) {
-      return;
-    }
+  // Every exit path (quit, readline close, signals) awaits this one promise. Readline is
+  // closed only after the first await: rl.close() emits 'close' synchronously, and that
+  // handler must find the promise already stored instead of starting a second shutdown.
+  private shutdown(): Promise<void> {
+    this.shutdownPromise ??= this.runShutdown();
+    return this.shutdownPromise;
+  }
 
+  private async runShutdown(): Promise<void> {
     this.printInfo('Shutting down...');
     this.isRunning = false;
+
+    await this.app.shutdown();
     this.rl.close();
-
-    if (this.bot) {
-      await this.bot.stop();
-    }
-
-    if (this.eventRouter) {
-      this.eventRouter.destroy();
-    }
 
     this.printSuccess('Shutdown complete');
   }

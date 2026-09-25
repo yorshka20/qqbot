@@ -1,36 +1,52 @@
-// Smoke test — calls the SAME bootstrapApp() as src/index.ts to catch
-// DI / circular-import / initialization-order issues that typecheck misses.
+// Smoke test — boots the app through the SAME startApp() as src/index.ts, without the
+// live connections, to catch DI / circular-import / initialization-order issues that
+// typecheck misses. Plugins are enabled exactly as configured; after a settle window
+// that surfaces asynchronous startup failures, the real shutdown sequence runs.
 //
-// Usage: bun run src/cli/smoke-test.ts [--timeout 15000]
+// Usage: bun run src/cli/smoke-test.ts [--timeout 30000] [--settle 2000]
 // Exit 0 = success, 1 = failure
 
 import 'reflect-metadata';
 
-import { bootstrapApp } from '@/core/bootstrap';
-import { stopStaticServer } from '@/services/staticServer';
+import { startApp } from '@/core/app';
 import { logger } from '@/utils/logger';
 
-const timeoutMs = (() => {
-  const idx = process.argv.indexOf('--timeout');
-  return idx >= 0 ? Number(process.argv[idx + 1]) || 15_000 : 15_000;
-})();
+function numberArg(name: string, fallback: number): number {
+  const idx = process.argv.indexOf(name);
+  return idx >= 0 ? Number(process.argv[idx + 1]) || fallback : fallback;
+}
+
+const timeoutMs = numberArg('--timeout', 30_000);
+const settleMs = numberArg('--settle', 2_000);
 
 const timer = setTimeout(() => {
   logger.error('[SmokeTest] Timed out after', timeoutMs, 'ms');
   process.exit(1);
 }, timeoutMs);
 
+// Fire-and-forget work started during bootstrap (health checks, warmups, plugin enables)
+// rejects after bootstrapApp() has already resolved; only a listener catches those.
+const asyncFailures: unknown[] = [];
+process.on('unhandledRejection', (reason) => {
+  asyncFailures.push(reason);
+});
+
 async function smokeTest() {
   logger.info('[SmokeTest] Starting initialization smoke test...');
 
-  const configPath = process.env.CONFIG_PATH;
-  const { conversationComponents } = await bootstrapApp(configPath, { skipPluginEnable: true });
+  const app = await startApp(process.env.CONFIG_PATH, { connect: false });
 
-  // ── Cleanup ──
-  stopStaticServer();
-  await conversationComponents.databaseManager.close();
+  await new Promise((resolve) => setTimeout(resolve, settleMs));
+  if (asyncFailures.length > 0) {
+    for (const failure of asyncFailures) {
+      logger.error('[SmokeTest] Unhandled rejection after bootstrap:', failure);
+    }
+    throw new Error(`${asyncFailures.length} unhandled rejection(s) within ${settleMs}ms of bootstrap`);
+  }
 
-  logger.info('[SmokeTest] ✅ Smoke test passed — all initialization stages completed successfully');
+  await app.shutdown();
+
+  logger.info('[SmokeTest] ✅ Smoke test passed — initialization and shutdown completed successfully');
 }
 
 smokeTest()

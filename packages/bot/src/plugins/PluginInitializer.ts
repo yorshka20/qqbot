@@ -53,14 +53,13 @@ export class PluginInitializer {
   }
 
   /**
-   * Load plugins after bot is started.
+   * Load every registered plugin (onInit) and enable the ones enabled in config (onEnable).
    * @param config - Bot configuration (passed in directly)
-   * @param options.skipEnable - If true, run onInit (DI registration) but skip onEnable (server start / port binding). Used by smoke-test.
    */
-  static async loadPlugins(config: Config, options?: { skipEnable?: boolean }): Promise<void> {
+  static async loadPlugins(config: Config): Promise<void> {
     const container = getContainer();
     const pluginManager = container.resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
     const pluginsConfig = config.getPluginsConfig();
-    await pluginManager.loadPlugins(pluginsConfig.list, options);
+    await pluginManager.loadPlugins(pluginsConfig.list);
   }
 }

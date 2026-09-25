@@ -703,7 +703,7 @@ services get a sync health flag: `generate_image`, `research` / `search`,
 
 A plugin can register a `ToolSpec` + executor pair directly (`toolManager.registerTool` / `registerExecutor`) instead of using the `@Tool()` decorator. Use this when the tool must not exist unless the plugin is enabled in config, or when its description depends on runtime state the decorator cannot see (`SqlQueryPlugin` embeds the live table list).
 
-Registration belongs in `onInit()` gated on `this.enabled`, **not** in `onEnable()` — smoke-test runs `onInit` and skips `onEnable`, so anything registered in `onEnable` is never validated. `loadConfig()` populates `this.enabled` before `onInit` runs, so the gate still honours config.
+Registration belongs in `onEnable()` (and its removal in `onDisable()`), like any other in-memory registration. smoke-test enables plugins exactly as configured, so it validates what `onEnable` registers.
 
 ## Memory System
 

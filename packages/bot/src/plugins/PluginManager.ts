@@ -78,10 +78,7 @@ export class PluginManager {
     };
   }
 
-  async loadPlugins(
-    pluginConfigs: Array<{ name: string; enabled: boolean; config?: unknown }> = [],
-    options?: { skipEnable?: boolean },
-  ): Promise<void> {
+  async loadPlugins(pluginConfigs: Array<{ name: string; enabled: boolean; config?: unknown }> = []): Promise<void> {
     const pluginConfigMap = new Map(pluginConfigs.map((p) => [p.name, p]));
     // Collect per-plugin failures so a single broken plugin doesn't
     // short-circuit the rest, but the aggregate still bubbles up to
@@ -91,7 +88,7 @@ export class PluginManager {
     const allMetadata = getAllPluginMetadata();
     for (const metadata of allMetadata) {
       try {
-        await this.registerPluginFromMetadata(metadata, pluginConfigMap, options?.skipEnable);
+        await this.registerPluginFromMetadata(metadata, pluginConfigMap);
       } catch (error) {
         logger.error(`❌ [PluginManager] Failed to load plugin ${metadata.name}:`, error);
         failures.push({ source: metadata.name, error });
@@ -119,7 +116,6 @@ export class PluginManager {
   private async registerPluginFromMetadata(
     metadata: PluginMetadata,
     pluginConfigMap: Map<string, { name: string; enabled: boolean; config?: unknown }>,
-    skipEnable?: boolean,
   ): Promise<void> {
     // LAN relay role-based filter: completely skip — no instantiation, no DI
     // side effects, no db opens. Looks at lanRelay.<role>.disabledPlugins for
@@ -146,7 +142,7 @@ export class PluginManager {
 
     await plugin.onInit?.();
 
-    if (pluginConfig?.enabled && !skipEnable) {
+    if (pluginConfig?.enabled) {
       await this.enablePlugin(plugin.name);
     }
 

@@ -1,11 +1,8 @@
 // Shared application bootstrap — single source of truth for initialization order.
 //
-// Both src/index.ts (production) and src/cli/smoke-test.ts (CI validation) call
-// this function so that the initialization sequence can never drift between them.
-//
-// Only steps that require live network I/O are left to callers:
-//   bot.start(), retrievalService.connectSearchTransports(),
-//   ClaudeCodeInitializer.start(), and process signal handlers.
+// Called only through startApp() (core/app.ts), which production, the smoke test and
+// the debug CLI all use, so the initialization sequence can never drift between them.
+// Everything that opens a live connection belongs to startApp's connect phase instead.
 
 import { AvatarService } from '@qqbot/avatar';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
@@ -87,22 +84,10 @@ export interface BootstrapResult {
  *   Config → API client → Prompt → Plugin factory → MCP init →
  *   Health/Retrieval → Static server → Claude Code init →
  *   Conversation system → Event system → Service registry verify →
- *   Protocol adapter registration → Plugin load
- *
- * Callers only need to handle actual connections afterwards:
- *   bot.start(), retrievalService.connectSearchTransports(),
- *   ClaudeCodeInitializer.start(), and process signal handlers.
+ *   Protocol adapter registration → Plugin load and enable
  */
-export interface BootstrapOptions {
-  /**
-   * Skip plugin onEnable (server start / port binding).
-   * When true, plugins still run onInit (DI registration) but do not start
-   * servers or bind ports. Used by smoke-test to avoid port conflicts.
-   */
-  skipPluginEnable?: boolean;
-}
 
-export async function bootstrapApp(configPath?: string, options?: BootstrapOptions): Promise<BootstrapResult> {
+export async function bootstrapApp(configPath?: string): Promise<BootstrapResult> {
   // ── Config & basic setup ──
   const bot = new Bot(configPath);
   const config = bot.getConfig();
@@ -280,7 +265,7 @@ export async function bootstrapApp(configPath?: string, options?: BootstrapOptio
   // ── Load plugins (triggers onInit for all enabled plugins, e.g. WeChatIngestPlugin DI registration) ──
   // Plugin load throws an aggregate error if any plugin's onInit failed —
   // that's the smoke-test signal for "DI wiring is broken at load time".
-  await PluginInitializer.loadPlugins(config, { skipEnable: options?.skipPluginEnable });
+  await PluginInitializer.loadPlugins(config);
 
   // ── Startup health check (AFTER plugins, so plugins like CloudflareWorkerProxy can replace httpClient first) ──
   healthCheckManager
