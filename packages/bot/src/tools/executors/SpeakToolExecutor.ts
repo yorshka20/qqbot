@@ -11,9 +11,8 @@
 // registered; the provider's live health decides whether it is offered, via
 // the `available` gate.
 
-import { MessageAPI } from '@/api/methods/MessageAPI';
-import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import { getContainer } from '@/core/DIContainer';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { stripCues } from '@/services/tts/speechCues';
@@ -47,6 +46,8 @@ export class SpeakToolExecutor extends BaseToolExecutor {
     private readonly ttsManager: TTSManager,
     private readonly limits: ResolvedVoiceReplyConfig,
     private readonly providerName: string,
+    private readonly messageAPI: MessageAPI,
+    private readonly historyService: ConversationHistoryService,
   ) {
     super();
   }
@@ -97,12 +98,11 @@ export class SpeakToolExecutor extends BaseToolExecutor {
     const audio = Buffer.from(outcome.result.bytes);
     const segments = new MessageBuilder().record({ data: audio.toString('base64') }).build();
 
-    const messageAPI = getContainer().resolve(MessageAPI);
     let messageSeq: number | undefined;
     try {
       // Target comes from the conversation context, never from LLM parameters —
       // this tool must not be able to speak into arbitrary chats.
-      const sendResult = await messageAPI.sendFromContext(segments, hookContext.message, SEND_TIMEOUT_MS);
+      const sendResult = await this.messageAPI.sendFromContext(segments, hookContext.message, SEND_TIMEOUT_MS);
       messageSeq = sendResult.message_seq;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -148,9 +148,8 @@ export class SpeakToolExecutor extends BaseToolExecutor {
     const isGroup = message.messageType === 'group';
     const targetId = isGroup ? message.groupId : message.userId;
     if (targetId == null) return;
-    const historyService = getContainer().resolve(ConversationHistoryService);
     const botSelfId = Number(hookContext.metadata.get('botSelfId'));
-    await historyService.appendBotMessageToSession(
+    await this.historyService.appendBotMessageToSession(
       { sessionType: isGroup ? 'group' : 'user', targetId },
       `[语音${voice ? `·${voice}` : ''}] ${spoken}`,
       message.protocol,
@@ -177,8 +176,10 @@ export function registerSpeakTool(deps: {
   toolManager: ToolManager;
   ttsManager: TTSManager;
   limits: ResolvedVoiceReplyConfig;
+  messageAPI: MessageAPI;
+  historyService: ConversationHistoryService;
 }): (() => boolean) | null {
-  const { toolManager, ttsManager, limits } = deps;
+  const { toolManager, ttsManager, limits, messageAPI, historyService } = deps;
 
   if (!limits.enabled) {
     logger.info('[registerSpeakTool] tts.voiceReply.enabled=false — `speak` tool not registered');
@@ -206,7 +207,7 @@ export function registerSpeakTool(deps: {
   toolManager.registerTool(
     buildSpeakSpec({ limits, voices, capabilities: provider.capabilities, available: isAvailable }),
   );
-  toolManager.registerExecutor(new SpeakToolExecutor(ttsManager, limits, providerName));
+  toolManager.registerExecutor(new SpeakToolExecutor(ttsManager, limits, providerName, messageAPI, historyService));
   logger.info(
     `[registerSpeakTool] \`speak\` registered | provider=${providerName} cues=${provider.capabilities.inlineCues} voices=${voices.length} maxPerReply=${limits.maxPerReply} maxChars=${limits.maxTextLength}`,
   );

@@ -2,10 +2,9 @@
 
 import { inject, singleton } from 'tsyringe';
 import { SummarizeService } from '@/ai/services/SummarizeService';
-import { ThreadService } from '@/conversation/thread';
+import { ThreadService } from '@/conversation/thread/ThreadService';
 import type { Config } from '@/core/config';
 import type { ProtocolName } from '@/core/config/types/protocol';
-import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
 import { DatabaseManager } from '@/database/DatabaseManager';
@@ -109,6 +108,7 @@ export class ConversationHistoryService {
   constructor(
     @inject(DatabaseManager) private databaseManager: DatabaseManager,
     @inject(SummarizeService) private summarizeService: SummarizeService,
+    @inject(ThreadService) private threadService: ThreadService,
     @inject(DITokens.CONFIG) config: Config,
   ) {
     this.maxHistoryMessages = config.getContextMemoryConfig()?.maxHistoryMessages ?? 10;
@@ -531,8 +531,7 @@ export class ConversationHistoryService {
     const proactiveThreadId = context.metadata.get('proactiveThreadId');
     if (proactiveThreadId) {
       // THREAD_SERVICE is required (DITokens.ts).
-      const threadService = getContainer().resolve(ThreadService);
-      const text = threadService.getContextFormatted(proactiveThreadId);
+      const text = this.threadService.getContextFormatted(proactiveThreadId);
       if (text) {
         return text;
       }

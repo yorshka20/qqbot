@@ -3,6 +3,7 @@
 
 import { join } from 'node:path';
 import type { PromptManager } from '@/ai';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { logger } from '@/utils/logger';
@@ -35,6 +36,7 @@ export interface AgendaComponents {
  */
 export class AgendaInitializer {
   static async initialize(deps: {
+    config: Config;
     databaseManager: DatabaseManager;
     promptManager: PromptManager;
     /** Base directory for agenda data files. Defaults to `data/agenda` relative to cwd. */
@@ -64,6 +66,7 @@ export class AgendaInitializer {
       agentLoop,
       internalEventBus,
       actionHandlerRegistry,
+      deps.config,
       reporter,
     );
 

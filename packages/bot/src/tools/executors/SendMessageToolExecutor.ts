@@ -1,8 +1,7 @@
-import { injectable } from 'tsyringe';
+import { inject, injectable } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
-import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
@@ -36,6 +35,14 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 export class SendMessageToolExecutor extends BaseToolExecutor {
   name = 'send_message';
 
+  constructor(
+    @inject(DITokens.CONFIG) private readonly config: Config,
+    @inject(MessageAPI) private readonly messageAPI: MessageAPI,
+    @inject(ConversationHistoryService) private readonly historyService: ConversationHistoryService,
+  ) {
+    super();
+  }
+
   async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     const content = typeof call.parameters?.content === 'string' ? call.parameters.content.trim() : '';
     if (!content) {
@@ -47,9 +54,7 @@ export class SendMessageToolExecutor extends BaseToolExecutor {
       return this.error('缺少会话上下文，无法发送', 'missing hook context');
     }
 
-    const container = getContainer();
-    const config = container.resolve<Config>(DITokens.CONFIG);
-    const maxSends = config.getAgendaLlmLimits().maxSendsPerRun;
+    const maxSends = this.config.getAgendaLlmLimits().maxSendsPerRun;
     const sent = hookContext.metadata.get('sendMessageCount') ?? 0;
     if (sent >= maxSends) {
       return this.error(
@@ -61,8 +66,7 @@ export class SendMessageToolExecutor extends BaseToolExecutor {
     try {
       // Target comes from the conversation context, never from LLM parameters —
       // this tool must not be able to send into arbitrary chats.
-      const messageAPI = container.resolve(MessageAPI);
-      const sendResult = await messageAPI.sendFromContext(content, hookContext.message);
+      const sendResult = await this.messageAPI.sendFromContext(content, hookContext.message);
       hookContext.metadata.set('sendMessageCount', sent + 1);
       await this.persistSentMessage(hookContext, content, sendResult.message_seq);
       return this.success(
@@ -88,9 +92,8 @@ export class SendMessageToolExecutor extends BaseToolExecutor {
     const isGroup = message.messageType === 'group';
     const targetId = isGroup ? message.groupId : message.userId;
     if (targetId == null) return;
-    const historyService = getContainer().resolve(ConversationHistoryService);
     const botSelfId = Number(hookContext.metadata.get('botSelfId'));
-    await historyService.appendBotMessageToSession(
+    await this.historyService.appendBotMessageToSession(
       { sessionType: isGroup ? 'group' : 'user', targetId },
       content,
       message.protocol,

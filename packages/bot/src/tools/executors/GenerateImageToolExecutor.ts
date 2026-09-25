@@ -23,7 +23,6 @@ import { ImageRequestAssembler } from '@/ai/services/ImageRequestAssembler';
 import { extractImagesFromMessageAndReply, visionImageToString } from '@/ai/utils/imageUtils';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import { getContainer } from '@/core/DIContainer';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import { logger } from '@/utils/logger';
@@ -130,6 +129,7 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
     @inject(AIService) private aiService: AIService,
     @inject(MessageAPI) private messageAPI: MessageAPI,
     @inject(DatabaseManager) private databaseManager: DatabaseManager,
+    @inject(ConversationHistoryService) private conversationHistoryService: ConversationHistoryService,
   ) {
     super();
   }
@@ -236,9 +236,8 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
     const isGroup = message.messageType === 'group';
     const targetId = isGroup ? message.groupId : message.userId;
     if (targetId == null) return;
-    const historyService = getContainer().resolve(ConversationHistoryService);
     const botSelfId = Number(hookContext.metadata.get('botSelfId'));
-    await historyService.appendBotMessageToSession(
+    await this.conversationHistoryService.appendBotMessageToSession(
       { sessionType: isGroup ? 'group' : 'user', targetId },
       `[已发送AI生成图片｜${mode}] ${prompt}`,
       message.protocol,

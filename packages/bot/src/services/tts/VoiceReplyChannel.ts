@@ -9,6 +9,8 @@
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { createVoiceReplyProducer } from '@/ai/prompt/producers/VoiceReplyProducer';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
@@ -25,11 +27,19 @@ export class VoiceReplyChannel {
     @inject(DITokens.TOOL_MANAGER) private readonly toolManager: ToolManager,
     @inject(DITokens.PROMPT_MANAGER) private readonly promptManager: PromptManager,
     @inject(PromptInjectionRegistry) private readonly promptInjectionRegistry: PromptInjectionRegistry,
+    @inject(MessageAPI) private readonly messageAPI: MessageAPI,
+    @inject(ConversationHistoryService) private readonly historyService: ConversationHistoryService,
   ) {}
 
   install(): void {
     const limits = resolveVoiceReplyConfig(this.config.getTTSConfig()?.voiceReply);
-    const isAvailable = registerSpeakTool({ toolManager: this.toolManager, ttsManager: this.ttsManager, limits });
+    const isAvailable = registerSpeakTool({
+      toolManager: this.toolManager,
+      ttsManager: this.ttsManager,
+      limits,
+      messageAPI: this.messageAPI,
+      historyService: this.historyService,
+    });
     if (isAvailable) {
       this.promptInjectionRegistry.register(
         createVoiceReplyProducer({ promptManager: this.promptManager, limits, isAvailable }),

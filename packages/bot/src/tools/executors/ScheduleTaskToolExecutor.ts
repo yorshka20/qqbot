@@ -1,6 +1,5 @@
-import { injectable } from 'tsyringe';
+import { inject, injectable } from 'tsyringe';
 import type { AgendaService } from '@/agenda/AgendaService';
-import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -53,6 +52,10 @@ export function getChainDepth(context: ToolExecutionContext): number {
 export class ScheduleTaskToolExecutor extends BaseToolExecutor {
   name = 'schedule_task';
 
+  constructor(@inject(DITokens.AGENDA_SERVICE) private readonly agendaService: AgendaService) {
+    super();
+  }
+
   async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     const prompt = typeof call.parameters?.prompt === 'string' ? call.parameters.prompt : '';
     const delayMinutes = typeof call.parameters?.delay_minutes === 'number' ? call.parameters.delay_minutes : undefined;
@@ -69,8 +72,7 @@ export class ScheduleTaskToolExecutor extends BaseToolExecutor {
       return this.error('必须提供 delay_minutes 或 trigger_at 之一', 'missing trigger time');
     }
 
-    const agendaService = getContainer().resolve<AgendaService>(DITokens.AGENDA_SERVICE);
-    const result = await agendaService.createLlmItem({
+    const result = await this.agendaService.createLlmItem({
       kind: 'once',
       prompt,
       name,

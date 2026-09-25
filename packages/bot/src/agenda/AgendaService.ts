@@ -15,7 +15,6 @@
 import cron from 'node-cron';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { PluginManager } from '@/plugins/PluginManager';
 import { logger } from '@/utils/logger';
@@ -49,7 +48,6 @@ export class AgendaService {
   /** Expiry timers keyed by AgendaItem.id (items with expiresAt) */
   private expiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Config */
-  private config: Config;
   /** Periodic cron re-hydration timer (guards against node-cron silently dropping tasks) */
   private rehydrateTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -58,10 +56,9 @@ export class AgendaService {
     private agentLoop: AgentLoop,
     private eventBus: InternalEventBus,
     private actionHandlerRegistry: ActionHandlerRegistry,
+    private readonly config: Config,
     private reporter?: AgendaReporter,
-  ) {
-    this.config = getContainer().resolve<Config>(DITokens.CONFIG);
-  }
+  ) {}
 
   // ─── Lifecycle ───────────────────────────────────────────────────────────────
 

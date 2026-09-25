@@ -1,7 +1,6 @@
-import { injectable } from 'tsyringe';
+import { inject, injectable } from 'tsyringe';
 import type { AgendaService } from '@/agenda/AgendaService';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
@@ -66,6 +65,13 @@ import { resolveSender, SENDER_PARAM_DESCRIPTIONS } from './senderResolution';
 export class WatchMessagesToolExecutor extends BaseToolExecutor {
   name = 'watch_messages';
 
+  constructor(
+    @inject(DITokens.AGENDA_SERVICE) private readonly agendaService: AgendaService,
+    @inject(ConversationHistoryService) private readonly history: ConversationHistoryService,
+  ) {
+    super();
+  }
+
   async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     const prompt = typeof call.parameters?.prompt === 'string' ? call.parameters.prompt : '';
     const keywordsParam = call.parameters?.keywords;
@@ -86,8 +92,7 @@ export class WatchMessagesToolExecutor extends BaseToolExecutor {
       return this.error('私聊会话只会监听当前用户，无需指定 user_id', 'user_id not applicable in private chat');
     }
 
-    const agendaService = getContainer().resolve<AgendaService>(DITokens.AGENDA_SERVICE);
-    const result = await agendaService.createLlmItem({
+    const result = await this.agendaService.createLlmItem({
       kind: 'onMessage',
       prompt,
       name,
@@ -125,8 +130,7 @@ export class WatchMessagesToolExecutor extends BaseToolExecutor {
       return direct ? { userId: direct } : null;
     }
 
-    const history = getContainer().resolve(ConversationHistoryService);
-    const resolution = await resolveSender(history, scope, params);
+    const resolution = await resolveSender(this.history, scope, params);
     switch (resolution.kind) {
       case 'resolved':
         return { userId: resolution.userId };

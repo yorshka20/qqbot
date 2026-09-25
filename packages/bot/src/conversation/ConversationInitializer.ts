@@ -88,6 +88,7 @@ export class ConversationInitializer {
 
     // Agenda framework: AgendaService + AgentLoop + InternalEventBus.
     const agendaComponents = await AgendaInitializer.initialize({
+      config,
       databaseManager,
       promptManager: container.resolve<PromptManager>(DITokens.PROMPT_MANAGER),
     });

@@ -221,6 +221,18 @@ DIContainer.verifyRequiredTokens()
 - To expose a `@singleton()` class under a string token use `registerAlias(token, Cls)` (`useToken`); `registerSingleton(token, Cls)` would build a second instance.
 - A service module must not import its own consumers. Decorator registries (command handlers, builtin plugins, tool executors, avatar plugins) are side-effect imported by `bootstrap.ts`, not by `CommandManager` / `PluginManager`; otherwise the consumer → service → consumer cycle makes class-token injection fail with a TDZ error that depends on which module loads first.
 - A service whose constructor reads the database adapter (`ConversationConfigService`) must first be resolved after `DatabaseManager.initialize()`, which is the first step of `ConversationInitializer.initialize`.
+- The container is global (`getContainer()`); it is never passed as a parameter.
+
+**Constructor injection vs. `getContainer().resolve()` at run time.** The rule: an object that the container builds, and whose dependencies already exist when it is built, receives every dependency through its constructor. It never calls `getContainer().resolve()` for them — not in the constructor, not in a method. Only these cases look dependencies up from the container at run time, and each is correct as it stands:
+
+1. **Plugins.** `PluginManager` instantiates plugins itself (`new PluginClass(metadata)`) so they can be loaded, enabled and disabled at run time; they are deliberately kept out of the DI container. A plugin resolves what it needs in `onInit` / `onEnable`. Do not convert plugins to constructor injection.
+2. **The composition root and startup steps.** `core/bootstrap.ts`, `core/app.ts`, `core/wiring.ts`, the `*Initializer` classes (Conversation, Agenda, Persona, ClaudeCode, Prompt), wiring functions such as `wireClusterEscalation`, and the `cli/` scripts. Assembling objects is their job. An object a startup step constructs by hand (e.g. `AgendaService`) gets its dependencies from that step's arguments, not from the container.
+3. **Registries that resolve their members by class.** `ToolManager` (executors, built lazily), `CommandManager` (handlers), `FanoutManager` (fan-outs), `AgendaInitializer` (framework action handlers). The member set is dynamic, and the container is the factory for its members.
+4. **Objects the container does not build.** `AIProvider` subclasses (created by `ProviderFactory` from config) and static-server backends (created by the server's backend registry, and disabled per LAN-relay role like plugins).
+5. **Run-time lookups of plugin state from core code.** `resolve(PluginManager).getPluginAs('reaction' | 'whitelist')` in `ReactToolExecutor`, `ProactiveConversationService`, `ProactiveReplyGenerationService`, `AgendaService` and `utils/whitelistCapabilities`. `PluginManager` exists only after the event system registers `EVENT_ROUTER`, later than these services, and what they read is plugin state, which belongs to the plugin side.
+6. **Services that may be absent by configuration.** Config-gated startup products such as `CLAUDE_CODE_SERVICE`, `CLUSTER_MANAGER` and `BILIBILI_LIVE_BRIDGE`, looked up at the point of use with `isRegistered` first (agenda todo / ticket handlers, `Live2DCommandHandler`).
+
+Anything outside these six takes its dependencies in the constructor. When a new dependency seems awkward to inject, the fix is to let DI build the object (as `AIService`'s stages and sub-services now are), not to resolve it from the container.
 
 ### Protocol Layer
 

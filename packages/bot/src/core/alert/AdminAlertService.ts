@@ -1,7 +1,6 @@
 import { inject, singleton } from 'tsyringe';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
-import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { PermissionChecker } from '@/permission';
 import { logger } from '@/utils/logger';
@@ -29,15 +28,16 @@ const STACK_LINE_LIMIT = 10;
  */
 @singleton()
 export class AdminAlertService {
-  private readonly config: Config;
   private readonly lastSentAt = new Map<string, number>();
   private readonly sentTimestamps: number[] = [];
   private capNoticeSent = false;
   private boundaryInstalled = false;
 
-  constructor(@inject(DITokens.CONFIG) config: Config) {
-    this.config = config;
-  }
+  constructor(
+    @inject(DITokens.CONFIG) private readonly config: Config,
+    @inject(MessageAPI) private readonly messageAPI: MessageAPI,
+    @inject(DITokens.PERMISSION_CHECKER) private readonly permissionChecker: PermissionChecker,
+  ) {}
 
   async alert(a: AdminAlert): Promise<void> {
     try {
@@ -88,12 +88,9 @@ export class AdminAlertService {
 
   private async send(message: string): Promise<void> {
     try {
-      const { MessageAPI } = await import('@/api/methods/MessageAPI');
-      const container = getContainer();
-      const messageAPI = container.resolve<InstanceType<typeof MessageAPI>>(MessageAPI);
       const enabledProtocols = this.config.getEnabledProtocols();
       const preferredProtocol = enabledProtocols[0]?.name;
-      const ownerId = container.resolve<PermissionChecker>(DITokens.PERMISSION_CHECKER).getOwnerId(preferredProtocol);
+      const ownerId = this.permissionChecker.getOwnerId(preferredProtocol);
 
       if (!ownerId || !preferredProtocol) {
         logger.warn(
@@ -102,7 +99,7 @@ export class AdminAlertService {
         return;
       }
 
-      await messageAPI.sendPrivateMessage(ownerId, message, preferredProtocol);
+      await this.messageAPI.sendPrivateMessage(ownerId, message, preferredProtocol);
     } catch (err) {
       logger.error('[AdminAlertService] Failed to send alert:', err);
     }

@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { describe, expect, it, beforeAll } from 'bun:test';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { SummarizeService } from '@/ai/services/SummarizeService';
+import type { ThreadService } from '@/conversation/thread/ThreadService';
 import type { Config } from '@/core/config';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 
@@ -41,7 +42,7 @@ describe('appendBotReplyToGroup metadata', () => {
     const fakeSummarizeService = { summarize: () => Promise.resolve('summary') } as unknown as SummarizeService;
     const fakeConfig = { getContextMemoryConfig: () => undefined } as unknown as Config;
 
-    const service = new ConversationHistoryService(fakeDatabaseManager, fakeSummarizeService, fakeConfig);
+    const service = new ConversationHistoryService(fakeDatabaseManager, fakeSummarizeService, {} as ThreadService, fakeConfig);
 
     Object.defineProperty(globalThis, '__testService', {
       value: service,

@@ -3,7 +3,6 @@
 import { inject, singleton } from 'tsyringe';
 import { MessagePipeline } from '@/conversation/MessagePipeline';
 import type { Config } from '@/core/config';
-import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { getProtocolSelfId } from '@/protocol/ProtocolRegistry';
@@ -18,11 +17,11 @@ import type { MessageProcessingContext, MessageProcessingResult, ProcessMessageO
 @singleton()
 export class ConversationManager {
   private pipeline: MessagePipeline;
-  private botSelfId: string;
+  private readonly botSelfId: string;
 
-  constructor(@inject(MessagePipeline) pipeline: MessagePipeline) {
+  constructor(@inject(MessagePipeline) pipeline: MessagePipeline, @inject(DITokens.CONFIG) config: Config) {
     this.pipeline = pipeline;
-    this.botSelfId = this.getBotSelfIdFromConfig();
+    this.botSelfId = config.getConfig().bot.selfId;
   }
 
   /**
@@ -33,13 +32,7 @@ export class ConversationManager {
       const protocolId = getProtocolSelfId(protocol);
       if (protocolId) return protocolId;
     }
-    return this.botSelfId || this.getBotSelfIdFromConfig();
-  }
-
-  private getBotSelfIdFromConfig(): string {
-    // CONFIG is required (DITokens.ts) — the first thing ConversationInitializer registers.
-    const config = getContainer().resolve<Config>(DITokens.CONFIG);
-    return config.getConfig().bot.selfId;
+    return this.botSelfId;
   }
 
   /**

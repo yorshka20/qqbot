@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import type { AIService } from '@/ai';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { ToolCall, ToolExecutionContext } from '@/tools/types';
 import { describeGenerateImageForModel, GenerateImageToolExecutor } from '../GenerateImageToolExecutor';
@@ -11,6 +12,7 @@ function executorWith(aiService: Partial<AIService>): GenerateImageToolExecutor 
     aiService as AIService,
     { sendFromContext: async () => ({ message_seq: 1 }) } as unknown as MessageAPI,
     {} as DatabaseManager,
+    { appendBotMessageToSession: async () => {} } as unknown as ConversationHistoryService,
   );
 }
 

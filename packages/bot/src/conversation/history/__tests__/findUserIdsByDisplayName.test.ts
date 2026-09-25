@@ -7,6 +7,7 @@ import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { SummarizeService } from '@/ai/services/SummarizeService';
+import type { ThreadService } from '@/conversation/thread/ThreadService';
 import type { Config } from '@/core/config';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 
@@ -42,6 +43,7 @@ function serviceOver(rows: Row[]): ConversationHistoryService {
   return new ConversationHistoryService(
     { getAdapter: () => adapter } as unknown as DatabaseManager,
     { summarize: () => Promise.resolve('') } as unknown as SummarizeService,
+    {} as ThreadService,
     { getContextMemoryConfig: () => undefined } as unknown as Config,
   );
 }
