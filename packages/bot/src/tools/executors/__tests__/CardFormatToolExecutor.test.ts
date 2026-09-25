@@ -50,21 +50,9 @@ const defaultCall: ToolCall = {
   parameters: { cards: validCards },
 };
 
-// ---------------------------------------------------------------------------
-// Import executor — patching getCardHelper via prototype spy
-// ---------------------------------------------------------------------------
-
-// We need to bypass the DI resolution in getCardHelper for unit tests.
-// We'll spy on the private method by accessing it via the prototype after import.
-
 async function makeExecutorWithHelper(cardHelper: CardRenderingHelper) {
-  // We use dynamic import to get a fresh executor per test group to avoid
-  // singleton state. For simplicity, we patch _cardHelper directly after construction.
   const { CardFormatToolExecutor } = await import('../CardFormatToolExecutor');
-  const executor = new CardFormatToolExecutor();
-  // Access private field via cast to inject mock helper
-  (executor as unknown as Record<string, unknown>)._cardHelper = cardHelper;
-  return executor;
+  return new CardFormatToolExecutor(cardHelper);
 }
 
 // ---------------------------------------------------------------------------
@@ -78,8 +66,7 @@ afterEach(() => {
 describe('CardFormatToolExecutor (send_card)', () => {
   describe('tool metadata', () => {
     it('has name send_card', async () => {
-      const { CardFormatToolExecutor } = await import('../CardFormatToolExecutor');
-      const executor = new CardFormatToolExecutor();
+      const executor = await makeExecutorWithHelper(makeCardHelper());
       expect(executor.name).toBe('send_card');
     });
   });

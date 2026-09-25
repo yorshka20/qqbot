@@ -9,8 +9,8 @@
 //   - /video command (VideoAnalyzeCommandHandler)
 //   - LLM tool call (analyze_video tool with visibility: ['reply', 'subagent'])
 
+import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import type { SubAgentType } from '@/agent/types';
-import { AIService } from '@/ai/AIService';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import type { ProtocolName } from '@/core/config/types/protocol';
@@ -132,7 +132,7 @@ interface ActiveTask {
   description: 'Handle video.analyze events via SubAgent (triggered by /video command or other modules)',
 })
 export class VideoAnalyzePlugin extends PluginBase {
-  private aiService!: AIService;
+  private subAgents!: SubAgentOrchestrator;
 
   /** Stored reference to the video.analyze event handler for proper unregistration. */
   private videoAnalyzeHandler: ((payload: VideoAnalyzePayload) => Promise<void>) | null = null;
@@ -143,11 +143,7 @@ export class VideoAnalyzePlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    this.aiService = container.resolve(AIService);
-
-    if (!this.aiService) {
-      throw new Error('[VideoAnalyzePlugin] AIService not found');
-    }
+    this.subAgents = container.resolve(SubAgentOrchestrator);
 
     logger.info('[VideoAnalyzePlugin] Initialized');
   }
@@ -186,8 +182,8 @@ export class VideoAnalyzePlugin extends PluginBase {
   }
 
   /**
-   * Handle the video.analyze event: concurrency check → runSubAgent → send result.
-   * Uses AIService.runSubAgent() which internally does spawn + execute + wait,
+   * Handle the video.analyze event: concurrency check → run the sub-agent → send result.
+   * Uses SubAgentOrchestrator.run(), which does spawn + execute + wait,
    * ensuring the subagent actually runs (vs. bare spawn which only creates the session).
    */
   private async handleVideoAnalyzeEvent(payload: VideoAnalyzePayload): Promise<void> {
@@ -215,8 +211,7 @@ export class VideoAnalyzePlugin extends PluginBase {
     logger.info(`[VideoAnalyzePlugin] Starting video analysis | sessionKey=${sessionKey} | url=${url}`);
 
     try {
-      // runSubAgent = spawn + execute + wait (all three steps, correct subagent lifecycle)
-      const result = await this.aiService.runSubAgent(VIDEO_AGENT_TYPE as SubAgentType, {
+      const result = await this.subAgents.run(VIDEO_AGENT_TYPE as SubAgentType, {
         description: TASK_DESCRIPTION,
         input: {
           url,

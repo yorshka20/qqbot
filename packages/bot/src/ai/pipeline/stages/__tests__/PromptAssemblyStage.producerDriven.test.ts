@@ -6,6 +6,9 @@ import type { HookContext } from '@/hooks/types';
 import { PromptMessageAssembler } from '../../../prompt/PromptMessageAssembler';
 import type { ReplyPipelineContext } from '../../ReplyPipelineContext';
 import { PromptAssemblyStage } from '../PromptAssemblyStage';
+import type { Config } from '@/core/config';
+
+const NO_AI_CONFIG = { getAIConfig: () => undefined } as unknown as Config;
 
 /** Minimal promptManager mock: user_frame render + the real shared assembler. */
 const mockPromptManager = {
@@ -79,7 +82,7 @@ describe('PromptAssemblyStage producer-driven', () => {
         tool: [makeInj('tool-instruct', 'TOOL')],
       })),
     } as any;
-    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any);
+    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any, NO_AI_CONFIG);
     const ctx = makeContext();
 
     await stage.execute(ctx);
@@ -104,7 +107,7 @@ describe('PromptAssemblyStage producer-driven', () => {
         tool: [],
       })),
     } as any;
-    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any);
+    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any, NO_AI_CONFIG);
     const ctx = makeContext();
 
     await stage.execute(ctx);
@@ -126,7 +129,7 @@ describe('PromptAssemblyStage producer-driven', () => {
         tool: [],
       })),
     } as any;
-    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any);
+    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any, NO_AI_CONFIG);
     const ctx = makeContext();
 
     await stage.execute(ctx);
@@ -145,7 +148,7 @@ describe('PromptAssemblyStage producer-driven', () => {
         tool: [],
       })),
     } as any;
-    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any);
+    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any, NO_AI_CONFIG);
     const ctx = makeContext();
 
     await stage.execute(ctx);

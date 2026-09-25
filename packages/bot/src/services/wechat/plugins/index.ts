@@ -2,7 +2,7 @@
 // All core logic lives in src/services/wechat/
 
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
-import { AIService } from '@/ai/AIService';
+import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -229,12 +229,7 @@ export class WeChatIngestPlugin extends PluginBase {
 
     // Register /wechat command if padpro config is available
     if (padProClient) {
-      let aiService: AIService | null = null;
-      try {
-        aiService = container.resolve(AIService);
-      } catch {
-        logger.warn('[WeChatIngestPlugin] AIService not available — /wechat analyze disabled');
-      }
+      const subAgents = container.resolve(SubAgentOrchestrator);
 
       // Create moments analysis service (reuses LLMService already resolved above)
       const llmService = container.resolve(LLMService);
@@ -246,7 +241,7 @@ export class WeChatIngestPlugin extends PluginBase {
       const cmdHandler = new WechatCommandHandler(
         padProClient,
         this.db,
-        aiService,
+        subAgents,
         this.messageAPI,
         this.retrieval,
         momentsAnalysis,

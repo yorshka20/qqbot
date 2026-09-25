@@ -1,5 +1,6 @@
 // SubAgentTriggerHandler - keyword match → spawn subagent → deliver result to group
 
+import type { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { getRolePreset } from '@/agent/SubAgentRolePresets';
 import type { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
@@ -26,7 +27,7 @@ import type { SubAgentTriggerRule } from './types';
  *   4. Notification message sent to target group before spawning
  *   5. Cancellation tracking: reaction on the notification → cancel before result delivery
  *   6. Task construction from prompts/subagent/{presetKey}/task.txt (renders {{message}})
- *   7. Fire-and-forget spawn via AIService.runSubAgent()
+ *   7. Fire-and-forget spawn via SubAgentOrchestrator.run()
  *   8. Push result text back to the target group via MessageAPI
  *
  * The handler is intentionally side-effect-only — it never influences
@@ -56,6 +57,7 @@ export class SubAgentTriggerHandler {
     private readonly rules: SubAgentTriggerRule[],
     private readonly promptManager: PromptManager,
     private readonly aiService: AIService,
+    private readonly subAgents: SubAgentOrchestrator,
     private readonly messageAPI: MessageAPI,
     private readonly conversationConfigService: ConversationConfigService,
     /** Protocol name used when sending the result message proactively. */
@@ -312,7 +314,7 @@ export class SubAgentTriggerHandler {
 
       try {
         // Step 2: run subagent
-        const result = await this.aiService.runSubAgent(
+        const result = await this.subAgents.run(
           preset.type,
           { description, input: taskInput, parentContext },
           configOverrides,

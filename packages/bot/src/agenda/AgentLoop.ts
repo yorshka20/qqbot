@@ -3,6 +3,7 @@
 // Also supports direct subagent execution (actionType === 'subagent') which bypasses the LLM interpretation loop.
 
 import { inject, injectable } from 'tsyringe';
+import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { getRolePreset } from '@/agent/SubAgentRolePresets';
 import type { PromptManager } from '@/ai';
 import { AIService } from '@/ai/AIService';
@@ -58,6 +59,7 @@ export class AgentLoop {
     @inject(DITokens.TOOL_MANAGER) private toolManager: ToolManager,
     @inject(HookManager) private hookManager: HookManager,
     @inject(AIService) private aiService: AIService,
+    @inject(SubAgentOrchestrator) private subAgents: SubAgentOrchestrator,
   ) {}
 
   /**
@@ -126,7 +128,7 @@ export class AgentLoop {
     };
 
     try {
-      const result = await this.aiService.runSubAgent(
+      const result = await this.subAgents.run(
         preset.type,
         { description, input: taskInput, parentContext },
         configOverrides,

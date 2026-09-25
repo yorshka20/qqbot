@@ -34,7 +34,7 @@ const MAX_VIDEO_DURATION_SECONDS = 10 * 60; // 10 minutes
   executor: 'analyze_video',
   // subagent-only: removed reply scope so reply-flow LLM cannot auto-analyze every video URL
   // it sees in chat. Video analysis must be invoked explicitly via the /video command, which
-  // routes through VideoAnalyzePlugin → runSubAgent('video_analyzer') → this tool.
+  // routes through VideoAnalyzePlugin → SubAgentOrchestrator.run('video_analyzer') → this tool.
   visibility: { subagent: true },
   parameters: {
     url: {

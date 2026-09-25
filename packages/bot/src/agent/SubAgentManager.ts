@@ -3,7 +3,7 @@
 import { singleton } from 'tsyringe';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
-import type { AggregatedResult, SubAgentConfig, SubAgentSession, SubAgentType } from './types';
+import type { AggregatedResult, SubAgentConfig, SubAgentSession, SubAgentTask, SubAgentType } from './types';
 
 /**
  * SubAgent Manager
@@ -39,19 +39,7 @@ export class SubAgentManager {
   async spawn(
     parentId: string | undefined,
     type: SubAgentType,
-    task: {
-      description: string;
-      input: unknown;
-      /** From parent (e.g. HookContext when spawned from main flow); written to session.context for ToolRunner. */
-      parentContext?: {
-        userId: number | string;
-        groupId?: number | string;
-        messageType: 'private' | 'group';
-        protocol?: string;
-        conversationId?: string;
-        messageId?: string;
-      };
-    },
+    task: SubAgentTask,
     configOverrides?: Partial<SubAgentConfig>,
   ): Promise<string> {
     // Check concurrent limit

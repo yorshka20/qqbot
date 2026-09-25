@@ -145,7 +145,7 @@ The system is organized into the following layers:
 6. **Hook Layer** (`src/hooks/`): 14 hook points for pipeline interception
 7. **Command Layer** (`src/command/`): Prefix-based commands with permission levels
 8. **AI Layer** (`src/ai/`): Multi-provider LLM integration, reply pipeline, image generation
-9. **Agent Layer** (`src/agent/`): Sub-agent spawning and tool execution — `SubAgentManager` is the session registry (spawn limits, status, wait), `SubAgentExecutor` runs a session (and handles `spawn_subagent` by recursing into itself), `ToolRunner` runs every other tool call. Dependencies run one way (executor → manager, executor → runner); `AIService`, `ResearchToolExecutor` and the sub-agent trigger plugins inject the two services directly
+9. **Agent Layer** (`src/agent/`): Sub-agent spawning and tool execution — `SubAgentManager` is the session registry (spawn limits, status, wait), `SubAgentExecutor` runs a session (and handles `spawn_subagent` by recursing into itself), `ToolRunner` runs every other tool call. Dependencies run one way (executor → manager, executor → runner). Outside the module everything goes through `SubAgentOrchestrator.run()` (spawn → execute → wait): the research tool, agenda sub-agent items, the video-analyze plugin and command, the sub-agent message triggers and `/wechat analyze`
 10. **Tool Layer** (`src/tools/`): LLM-callable tools with @Tool() decorator
 11. **Memory Layer** (`src/memory/`): Per-user/per-group long-term memory with LLM extraction
 12. **Context Layer** (`src/context/`): HookContext building, conversation context management
@@ -571,7 +571,7 @@ through the same `MessageAPI.sendFromContext` egress `SendSystem` uses.
 
 ### Overview
 
-`AIService` is a pure facade that delegates to specialized sub-services. It is the entry point for all AI capabilities used by `ReplySystem`.
+`AIService` is a pure facade that delegates to specialized sub-services. It is the entry point for all AI capabilities used by `ReplySystem`. Every sub-service, stage and helper below is a DI singleton that declares its own dependencies; `AIService` only injects the ones its methods call, so a stage never has to resolve anything from the container itself.
 
 ### Sub-services
 
@@ -592,7 +592,7 @@ Presets are directories under `image-presets/<id>/preset.json` at the repo root,
 
 ### AI Reply Pipeline
 
-The reply pipeline inside `ReplyPipelineOrchestrator` is composed of ordered stages:
+The reply pipeline inside `ReplyPipelineOrchestrator` is composed of ordered stages (injected into the orchestrator's constructor, which fixes the order):
 
 1. `GateCheckStage` — Run `onMessageBeforeAI` / `onAIGenerationStart` hooks, whitelist gate (only writer of `ctx.interrupted`)
 2. `ContextResolutionStage` — Resolve referenced (quoted) message, extract images

@@ -2,8 +2,7 @@
 // with isolated context, returning only the summarized conclusion to the main agent.
 
 import { inject, injectable } from 'tsyringe';
-import { SubAgentExecutor } from '@/agent/SubAgentExecutor';
-import { SubAgentManager } from '@/agent/SubAgentManager';
+import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { SubAgentType } from '@/agent/types';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
@@ -80,10 +79,8 @@ export class ResearchToolExecutor extends BaseToolExecutor {
   name = 'research';
 
   constructor(
-    @inject(SubAgentManager)
-    private subAgentManager: SubAgentManager,
-    @inject(SubAgentExecutor)
-    private subAgentExecutor: SubAgentExecutor,
+    @inject(SubAgentOrchestrator)
+    private subAgents: SubAgentOrchestrator,
     @inject(RetrievalService)
     private retrievalService: RetrievalService,
   ) {
@@ -121,8 +118,7 @@ export class ResearchToolExecutor extends BaseToolExecutor {
         messageId: context.messageId,
       };
 
-      const sessionId = await this.subAgentManager.spawn(
-        undefined, // no parent agent
+      const output = await this.subAgents.run(
         SubAgentType.RESEARCH,
         {
           description: task,
@@ -148,9 +144,6 @@ export class ResearchToolExecutor extends BaseToolExecutor {
           maxTokens: TOKEN_BUDGET.analysis,
         },
       );
-
-      await this.subAgentExecutor.execute(sessionId);
-      const output = await this.subAgentManager.wait(sessionId, RESEARCH_TIMEOUT);
 
       const resultText = typeof output === 'string' ? output : JSON.stringify(output);
 

@@ -1,10 +1,5 @@
-import { injectable } from 'tsyringe';
-import type { AIManager } from '@/ai/AIManager';
+import { inject, injectable } from 'tsyringe';
 import { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
-import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
-import { HookManager } from '@/hooks/HookManager';
-import { CardRenderingService } from '@/services/card';
 import { CARD_ITEM_SCHEMA, parseCardDeck } from '@/services/card/cardTypes';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
@@ -62,21 +57,8 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 export class CardFormatToolExecutor extends BaseToolExecutor {
   name = 'send_card';
 
-  private _cardHelper: CardRenderingHelper | null = null;
-
-  /**
-   * Lazily resolve CardRenderingHelper from DI-registered dependencies.
-   * CardRenderingHelper is not itself registered in the DI container — we build it
-   * from its injectable dependencies on first use (getContainer() fallback per ticket).
-   */
-  private getCardHelper(): CardRenderingHelper {
-    if (!this._cardHelper) {
-      const container = getContainer();
-      const aiManager = container.resolve<AIManager>(DITokens.AI_MANAGER);
-      const hookManager = container.resolve(HookManager);
-      this._cardHelper = new CardRenderingHelper(new CardRenderingService(aiManager), hookManager);
-    }
-    return this._cardHelper;
+  constructor(@inject(CardRenderingHelper) private readonly cardHelper: CardRenderingHelper) {
+    super();
   }
 
   async execute(task: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
@@ -95,16 +77,15 @@ export class CardFormatToolExecutor extends BaseToolExecutor {
     }
 
     try {
-      const cardHelper = this.getCardHelper();
       // Stamp the card with whoever is actually generating this turn (set by
       // GenerationStage). Without this the card defaults to the global
       // default LLM provider — wrong footer when the active provider was
       // overridden (e.g. `claude:` prefix → anthropic).
       const activeProvider = context.hookContext?.metadata.get('activeProvider');
       const activeModel = context.hookContext?.metadata.get('activeModel');
-      const result = await cardHelper.renderParsedCards(validated, activeProvider, activeModel);
+      const result = await this.cardHelper.renderParsedCards(validated, activeProvider, activeModel);
       if (context.hookContext) {
-        cardHelper.setCardReplyOnContext(context.hookContext, result.segments, result.textForHistory);
+        this.cardHelper.setCardReplyOnContext(context.hookContext, result.segments, result.textForHistory);
         context.hookContext.metadata.set('cardSent', true);
       }
       return this.success(

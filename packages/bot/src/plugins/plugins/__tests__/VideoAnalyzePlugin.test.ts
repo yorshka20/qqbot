@@ -11,7 +11,7 @@ import {
   VideoAnalyzePlugin,
 } from '../VideoAnalyzePlugin';
 import { MessageAPI } from '@/api/methods/MessageAPI';
-import { AIService } from '@/ai/AIService';
+import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 
 // ---------------------------------------------------------------------------
 // Mock helpers
@@ -53,25 +53,25 @@ function createMockConfig(): Config {
   } as unknown as Config;
 }
 
-type MockAIServiceOpts = {
-  /** Value returned by runSubAgent on success (string, as per SubAgent contract). */
+type MockSubAgentsOpts = {
+  /** Value returned by run on success (string, as per SubAgent contract). */
   result?: string;
-  /** If set, runSubAgent will throw this error. */
+  /** If set, run will throw this error. */
   throws?: Error;
-  /** Optional callback invoked at the start of each runSubAgent call (before result/throw). */
+  /** Optional callback invoked at the start of each run call (before result/throw). */
   onRun?: () => void;
 };
 
-function createMockAIService(opts: MockAIServiceOpts = {}): AIService {
+function createMockSubAgents(opts: MockSubAgentsOpts = {}): SubAgentOrchestrator {
   return {
-    runSubAgent: async () => {
+    run: async () => {
       opts.onRun?.();
       if (opts.throws) {
         throw opts.throws;
       }
       return opts.result;
     },
-  } as unknown as AIService;
+  } as unknown as SubAgentOrchestrator;
 }
 
 function createMockEventRouter(): EventRouter {
@@ -106,15 +106,15 @@ function createMockEventRouter(): EventRouter {
 // ---------------------------------------------------------------------------
 
 async function initPlugin(
-  overrides: { aiService?: AIService; messageAPI?: MessageAPI; eventRouter?: EventRouter; config?: Config } = {},
+  overrides: { subAgents?: SubAgentOrchestrator; messageAPI?: MessageAPI; eventRouter?: EventRouter; config?: Config } = {},
 ): Promise<VideoAnalyzePlugin> {
   const container = getContainer();
   const mockEventRouter = overrides.eventRouter ?? createMockEventRouter();
   const msgApi = overrides.messageAPI ?? createMockMessageAPI().api;
-  const mockAIService = overrides.aiService ?? createMockAIService();
+  const mockSubAgents = overrides.subAgents ?? createMockSubAgents();
   const mockConfig = overrides.config ?? createMockConfig();
 
-  container.registerInstance(AIService, mockAIService, { allowOverride: true });
+  container.registerInstance(SubAgentOrchestrator, mockSubAgents, { allowOverride: true });
   container.registerInstance(MessageAPI, msgApi as any, { allowOverride: true });
   container.registerInstance(DITokens.EVENT_ROUTER, mockEventRouter, { allowOverride: true });
   container.registerInstance(DITokens.CONFIG, mockConfig, { allowOverride: true });
@@ -225,7 +225,7 @@ describe('VideoAnalyzePlugin concurrency lock', () => {
     const eventRouter = createMockEventRouter();
     const callOrder: string[] = [];
 
-    const mockAIService = createMockAIService({
+    const mockSubAgents = createMockSubAgents({
       result: 'analysis result',
       onRun: () => callOrder.push('first-run'),
     });
@@ -233,7 +233,7 @@ describe('VideoAnalyzePlugin concurrency lock', () => {
     const plugin = await initPlugin({
       messageAPI: mockAPI as any,
       eventRouter,
-      aiService: mockAIService,
+      subAgents: mockSubAgents,
     });
 
     const payload1: VideoAnalyzePayload = {
@@ -262,12 +262,12 @@ describe('VideoAnalyzePlugin concurrency lock', () => {
   it('lock is released after SubAgent completes successfully', async () => {
     const { api: mockAPI } = createMockMessageAPI();
     const eventRouter = createMockEventRouter();
-    const mockAIService = createMockAIService({ result: 'result' });
+    const mockSubAgents = createMockSubAgents({ result: 'result' });
 
     const plugin = await initPlugin({
       messageAPI: mockAPI as any,
       eventRouter,
-      aiService: mockAIService,
+      subAgents: mockSubAgents,
     });
 
     const payload: VideoAnalyzePayload = {
@@ -285,12 +285,12 @@ describe('VideoAnalyzePlugin concurrency lock', () => {
   it('lock is released after SubAgent fails', async () => {
     const { api: mockAPI } = createMockMessageAPI();
     const eventRouter = createMockEventRouter();
-    const mockAIService = createMockAIService({ throws: new Error('subagent error') });
+    const mockSubAgents = createMockSubAgents({ throws: new Error('subagent error') });
 
     const plugin = await initPlugin({
       messageAPI: mockAPI as any,
       eventRouter,
-      aiService: mockAIService,
+      subAgents: mockSubAgents,
     });
 
     const payload: VideoAnalyzePayload = {
@@ -318,12 +318,12 @@ describe('VideoAnalyzePlugin result messaging', () => {
   it('sends analysis result to group when messageType is group', async () => {
     const { api: mockAPI, sentMessages } = createMockMessageAPI();
     const eventRouter = createMockEventRouter();
-    const mockAIService = createMockAIService({ result: '这是视频分析结果：主要内容是...' });
+    const mockSubAgents = createMockSubAgents({ result: '这是视频分析结果：主要内容是...' });
 
     const plugin = await initPlugin({
       messageAPI: mockAPI as any,
       eventRouter,
-      aiService: mockAIService,
+      subAgents: mockSubAgents,
     });
 
     const payload: VideoAnalyzePayload = {
@@ -344,12 +344,12 @@ describe('VideoAnalyzePlugin result messaging', () => {
   it('sends analysis result to private chat when messageType is private', async () => {
     const { api: mockAPI, sentMessages } = createMockMessageAPI();
     const eventRouter = createMockEventRouter();
-    const mockAIService = createMockAIService({ result: 'private result' });
+    const mockSubAgents = createMockSubAgents({ result: 'private result' });
 
     const plugin = await initPlugin({
       messageAPI: mockAPI as any,
       eventRouter,
-      aiService: mockAIService,
+      subAgents: mockSubAgents,
     });
 
     const payload: VideoAnalyzePayload = {
@@ -367,12 +367,12 @@ describe('VideoAnalyzePlugin result messaging', () => {
   it('sends friendly error message when SubAgent throws', async () => {
     const { api: mockAPI, sentMessages } = createMockMessageAPI();
     const eventRouter = createMockEventRouter();
-    const mockAIService = createMockAIService({ throws: new Error('network error') });
+    const mockSubAgents = createMockSubAgents({ throws: new Error('network error') });
 
     const plugin = await initPlugin({
       messageAPI: mockAPI as any,
       eventRouter,
-      aiService: mockAIService,
+      subAgents: mockSubAgents,
     });
 
     const payload: VideoAnalyzePayload = {

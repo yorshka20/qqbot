@@ -1,5 +1,8 @@
 // Image Generation Service - provides image generation capabilities
 
+import { inject, singleton } from 'tsyringe';
+import { ProviderSelector } from '@/ai/ProviderSelector';
+import { DITokens } from '@/core/DITokens';
 import { getStaticServer, outputPublicFileUrl, type StaticServer } from '@/services/staticServer';
 import type { AIManager } from '../AIManager';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
@@ -12,7 +15,6 @@ import type {
   ProviderImageGenerationResponse,
   Text2ImageOptions,
 } from '../capabilities/types';
-import type { ProviderSelector } from '../ProviderSelector';
 
 /**
  * Image Generation Service
@@ -22,12 +24,13 @@ import type { ProviderSelector } from '../ProviderSelector';
  * is omitted from bot config, init never runs and public URL generation fails.
  * If LAN disables the `output` backend, URLs built with `outputPublicFileUrl` will 404.
  */
+@singleton()
 export class ImageGenerationService {
   private staticServerCache: StaticServer | null = null;
 
   constructor(
-    private aiManager: AIManager,
-    private providerSelector?: ProviderSelector,
+    @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
+    @inject(ProviderSelector) private providerSelector: ProviderSelector,
   ) {}
 
   /** Lazy accessor — see class doc for why this is not resolved in the constructor. */
@@ -89,7 +92,7 @@ export class ImageGenerationService {
       } else {
         throw new Error(`Provider ${providerName} does not support Text2Image capability`);
       }
-    } else if (sessionId && this.providerSelector) {
+    } else if (sessionId) {
       const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'text2img');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('text2img', sessionProviderName);
@@ -138,7 +141,7 @@ export class ImageGenerationService {
       } else {
         throw new Error(`Provider ${providerName} does not support Image2Image capability`);
       }
-    } else if (sessionId && this.providerSelector) {
+    } else if (sessionId) {
       const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'img2img');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('img2img', sessionProviderName);

@@ -1,11 +1,13 @@
 // Vision Service - provides vision/multimodal capability
 
+import { inject, singleton } from 'tsyringe';
+import { ProviderSelector } from '@/ai/ProviderSelector';
+import { DITokens } from '@/core/DITokens';
 import type { AIManager } from '../AIManager';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { VisionImage } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
 import { isVisionCapability } from '../capabilities/VisionCapability';
-import type { ProviderSelector } from '../ProviderSelector';
 import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler } from '../types';
 import { normalizeVisionImages } from '../utils/imageUtils';
 
@@ -13,10 +15,11 @@ import { normalizeVisionImages } from '../utils/imageUtils';
  * Vision Service
  * Provides vision/multimodal capability (text + images)
  */
+@singleton()
 export class VisionService {
   constructor(
-    private aiManager: AIManager,
-    private providerSelector?: ProviderSelector,
+    @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
+    @inject(ProviderSelector) private providerSelector: ProviderSelector,
   ) {}
 
   /**
@@ -49,7 +52,7 @@ export class VisionService {
       } else {
         throw new Error(`Provider ${providerName} does not support Vision capability`);
       }
-    } else if (sessionId && this.providerSelector) {
+    } else if (sessionId) {
       const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'vision');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('vision', sessionProviderName);
@@ -102,7 +105,7 @@ export class VisionService {
       }
     }
 
-    if (sessionId && this.providerSelector) {
+    if (sessionId) {
       const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'vision');
       if (sessionProviderName) {
         const sessionProvider = this.aiManager.getProviderForCapability('vision', sessionProviderName);
@@ -150,7 +153,7 @@ export class VisionService {
       } else {
         throw new Error(`Provider ${providerName} does not support Vision capability`);
       }
-    } else if (sessionId && this.providerSelector) {
+    } else if (sessionId) {
       const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'vision');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('vision', sessionProviderName);
@@ -203,7 +206,7 @@ export class VisionService {
       } else {
         throw new Error(`Provider ${providerName} does not support Vision capability`);
       }
-    } else if (sessionId && this.providerSelector) {
+    } else if (sessionId) {
       const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'vision');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('vision', sessionProviderName);
@@ -248,7 +251,7 @@ export class VisionService {
         provider = preferredProvider;
       }
     }
-    if (sessionId && this.providerSelector) {
+    if (sessionId) {
       const name = await this.providerSelector.getProviderForSession(sessionId, 'vision');
       if (name) {
         const p = this.aiManager.getProviderForCapability('vision', name);

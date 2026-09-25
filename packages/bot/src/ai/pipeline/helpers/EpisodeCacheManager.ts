@@ -1,12 +1,9 @@
 // Episode-based history cache manager.
 // Owns the NormalEpisodeService instance and per-episode history cache.
 
-import {
-  type ConversationHistoryService,
-  type ConversationMessageEntry,
-  NormalEpisodeService,
-  normalizeSessionId,
-} from '@/conversation/history';
+import { inject, singleton } from 'tsyringe';
+import { type ConversationMessageEntry, NormalEpisodeService, normalizeSessionId } from '@/conversation/history';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 
@@ -70,6 +67,7 @@ const EPISODE_APPEND_FETCH_LIMIT = 60;
  * Handles new-episode initialization, incremental appending, and scheduling of
  * background compression when the window outgrows its budget.
  */
+@singleton()
 export class EpisodeCacheManager {
   private readonly episodeService = new NormalEpisodeService();
 
@@ -82,7 +80,7 @@ export class EpisodeCacheManager {
   /** Episodes with a compression pass in flight; a second pass would fold an already-folded span. */
   private readonly compressingEpisodeKeys = new Set<string>();
 
-  constructor(private conversationHistoryService: ConversationHistoryService) {}
+  constructor(@inject(ConversationHistoryService) private conversationHistoryService: ConversationHistoryService) {}
 
   /**
    * Build history for normal (episode) mode.

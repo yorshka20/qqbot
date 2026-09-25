@@ -1,7 +1,9 @@
 // Card Rendering Service - provides card rendering capability for LLM responses
 
+import { inject, singleton } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import { extractExpectedJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { CardRenderer } from './CardRenderer';
 import { type CardData, parseCardDeck } from './cardTypes';
@@ -10,11 +12,12 @@ import { type CardData, parseCardDeck } from './cardTypes';
  * Card Rendering Service
  * Provides card rendering for LLM responses (uses puppeteer-core + system Chrome/Chromium).
  */
+@singleton()
 export class CardRenderingService {
   private cardRenderer: CardRenderer;
   private static readonly CARD_RENDERING_THRESHOLD = 150; // characters
 
-  constructor(private aiManager: AIManager) {
+  constructor(@inject(DITokens.AI_MANAGER) private aiManager: AIManager) {
     this.cardRenderer = CardRenderer.getInstance();
   }
 

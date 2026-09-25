@@ -1,13 +1,14 @@
 // Image facade service — wraps image generation with hook lifecycle and prompt preprocessing.
 
-import type { HookManager } from '@/hooks/HookManager';
+import { inject, singleton } from 'tsyringe';
+import { ImageGenerationService } from '@/ai/services/ImageGenerationService';
+import { ImagePromptService } from '@/ai/services/ImagePromptService';
+import { HookManager } from '@/hooks/HookManager';
 import type { AIUsageMetadata } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';
 import type { I2VPromptResult } from '../schemas';
-import type { ImageGenerationService } from './ImageGenerationService';
-import type { ImagePromptService } from './ImagePromptService';
 import { ImageRequestAssembler } from './ImageRequestAssembler';
 
 /**
@@ -16,13 +17,16 @@ import { ImageRequestAssembler } from './ImageRequestAssembler';
  * (`onAIGenerationStart` → generate → `onAIGenerationComplete`).
  * Handles text-to-image, image-to-image, and I2V prompt preparation.
  */
+@singleton()
 export class ImageFacadeService {
   constructor(
-    private hookManager: HookManager,
-    private imageGenerationService: ImageGenerationService,
-    private imagePromptService: ImagePromptService,
-    private presetsRoot?: string,
+    @inject(HookManager) private hookManager: HookManager,
+    @inject(ImageGenerationService) private imageGenerationService: ImageGenerationService,
+    @inject(ImagePromptService) private imagePromptService: ImagePromptService,
   ) {}
+
+  /** Preset directory root; undefined uses the repo's `image-presets/`. Tests point it at a fixture dir. */
+  protected readonly presetsRoot: string | undefined = undefined;
 
   /**
    * Generate image from text prompt.

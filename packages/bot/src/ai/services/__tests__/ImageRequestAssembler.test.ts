@@ -134,7 +134,10 @@ describe('ImageFacadeService preset assembly', () => {
     let seenPrompt = '';
     let preprocessInput = '';
     const recorded: { images: string[]; options: unknown }[] = [];
-    const facade = new ImageFacadeService(
+    // presetsRoot is the fixture directory instead of the repo's image-presets/.
+    const facade = new (class extends ImageFacadeService {
+      protected override readonly presetsRoot = root;
+    })(
       { execute: async () => true } as never,
       {
         generateImageFromImage: async (images: string[], prompt: string, options: unknown) => {
@@ -149,7 +152,6 @@ describe('ImageFacadeService preset assembly', () => {
           return { prompt: '润色后的画面', options: { prompt: '润色后的画面' } };
         },
       } as unknown as ImagePromptService,
-      root,
     );
 
     const context = {

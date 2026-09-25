@@ -1,13 +1,15 @@
 // Provider selection stage — routing, vision/tool capability detection, tool definition assembly.
 
+import { inject, singleton } from 'tsyringe';
+import { ProviderRouter } from '@/ai/routing/ProviderRouter';
+import { LLMService } from '@/ai/services/LLMService';
+import { VisionService } from '@/ai/services/VisionService';
+import { DITokens } from '@/core/DITokens';
 import type { PermissionChecker } from '@/permission';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import type { AIProvider } from '../../base/AIProvider';
 import type { PromptManager } from '../../prompt/PromptManager';
-import type { ProviderRouter } from '../../routing/ProviderRouter';
-import type { LLMService } from '../../services/LLMService';
-import type { VisionService } from '../../services/VisionService';
 import { buildSkillUsageInstructions, getReplySkillDefinitions } from '../../tools/replyTools';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
 import type { ReplyStage } from '../types';
@@ -21,16 +23,17 @@ import type { ReplyStage } from '../types';
  * images and falls back to the configured vision provider when it cannot, checks
  * tool-use support, and assembles OpenAI-compatible tool definitions.
  */
+@singleton()
 export class ProviderSelectionStage implements ReplyStage {
   readonly name = 'provider-selection';
 
   constructor(
-    private providerRouter: ProviderRouter,
-    private visionService: VisionService,
-    private llmService: LLMService,
-    private toolManager: ToolManager,
-    private promptManager: PromptManager,
-    private permissionChecker: PermissionChecker,
+    @inject(ProviderRouter) private providerRouter: ProviderRouter,
+    @inject(VisionService) private visionService: VisionService,
+    @inject(LLMService) private llmService: LLMService,
+    @inject(DITokens.TOOL_MANAGER) private toolManager: ToolManager,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+    @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
   ) {}
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {

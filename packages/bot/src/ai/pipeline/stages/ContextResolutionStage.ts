@@ -1,7 +1,8 @@
 // Context resolution stage — resolve referenced messages and extract images.
 
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { inject, singleton } from 'tsyringe';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import { extractImagesFromMessageAndReply, getReplyMessageIdFromMessage } from '../../utils/imageUtils';
@@ -13,12 +14,13 @@ import type { ReplyStage } from '../types';
  * Resolves the referenced (quoted) message for text injection and extracts images
  * from both the current message and the referenced message for vision provider use.
  */
+@singleton()
 export class ContextResolutionStage implements ReplyStage {
   readonly name = 'context-resolution';
 
   constructor(
-    private messageAPI: MessageAPI,
-    private databaseManager: DatabaseManager,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
+    @inject(DatabaseManager) private databaseManager: DatabaseManager,
   ) {}
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {

@@ -1,7 +1,8 @@
 // Card rendering helper — shared card rendering, detection, and extraction logic.
 
+import { inject, singleton } from 'tsyringe';
 import { replaceReplyWithSegments } from '@/context/HookContextHelpers';
-import type { HookManager } from '@/hooks/HookManager';
+import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { stripFaceMarkers } from '@/message/qqFace';
@@ -21,10 +22,11 @@ import { extractExpectedJsonFromLlmText } from '../../utils/llmJsonExtract';
  * path — the model is given the `send_card` tool; if it chooses not to use it,
  * the response is rendered as a markdown card (plain prose is valid markdown).
  */
+@singleton()
 export class CardRenderingHelper {
   constructor(
-    private cardRenderingService: CardRenderingService,
-    private hookManager: HookManager,
+    @inject(CardRenderingService) private cardRenderingService: CardRenderingService,
+    @inject(HookManager) private hookManager: HookManager,
   ) {}
 
   // ---------------------------------------------------------------------------

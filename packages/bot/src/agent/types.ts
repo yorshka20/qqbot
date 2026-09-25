@@ -52,6 +52,21 @@ export interface SubAgentConfig {
 /**
  * SubAgent session
  */
+/** What a sub-agent is asked to do, as passed to spawn. */
+export interface SubAgentTask {
+  description: string;
+  input: unknown;
+  /** From parent (e.g. HookContext when spawned from main flow); written to session.context for ToolRunner. */
+  parentContext?: {
+    userId: number | string;
+    groupId?: number | string;
+    messageType: 'private' | 'group';
+    protocol?: string;
+    conversationId?: string;
+    messageId?: string;
+  };
+}
+
 export interface SubAgentSession {
   id: string; // Unique identifier
   parentId?: string; // Parent agent ID

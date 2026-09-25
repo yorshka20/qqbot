@@ -1,17 +1,20 @@
 // Image Prompt Service - provides image generation prompt preprocessing
 
+import { inject, singleton } from 'tsyringe';
 import {
   AdditionalParamsSchema,
   type I2VPromptResult,
   I2VPromptResultSchema,
   T2IImageParamsSchema,
 } from '@/ai/schemas';
+import { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
+import type { AIManager } from '../AIManager';
 import type { Text2ImageOptions } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 import { TOKEN_BUDGET } from '../tokenBudget';
-import type { LLMService } from './LLMService';
 
 /** Default and bounds for I2V video duration (seconds) */
 export const DEFAULT_I2V_DURATION_SECONDS = 5;
@@ -25,6 +28,7 @@ const IMAGE_PROMPT_JSON_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'regex'];
  * Image Prompt Service
  * Provides image generation prompt preprocessing using LLM
  */
+@singleton()
 export class ImagePromptService {
   private static readonly MAX_STEPS = 50;
   private static readonly MAX_GUIDANCE_SCALE = 9;
@@ -33,11 +37,15 @@ export class ImagePromptService {
   private static readonly DEFAULT_WIDTH = 832;
   private static readonly DEFAULT_HEIGHT = 1216;
 
+  private readonly providerName: string;
+
   constructor(
-    private llmService: LLMService,
-    private promptManager: PromptManager,
-    private providerName: string,
-  ) {}
+    @inject(LLMService) private llmService: LLMService,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+    @inject(DITokens.AI_MANAGER) aiManager: AIManager,
+  ) {
+    this.providerName = aiManager.getDefaultProvider('llm')?.name || 'deepseek';
+  }
 
   /**
    * Prepare image generation parameters

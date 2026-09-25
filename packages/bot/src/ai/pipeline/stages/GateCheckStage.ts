@@ -1,7 +1,8 @@
 // Gate check stage — whitelist capability + hook gates.
 
+import { inject, singleton } from 'tsyringe';
 import { hasWhitelistCapability } from '@/context/HookContextHelpers';
-import type { HookManager } from '@/hooks/HookManager';
+import { HookManager } from '@/hooks/HookManager';
 import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
 import type { ReplyStage } from '../types';
@@ -11,10 +12,11 @@ import type { ReplyStage } from '../types';
  * Verifies whitelist capability and fires `onMessageBeforeAI` / `onAIGenerationStart` hooks.
  * Sets `ctx.interrupted = true` when the group lacks reply permission, causing the pipeline to exit early.
  */
+@singleton()
 export class GateCheckStage implements ReplyStage {
   readonly name = 'gate-check';
 
-  constructor(private hookManager: HookManager) {}
+  constructor(@inject(HookManager) private hookManager: HookManager) {}
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
     const { hookContext } = ctx;

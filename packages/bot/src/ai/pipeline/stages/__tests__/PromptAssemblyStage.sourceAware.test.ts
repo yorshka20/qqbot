@@ -5,6 +5,9 @@ import type { HookContext } from '@/hooks/types';
 import { PromptMessageAssembler } from '../../../prompt/PromptMessageAssembler';
 import type { ReplyPipelineContext } from '../../ReplyPipelineContext';
 import { PromptAssemblyStage } from '../PromptAssemblyStage';
+import type { Config } from '@/core/config';
+
+const NO_AI_CONFIG = { getAIConfig: () => undefined } as unknown as Config;
 
 function makeContext(source: string): ReplyPipelineContext {
   const metadata = new HookMetadataMap();
@@ -83,7 +86,7 @@ function makeRegistry(source: string) {
 describe('PromptAssemblyStage source-aware scene template', () => {
   it('renders scenes.qq-private.zh.scene for qq-private source (via SceneProducer in registry)', async () => {
     const registry = makeRegistry('qq-private');
-    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any);
+    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any, NO_AI_CONFIG);
     const ctx = makeContext('qq-private');
 
     await stage.execute(ctx);
@@ -95,7 +98,7 @@ describe('PromptAssemblyStage source-aware scene template', () => {
 
   it('renders scenes.avatar-cmd.zh.scene for avatar-cmd source (via SceneProducer in registry)', async () => {
     const registry = makeRegistry('avatar-cmd');
-    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any);
+    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any, NO_AI_CONFIG);
     const ctx = makeContext('avatar-cmd');
 
     await stage.execute(ctx);
@@ -106,7 +109,7 @@ describe('PromptAssemblyStage source-aware scene template', () => {
 
   it('produces 2 system messages (baseSystem + sceneSystem) when registry returns baseline and scene', async () => {
     const registry = makeRegistry('qq-private');
-    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any);
+    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any, NO_AI_CONFIG);
     const ctx = makeContext('qq-private');
 
     await stage.execute(ctx);

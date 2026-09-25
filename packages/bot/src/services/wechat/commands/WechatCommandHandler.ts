@@ -1,8 +1,8 @@
 // WeChat command handler — /wechat <subcommand> [args]
 // Gives QQ bot users access to WeChat data via read-only PadPro API
 
+import type { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { SubAgentType } from '@/agent/types';
-import type { AIService } from '@/ai/AIService';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { CommandContext, CommandHandler, CommandResult } from '@/command/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
@@ -47,7 +47,7 @@ export class WechatCommandHandler implements CommandHandler {
   constructor(
     private readonly client: WeChatPadProClient,
     private readonly db: WeChatDatabase | null = null,
-    private readonly aiService: AIService | null = null,
+    private readonly subAgents: SubAgentOrchestrator | null = null,
     private readonly messageAPI: MessageAPI | null = null,
     private readonly retrieval: RetrievalService | null = null,
     private readonly momentsAnalysis: WechatMomentsAnalysisService | null = null,
@@ -296,8 +296,8 @@ export class WechatCommandHandler implements CommandHandler {
   }
 
   private async handleAnalyze(count: number, context: CommandContext): Promise<CommandResult> {
-    if (!this.aiService) {
-      return { success: false, error: 'AIService 不可用，无法启动分析任务' };
+    if (!this.subAgents) {
+      return { success: false, error: 'Sub-agent 不可用，无法启动分析任务' };
     }
 
     const n = Number.isFinite(count) && count > 0 ? count : 100;
@@ -311,11 +311,11 @@ export class WechatCommandHandler implements CommandHandler {
       protocol: context.metadata.protocol,
     };
 
-    // Fire-and-forget: runSubAgent spawns + executes + waits, then send result back
+    // Fire-and-forget: SubAgentOrchestrator.run spawns + executes + waits, then send result back
     const messageAPI = this.messageAPI;
     const cmdContext = context;
-    this.aiService
-      .runSubAgent(
+    this.subAgents
+      .run(
         SubAgentType.TASK_EXECUTION,
         {
           description,

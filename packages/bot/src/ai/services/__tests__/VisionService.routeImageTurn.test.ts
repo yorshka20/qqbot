@@ -5,7 +5,10 @@ import type { AIManager } from '@/ai/AIManager';
 import type { AIProvider } from '@/ai/base/AIProvider';
 import type { CapabilityType } from '@/ai/capabilities/types';
 import type { LLMCapability } from '@/ai/capabilities/LLMCapability';
+import type { ProviderSelector } from '@/ai/ProviderSelector';
 import { VisionService } from '../VisionService';
+
+const NO_SESSION_SELECTION = { getProviderForSession: async () => null } as unknown as ProviderSelector;
 
 function providerWith(name: string, capabilities: CapabilityType[]): AIProvider {
   return {
@@ -28,7 +31,7 @@ const geminiVision = providerWith('gemini', ['llm', 'vision']);
 
 describe('VisionService.routeImageTurn', () => {
   it('keeps the turn on the answering provider when it can see images', async () => {
-    const service = new VisionService(managerWithVisionDefault(geminiVision));
+    const service = new VisionService(managerWithVisionDefault(geminiVision), NO_SESSION_SELECTION);
     const deepseek = providerWith('deepseek', ['llm', 'function_calling', 'vision']) as unknown as LLMCapability;
 
     const routing = await service.routeImageTurn(deepseek, undefined, 'group:10000001');
@@ -39,7 +42,7 @@ describe('VisionService.routeImageTurn', () => {
   });
 
   it('keeps an explicitly routed provider that can see images', async () => {
-    const service = new VisionService(managerWithVisionDefault(geminiVision));
+    const service = new VisionService(managerWithVisionDefault(geminiVision), NO_SESSION_SELECTION);
     const doubao = providerWith('doubao', ['llm', 'vision']) as unknown as LLMCapability;
 
     const routing = await service.routeImageTurn(doubao, 'doubao', 'group:10000001');
@@ -49,7 +52,7 @@ describe('VisionService.routeImageTurn', () => {
   });
 
   it('hands the turn to the configured vision provider when the answering one is text-only', async () => {
-    const service = new VisionService(managerWithVisionDefault(geminiVision));
+    const service = new VisionService(managerWithVisionDefault(geminiVision), NO_SESSION_SELECTION);
     const ollama = providerWith('ollama', ['llm']) as unknown as LLMCapability;
 
     const routing = await service.routeImageTurn(ollama, 'ollama', 'group:10000001');
@@ -59,7 +62,7 @@ describe('VisionService.routeImageTurn', () => {
   });
 
   it('leaves the turn put when no vision provider is configured at all', async () => {
-    const service = new VisionService(managerWithVisionDefault(null));
+    const service = new VisionService(managerWithVisionDefault(null), NO_SESSION_SELECTION);
     const ollama = providerWith('ollama', ['llm']) as unknown as LLMCapability;
 
     const routing = await service.routeImageTurn(ollama, 'ollama', 'group:10000001');

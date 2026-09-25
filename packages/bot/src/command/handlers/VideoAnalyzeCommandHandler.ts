@@ -9,7 +9,7 @@
 // result back to the originating chat when done.
 
 import { inject, injectable } from 'tsyringe';
-import { AIService } from '@/ai/AIService';
+import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { getReplyMessageIdFromMessage } from '@/ai/utils/imageUtils';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
@@ -39,7 +39,7 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
   name = 'video';
 
   constructor(
-    @inject(AIService) private aiService: AIService,
+    @inject(SubAgentOrchestrator) private subAgents: SubAgentOrchestrator,
     @inject(DatabaseManager) private databaseManager: DatabaseManager,
     @inject(DITokens.CONFIG) private config: Config,
     @inject(MessageAPI) private messageAPI: MessageAPI,
@@ -72,8 +72,8 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
     const prompt =
       customPrompt || '请分析这个视频，提供内容摘要、关键看点、以及你认为有价值的见解。回复需要简洁有条理。';
 
-    this.aiService
-      .runSubAgent(VIDEO_AGENT_TYPE as any, {
+    this.subAgents
+      .run(VIDEO_AGENT_TYPE as any, {
         description: TASK_DESCRIPTION,
         input: { url, customPrompt: prompt },
         parentContext,

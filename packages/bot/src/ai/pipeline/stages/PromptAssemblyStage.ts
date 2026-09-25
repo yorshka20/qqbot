@@ -1,10 +1,13 @@
 // Prompt assembly stage — builds ChatMessage[] from accumulated context.
 
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { inject, singleton } from 'tsyringe';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { NormalEpisodeService } from '@/conversation/history';
-import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
-import type { AIChatConfig, ReasoningEffort } from '@/core/config/types/ai';
+import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
+import type { Config } from '@/core/config';
+import type { ReasoningEffort } from '@/core/config/types/ai';
+import { DITokens } from '@/core/DITokens';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../../capabilities/types';
@@ -41,6 +44,7 @@ const DEFAULT_REPLY_MODE_PROVIDERS = ['deepseek', 'openai', 'gemini'];
 const DEFAULT_LOW_EFFORT_PROVIDERS = ['doubao'];
 const DEFAULT_MAX_TOOL_ROUNDS = 15;
 
+@singleton()
 export class PromptAssemblyStage implements ReplyStage {
   readonly name = 'prompt-assembly';
 
@@ -52,11 +56,12 @@ export class PromptAssemblyStage implements ReplyStage {
   private readonly maxToolRounds: number;
 
   constructor(
-    private registry: PromptInjectionRegistry,
-    private promptManager: PromptManager,
-    private messageAPI: MessageAPI,
-    chatConfig?: AIChatConfig,
+    @inject(PromptInjectionRegistry) private registry: PromptInjectionRegistry,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
+    @inject(DITokens.CONFIG) config: Config,
   ) {
+    const chatConfig = config.getAIConfig()?.chat;
     this.chatReasoning = chatConfig?.reasoningEffort ?? DEFAULT_CHAT_REASONING;
     this.toolReasoning = chatConfig?.toolReasoningEffort ?? DEFAULT_TOOL_REASONING;
     this.quickReasoning = chatConfig?.quickReasoningEffort ?? DEFAULT_QUICK_REASONING;

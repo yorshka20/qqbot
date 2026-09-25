@@ -1,6 +1,7 @@
 // MessageTriggerPlugin - unified message trigger entry point
 // Decides whether to run the reply pipeline AND optionally spawns background subagents.
 
+import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { ProviderRouter } from '@/ai/routing/ProviderRouter';
@@ -79,6 +80,7 @@ export class MessageTriggerPlugin extends PluginBase {
         subAgentRules,
         this.promptManager,
         aiService,
+        container.resolve(SubAgentOrchestrator),
         messageAPI,
         conversationConfigService,
         protocol,

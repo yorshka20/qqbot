@@ -1,16 +1,17 @@
 // Generation stage — LLM call with retry/fallback + tool execution loop.
 
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { inject, singleton } from 'tsyringe';
+import { LLMService } from '@/ai/services/LLMService';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { normalizeSessionForConfig } from '@/core/config/SessionUtils';
 import type { ReasoningEffort } from '@/core/config/types/ai';
-import { getContainer } from '@/core/DIContainer';
-import type { HookManager } from '@/hooks/HookManager';
+import { DITokens } from '@/core/DITokens';
+import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
-import type { LLMService } from '../../services/LLMService';
 import { executeSkillCall } from '../../tools/replyTools';
 import type { AIGenerateResponse, ChatMessage, ToolDefinition } from '../../types';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
@@ -52,14 +53,16 @@ interface GenerationPipelineResult {
  * embedded as ContentPart[] in messages — each provider converts them to its
  * native format in its own generate path.
  */
+@singleton()
 export class GenerationStage implements ReplyStage {
   readonly name = 'generation';
 
   constructor(
-    private llmService: LLMService,
-    private toolManager: ToolManager,
-    private hookManager: HookManager,
-    private messageAPI: MessageAPI,
+    @inject(LLMService) private llmService: LLMService,
+    @inject(DITokens.TOOL_MANAGER) private toolManager: ToolManager,
+    @inject(HookManager) private hookManager: HookManager,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
+    @inject(ConversationConfigService) private conversationConfigService: ConversationConfigService,
   ) {}
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
@@ -97,9 +100,6 @@ export class GenerationStage implements ReplyStage {
    * Resolve the `/think` setting once per turn and return a per-round sender, or
    * undefined when thinking output is off — the caller then omits the callback
    * entirely rather than paying a config lookup on every tool round.
-   *
-   * ConversationConfigService is resolved lazily because it is registered after
-   * AIService builds the stage list.
    */
   private async createThinkingSender(
     ctx: ReplyPipelineContext,
@@ -108,13 +108,12 @@ export class GenerationStage implements ReplyStage {
       return undefined;
     }
     try {
-      const configService = getContainer().resolve(ConversationConfigService);
       // ctx.sessionId is the canonical prefixed id; the config is keyed on the bare one.
       const { sessionId, sessionType } = normalizeSessionForConfig(
         ctx.sessionId,
         ctx.hookContext.message.messageType === 'group' ? 'group' : 'user',
       );
-      if (!(await configService.getShowThinking(sessionId, sessionType))) {
+      if (!(await this.conversationConfigService.getShowThinking(sessionId, sessionType))) {
         return undefined;
       }
     } catch (err) {

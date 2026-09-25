@@ -14,6 +14,7 @@ import { ProactiveConversationService } from '@/conversation/proactive/Proactive
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { LLMService } from '@/ai/services/LLMService';
+import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { AIService } from '@/ai/AIService';
 
 /** Creates a ProviderRouter backed by a mock AIManager where all known providers are available. */
@@ -158,11 +159,8 @@ describe('MessageTriggerPlugin', () => {
       { allowOverride: true },
     );
     container.registerInstance(ProviderRouter, createMockProviderRouter(), { allowOverride: true });
-    container.registerInstance(
-      AIService,
-      { runSubAgent: async () => 'result', processReplyMaybeCard: async () => null },
-      { allowOverride: true },
-    );
+    container.registerInstance(AIService, { processReplyMaybeCard: async () => null }, { allowOverride: true });
+    container.registerInstance(SubAgentOrchestrator, { run: async () => 'result' }, { allowOverride: true });
     container.registerInstance(MessageAPI, mockMessageAPI, { allowOverride: true });
     container.registerInstance(
       ConversationConfigService,

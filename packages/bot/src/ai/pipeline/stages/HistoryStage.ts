@@ -1,6 +1,7 @@
 // History stage — episode-based conversation history loading (delegates to EpisodeCacheManager).
 
-import type { EpisodeCacheManager } from '../helpers/EpisodeCacheManager';
+import { inject, singleton } from 'tsyringe';
+import { EpisodeCacheManager } from '@/ai/pipeline/helpers/EpisodeCacheManager';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
 import type { ReplyStage } from '../types';
 
@@ -9,10 +10,11 @@ import type { ReplyStage } from '../types';
  * Delegates to {@link EpisodeCacheManager} to build episode-based history entries
  * with caching for prompt prefix stability (LLM cache optimization).
  */
+@singleton()
 export class HistoryStage implements ReplyStage {
   readonly name = 'history';
 
-  constructor(private episodeCacheManager: EpisodeCacheManager) {}
+  constructor(@inject(EpisodeCacheManager) private episodeCacheManager: EpisodeCacheManager) {}
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
     const result = await this.episodeCacheManager.buildNormalHistoryEntries(ctx.hookContext);

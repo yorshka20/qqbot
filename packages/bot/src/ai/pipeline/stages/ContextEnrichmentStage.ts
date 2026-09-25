@@ -1,15 +1,15 @@
 // Context enrichment stage — memory + RAG retrieval (parallel).
 
+import { inject, singleton } from 'tsyringe';
 import type { AuditEventStore } from '@/conversation/audit/AuditEventStore';
 import type { SessionMemoStore } from '@/conversation/memo/SessionMemoStore';
 import type { Config } from '@/core/config';
-import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { formatMemoryMarkdown } from '@/memory/formatMemoryMarkdown';
-import type { MemoryService } from '@/memory/MemoryService';
-import type { RetrievalService } from '@/services/retrieval';
+import { MemoryService } from '@/memory/MemoryService';
 import { QdrantClient } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { VKBContextEngine } from '@/services/vkb/VKBContextEngine';
 import { logger } from '@/utils/logger';
 import type { PromptManager } from '../../prompt/PromptManager';
@@ -27,30 +27,20 @@ const ALWAYS_SCOPE = ['instruction', 'rule'];
  * conversation context in parallel. Also exposes {@link getMemoryVarsForReply} for
  * reuse by the NSFW reply path which needs memory but bypasses the full pipeline.
  */
+@singleton()
 export class ContextEnrichmentStage implements ReplyStage {
   readonly name = 'context-enrichment';
 
-  private config: Config;
-
-  private readonly vkbContextEngine: VKBContextEngine;
-
-  private readonly auditEventStore: AuditEventStore;
-
-  private readonly sessionMemoStore: SessionMemoStore;
-
   constructor(
-    private memoryService: MemoryService,
-    private retrievalService: RetrievalService,
-    private promptManager: PromptManager,
-  ) {
-    this.config = getContainer().resolve<Config>(DITokens.CONFIG);
-    // VKBContextEngine is always registered (no-op when disabled) — resolve
-    // via DI to avoid bloating AIService's 14-arg constructor for an
-    // optional augmentation source.
-    this.vkbContextEngine = getContainer().resolve(VKBContextEngine);
-    this.auditEventStore = getContainer().resolve<AuditEventStore>(DITokens.AUDIT_EVENT_STORE);
-    this.sessionMemoStore = getContainer().resolve<SessionMemoStore>(DITokens.SESSION_MEMO_STORE);
-  }
+    @inject(MemoryService) private memoryService: MemoryService,
+    @inject(RetrievalService) private retrievalService: RetrievalService,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+    @inject(DITokens.CONFIG) private config: Config,
+    // No-op when `vkbContextEngine.enabled` is false.
+    @inject(VKBContextEngine) private readonly vkbContextEngine: VKBContextEngine,
+    @inject(DITokens.AUDIT_EVENT_STORE) private readonly auditEventStore: AuditEventStore,
+    @inject(DITokens.SESSION_MEMO_STORE) private readonly sessionMemoStore: SessionMemoStore,
+  ) {}
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
     const [memoryContextText, retrievedConversationSection, glossaryText] = await Promise.all([

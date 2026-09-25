@@ -1,9 +1,13 @@
 // Proactive reply generation service — generates proactive replies for group participation.
 
+import { inject, singleton } from 'tsyringe';
+import { LLMService } from '@/ai/services/LLMService';
+import { VisionService } from '@/ai/services/VisionService';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import { getContainer } from '@/core/DIContainer';
-import type { HookManager } from '@/hooks/HookManager';
+import { DITokens } from '@/core/DITokens';
+import { HookManager } from '@/hooks/HookManager';
 import { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import type { ToolManager } from '@/tools/ToolManager';
@@ -14,8 +18,6 @@ import { buildSkillUsageInstructions, executeSkillCall, getReplySkillDefinitions
 import type { AIGenerateResponse, ChatMessage, ContentPart } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
 import { normalizeVisionImages } from '../utils/imageUtils';
-import type { LLMService } from './LLMService';
-import type { VisionService } from './VisionService';
 
 /**
  * Proactive reply: the single ceiling on history entries in the prompt, enforced by dropping
@@ -37,13 +39,14 @@ const PROACTIVE_GEN_OPTIONS = {
  * RAG, memory, history) and calls the LLM with vision/tool support.
  * Constructs a synthetic HookContext for tool execution within the proactive flow.
  */
+@singleton()
 export class ProactiveReplyGenerationService {
   constructor(
-    private llmService: LLMService,
-    private visionService: VisionService,
-    private hookManager: HookManager,
-    private promptManager: PromptManager,
-    private toolManager: ToolManager,
+    @inject(LLMService) private llmService: LLMService,
+    @inject(VisionService) private visionService: VisionService,
+    @inject(HookManager) private hookManager: HookManager,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+    @inject(DITokens.TOOL_MANAGER) private toolManager: ToolManager,
   ) {}
 
   /** Shared assembler held by PromptManager — single instance for the whole AI service. */

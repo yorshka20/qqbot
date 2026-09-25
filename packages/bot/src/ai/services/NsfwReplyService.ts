@@ -1,15 +1,17 @@
 // NSFW reply service — standalone service for NSFW-mode reply generation.
 // Uses a fixed provider (deepseek), no task analysis, no tool use, no card rendering.
 
+import { inject, singleton } from 'tsyringe';
+import { ContextEnrichmentStage } from '@/ai/pipeline/stages/ContextEnrichmentStage';
+import { LLMService } from '@/ai/services/LLMService';
 import { hasWhitelistCapability, replaceReply } from '@/context/HookContextHelpers';
-import type { ConversationHistoryService } from '@/conversation/history';
-import type { HookManager } from '@/hooks/HookManager';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import { DITokens } from '@/core/DITokens';
+import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
-import type { ContextEnrichmentStage } from '../pipeline/stages/ContextEnrichmentStage';
 import type { PromptManager } from '../prompt/PromptManager';
-import type { LLMService } from './LLMService';
 
 /**
  * Standalone NSFW-mode reply generation service.
@@ -17,13 +19,14 @@ import type { LLMService } from './LLMService';
  * and no task analysis, tool use, or card rendering. Output is always plain text.
  * Reuses {@link ContextEnrichmentStage} for memory/RAG retrieval.
  */
+@singleton()
 export class NsfwReplyService {
   constructor(
-    private hookManager: HookManager,
-    private llmService: LLMService,
-    private conversationHistoryService: ConversationHistoryService,
-    private promptManager: PromptManager,
-    private contextEnrichmentStage: ContextEnrichmentStage,
+    @inject(HookManager) private hookManager: HookManager,
+    @inject(LLMService) private llmService: LLMService,
+    @inject(ConversationHistoryService) private conversationHistoryService: ConversationHistoryService,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+    @inject(ContextEnrichmentStage) private contextEnrichmentStage: ContextEnrichmentStage,
   ) {}
 
   /**

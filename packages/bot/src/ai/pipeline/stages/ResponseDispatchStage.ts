@@ -1,12 +1,13 @@
 // Response dispatch stage — card/text dispatch + onAIGenerationComplete hook.
 
+import { inject, singleton } from 'tsyringe';
+import { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
 import { replaceReply, setReplyWithSegments } from '@/context/HookContextHelpers';
-import type { HookManager } from '@/hooks/HookManager';
+import { HookManager } from '@/hooks/HookManager';
 import { MessageUtils } from '@/message/MessageUtils';
 import { logger } from '@/utils/logger';
 import { containsTextToolCalls, stripTextToolCalls } from '../../utils/dsmlParser';
 import { extractExpectedJsonFromLlmText } from '../../utils/llmJsonExtract';
-import type { CardRenderingHelper } from '../helpers/CardRenderingHelper';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
 import type { ReplyStage } from '../types';
 
@@ -29,12 +30,13 @@ import type { ReplyStage } from '../types';
  *
  * Fires `onAIGenerationComplete` hook on EVERY path and appends task result images when present.
  */
+@singleton()
 export class ResponseDispatchStage implements ReplyStage {
   readonly name = 'response-dispatch';
 
   constructor(
-    private cardHelper: CardRenderingHelper,
-    private hookManager: HookManager,
+    @inject(CardRenderingHelper) private cardHelper: CardRenderingHelper,
+    @inject(HookManager) private hookManager: HookManager,
   ) {}
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
