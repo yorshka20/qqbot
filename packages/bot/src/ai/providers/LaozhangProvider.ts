@@ -28,6 +28,7 @@ import {
 } from '../utils/geminiErrorHandler';
 import { assertGeminiReferenceCount } from '../utils/geminiImageRequest';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
+import { clampMaxTokens } from './maxTokens';
 
 /**
  * Laozhang/Gemini API response types
@@ -343,7 +344,7 @@ export class LaozhangProvider
     // Omit maxOutputTokens when unset so the model uses its full output budget (see GeminiProvider:
     // a low cap can be entirely consumed by thinking tokens, leaving no text).
     if (options?.maxTokens !== undefined) {
-      generationConfig.maxOutputTokens = options.maxTokens;
+      generationConfig.maxOutputTokens = clampMaxTokens(options.maxTokens);
     }
     const payload = {
       contents: [{ parts: contentsParts }],

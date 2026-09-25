@@ -8,6 +8,7 @@ import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType } from '../capabilities/types';
 import type { AIGenerateOptions, AIGenerateResponse, ChatMessageRole, StreamingHandler } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
+import { clampMaxTokens } from './maxTokens';
 
 /**
  * OpenRouter Provider implementation
@@ -105,7 +106,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'openai/gpt-3.5-turbo';
     const temperature = options?.temperature ?? this.config.temperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.maxTokens;
+    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.maxTokens);
 
     try {
       logger.info(`[STATS] [OpenRouterProvider] Generating with model: ${model}`);
@@ -184,7 +185,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'openai/gpt-3.5-turbo';
     const temperature = options?.temperature ?? this.config.temperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.maxTokens;
+    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.maxTokens);
 
     try {
       logger.info(`[STATS] [OpenRouterProvider] Generating stream with model: ${model}`);

@@ -1,8 +1,8 @@
-// DeepSeek clamps max_tokens to 8192, and a thinking model charges its hidden CoT
-// against that same budget — so the cap can be spent entirely on reasoning and the
-// response arrives with finish_reason=length and no content. Returning that as an
-// empty string makes a truncated generation indistinguishable from "nothing to say",
-// which is how a memory-extract failure went silent.
+// A thinking model charges its hidden CoT against max_tokens, so the cap can be
+// spent entirely on reasoning and the response arrives with finish_reason=length
+// and no content. Returning that as an empty string makes a truncated generation
+// indistinguishable from "nothing to say", which is how a memory-extract failure
+// went silent.
 
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';

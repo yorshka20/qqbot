@@ -14,5 +14,5 @@ export const TOKEN_BUDGET = {
   /** Prose or medium JSON: summaries, analyses, prompt rewriting, image params. */
   analysis: 8192,
   /** Whole-document output: memory extract/merge, batch report JSON. */
-  document: 20_000,
+  document: 50_000,
 } as const;

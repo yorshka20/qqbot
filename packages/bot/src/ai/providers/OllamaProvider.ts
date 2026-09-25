@@ -13,6 +13,7 @@ import type {
   StreamingHandler,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
+import { clampMaxTokens } from './maxTokens';
 
 export interface OllamaProviderConfig {
   baseUrl: string;
@@ -157,7 +158,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     options?: AIGenerateOptions,
   ): Promise<OllamaGenerateResponse> {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
+    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
     const thinking = options?.includeReasoning ?? false;
     const model = options?.model ?? this.config.model;
 
@@ -188,7 +189,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     options?: AIGenerateOptions,
   ): Promise<ReadableStream<Uint8Array>> {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
+    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
     const model = options?.model ?? this.config.model;
 
     const streamBody: Record<string, unknown> = {

@@ -29,7 +29,7 @@ import type {
 import { contentToPlainString } from '../utils/contentUtils';
 import { visionImageToDataUrl } from '../utils/imageUtils';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
-import { clampMaxTokens } from './maxTokens';
+import { clampMaxTokens, PREMIUM_MAX_TOKENS_CEILING } from './maxTokens';
 
 /**
  * Translate the pipeline's reasoning effort into the Responses API `reasoning` param.
@@ -290,7 +290,7 @@ export class OpenAIProvider
     const body: OpenAI.Responses.ResponseCreateParamsNonStreaming = {
       model,
       input,
-      max_output_tokens: clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens),
+      max_output_tokens: clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens, PREMIUM_MAX_TOKENS_CEILING),
       store: false,
     };
     const reasoning = mapReasoningEffortToOpenAI(options?.reasoningEffort);

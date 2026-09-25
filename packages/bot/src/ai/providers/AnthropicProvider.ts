@@ -19,7 +19,7 @@ import type {
 import { contentToPlainString } from '../utils/contentUtils';
 import { detectMimeType } from '../utils/imageResize';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
-import { clampMaxTokens } from './maxTokens';
+import { clampMaxTokens, PREMIUM_MAX_TOKENS_CEILING } from './maxTokens';
 
 export interface AnthropicProviderConfig {
   apiKey: string;
@@ -334,6 +334,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
     const maxTokens = clampMaxTokens(
       options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
+      PREMIUM_MAX_TOKENS_CEILING,
     );
 
     try {
@@ -425,6 +426,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
     const maxTokens = clampMaxTokens(
       options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
+      PREMIUM_MAX_TOKENS_CEILING,
     );
 
     try {
@@ -529,6 +531,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     const model = options?.model ?? this.config.model ?? 'claude-3-opus-20240229';
     const maxTokens = clampMaxTokens(
       options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
+      PREMIUM_MAX_TOKENS_CEILING,
     );
 
     try {

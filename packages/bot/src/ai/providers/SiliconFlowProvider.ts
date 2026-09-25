@@ -15,6 +15,7 @@ import type {
   ToolDefinition,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
+import { clampMaxTokens } from './maxTokens';
 
 export interface SiliconFlowProviderConfig {
   apiKey: string;
@@ -150,7 +151,7 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'Qwen/Qwen2.5-7B-Instruct';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
+    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
 
     try {
       logger.info(`[STATS] [SiliconFlowProvider] Generating with model: ${model}`);
@@ -268,7 +269,7 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'Qwen/Qwen2.5-7B-Instruct';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? this.config.defaultMaxTokens;
+    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
 
     try {
       logger.info(`[STATS] [SiliconFlowProvider] Generating stream with model: ${model}`);
