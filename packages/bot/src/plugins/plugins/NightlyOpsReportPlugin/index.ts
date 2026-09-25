@@ -10,6 +10,7 @@ import type { Config } from '@/core/config';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import type { PermissionChecker } from '@/permission';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { RegisterPlugin } from '../../decorators';
@@ -46,21 +47,18 @@ export class NightlyOpsReportPlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    const config = container.resolve<Config>(DITokens.CONFIG);
     this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-
-    const botConfig = config.getConfig();
-    this.ownerId = botConfig.bot.owner;
-
-    if (!this.ownerId) {
-      logger.warn('[NightlyOpsReportPlugin] bot.owner is empty — plugin will not start cron');
-      return;
-    }
 
     const pluginCfg = (this.pluginConfig?.config ?? {}) as NightlyOpsReportPluginConfig;
     this.cron = pluginCfg.cron ?? '*/10 * * * *';
     this.timezone = pluginCfg.timezone ?? 'Asia/Tokyo';
     this.protocol = pluginCfg.protocol ?? 'milky';
+    this.ownerId = container.resolve<PermissionChecker>(DITokens.PERMISSION_CHECKER).getOwnerId(this.protocol);
+
+    if (!this.ownerId) {
+      logger.warn('[NightlyOpsReportPlugin] bot.owner is empty — plugin will not start cron');
+      return;
+    }
 
     // Resolve reportDir: absolute → use as-is; relative → resolve from repo root; default → ops/reports
     if (pluginCfg.reportDir) {

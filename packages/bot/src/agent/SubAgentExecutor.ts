@@ -3,8 +3,8 @@
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, FunctionCall, ToolDefinition, ToolUseGenerateResponse } from '@/ai/types';
-import type { PermissionChecker } from '@/command/CommandManager';
 import { getCurrentMessageContext } from '@/context/MessageContextStorage';
+import type { PermissionChecker } from '@/permission';
 import type { ToolManager } from '@/tools/ToolManager';
 import { getCurrentDateHourForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';

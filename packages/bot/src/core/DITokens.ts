@@ -86,6 +86,7 @@ export const DITokens = {
   // ── Hooks / commands / tools (required) ──
   HOOK_MANAGER: defineToken('HookManager', { required: true }),
   COMMAND_MANAGER: defineToken('CommandManager', { required: true }),
+  PERMISSION_CHECKER: defineToken('PermissionChecker', { required: true }),
   TOOL_MANAGER: defineToken('ToolManager', { required: true }),
   PLUGIN_MANAGER: defineToken('PluginManager', { required: true }),
   EVENT_ROUTER: defineToken('EventRouter', { required: true }),

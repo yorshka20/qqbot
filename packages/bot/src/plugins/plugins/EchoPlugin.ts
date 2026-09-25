@@ -12,6 +12,7 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageUtils } from '@/message/MessageUtils';
 import type { TextSegment } from '@/message/types';
+import type { PermissionChecker } from '@/permission';
 import { logger } from '@/utils/logger';
 import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import { Hook, RegisterPlugin } from '../decorators';
@@ -76,11 +77,10 @@ export class EchoPlugin extends PluginBase {
     }
 
     const botSelfId = context.metadata.get('botSelfId');
-    const config = getContainer().resolve<Config>(DITokens.CONFIG);
-    const botConfig = config.getConfig().bot;
+    const permissionChecker = getContainer().resolve<PermissionChecker>(DITokens.PERMISSION_CHECKER);
 
     const isEnabled = this.enabled;
-    const isAdmin = MessageUtils.isAdmin(context.message.userId, botConfig);
+    const isAdmin = permissionChecker.isAdmin(context.message.userId, context.message.protocol);
     // Use context.command (routed before this hook) so we skip TTS for any command, including when
     // message.message starts with non-text (e.g. [Image:...]/i2v) and isCommand(message) would be false.
     const isCommand = context.command != null || MessageUtils.isCommand(context.message.message);

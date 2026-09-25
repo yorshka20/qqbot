@@ -8,26 +8,10 @@ import { getSessionId, getSessionType } from '@/core/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
+import type { PermissionChecker, PermissionLevel } from '@/permission';
 import { logger } from '@/utils/logger';
 import { getAllCommandMetadata } from './decorators';
-import type {
-  CommandContext,
-  CommandHandler,
-  CommandRegistration,
-  CommandResult,
-  ParsedCommand,
-  PermissionLevel,
-} from './types';
-
-export interface PermissionChecker {
-  checkPermission(
-    userId: number | string,
-    messageType: 'private' | 'group',
-    requiredPermissions: PermissionLevel[],
-    userRole?: string,
-    protocol?: string,
-  ): boolean;
-}
+import type { CommandContext, CommandHandler, CommandRegistration, CommandResult, ParsedCommand } from './types';
 
 export class CommandManager {
   private commands = new Map<string, CommandRegistration>();

@@ -1,6 +1,7 @@
 import type { Bot } from '@/core/Bot';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import type { PermissionChecker } from '@/permission';
 import { logger } from '@/utils/logger';
 
 export interface AdminAlert {
@@ -87,9 +88,9 @@ export class AdminAlertService {
       const { MessageAPI } = await import('@/api/methods/MessageAPI');
       const container = getContainer();
       const messageAPI = container.resolve<InstanceType<typeof MessageAPI>>(DITokens.MESSAGE_API);
-      const ownerId = this.config.getConfig().bot?.owner;
       const enabledProtocols = this.config.getEnabledProtocols();
       const preferredProtocol = enabledProtocols[0]?.name;
+      const ownerId = container.resolve<PermissionChecker>(DITokens.PERMISSION_CHECKER).getOwnerId(preferredProtocol);
 
       if (!ownerId || !preferredProtocol) {
         logger.warn(

@@ -10,13 +10,14 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { ProactiveConversationService } from '@/conversation/proactive';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import type { PermissionLevel } from '@/permission';
 import type { PluginManager } from '@/plugins/PluginManager';
 import type { InfoCardData, ListCardData } from '@/services/card';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import type { CommandManager } from '../CommandManager';
 import { Command } from '../decorators';
-import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '../types';
+import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
 /** Template name for trigger words: preference.{preferenceKey}.trigger (prompts/preference/{key}/trigger.txt). */
 const TRIGGER_TEMPLATE_SUFFIX = '.trigger';

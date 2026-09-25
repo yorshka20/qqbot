@@ -27,7 +27,7 @@ import { getLanRelayRuntime } from '@/lan';
 import type { LanRelayHost } from '@/lan/host/LanRelayHost';
 import type { LanRelayDispatchPayload, LanRelayOriginContext } from '@/lan/types/wire';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { MessageUtils } from '@/message/MessageUtils';
+import type { PermissionChecker } from '@/permission';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
 import { RegisterPlugin } from '../../decorators';
@@ -48,11 +48,13 @@ const USAGE = `/lan list                  — list connected clients
 export class LanControlPlugin extends PluginBase {
   private commandManager!: CommandManager;
   private config!: Config;
+  private permissionChecker!: PermissionChecker;
 
   async onInit(): Promise<void> {
     const container = getContainer();
     this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
     this.config = container.resolve<Config>(DITokens.CONFIG);
+    this.permissionChecker = container.resolve<PermissionChecker>(DITokens.PERMISSION_CHECKER);
   }
 
   async onEnable(): Promise<void> {
@@ -77,7 +79,7 @@ export class LanControlPlugin extends PluginBase {
    */
   private async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     // Defensive owner check (PluginCommandHandler also enforces, but cheap to repeat).
-    if (!MessageUtils.isOwner(context.userId, this.config.getConfig().bot)) {
+    if (!this.permissionChecker.isOwner(context.userId, context.metadata.protocol)) {
       return reply('权限不足：/lan 仅 owner 可用');
     }
 

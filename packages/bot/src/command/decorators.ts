@@ -1,11 +1,7 @@
 // Command decorator for automatic registration
 
+import type { PermissionLevel } from '@/permission';
 import type { CommandHandler } from './types';
-
-/**
- * Permission levels for command access control
- */
-export type PermissionLevel = 'user' | 'group_admin' | 'group_owner' | 'admin' | 'owner';
 
 /**
  * Command decorator options

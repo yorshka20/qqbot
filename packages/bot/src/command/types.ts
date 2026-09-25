@@ -4,6 +4,7 @@ import type { ConversationContext } from '@/context/types';
 import type { ProtocolName } from '@/core/config';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
+import type { PermissionLevel } from '@/permission';
 
 /**
  * Parsed command structure
@@ -92,7 +93,6 @@ export interface CommandContext {
 /**
  * Permission levels for command access control
  */
-export type PermissionLevel = 'user' | 'group_admin' | 'group_owner' | 'admin' | 'owner';
 
 /**
  * Command registration info

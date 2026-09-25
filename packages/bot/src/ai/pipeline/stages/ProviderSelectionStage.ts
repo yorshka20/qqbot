@@ -1,6 +1,6 @@
 // Provider selection stage — routing, vision/tool capability detection, tool definition assembly.
 
-import type { PermissionChecker } from '@/command/CommandManager';
+import type { PermissionChecker } from '@/permission';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import type { AIProvider } from '../../base/AIProvider';

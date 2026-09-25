@@ -1,9 +1,8 @@
 import { inject, injectable } from 'tsyringe';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryService } from '@/memory/MemoryService';
-import { MessageUtils } from '@/message/MessageUtils';
+import type { PermissionChecker } from '@/permission';
 import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -31,7 +30,7 @@ export class MemorySyncCommand implements CommandHandler {
   constructor(
     @inject(DITokens.MEMORY_SERVICE) private memoryService: MemoryService,
     @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
-    @inject(DITokens.CONFIG) private config: Config,
+    @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
   ) {}
 
   execute(args: string[], context: CommandContext): CommandResult {
@@ -40,8 +39,7 @@ export class MemorySyncCommand implements CommandHandler {
     }
 
     const userId = context.userId.toString();
-    const botConfig = this.config.getConfig().bot;
-    if (!MessageUtils.isAdmin(userId, botConfig)) {
+    if (!this.permissionChecker.isAdmin(userId, context.metadata.protocol)) {
       return { success: false, error: '仅限管理员使用。' };
     }
 

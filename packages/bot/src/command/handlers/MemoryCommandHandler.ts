@@ -8,7 +8,7 @@ import { DITokens } from '@/core/DITokens';
 import type { MemoryExtractService } from '@/memory';
 import type { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { MessageUtils } from '@/message/MessageUtils';
+import type { PermissionChecker } from '@/permission';
 import type { PluginManager } from '@/plugins/PluginManager';
 import type { MemoryPlugin } from '@/plugins/plugins/MemoryPlugin';
 import { logger } from '@/utils/logger';
@@ -43,6 +43,7 @@ export class MemoryDeepCommand implements CommandHandler {
   constructor(
     @inject(DITokens.PLUGIN_MANAGER) private pluginManager: PluginManager,
     @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+    @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
   ) {}
 
   execute(args: string[], context: CommandContext): CommandResult {
@@ -67,9 +68,7 @@ export class MemoryDeepCommand implements CommandHandler {
 
     // Group memory extract requires admin/owner
     if (target === 'group') {
-      const config = getContainer().resolve<Config>(DITokens.CONFIG);
-      const botConfig = config.getConfig().bot;
-      if (!MessageUtils.isAdmin(userId, botConfig)) {
+      if (!this.permissionChecker.isAdmin(userId, context.metadata.protocol)) {
         return { success: false, error: '群组记忆整理仅限管理员或owner使用。' };
       }
     }
@@ -135,6 +134,7 @@ export class MemoryEditCommand implements CommandHandler {
     @inject(DITokens.MEMORY_SERVICE) private memoryService: MemoryService,
     @inject(DITokens.MEMORY_EXTRACT_SERVICE) private memoryExtractService: MemoryExtractService,
     @inject(DITokens.CONFIG) private config: Config,
+    @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
   ) {}
 
   /** Resolve the LLM provider for memory operations from config (required). */
@@ -162,9 +162,7 @@ export class MemoryEditCommand implements CommandHandler {
 
     const groupId = context.groupId.toString();
     const callerUserId = context.userId.toString();
-    const config = getContainer().resolve<Config>(DITokens.CONFIG);
-    const botConfig = config.getConfig().bot;
-    const isAdminOrOwner = MessageUtils.isAdmin(callerUserId, botConfig);
+    const isAdminOrOwner = this.permissionChecker.isAdmin(callerUserId, context.metadata.protocol);
 
     const { text: content, options } = CommandArgsParser.parse<{ target?: string; user?: string }>(
       args,

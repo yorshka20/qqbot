@@ -2,12 +2,13 @@
 // Provides commands to enable/disable commands and plugins per conversation
 
 import type { CommandManager } from '@/command/CommandManager';
-import type { CommandContext, CommandResult, PermissionLevel } from '@/command/types';
+import type { CommandContext, CommandResult } from '@/command/types';
 import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { getSessionId, getSessionType } from '@/core/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import type { PermissionLevel } from '@/permission';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';

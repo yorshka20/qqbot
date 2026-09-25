@@ -20,7 +20,8 @@
 // - Handlers in src/command/handlers/ are actual command implementations (e.g., TTSCommandHandler)
 // - PluginCommandHandler is an adapter that allows plugins to register commands dynamically
 
-import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '@/command/types';
+import type { CommandContext, CommandHandler, CommandResult } from '@/command/types';
+import type { PermissionLevel } from '@/permission';
 import type { PluginContext } from './types';
 
 /**

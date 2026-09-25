@@ -2,10 +2,11 @@
 // Gives QQ bot users access to Zhihu feed data and content
 
 import { MessageBuilder } from '@/message/MessageBuilder';
+import type { PermissionLevel } from '@/permission';
 import type { ZhihuDatabase } from '@/services/zhihu/ZhihuDatabase';
 import type { ZhihuFeedService } from '@/services/zhihu/ZhihuFeedService';
 import { logger } from '@/utils/logger';
-import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '../../../command/types';
+import type { CommandContext, CommandHandler, CommandResult } from '../../../command/types';
 
 const USAGE = `
 /zhihu status              — 知乎服务状态

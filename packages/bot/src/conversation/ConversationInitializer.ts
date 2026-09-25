@@ -17,7 +17,6 @@ import { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisSer
 import type { APIClient } from '@/api/APIClient';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { CommandManager } from '@/command';
-import { DefaultPermissionChecker } from '@/command/PermissionChecker';
 import { ContextManager } from '@/context';
 import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { ConversationHistoryService, SessionHistoryStore } from '@/conversation/history';
@@ -33,6 +32,7 @@ import { FanoutInitializer } from '@/fanout/FanoutInitializer';
 import { HookManager } from '@/hooks/HookManager';
 import { MemoryExtractService, MemoryRAGService, MemoryService } from '@/memory';
 import { MessageUtils } from '@/message/MessageUtils';
+import { DefaultPermissionChecker } from '@/permission';
 import { PersonaInitializer } from '@/persona';
 import { BilibiliService } from '@/services/bilibili';
 import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
@@ -426,22 +426,8 @@ export class ConversationInitializer {
 
     const botConfig = config.getConfig();
 
-    // Build per-protocol permission overrides from protocol configs
-    const protocolOverrides: Record<string, { owner?: string; admins?: string[] }> = {};
-    for (const proto of botConfig.protocols ?? []) {
-      if (proto.owner || (proto.admins && proto.admins.length > 0)) {
-        protocolOverrides[proto.name] = {
-          owner: proto.owner,
-          admins: proto.admins,
-        };
-      }
-    }
-
-    const permissionChecker = new DefaultPermissionChecker({
-      owner: botConfig.bot.owner,
-      admins: botConfig.bot.admins,
-      ...(Object.keys(protocolOverrides).length > 0 && { protocolOverrides }),
-    });
+    const permissionChecker = new DefaultPermissionChecker(config);
+    container.registerInstance(DITokens.PERMISSION_CHECKER, permissionChecker);
 
     const commandManager = new CommandManager(permissionChecker, conversationConfigService);
 

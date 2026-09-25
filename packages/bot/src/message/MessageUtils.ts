@@ -1,7 +1,6 @@
 // Message utility functions - centralized message analysis helpers
 
 import { CommandParser } from '@/command/CommandParser';
-import type { BotSelfConfig } from '@/core/config/types/bot';
 import type { NormalizedMessageEvent } from '@/events/types';
 
 /**
@@ -130,45 +129,5 @@ export class MessageUtils {
       text = text.replace(/\[[^[\]]*\]/g, '');
     } while (text !== prev);
     return text.replace(/@\d+/g, '').trim();
-  }
-
-  /**
-   * Check if user is bot owner
-   * @param userId - User ID to check
-   * @param botConfig - Bot configuration (bot section)
-   * @returns true if user is bot owner
-   */
-  static isOwner(userId: number | string | undefined, botConfig?: BotSelfConfig | null): boolean {
-    if (!userId || !botConfig) {
-      return false;
-    }
-
-    const userIdStr = userId.toString();
-    return botConfig.owner ? userIdStr === botConfig.owner.toString() : false;
-  }
-
-  /**
-   * Check if user is bot admin (owner or in admins list)
-   * @param userId - User ID to check
-   * @param botConfig - Bot configuration (bot section)
-   * @returns true if user is admin or owner
-   */
-  static isAdmin(userId: number | string | undefined, botConfig?: BotSelfConfig | null): boolean {
-    if (!userId || !botConfig) {
-      return false;
-    }
-
-    // Check if user is owner
-    if (MessageUtils.isOwner(userId, botConfig)) {
-      return true;
-    }
-
-    // Check if user is in admins list
-    const userIdStr = userId.toString();
-    if (botConfig.admins && Array.isArray(botConfig.admins)) {
-      return botConfig.admins.some((adminId: string) => adminId.toString() === userIdStr);
-    }
-
-    return false;
   }
 }

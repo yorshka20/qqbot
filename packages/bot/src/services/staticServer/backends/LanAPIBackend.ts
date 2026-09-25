@@ -27,6 +27,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { LanHostSubscriber, LanRelayHost } from '@/lan/host/LanRelayHost';
 import { getLanRelayRuntime } from '@/lan/types/runtime';
+import type { PermissionChecker } from '@/permission';
 import { logger } from '@/utils/logger';
 import { errorResponse, jsonResponse } from './types';
 
@@ -156,9 +157,11 @@ export class LanAPIBackend {
       if (!config) {
         return errorResponse('Config not available', 500);
       }
-      const ownerId = config.getConfig().bot?.owner;
       const enabledProtocols = config.getEnabledProtocols();
       const preferredProtocol = enabledProtocols[0]?.name;
+      const ownerId = getContainer()
+        .resolve<PermissionChecker>(DITokens.PERMISSION_CHECKER)
+        .getOwnerId(preferredProtocol);
       if (!ownerId || !preferredProtocol) {
         return errorResponse(
           `Cannot dispatch from WebUI — bot.owner=${ownerId || 'missing'} preferredProtocol=${preferredProtocol || 'missing'}`,

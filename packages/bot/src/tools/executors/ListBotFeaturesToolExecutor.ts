@@ -2,8 +2,8 @@
 
 import { inject, injectable } from 'tsyringe';
 import type { CommandManager } from '@/command/CommandManager';
-import type { PermissionLevel } from '@/command/types';
 import { DITokens } from '@/core/DITokens';
+import type { PermissionLevel } from '@/permission';
 import type { PluginManager } from '@/plugins/PluginManager';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';

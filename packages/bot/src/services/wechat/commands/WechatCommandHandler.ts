@@ -4,8 +4,9 @@
 import { SubAgentType } from '@/agent/types';
 import type { AIService } from '@/ai/AIService';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { CommandContext, CommandHandler, CommandResult, PermissionLevel } from '@/command/types';
+import type { CommandContext, CommandHandler, CommandResult } from '@/command/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import type { PermissionLevel } from '@/permission';
 import type { RetrievalService } from '@/services/retrieval';
 import type {
   WeChatDatabase,
