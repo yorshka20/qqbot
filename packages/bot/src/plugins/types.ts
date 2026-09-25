@@ -39,4 +39,6 @@ export interface Plugin extends PluginInfo, PluginHooks {
   onInit?(): void | Promise<void>;
   onEnable?(): void | Promise<void>;
   onDisable?(): void | Promise<void>;
+  onStart?(): void | Promise<void>;
+  onStop?(): void | Promise<void>;
 }

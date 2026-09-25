@@ -322,7 +322,7 @@ Manages plugin loading and lifecycle.
 
 **Responsibilities:**
 - Load plugins from `src/plugins/plugins/` directory (fixed path)
-- Manage plugin lifecycle (init, enable, disable)
+- Manage plugin lifecycle (init, enable/disable, start/stop)
 - Provide `PluginContext` to each plugin (API client, event router)
 - Track enabled/disabled plugins per config
 
@@ -331,6 +331,15 @@ Manages plugin loading and lifecycle.
 2. For each enabled plugin, scan `src/plugins/plugins/` for a matching file
 3. Call `plugin.loadConfig(context, entry)` then `plugin.onInit()`
 4. If enabled, call `plugin.onEnable()`
+5. Once every connection is up, `index.ts` calls `pluginManager.startAll()` → `onStart()` of each enabled plugin; shutdown calls `stopAll()` → `onStop()` in reverse order. A plugin enabled at runtime after that starts immediately; disabling runs `onStop()` before `onDisable()`.
+
+**Lifecycle contract:**
+
+| Hook | Runs for | May do |
+|---|---|---|
+| `onInit` | every loaded plugin, enabled or not, before any connection | read config, resolve dependencies — no timers, child processes or I/O |
+| `onEnable` / `onDisable` | enabled plugins | in-memory registration (commands, event listeners, fan-out tasks); each undoes the other |
+| `onStart` / `onStop` | enabled plugins, once the app is connected | timers, crons, servers, startup jobs (archiving, backups, first polls); `onStop` clears every handle `onStart` created |
 
 #### PluginBase.ts
 
@@ -345,6 +354,8 @@ export abstract class PluginBase {
   onInit?(): void | Promise<void>;
   onEnable(): void | Promise<void>;
   onDisable(): void | Promise<void>;
+  onStart?(): void | Promise<void>;
+  onStop?(): void | Promise<void>;
 
   protected on<T extends NormalizedEvent>(eventType: string, handler: EventHandler<T>): void;
   protected off<T extends NormalizedEvent>(eventType: string, handler: EventHandler<T>): void;
@@ -362,6 +373,8 @@ interface Plugin extends PluginInfo, PluginHooks {
   onInit?(): void | Promise<void>;
   onEnable?(): void | Promise<void>;
   onDisable?(): void | Promise<void>;
+  onStart?(): void | Promise<void>;
+  onStop?(): void | Promise<void>;
 }
 ```
 

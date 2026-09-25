@@ -55,6 +55,8 @@ export class MemoryPlugin extends PluginBase {
 
   /** Backup interval timer. */
   private backupTimer: ReturnType<typeof setInterval> | null = null;
+  private cleanupStartupTimer: ReturnType<typeof setTimeout> | null = null;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private backupIntervalMs = DEFAULT_BACKUP_INTERVAL_MS;
   private backupDir = DEFAULT_BACKUP_DIR;
 
@@ -92,7 +94,9 @@ export class MemoryPlugin extends PluginBase {
         `[MemoryPlugin] Configured | extractProvider=${this.extractProvider}${this.extractModel ? ` model=${this.extractModel}` : ''}`,
       );
     }
+  }
 
+  onStart(): void {
     // Start periodic memory backup
     if (this.backupIntervalMs > 0) {
       // Run an initial backup on startup, then schedule periodic backups
@@ -107,8 +111,23 @@ export class MemoryPlugin extends PluginBase {
 
     // Daily memory fact cleanup (stale/zombie detection)
     const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
-    setTimeout(() => void this.runDailyCleanup(), 60 * 60 * 1000); // 1h after startup
-    setInterval(() => void this.runDailyCleanup(), CLEANUP_INTERVAL_MS);
+    this.cleanupStartupTimer = setTimeout(() => void this.runDailyCleanup(), 60 * 60 * 1000); // 1h after startup
+    this.cleanupTimer = setInterval(() => void this.runDailyCleanup(), CLEANUP_INTERVAL_MS);
+  }
+
+  onStop(): void {
+    if (this.backupTimer) {
+      clearInterval(this.backupTimer);
+      this.backupTimer = null;
+    }
+    if (this.cleanupStartupTimer) {
+      clearTimeout(this.cleanupStartupTimer);
+      this.cleanupStartupTimer = null;
+    }
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
   }
 
   async onEnable(): Promise<void> {

@@ -82,9 +82,7 @@ export class ZhihuFeedPlugin extends PluginBase {
     logger.info('[ZhihuFeedPlugin] Initialized');
   }
 
-  async onEnable(): Promise<void> {
-    this.enabled = true;
-
+  onStart(): void {
     // Schedule feed polling
     if (this.feedService && this.resolvedConfig.cookie) {
       this.pollTask = schedule(this.resolvedConfig.pollIntervalCron, async () => {
@@ -108,13 +106,16 @@ export class ZhihuFeedPlugin extends PluginBase {
 
     // Digest scheduling is handled by schedule.md → AgentLoop (not this plugin)
 
-    logger.info('[ZhihuFeedPlugin] Enabled');
+    logger.info('[ZhihuFeedPlugin] Started');
+  }
+
+  onStop(): void {
+    this.pollTask?.stop();
+    this.pollTask = null;
   }
 
   async onDisable(): Promise<void> {
     this.enabled = false;
-    this.pollTask?.stop();
-    this.pollTask = null;
     this.db?.close();
     this.db = null;
     logger.info('[ZhihuFeedPlugin] Disabled');

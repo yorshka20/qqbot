@@ -53,6 +53,8 @@ export interface PluginManagerDeps {
 export class PluginManager {
   private plugins = new Map<string, Plugin>();
   private enabledPlugins = new Set<string>();
+  private startedPlugins = new Set<string>();
+  private running = false;
 
   private readonly apiClient: APIClient;
   private readonly eventRouter: EventRouter;
@@ -173,6 +175,10 @@ export class PluginManager {
 
     this.enabledPlugins.add(name);
     logger.info(`▶️ [PluginManager] Enabled plugin: ${name}`);
+
+    if (this.running) {
+      await this.startPlugin(plugin);
+    }
   }
 
   async disablePlugin(name: string): Promise<void> {
@@ -185,13 +191,59 @@ export class PluginManager {
       return;
     }
 
-    await plugin.onDisable?.();
+    if (this.startedPlugins.has(name)) {
+      await this.stopPlugin(plugin);
+    }
 
-    // todo: should we unregister plugin from hook?
-    this.hookManager.unregister(name);
+    await plugin.onDisable?.();
 
     this.enabledPlugins.delete(name);
     logger.info(`⏸️ [PluginManager] Disabled plugin: ${name}`);
+  }
+
+  /**
+   * Run onStart for every enabled plugin. Called once the app is connected; plugins
+   * enabled after this point start as part of enablePlugin.
+   */
+  async startAll(): Promise<void> {
+    this.running = true;
+    for (const name of this.enabledPlugins) {
+      const plugin = this.plugins.get(name);
+      if (!plugin) {
+        continue;
+      }
+      try {
+        await this.startPlugin(plugin);
+      } catch (error) {
+        logger.error(`❌ [PluginManager] Failed to start plugin ${name}:`, error);
+      }
+    }
+  }
+
+  /** Run onStop for every started plugin, in reverse start order. */
+  async stopAll(): Promise<void> {
+    this.running = false;
+    for (const name of [...this.startedPlugins].reverse()) {
+      const plugin = this.plugins.get(name);
+      if (plugin) {
+        await this.stopPlugin(plugin);
+      }
+    }
+  }
+
+  private async startPlugin(plugin: Plugin): Promise<void> {
+    await plugin.onStart?.();
+    this.startedPlugins.add(plugin.name);
+    logger.debug(`[PluginManager] Started plugin: ${plugin.name}`);
+  }
+
+  private async stopPlugin(plugin: Plugin): Promise<void> {
+    this.startedPlugins.delete(plugin.name);
+    try {
+      await plugin.onStop?.();
+    } catch (error) {
+      logger.error(`❌ [PluginManager] Failed to stop plugin ${plugin.name}:`, error);
+    }
   }
 
   getPlugin(name: string): Plugin | undefined {

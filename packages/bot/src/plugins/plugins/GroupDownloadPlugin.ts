@@ -45,6 +45,7 @@ export class GroupDownloadPlugin extends PluginBase {
   private fileService!: FileReadService;
   private groupIdSet: Set<string> = new Set();
   private deduplicateTimer: ReturnType<typeof setInterval> | undefined;
+  private deduplicateIntervalMs = 0;
 
   async onInit(): Promise<void> {
     const container = getContainer();
@@ -62,21 +63,23 @@ export class GroupDownloadPlugin extends PluginBase {
       } else {
         logger.info('[GroupDownloadPlugin] No groupIds configured; plugin enabled but will not download.');
       }
-
-      // Start scheduled dedup if configured
-      const intervalMs = pluginConfig?.deduplicateIntervalMs ?? 0;
-      if (intervalMs > 0) {
-        this.deduplicateTimer = setInterval(() => {
-          void this.runScheduledDedup();
-        }, intervalMs);
-        logger.info(`[GroupDownloadPlugin] Scheduled dedup enabled: every ${Math.round(intervalMs / 60000)} min.`);
-      }
+      this.deduplicateIntervalMs = pluginConfig?.deduplicateIntervalMs ?? 0;
     } catch (error) {
       logger.error('[GroupDownloadPlugin] Config error:', error);
     }
   }
 
-  async onDisable(): Promise<void> {
+  onStart(): void {
+    const intervalMs = this.deduplicateIntervalMs;
+    if (intervalMs > 0) {
+      this.deduplicateTimer = setInterval(() => {
+        void this.runScheduledDedup();
+      }, intervalMs);
+      logger.info(`[GroupDownloadPlugin] Scheduled dedup enabled: every ${Math.round(intervalMs / 60000)} min.`);
+    }
+  }
+
+  onStop(): void {
     if (this.deduplicateTimer !== undefined) {
       clearInterval(this.deduplicateTimer);
       this.deduplicateTimer = undefined;

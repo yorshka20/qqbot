@@ -260,17 +260,20 @@ export class WeChatIngestPlugin extends PluginBase {
     logger.info('[WeChatIngestPlugin] Initialized');
   }
 
-  async onEnable(): Promise<void> {
-    this.enabled = true;
+  onStart(): void {
     this.ingestService?.start();
     this.cleanupService?.start();
-    logger.info('[WeChatIngestPlugin] Enabled — webhook server started');
+    logger.info('[WeChatIngestPlugin] Started — webhook server listening');
+  }
+
+  async onStop(): Promise<void> {
+    this.cleanupService?.stop();
+    await this.ingestService?.stop();
+    logger.info('[WeChatIngestPlugin] Stopped — webhook server closed');
   }
 
   async onDisable(): Promise<void> {
     this.enabled = false;
-    this.cleanupService?.stop();
-    await this.ingestService?.stop();
     this.db?.close();
     this.db = null;
     logger.info('[WeChatIngestPlugin] Disabled — webhook server stopped');

@@ -7,6 +7,7 @@ import { bootstrapApp } from './core/bootstrap';
 import { getContainer } from './core/DIContainer';
 import { DITokens } from './core/DITokens';
 import { initLanRelay } from './lan';
+import type { PluginManager } from './plugins/PluginManager';
 import { ClaudeCodeInitializer } from './services/claudeCode';
 import { killAllMcpChildren } from './services/retrieval/searxng/mcp/childReaper';
 import { stopStaticServer } from './services/staticServer';
@@ -33,6 +34,7 @@ async function main() {
     const config = bot.getConfig();
     const container = getContainer();
     const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    const pluginManager = container.resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
     let resourceCleanupService: ResourceCleanupService | null = null;
     try {
       resourceCleanupService = container.resolve<ResourceCleanupService>(DITokens.RESOURCE_CLEANUP_SERVICE);
@@ -109,6 +111,9 @@ async function main() {
       }
     }
 
+    // Plugin timers, servers and startup jobs run only once the bot is connected.
+    await pluginManager.startAll();
+
     logger.info('[Main] Bot initialized and ready');
 
     // ── Graceful shutdown ──
@@ -121,6 +126,7 @@ async function main() {
       // and this must complete before PM2 escalates to SIGKILL, otherwise
       // the bunx/node subtree is orphaned to init.
       await killAllMcpChildren();
+      await pluginManager.stopAll();
       stopStaticServer();
       if (resourceCleanupService) {
         await resourceCleanupService.cleanupAll();

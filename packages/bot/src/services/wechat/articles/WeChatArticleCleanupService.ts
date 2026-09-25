@@ -21,6 +21,7 @@ export interface ArticleCleanupConfig {
 
 export class WeChatArticleCleanupService {
   private timer: ReturnType<typeof setInterval> | null = null;
+  private startupTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private db: WeChatDatabase,
@@ -40,13 +41,17 @@ export class WeChatArticleCleanupService {
     logger.info(`${TAG} Started | retention=${this.config.retentionDays}d interval=24h`);
 
     // Run once on startup (delayed 30s to let other services init)
-    setTimeout(() => this.runCleanup(), 30_000);
+    this.startupTimer = setTimeout(() => this.runCleanup(), 30_000);
 
     // Then run daily
     this.timer = setInterval(() => this.runCleanup(), CLEANUP_INTERVAL_MS);
   }
 
   stop(): void {
+    if (this.startupTimer) {
+      clearTimeout(this.startupTimer);
+      this.startupTimer = null;
+    }
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;

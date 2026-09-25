@@ -41,6 +41,8 @@ export class NightlyOpsReportPlugin extends PluginBase {
   private ownerId!: string;
   private reportDir!: string;
   private protocol!: ProtocolName;
+  private cron = '*/10 * * * *';
+  private timezone = 'Asia/Tokyo';
 
   async onInit(): Promise<void> {
     const container = getContainer();
@@ -56,8 +58,8 @@ export class NightlyOpsReportPlugin extends PluginBase {
     }
 
     const pluginCfg = (this.pluginConfig?.config ?? {}) as NightlyOpsReportPluginConfig;
-    const cron = pluginCfg.cron ?? '*/10 * * * *';
-    const timezone = pluginCfg.timezone ?? 'Asia/Tokyo';
+    this.cron = pluginCfg.cron ?? '*/10 * * * *';
+    this.timezone = pluginCfg.timezone ?? 'Asia/Tokyo';
     this.protocol = pluginCfg.protocol ?? 'milky';
 
     // Resolve reportDir: absolute → use as-is; relative → resolve from repo root; default → ops/reports
@@ -65,6 +67,12 @@ export class NightlyOpsReportPlugin extends PluginBase {
       this.reportDir = isAbsolute(pluginCfg.reportDir) ? pluginCfg.reportDir : join(getRepoRoot(), pluginCfg.reportDir);
     } else {
       this.reportDir = join(getRepoRoot(), 'ops', 'reports');
+    }
+  }
+
+  async onStart(): Promise<void> {
+    if (!this.ownerId) {
+      return;
     }
 
     // Run once on startup (errors must not block bot startup)
@@ -75,7 +83,7 @@ export class NightlyOpsReportPlugin extends PluginBase {
     }
 
     this.cronJob = schedule(
-      cron,
+      this.cron,
       async () => {
         try {
           await this.scanAndReport();
@@ -83,16 +91,15 @@ export class NightlyOpsReportPlugin extends PluginBase {
           logger.error('[NightlyOpsReportPlugin] Cron scan error:', err);
         }
       },
-      { scheduled: true, timezone },
+      { scheduled: true, timezone: this.timezone },
     );
 
     logger.info(
-      `[NightlyOpsReportPlugin] Initialized (cron: ${cron}, timezone: ${timezone}, reportDir: ${this.reportDir})`,
+      `[NightlyOpsReportPlugin] Started (cron: ${this.cron}, timezone: ${this.timezone}, reportDir: ${this.reportDir})`,
     );
   }
 
-  async onDisable(): Promise<void> {
-    super.onDisable();
+  onStop(): void {
     if (this.cronJob) {
       this.cronJob.stop();
       this.cronJob = null;

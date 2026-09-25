@@ -42,7 +42,10 @@ export class AutoAcceptPlugin extends PluginBase {
     logger.info(
       `[AutoAcceptPlugin] Enabled | friendRequests=${this.acceptFriendRequests} groupJoinRequests=${this.acceptGroupJoinRequests} groupInvitations=${this.acceptGroupInvitations}`,
     );
+  }
 
+  async onEnable(): Promise<void> {
+    await super.onEnable();
     this.on<NormalizedRequestEvent>('request', this.boundHandleRequest);
   }
 

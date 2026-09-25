@@ -34,6 +34,14 @@ export abstract class PluginBase {
     this.enabled = pluginEntry?.enabled ?? false;
   }
 
+  // Lifecycle contract:
+  // - onInit runs for every loaded plugin, enabled or not, before any connection exists:
+  //   read config and resolve dependencies only — no timers, child processes or I/O.
+  // - onEnable / onDisable do in-memory registration (commands, listeners, tasks) and
+  //   undo each other, so a plugin can be toggled at runtime.
+  // - onStart / onStop own everything that touches the outside world or runs later
+  //   (timers, crons, servers, startup jobs). onStart runs once the app is connected, or
+  //   on enable after that; onStop undoes it, before onDisable and on shutdown.
   onInit?(): void | Promise<void>;
 
   onEnable(): void | Promise<void> {
@@ -43,6 +51,10 @@ export abstract class PluginBase {
   onDisable(): void | Promise<void> {
     this.enabled = false;
   }
+
+  onStart?(): void | Promise<void>;
+
+  onStop?(): void | Promise<void>;
 
   protected on<T extends NormalizedEvent>(eventType: string, handler: EventHandler<T>): void {
     if (!this.context) {

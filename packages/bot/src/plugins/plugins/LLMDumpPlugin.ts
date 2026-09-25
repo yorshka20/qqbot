@@ -63,7 +63,9 @@ export class LLMDumpPlugin extends PluginBase {
     this.retainDays = config.retainDays ?? 7;
     this.archiveCron = config.archiveCron ?? '0 4 * * 1';
     this.timezone = config.timezone ?? 'Asia/Tokyo';
+  }
 
+  async onStart(): Promise<void> {
     await this.archiveOldDumps();
     this.archiveJob = schedule(this.archiveCron, () => void this.archiveOldDumps(), {
       scheduled: true,
@@ -87,8 +89,7 @@ export class LLMDumpPlugin extends PluginBase {
     );
   }
 
-  async onDisable(): Promise<void> {
-    super.onDisable();
+  onStop(): void {
     if (this.archiveJob) {
       this.archiveJob.stop();
       this.archiveJob = null;

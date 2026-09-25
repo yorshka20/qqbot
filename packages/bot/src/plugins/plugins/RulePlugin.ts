@@ -121,20 +121,7 @@ export class RulePlugin extends PluginBase {
     logger.info('[RulePlugin] Initialized');
   }
 
-  async onEnable(): Promise<void> {
-    await super.onEnable();
-    logger.info('[RulePlugin] Enabling rule plugin');
-
-    // Clear any existing cron jobs (in case of re-enable or restart)
-    // This ensures we don't have duplicate jobs after server restart
-    if (this.cronJobs.size > 0) {
-      logger.debug(`[RulePlugin] Clearing ${this.cronJobs.size} existing cron job(s) before re-registering`);
-      for (const [, job] of this.cronJobs.entries()) {
-        job.stop();
-      }
-      this.cronJobs.clear();
-    }
-
+  async onStart(): Promise<void> {
     // Load and validate configuration from config.jsonc (persisted)
     // Configuration is loaded from config.jsonc file, which persists across server restarts
     const pluginConfig = this.pluginConfig?.config as RulePluginConfig;
@@ -164,7 +151,7 @@ export class RulePlugin extends PluginBase {
 
     // Validate and register all rules
     // Rules are registered as cron jobs that will persist until server restart
-    // After restart, this onEnable() method will be called again, reloading rules from config.jsonc
+    // After restart, this onStart() method will be called again, reloading rules from config.jsonc
     for (const rule of rules) {
       try {
         this.validateRule(rule);
@@ -177,10 +164,7 @@ export class RulePlugin extends PluginBase {
     logger.info(`[RulePlugin] Successfully registered ${this.cronJobs.size} cron job(s)`);
   }
 
-  async onDisable(): Promise<void> {
-    await super.onDisable();
-    logger.info('[RulePlugin] Disabling rule plugin');
-
+  onStop(): void {
     // Stop all cron jobs
     for (const [ruleId, job] of this.cronJobs.entries()) {
       job.stop();

@@ -43,7 +43,10 @@ export class PortraitPlugin extends PluginBase {
     const databaseManager = container.resolve<DatabaseManager>(DITokens.DATABASE_MANAGER);
     this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
     this.service = new PortraitService(databaseManager, config);
+  }
 
+  async onEnable(): Promise<void> {
+    await super.onEnable();
     this.registerCommands();
   }
 

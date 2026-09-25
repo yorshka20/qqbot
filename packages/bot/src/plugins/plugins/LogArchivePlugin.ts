@@ -37,14 +37,18 @@ export class LogArchivePlugin extends PluginBase {
   private claudeBackupDir = join(this.repoRoot, 'data', 'backup', 'claude');
   private intervalDays = 3;
   private deleteAfterArchive = true;
+  private cron = '0 3 * * *';
+  private timezone = 'Asia/Tokyo';
 
   async onInit(): Promise<void> {
     const config = (this.pluginConfig?.config ?? {}) as LogArchivePluginConfig;
     this.intervalDays = config.intervalDays ?? 3;
     this.deleteAfterArchive = config.deleteAfterArchive ?? true;
-    const cron = config.cron ?? '0 3 * * *';
-    const timezone = config.timezone ?? 'Asia/Tokyo';
+    this.cron = config.cron ?? '0 3 * * *';
+    this.timezone = config.timezone ?? 'Asia/Tokyo';
+  }
 
+  async onStart(): Promise<void> {
     if (!existsSync(this.archiveDir)) {
       mkdirSync(this.archiveDir, { recursive: true });
     }
@@ -62,7 +66,7 @@ export class LogArchivePlugin extends PluginBase {
 
     // Schedule periodic runs
     this.cronJob = schedule(
-      cron,
+      this.cron,
       async () => {
         try {
           await this.archiveLogs();
@@ -75,16 +79,15 @@ export class LogArchivePlugin extends PluginBase {
           logger.error('[LogArchivePlugin] Claude dirs backup cron error:', err);
         }
       },
-      { scheduled: true, timezone },
+      { scheduled: true, timezone: this.timezone },
     );
 
     logger.info(
-      `[LogArchivePlugin] Initialized (cron: ${cron}, interval: ${this.intervalDays}d, timezone: ${timezone}, claude dirs: ${CLAUDE_BACKUP_REL_DIRS.join(', ')})`,
+      `[LogArchivePlugin] Started (cron: ${this.cron}, interval: ${this.intervalDays}d, timezone: ${this.timezone}, claude dirs: ${CLAUDE_BACKUP_REL_DIRS.join(', ')})`,
     );
   }
 
-  async onDisable(): Promise<void> {
-    super.onDisable();
+  onStop(): void {
     if (this.cronJob) {
       this.cronJob.stop();
       this.cronJob = null;

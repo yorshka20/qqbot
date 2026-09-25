@@ -69,8 +69,14 @@ export class PersonaCompletionHookPlugin extends PluginBase {
       toolManager,
       hookManager,
     );
-    this.reflectionEngine.start();
-    logger.info('[PersonaCompletionHookPlugin] ReflectionEngine started');
+  }
+
+  onStart(): void {
+    this.reflectionEngine?.start();
+  }
+
+  onStop(): void {
+    this.reflectionEngine?.stop();
   }
 
   /**
