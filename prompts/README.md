@@ -19,32 +19,6 @@ The “参考信息说明” (what each block means) and behavior rules live in 
 - `llm/reply.txt` – Legacy monolithic normal-reply template.
 - `llm/proactive_reply.txt` – Legacy monolithic proactive-reply template.
 
-## Directory Structure
-
-```
-prompts/
-├── base.system.txt   # Base system prompt (global behavior).
-├── base.txt          # Base prompt (optional); see config.
-├── llm/              # Language Model prompts
-│   ├── reply.txt            # Legacy monolithic (reference only)
-│   ├── reply.system.txt     # Normal-reply scene system (参考信息说明 + rules)
-│   ├── reply.user_frame.txt # Normal-reply current-query frame
-│   ├── proactive_reply.txt   # Legacy monolithic (reference only)
-│   ├── proactive.system.txt # Proactive-reply scene system
-│   ├── proactive.user_frame.txt
-│   └── ...
-├── providers/        # Optional per-provider system patches (see below)
-│   └── gemini.system.txt
-├── fanout/           # Shared-prefix task runs (src/fanout/), one directory per context
-│   └── group_day/
-│       ├── system.txt   # Shared by every task of a run
-│       ├── context.txt  # The shared prefix (yesterday's chat)
-│       └── tasks/       # One suffix per task, named after the task: report, comic, mines, memory
-├── vision/
-├── text2img/
-└── img2img/
-```
-
 ## Provider-specific system patches
 
 `providers/<providerName>.system.txt` is appended to the **first system message**
