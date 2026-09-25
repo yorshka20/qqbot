@@ -7,7 +7,7 @@
 
 import 'reflect-metadata';
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
-import { NovelAIProvider } from './NovelAIProvider';
+import { NovelAIProvider } from '../NovelAIProvider';
 
 type CapturedRequest = {
   url: string;

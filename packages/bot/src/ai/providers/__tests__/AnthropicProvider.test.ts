@@ -5,8 +5,8 @@
 
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
-import type { ChatMessage } from '../types';
-import { AnthropicProvider } from './AnthropicProvider';
+import type { ChatMessage } from '../../types';
+import { AnthropicProvider } from '../AnthropicProvider';
 
 interface CapturedBody {
   messages: Array<{ role: string; content: unknown }>;

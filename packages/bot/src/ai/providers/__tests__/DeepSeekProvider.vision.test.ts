@@ -2,8 +2,8 @@ import 'reflect-metadata';
 
 import { describe, expect, it } from 'bun:test';
 import type { DeepSeekProviderConfig } from '@/core/config/types/ai';
-import type { ChatMessage, ContentPart } from '../types';
-import { DeepSeekProvider } from './DeepSeekProvider';
+import type { ChatMessage, ContentPart } from '../../types';
+import { DeepSeekProvider } from '../DeepSeekProvider';
 
 interface RequestBody {
   messages: Array<{ role: string; content: string | ContentPart[] }>;

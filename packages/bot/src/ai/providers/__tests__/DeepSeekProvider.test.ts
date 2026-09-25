@@ -7,7 +7,7 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import type { DeepSeekProviderConfig } from '@/core/config/types/ai';
-import { DeepSeekProvider } from './DeepSeekProvider';
+import { DeepSeekProvider } from '../DeepSeekProvider';
 
 interface Choice {
   finish_reason?: string;

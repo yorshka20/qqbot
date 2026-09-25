@@ -7,8 +7,8 @@ import 'reflect-metadata';
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { container } from 'tsyringe';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
-import type { AIGenerateOptions } from '../types';
-import { GeminiProvider } from './GeminiProvider';
+import type { AIGenerateOptions } from '../../types';
+import { GeminiProvider } from '../GeminiProvider';
 import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
 
 function baseConfig(): GeminiProviderConfig {

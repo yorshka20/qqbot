@@ -14,7 +14,7 @@
 
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
-import { createThinkStripper } from './GroqProvider';
+import { createThinkStripper } from '../GroqProvider';
 
 describe('createThinkStripper', () => {
   it('passes content through unchanged when there are no think blocks', () => {
