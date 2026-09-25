@@ -42,7 +42,7 @@ import { ClaudeCliBackend } from './ClaudeCliBackend';
 import { checkOpenAiCredential } from './providerCredentialCheck';
 
 const DEEPSEEK_ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic';
-const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-pro';
+const DEEPSEEK_DEFAULT_MODEL = 'deepseek-flash';
 const DEEPSEEK_FAST_MODEL = 'deepseek-v4-flash';
 
 /**

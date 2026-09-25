@@ -137,8 +137,8 @@ export class ResearchToolExecutor extends BaseToolExecutor {
           inheritMemory: false,
           inheritPreference: false,
           providerName: ['deepseek', 'gemini'],
-          // Pin to base models; main-flow defaults (deepseek-v4-pro / gemini paid 3.5-flash) are too costly here.
-          providerModels: { deepseek: 'deepseek-v4-flash', gemini: 'gemini-3-flash-preview' },
+          // Pin to base models; main-flow defaults are too costly here.
+          providerModels: { deepseek: 'deepseek-flash', gemini: 'gemini-3-flash-preview' },
           // Matches the ≤5-call budget in the subagent's system prompt. Rounds, not
           // calls: a round can carry several parallel searches, which the prompt asks
           // for — this only bounds the serial worst case.
