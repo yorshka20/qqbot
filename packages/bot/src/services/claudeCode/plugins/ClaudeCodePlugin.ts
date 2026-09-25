@@ -10,7 +10,7 @@
  * - /claude info - Get Claude Code service info
  */
 
-import type { CommandManager } from '@/command/CommandManager';
+import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -47,7 +47,7 @@ export class ClaudeCodePlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
+    this.commandManager = container.resolve(CommandManager);
 
     if (!this.commandManager) {
       throw new Error('[ClaudeCodePlugin] CommandManager not found');

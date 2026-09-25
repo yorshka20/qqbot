@@ -2,9 +2,10 @@
 
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { isNoReplyPath } from '@/context/HookContextHelpers';
-import { type ConversationHistoryService, normalizeGroupId } from '@/conversation/history';
+import { normalizeGroupId } from '@/conversation/history';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import {
   buildConversationWindowDocument,
   groupEntriesIntoWindows,
@@ -13,10 +14,10 @@ import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
-import type { MemoryExtractService } from '@/memory';
-import type { MemoryService } from '@/memory/MemoryService';
-import type { RetrievalService } from '@/services/retrieval';
+import { MemoryExtractService } from '@/memory/MemoryExtractService';
+import { MemoryService } from '@/memory/MemoryService';
 import { QdrantClient } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import type { RAGDocument } from '@/services/retrieval/rag/types';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
@@ -82,14 +83,12 @@ export class MemoryTriggerPlugin extends PluginBase {
   async onInit(): Promise<void> {
     this.enabled = true;
     const container = getContainer();
-    this.memoryService = container.resolve<MemoryService>(DITokens.MEMORY_SERVICE);
-    this.memoryExtractService = container.resolve<MemoryExtractService>(DITokens.MEMORY_EXTRACT_SERVICE);
+    this.memoryService = container.resolve(MemoryService);
+    this.memoryExtractService = container.resolve(MemoryExtractService);
     this.config = container.resolve<Config>(DITokens.CONFIG);
-    this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-    this.conversationHistoryService = container.resolve<ConversationHistoryService>(
-      DITokens.CONVERSATION_HISTORY_SERVICE,
-    );
-    this.retrievalService = container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE);
+    this.messageAPI = container.resolve(MessageAPI);
+    this.conversationHistoryService = container.resolve<ConversationHistoryService>(ConversationHistoryService);
+    this.retrievalService = container.resolve(RetrievalService);
 
     const pluginConfig = this.pluginConfig?.config as MemoryTriggerPluginConfig | undefined;
     if (pluginConfig?.groups?.length) {

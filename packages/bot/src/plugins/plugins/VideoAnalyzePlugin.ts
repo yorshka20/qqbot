@@ -10,7 +10,8 @@
 //   - LLM tool call (analyze_video tool with visibility: ['reply', 'subagent'])
 
 import type { SubAgentType } from '@/agent/types';
-import type { AIService } from '@/ai/AIService';
+import { AIService } from '@/ai/AIService';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { getContainer } from '@/core/DIContainer';
@@ -142,7 +143,7 @@ export class VideoAnalyzePlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    this.aiService = container.resolve<AIService>(DITokens.AI_SERVICE);
+    this.aiService = container.resolve(AIService);
 
     if (!this.aiService) {
       throw new Error('[VideoAnalyzePlugin] AIService not found');
@@ -270,7 +271,7 @@ export class VideoAnalyzePlugin extends PluginBase {
 
     try {
       const container = getContainer();
-      const messageAPI = container.resolve<import('@/api/methods/MessageAPI').MessageAPI>(DITokens.MESSAGE_API);
+      const messageAPI = container.resolve<import('@/api/methods/MessageAPI').MessageAPI>(MessageAPI);
       const config = container.resolve<Config>(DITokens.CONFIG);
       const botSelfId = config.getBotUserId();
 

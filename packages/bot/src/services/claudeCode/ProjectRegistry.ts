@@ -10,6 +10,9 @@
 
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { inject, singleton } from 'tsyringe';
+import type { Config } from '@/core/config';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 
@@ -51,6 +54,7 @@ export interface ProjectRegistryOptions {
 /** System directories that are always forbidden */
 const FORBIDDEN_PATHS = ['/', '/etc', '/usr', '/bin', '/sbin', '/var', '/tmp', '/boot', '/dev', '/proc', '/sys'];
 
+@singleton()
 export class ProjectRegistry {
   private projects = new Map<string, ProjectEntry>();
   /** Aliases that come from config — these cannot be removed via commands */
@@ -59,14 +63,14 @@ export class ProjectRegistry {
   private defaultProject: string;
   private persistPath: string;
 
-  constructor(options: ProjectRegistryOptions | undefined = {}) {
-    const opts = options ?? {};
+  constructor(@inject(DITokens.CONFIG) config: Config) {
+    const opts: ProjectRegistryOptions = config.getProjectRegistryConfig() ?? {};
     this.allowedBasePaths = (opts.allowedBasePaths ?? [process.cwd()]).map((p) => resolve(p));
     this.defaultProject = opts.defaultProject ?? 'default';
     this.persistPath = opts.persistPath || resolve(getRepoRoot(), 'data/projects.json');
 
     // 1. Register config projects (immutable via commands)
-    for (const proj of options.projects ?? []) {
+    for (const proj of opts.projects ?? []) {
       try {
         this.register(proj);
         this.configAliases.add(proj.alias);

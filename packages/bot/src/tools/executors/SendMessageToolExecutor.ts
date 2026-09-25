@@ -1,6 +1,6 @@
 import { injectable } from 'tsyringe';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { ConversationHistoryService } from '@/conversation/history';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -61,7 +61,7 @@ export class SendMessageToolExecutor extends BaseToolExecutor {
     try {
       // Target comes from the conversation context, never from LLM parameters —
       // this tool must not be able to send into arbitrary chats.
-      const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+      const messageAPI = container.resolve(MessageAPI);
       const sendResult = await messageAPI.sendFromContext(content, hookContext.message);
       hookContext.metadata.set('sendMessageCount', sent + 1);
       await this.persistSentMessage(hookContext, content, sendResult.message_seq);
@@ -88,7 +88,7 @@ export class SendMessageToolExecutor extends BaseToolExecutor {
     const isGroup = message.messageType === 'group';
     const targetId = isGroup ? message.groupId : message.userId;
     if (targetId == null) return;
-    const historyService = getContainer().resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
+    const historyService = getContainer().resolve(ConversationHistoryService);
     const botSelfId = Number(hookContext.metadata.get('botSelfId'));
     await historyService.appendBotMessageToSession(
       { sessionType: isGroup ? 'group' : 'user', targetId },

@@ -2,9 +2,9 @@
 // Designed for schedule (cron every 3 days) and subagent invocation.
 
 import { inject, injectable } from 'tsyringe';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import { DITokens } from '@/core/DITokens';
-import type { RetrievalService } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { WechatMomentsAnalysisService } from '@/services/wechat/moments/WechatMomentsAnalysisService';
 import { WechatMomentsIngestService } from '@/services/wechat/moments/WechatMomentsIngestService';
 import { WeChatIngestPlugin } from '@/services/wechat/plugins';
@@ -69,10 +69,10 @@ export class WechatMomentsIngestToolExecutor extends BaseToolExecutor {
   private readonly momentsAnalysis: WechatMomentsAnalysisService;
 
   constructor(
-    @inject(DITokens.RETRIEVAL_SERVICE) private retrieval: RetrievalService,
+    @inject(RetrievalService) private retrieval: RetrievalService,
     @inject(WechatDITokens.PADPRO_CLIENT) private padProClient: WeChatPadProClient,
     @inject(WechatDITokens.WECHAT_DB) private db: WeChatDatabase,
-    @inject(DITokens.LLM_SERVICE) llmService: LLMService,
+    @inject(LLMService) llmService: LLMService,
   ) {
     super();
     this.momentsAnalysis = new WechatMomentsAnalysisService(llmService, this.retrieval, this.db);

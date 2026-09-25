@@ -1,12 +1,13 @@
 // Conversation Manager - orchestrates the conversation flow
 
+import { inject, singleton } from 'tsyringe';
+import { MessagePipeline } from '@/conversation/MessagePipeline';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { getProtocolSelfId } from '@/protocol/ProtocolRegistry';
 import { logger } from '@/utils/logger';
-import type { MessagePipeline } from './MessagePipeline';
 import { deriveSourceFromEvent } from './sources';
 import type { MessageProcessingContext, MessageProcessingResult, ProcessMessageOptions } from './types';
 
@@ -14,11 +15,12 @@ import type { MessageProcessingContext, MessageProcessingResult, ProcessMessageO
  * Conversation Manager
  * Main orchestrator for conversation processing
  */
+@singleton()
 export class ConversationManager {
   private pipeline: MessagePipeline;
   private botSelfId: string;
 
-  constructor(pipeline: MessagePipeline) {
+  constructor(@inject(MessagePipeline) pipeline: MessagePipeline) {
     this.pipeline = pipeline;
     this.botSelfId = this.getBotSelfIdFromConfig();
   }

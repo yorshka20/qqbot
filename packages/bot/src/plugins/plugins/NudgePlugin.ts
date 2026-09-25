@@ -1,15 +1,15 @@
 // Nudge Plugin - automatically replies when bot is nudged (戳一戳)
 
 import type { AIManager } from '@/ai/AIManager';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { HealthCheckManager } from '@/core/health';
+import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../decorators';
@@ -55,9 +55,9 @@ export class NudgePlugin extends PluginBase {
     // Resolve the shared MessageAPI singleton — never `new` it (was the
     // bug: each plugin built its own instance, fragmenting send-rate
     // limiters / dedup state).
-    this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    this.messageAPI = container.resolve(MessageAPI);
     this.aiManager = container.resolve<AIManager>(DITokens.AI_MANAGER);
-    this.healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
+    this.healthCheckManager = container.resolve(HealthCheckManager);
 
     this.on<NormalizedNoticeEvent>('notice', this.handleNotice.bind(this));
   }
@@ -104,7 +104,7 @@ export class NudgePlugin extends PluginBase {
 
     // Whitelist is highest constraint: never respond in non-whitelist groups (notice has no pipeline context)
     const groupIdStr = String(nudgeEvent.groupId);
-    const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+    const pluginManager = getContainer().resolve(PluginManager);
     const whitelistPlugin = pluginManager?.getPluginAs<WhitelistPlugin>('whitelist');
     if (whitelistPlugin) {
       if (whitelistPlugin.getGroupCapabilities(groupIdStr) === undefined) {

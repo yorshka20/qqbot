@@ -1,5 +1,6 @@
 // Process-stage interceptor - allows plugins to handle messages before CommandSystem/ReplySystem
 
+import { singleton } from 'tsyringe';
 import type { HookContext } from '@/hooks/types';
 
 /**
@@ -26,6 +27,7 @@ export interface ProcessStageInterceptor {
  * Plugins register interceptors so that when a message is in a special mode (e.g. NSFW),
  * the interceptor can generate the reply and skip normal command/task processing.
  */
+@singleton()
 export class ProcessStageInterceptorRegistry {
   private interceptors: ProcessStageInterceptor[] = [];
 

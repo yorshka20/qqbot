@@ -1,8 +1,7 @@
-import { injectable, singleton } from 'tsyringe';
+import { singleton } from 'tsyringe';
 import { logger } from '@/utils/logger';
 import type { PromptInjection, PromptInjectionContext, PromptInjectionProducer, PromptLayer } from './types';
 
-@injectable()
 @singleton()
 export class PromptInjectionRegistry {
   private producers: PromptInjectionProducer[] = [];

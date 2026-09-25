@@ -65,7 +65,7 @@ The QQ Bot framework connects to QQ clients via LLBot (LuckyLilliaBot), a protoc
 5. **Separation of Concerns**: Each layer has a single, well-defined responsibility
 6. **Extensibility**: Plugin system and hook system allow adding features without modifying core
 7. **Dependency Injection**: Uses `tsyringe` for DI throughout the codebase
-8. **Single Bootstrap Source**: All initialization logic is in `src/core/bootstrap.ts`
+8. **Single Bootstrap Source**: All initialization logic is in `src/core/bootstrap.ts`, reached only through `startApp()` in `src/core/app.ts`
 
 ## Technology Stack
 
@@ -195,19 +195,32 @@ Manages configuration loading and validation. Supports both single-file and spli
 3. `config.d/` directory in project root
 4. `config.jsonc` file in project root
 
-#### bootstrap.ts
+#### app.ts and bootstrap.ts
 
-Single source of truth for application initialization order. Both `src/index.ts` (production) and `src/cli/smoke-test.ts` call `bootstrapApp()`.
+`startApp(configPath, { connect })` in `src/core/app.ts` is the one entry point: production (`src/index.ts`, `connect: true`), the smoke test and cluster-e2e (`connect: false`) and the debug CLI (`connect: true` in real mode, `false` plus a mock protocol adapter in mock mode) all call it, so the module graph, the initialization order and the shutdown path are shared code. It runs two phases and returns one `shutdown()`:
 
-**Initialization sequence:**
+1. **`bootstrapApp()`** (`src/core/bootstrap.ts`) — everything that needs no external connection: config, API client, DI wiring, prompts, static server, the conversation system (database connect first), the event system, protocol adapter registration, plugin load and `onEnable`, then `DIContainer.verifyRequiredTokens()`.
+2. **connect** (only with `connect: true`) — bot sockets, avatar, bilibili live, LAN relay, search transports, Claude Code, cluster, then `pluginManager.startAll()` (plugin `onStart`).
+
+`shutdown()` kills MCP children, stops plugins (`onStop`), the static server and every connected service, then closes the database.
+
+**Initialization sequence (bootstrap):**
 ```
-Config → APIClient → PromptInitializer → PluginInitializer (factory) →
-HealthCheckManager → RetrievalService → StaticServer →
-ProjectRegistry → ClaudeCodeInitializer → ConversationInitializer →
-ClusterManager → EventInitializer → DIContainer.verifyRequiredTokens() →
-ProtocolAdapterInitializer → PluginInitializer.loadPlugins() →
-TTSManager (from tts.* config) + attachHealthManager → AvatarService (optional)
+Config → APIClient → registerProviders (core/wiring.ts) → PromptInitializer →
+RetrievalService → StaticServer → ClaudeCodeInitializer → ConversationInitializer →
+ClusterManager → EventInitializer → ProtocolAdapterInitializer →
+PluginInitializer.loadPlugins() → TTSManager + AvatarService (optional) →
+DIContainer.verifyRequiredTokens()
 ```
+
+**Dependency injection.** DI decides *who is built first*; bootstrap only orders *side effects*.
+
+- A service is a `@singleton()` class that names every constructor dependency with an explicit `@inject(...)` — the class itself (`@inject(HookManager)`) or a `DITokens` string. It is built on first resolve, dependencies first, so registration order is irrelevant and most services need no registration at all. Configuration values are read from the injected `Config` inside the constructor, not passed in.
+- Every parameter needs its `@inject`: Biome rewrites a class used only as a type into `import type`, after which decorator metadata no longer carries it and injection breaks silently.
+- `DITokens` string tokens remain for what a class cannot declare for itself: values built outside the container (`CONFIG`, `API_CLIENT`), factories that assemble a registry from config (`AI_MANAGER` via `ai/createAIManager.ts`, `TOOL_MANAGER` via `ToolInitializer.createToolManager()`, `SUB_AGENT_MANAGER`), an interface (`PERMISSION_CHECKER`), the fan-out multi-provider list (`FANOUT_CONTEXTS`), config-gated optional services, and instances produced by startup steps (agenda, persona, SQLite stores, TTS, avatar, bilibili, cluster, event router). All of those registrations live in `core/wiring.ts` or at the startup step that creates the instance.
+- To expose a `@singleton()` class under a string token use `registerAlias(token, Cls)` (`useToken`); `registerSingleton(token, Cls)` would build a second instance.
+- A service module must not import its own consumers. Decorator registries (command handlers, builtin plugins, avatar plugins) are side-effect imported by `bootstrap.ts`, not by `CommandManager` / `PluginManager`; otherwise the consumer → service → consumer cycle makes class-token injection fail with a TDZ error that depends on which module loads first.
+- A service whose constructor reads the database adapter (`ConversationConfigService`) must first be resolved after `DatabaseManager.initialize()`, which is the first step of `ConversationInitializer.initialize`.
 
 ### Protocol Layer
 
@@ -768,10 +781,10 @@ When RAG is configured, `MemoryRAGService` uses Ollama embeddings + Qdrant vecto
 
 `src/fanout/` runs several tasks on one shared context. `core/` holds the framework (`BaseFanout`, `SharedPrefixRunner`, `FanoutManager`, types); `contexts/` holds one directory per concrete shared context (`contexts/groupDay/`). DeepSeek's prefix cache compares the request from its first byte, and the tool list and `response_format` are rendered ahead of the messages, so tasks only share a cache when the whole envelope matches: provider, model, system prompt, tool list, JSON mode. The module is built so a task cannot change the envelope.
 
-- **`BaseFanout<C>`** — the base class. A subclass is an `@injectable()` class that passes `FanoutServices` (LLM, tools, hooks, prompts, config — everything the base needs, one injected dependency) to `super` and injects only what its own context needs. It supplies `name`, `systemTemplate`, `resolveModel()` and `buildContext(target)` (the context object plus the rendered prefix). The base owns the task registry, one run per target at a time, the envelope (system prompt, and the name-sorted union of the selected tasks' tools) and the synthetic `HookContext` tools run under (the bot itself, in the target chat).
+- **`BaseFanout<C>`** — the base class. A subclass is a `@singleton()` class that passes `FanoutServices` (LLM, tools, hooks, prompts, config — everything the base needs, one injected dependency) to `super` and injects only what its own context needs. It supplies `name`, `systemTemplate`, `resolveModel()` and `buildContext(target)` (the context object plus the rendered prefix). The base owns the task registry, one run per target at a time, the envelope (system prompt, and the name-sorted union of the selected tasks' tools) and the synthetic `HookContext` tools run under (the bot itself, in the target chat).
 - **`FanoutTask<C, P>`** — a task names the tools it may call, parses its own params, returns a suffix and handles the output. The model sees the whole union; a call to a tool outside the task's own list is refused at execution time, since trimming the list per task would change the envelope. No task uses JSON mode; structured output is JSON in text.
 - **`SharedPrefixRunner`** — runs tasks in name order. The first task runs alone until its first LLM round returns (that request writes the cache), then the rest start concurrently. Each task logs `fanout=… task=… promptTokens=… cachedPromptTokens=…`.
-- **Registration** — `contexts/index.ts` lists every concrete fan-out (`FANOUT_CONTEXTS`). `FanoutInitializer` registers each as a DI singleton and hands it to `FanoutManager`, before the agenda and before plugins load. Triggers look a fan-out up by name through the manager; task owners resolve the class from DI (`getContainer().resolve(GroupDayFanout)`) and get the same instance.
+- **Registration** — `contexts/index.ts` lists every concrete fan-out (`FANOUT_CONTEXTS`). Each is a class-keyed DI singleton; `FanoutInitializer` exposes each under the multi-provider token `FANOUT_CONTEXTS`, and `FanoutManager` receives them all through `@injectAll`. Triggers look a fan-out up by name through the manager; task owners resolve the class from DI (`getContainer().resolve(GroupDayFanout)`) and get the same instance.
 - **Triggers** — the agenda action `fanout` (`参数: {"fanout": "group_day", "tasks": {"report": {}, "comic": {"presets": […]}, "mines": {"count": 3}, "memory": {}}}`), and `/group_report`, which runs the report task alone.
 
 `group_day` (`GroupDayFanout`) is yesterday's chat in one group: `prompts/fanout/group_day/context.txt` renders the group name, date, code-computed stats and the day's log (`[HH:MM] nickname(userId): content`, bot replies excluded, 200-character cut, at most 2000 messages). Its provider is `ai.taskProviders.groupDay` (+ `groupDayModel`). Tasks: `report` (GroupReportPlugin — semantic JSON only; every count on the card comes from the stats), `comic` (GroupReportPlugin — calls `generate_image`), `mines` (GroupReportPlugin — picks keywords verbatim from the log and plants one-shot `onMessage` items, each checked against the day's messages), `memory` (MemoryPlugin). Plugins register their tasks in `onEnable` and drop them in `onDisable`. Prompts mirror the code: a fan-out's shared `system.txt` / `context.txt` sit in `prompts/fanout/<context>/`, and each task's suffix in `tasks/<task name>.txt`.
@@ -1114,7 +1127,7 @@ bun run debug
 
 ### Why smoke-test is Mandatory
 
-`typecheck` and `build` only validate static types. They cannot catch runtime initialization issues such as circular imports causing TDZ errors, DI tokens referenced before registration, or missing DI bindings. The `smoke-test` runs the exact same `bootstrapApp()` function as production, verifying that every service, plugin, and tool executor initializes successfully without live network connections.
+`typecheck` and `build` only validate static types. They cannot catch runtime initialization issues such as circular imports causing TDZ errors, DI tokens referenced before registration, or missing DI bindings. The `smoke-test` boots through the same `startApp()` as production without the live connections: it loads the same module graph, enables plugins exactly as configured, waits two seconds for asynchronous startup failures (any unhandled rejection fails it) and then runs the real shutdown sequence.
 
 ### Type Safety
 

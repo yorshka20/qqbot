@@ -6,7 +6,7 @@ import type { SubAgentManager } from '@/agent/SubAgentManager';
 import { SubAgentType } from '@/agent/types';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { DITokens } from '@/core/DITokens';
-import type { RetrievalService } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -82,7 +82,7 @@ export class ResearchToolExecutor extends BaseToolExecutor {
   constructor(
     @inject(DITokens.SUB_AGENT_MANAGER)
     private subAgentManager: SubAgentManager,
-    @inject(DITokens.RETRIEVAL_SERVICE)
+    @inject(RetrievalService)
     private retrievalService: RetrievalService,
   ) {
     super();

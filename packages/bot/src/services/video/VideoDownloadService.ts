@@ -8,7 +8,7 @@
 
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { injectable, singleton } from 'tsyringe';
+import { singleton } from 'tsyringe';
 import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
@@ -36,7 +36,6 @@ export interface VideoDownloadResult {
   tempPath: string;
 }
 
-@injectable()
 @singleton()
 export class VideoDownloadService {
   private ytDlpAvailable: boolean | null = null;

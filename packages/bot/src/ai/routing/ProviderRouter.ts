@@ -1,4 +1,6 @@
+import { inject, singleton } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
+import { DITokens } from '@/core/DITokens';
 
 export type ProviderRouteConfidence = 'high' | 'low';
 
@@ -29,6 +31,7 @@ export interface ProviderReplyRoutingResult {
  * ProviderRouter performs request-level provider routing for reply generation.
  * It never persists selection; it only suggests provider for current request.
  */
+@singleton()
 export class ProviderRouter {
   private static readonly PREFIX_ALIASES: Record<string, string> = {
     claude: 'anthropic',
@@ -74,7 +77,7 @@ export class ProviderRouter {
     return { ...ProviderRouter.NICKNAME_ALIASES };
   }
 
-  constructor(private aiManager: AIManager) {}
+  constructor(@inject(DITokens.AI_MANAGER) private aiManager: AIManager) {}
 
   route(message: string): ProviderRouteResult {
     const text = message ?? '';

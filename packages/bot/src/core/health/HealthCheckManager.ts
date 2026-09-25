@@ -1,5 +1,6 @@
 // Health check manager - centralized management of service health checks
 
+import { singleton } from 'tsyringe';
 import { logger } from '@/utils/logger';
 import type { HealthCheckable, HealthCheckOptions, HealthCheckResult, ServiceHealthConfig } from './types';
 import { HealthStatus } from './types';
@@ -17,6 +18,7 @@ interface CachedHealthCheck {
  * Health check manager
  * Provides centralized health check management with caching and auto-refresh
  */
+@singleton()
 export class HealthCheckManager {
   private services = new Map<string, HealthCheckable>();
   private configs = new Map<string, ServiceHealthConfig>();

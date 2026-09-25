@@ -8,7 +8,7 @@
 // Both success and error paths in the caller must call cleanup() so no temp files are leaked.
 
 import { unlink } from 'node:fs/promises';
-import { injectable, singleton } from 'tsyringe';
+import { singleton } from 'tsyringe';
 import { logger } from '@/utils/logger';
 
 interface FileResource {
@@ -21,7 +21,6 @@ interface SessionResources {
   remoteFiles: FileResource[];
 }
 
-@injectable()
 @singleton()
 export class ResourceCleanupService {
   /** Maps sessionId → files to delete on cleanup. */

@@ -1,12 +1,12 @@
 // Bilibili tool executor - allows LLM/subagent to search and fetch bilibili content
 
 import { inject, injectable } from 'tsyringe';
+import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import { BilibiliService } from '../BilibiliService';
-import type { VideoKnowledgeClient } from '../VideoKnowledgeClient';
 
 @Tool({
   name: 'bilibili',
@@ -42,8 +42,8 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
   name = 'bilibili';
 
   constructor(
-    @inject('BilibiliService') private bilibiliService: BilibiliService,
-    @inject('VideoKnowledgeClient') private videoKnowledgeClient: VideoKnowledgeClient,
+    @inject(BilibiliService) private bilibiliService: BilibiliService,
+    @inject(VideoKnowledgeClient) private videoKnowledgeClient: VideoKnowledgeClient,
   ) {
     super();
   }

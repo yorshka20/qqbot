@@ -5,13 +5,12 @@
 // rendered once per run and its bytes must not vary by task: changing context.txt,
 // the line format or the truncation changes every task's cache key at once.
 
-import { inject, injectable } from 'tsyringe';
+import { inject, singleton } from 'tsyringe';
 import {
-  type ConversationHistoryService,
+  ConversationHistoryService,
   type ConversationMessageEntry,
   normalizeGroupId,
 } from '@/conversation/history/ConversationHistoryService';
-import { DITokens } from '@/core/DITokens';
 import { DATE_TIMEZONE, dateInTimezone } from '@/utils/dateTime';
 import { BaseFanout, type FanoutContext, type FanoutModel } from '../../core/BaseFanout';
 import { FanoutServices } from '../../core/FanoutServices';
@@ -33,7 +32,7 @@ export interface GroupDayContext {
   userMessages: ConversationMessageEntry[];
 }
 
-@injectable()
+@singleton()
 export class GroupDayFanout extends BaseFanout<GroupDayContext> {
   static readonly NAME = 'group_day';
   readonly name = GroupDayFanout.NAME;
@@ -41,7 +40,7 @@ export class GroupDayFanout extends BaseFanout<GroupDayContext> {
 
   constructor(
     @inject(FanoutServices) services: FanoutServices,
-    @inject(DITokens.CONVERSATION_HISTORY_SERVICE) private readonly historyService: ConversationHistoryService,
+    @inject(ConversationHistoryService) private readonly historyService: ConversationHistoryService,
   ) {
     super(services);
   }

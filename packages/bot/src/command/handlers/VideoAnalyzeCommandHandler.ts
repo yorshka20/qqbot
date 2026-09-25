@@ -9,12 +9,12 @@
 // result back to the originating chat when done.
 
 import { inject, injectable } from 'tsyringe';
-import type { AIService } from '@/ai';
+import { AIService } from '@/ai/AIService';
 import { getReplyMessageIdFromMessage } from '@/ai/utils/imageUtils';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { extractVideoUrl } from '@/plugins/plugins/VideoAnalyzePlugin';
@@ -39,10 +39,10 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
   name = 'video';
 
   constructor(
-    @inject(DITokens.AI_SERVICE) private aiService: AIService,
-    @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
+    @inject(AIService) private aiService: AIService,
+    @inject(DatabaseManager) private databaseManager: DatabaseManager,
     @inject(DITokens.CONFIG) private config: Config,
-    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
   ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {

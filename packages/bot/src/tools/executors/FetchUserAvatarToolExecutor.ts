@@ -10,8 +10,7 @@
 
 import { inject, injectable } from 'tsyringe';
 import type { ContentPart } from '@/ai/types';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import { DITokens } from '@/core/DITokens';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -53,9 +52,7 @@ const MAX_BYTES = 2 * 1024 * 1024;
 export class FetchUserAvatarToolExecutor extends BaseToolExecutor {
   name = 'fetch_user_avatar';
 
-  constructor(
-    @inject(DITokens.CONVERSATION_HISTORY_SERVICE) private conversationHistoryService: ConversationHistoryService,
-  ) {
+  constructor(@inject(ConversationHistoryService) private conversationHistoryService: ConversationHistoryService) {
     super();
   }
 

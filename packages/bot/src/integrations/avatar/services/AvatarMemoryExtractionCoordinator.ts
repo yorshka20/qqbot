@@ -27,15 +27,14 @@
 // best-effort background work, never blocks the reply path.
 
 import { mergeAvatarConfig } from '@qqbot/avatar';
-import { inject, injectable, singleton } from 'tsyringe';
+import { inject, singleton } from 'tsyringe';
 import { formatConversationEntriesToText } from '@/conversation/history/format';
 import type { Config } from '@/core/config';
-import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { MemoryExtractService } from '@/memory';
+import { MemoryExtractService } from '@/memory/MemoryExtractService';
 import { logger } from '@/utils/logger';
 import type { AvatarSource } from '../types';
-import type { AvatarSessionService } from './AvatarSessionService';
+import { AvatarSessionService } from './AvatarSessionService';
 
 interface ScheduleEntry {
   timer: ReturnType<typeof setTimeout>;
@@ -63,14 +62,14 @@ interface ResolvedConfig {
   providerOverride: string | undefined;
 }
 
-@injectable()
 @singleton()
 export class AvatarMemoryExtractionCoordinator {
   private readonly timersByThread = new Map<string, ScheduleEntry>();
 
   constructor(
     @inject(DITokens.CONFIG) private readonly config: Config,
-    @inject(DITokens.AVATAR_SESSION_SERVICE) private readonly sessionService: AvatarSessionService,
+    @inject(AvatarSessionService) private readonly sessionService: AvatarSessionService,
+    @inject(MemoryExtractService) private readonly extractService: MemoryExtractService,
   ) {}
 
   /**
@@ -172,12 +171,6 @@ export class AvatarMemoryExtractionCoordinator {
     // waste of tokens.
     if (!resolved.enabled) return;
 
-    const extractService = this.resolveExtractService();
-    if (!extractService) {
-      logger.debug('[Live2DMemoryExtraction] MemoryExtractService unavailable, skipping run');
-      return;
-    }
-
     const entries = this.sessionService.getHistoryEntries(threadId);
     // Only drop bot replies for extract input — the extract LLM learns
     // facts from what *users* said. Keeping bot turns just pollutes the
@@ -204,27 +197,9 @@ export class AvatarMemoryExtractionCoordinator {
     );
 
     try {
-      await extractService.extractAndUpsert(groupId, recentMessagesText, { provider });
+      await this.extractService.extractAndUpsert(groupId, recentMessagesText, { provider });
     } catch (err) {
       logger.warn(`[Live2DMemoryExtraction] extractAndUpsert failed (thread=${threadId} group=${groupId}):`, err);
-    }
-  }
-
-  /**
-   * Lazily resolve MemoryExtractService from the container. Kept lazy so
-   * tests that don't register it (e.g. the live2d stage test) can still
-   * exercise the coordinator — it just becomes a no-op in that case.
-   */
-  private resolveExtractService(): MemoryExtractService | undefined {
-    try {
-      const container = getContainer();
-      if (!container.isRegistered(DITokens.MEMORY_EXTRACT_SERVICE)) {
-        return undefined;
-      }
-      return container.resolve<MemoryExtractService>(DITokens.MEMORY_EXTRACT_SERVICE);
-    } catch (err) {
-      logger.debug('[Live2DMemoryExtraction] resolveExtractService failed (non-fatal):', err);
-      return undefined;
     }
   }
 

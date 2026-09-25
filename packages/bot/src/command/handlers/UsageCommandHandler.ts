@@ -1,8 +1,7 @@
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { renderUsageCardImage } from '@/services/tokenUsage/renderUsageCard';
-import type { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
+import { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
 import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -23,7 +22,7 @@ export class UsageCommandHandler implements CommandHandler {
   description = '查看今日 Token 消耗 Top 10 及本人近三日消耗';
   usage = '/usage';
 
-  constructor(@inject(DITokens.TOKEN_USAGE_SERVICE) private usageService: TokenUsageService) {}
+  constructor(@inject(TokenUsageService) private usageService: TokenUsageService) {}
 
   async execute(_args: string[], context: CommandContext): Promise<CommandResult> {
     const today = this.usageService.getLocalDate(0);

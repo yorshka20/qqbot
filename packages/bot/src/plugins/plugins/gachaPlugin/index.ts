@@ -1,15 +1,15 @@
 // Gacha Plugin - one-click NAI prompt generation with DeepSeek then proxy to /nai command
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import { CommandBuilder } from '@/command/CommandBuilder';
-import type { CommandManager } from '@/command/CommandManager';
+import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import { createHookContextForCommand } from '@/command/utils/HookContextBuilder';
 import { getSessionId } from '@/core/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { HookManager } from '@/hooks/HookManager';
+import { HookManager } from '@/hooks/HookManager';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
@@ -35,9 +35,9 @@ export class GachaPlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
-    this.llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
-    this.hookManager = container.resolve<HookManager>(DITokens.HOOK_MANAGER);
+    this.commandManager = container.resolve(CommandManager);
+    this.llmService = container.resolve(LLMService);
+    this.hookManager = container.resolve(HookManager);
     this.promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
 
     if (!this.commandManager) {

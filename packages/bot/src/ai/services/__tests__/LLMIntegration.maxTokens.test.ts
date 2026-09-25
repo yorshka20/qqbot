@@ -10,7 +10,6 @@ import 'reflect-metadata';
 import { describe, expect, test } from 'bun:test';
 import { container } from 'tsyringe';
 import { LLMService } from '@/ai/services/LLMService';
-import { DITokens } from '@/core/DITokens';
 import { ResourceCleanupService } from '@/services/video';
 import {
   createAIManagerWithProvider,
@@ -18,12 +17,13 @@ import {
   INTEGRATION_TEST_TIMEOUT_MS,
   type IntegrationProviderName,
 } from './integrationTestHelpers';
+import { createLLMService } from '@/ai/services/__tests__/createLLMService';
 
 // GeminiProvider's constructor resolves this DI token (for temp-file cleanup); the shared
 // integration harness never registers it, which is why gemini/openai/anthropic are excluded
 // there. Register it before any provider is built so Gemini can be constructed here.
-if (!container.isRegistered(DITokens.RESOURCE_CLEANUP_SERVICE)) {
-  container.registerInstance(DITokens.RESOURCE_CLEANUP_SERVICE, new ResourceCleanupService());
+if (!container.isRegistered(ResourceCleanupService)) {
+  container.registerInstance(ResourceCleanupService, new ResourceCleanupService());
 }
 
 const LOG_PREFIX = '[LLMMaxTokensVerify]';
@@ -37,7 +37,7 @@ const LONG_PROMPT =
 
 function runProvider(name: IntegrationProviderName): void {
   describe.skipIf(!getIntegrationProvider(name))(`${name}: no-maxTokens omit path (real API)`, () => {
-    const llm = new LLMService(createAIManagerWithProvider(name));
+    const llm = createLLMService(createAIManagerWithProvider(name));
 
     test(
       'generate() with NO maxTokens returns non-empty text',

@@ -1,11 +1,10 @@
 // Generation stage — LLM call with retry/fallback + tool execution loop.
 
 import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { normalizeSessionForConfig } from '@/core/config/SessionUtils';
 import type { ReasoningEffort } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
@@ -109,7 +108,7 @@ export class GenerationStage implements ReplyStage {
       return undefined;
     }
     try {
-      const configService = getContainer().resolve<ConversationConfigService>(DITokens.CONVERSATION_CONFIG_SERVICE);
+      const configService = getContainer().resolve(ConversationConfigService);
       // ctx.sessionId is the canonical prefixed id; the config is keyed on the bare one.
       const { sessionId, sessionType } = normalizeSessionForConfig(
         ctx.sessionId,

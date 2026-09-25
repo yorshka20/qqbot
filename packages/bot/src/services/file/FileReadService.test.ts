@@ -11,12 +11,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FileReadService } from './FileReadService';
+import { createFileReadService } from '@/services/file/__tests__/createFileReadService';
 
 const ROOT = process.cwd();
 
 function svc() {
   // Deliberately empty filters: the denial must not depend on configuration.
-  return new FileReadService({ root: ROOT, filterPaths: [], filterExtensions: [] });
+  return createFileReadService({ root: ROOT, filterPaths: [], filterExtensions: [] });
 }
 
 describe('FileReadService secret-path denial', () => {
@@ -72,7 +73,7 @@ describe('FileReadService secret-path denial', () => {
   // filterPaths still names the single-file `config.json`, so it does not cover config.d.
   // Extension denial is a separate gate and is not what blocks this path.
   it('blocks config.d under the live config, whose path filters do not cover it', () => {
-    const live = new FileReadService({
+    const live = createFileReadService({
       root: process.cwd(),
       filterPaths: ['node_modules', 'output', 'dist', 'data', 'logs', 'config.json'],
       filterExtensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'jsonc', 'txt', 'log'],
@@ -97,7 +98,7 @@ describe('FileReadService extension filter', () => {
   });
 
   it('blocks a bare configured suffix even though extname() includes a dot', () => {
-    const svc = new FileReadService({
+    const svc = createFileReadService({
       root: dir,
       filterPaths: [],
       filterExtensions: ['jsonc'],
@@ -114,7 +115,7 @@ describe('FileReadService extension filter', () => {
   });
 
   it('treats a dotted or uppercase config entry as the same suffix', () => {
-    const svc = new FileReadService({
+    const svc = createFileReadService({
       root: dir,
       filterPaths: [],
       filterExtensions: ['.JSONC'],
@@ -128,7 +129,7 @@ describe('FileReadService extension filter', () => {
 
 describe('FileReadService default content cap', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fileread-cap-'));
-  const reader = new FileReadService({ root: dir, filterPaths: [], filterExtensions: [] });
+  const reader = createFileReadService({ root: dir, filterPaths: [], filterExtensions: [] });
 
   afterAll(() => {
     rmSync(dir, { recursive: true, force: true });

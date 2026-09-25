@@ -1,6 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import type { MemoryExtractService } from '@/memory';
+import { MemoryExtractService } from '@/memory/MemoryExtractService';
 import { GROUP_MEMORY_USER_ID } from '@/memory/MemoryService';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -43,7 +42,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 export class MemoryNoteToolExecutor extends BaseToolExecutor {
   name = 'memory_note';
 
-  constructor(@inject(DITokens.MEMORY_EXTRACT_SERVICE) private memoryExtractService: MemoryExtractService) {
+  constructor(@inject(MemoryExtractService) private memoryExtractService: MemoryExtractService) {
     super();
   }
 

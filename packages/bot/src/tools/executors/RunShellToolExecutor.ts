@@ -1,6 +1,5 @@
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import type { FileReadService } from '@/services/file';
+import { FileReadService } from '@/services/file/FileReadService';
 import { ReadOnlyShellService } from '@/services/shell/ReadOnlyShellService';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -40,7 +39,7 @@ export class RunShellToolExecutor extends BaseToolExecutor {
 
   private readonly shellService: ReadOnlyShellService;
 
-  constructor(@inject(DITokens.FILE_READ_SERVICE) fileReadService: FileReadService) {
+  constructor(@inject(FileReadService) fileReadService: FileReadService) {
     super();
     this.shellService = new ReadOnlyShellService(fileReadService);
   }

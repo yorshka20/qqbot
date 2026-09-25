@@ -14,7 +14,7 @@ import { z } from 'zod';
 import type { AgendaService } from '@/agenda/AgendaService';
 import type { ScheduleFileService } from '@/agenda/ScheduleFileService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { JSON_ONLY_STRATEGIES, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import type { Config } from '@/core/config';
@@ -63,7 +63,7 @@ export class ScheduleCommand implements CommandHandler {
   usage = '/schedule <任务描述>  例: /schedule 每天下午四点播报当日天气';
 
   constructor(
-    @inject(DITokens.LLM_SERVICE) private llmService: LLMService,
+    @inject(LLMService) private llmService: LLMService,
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     @inject(DITokens.AGENDA_SERVICE) private agendaService: AgendaService,
     @inject(DITokens.SCHEDULE_FILE_SERVICE) private scheduleFileService: ScheduleFileService,

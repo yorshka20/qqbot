@@ -1,14 +1,14 @@
 // MessageOperation Plugin - handles reactions on messages and triggers operations
 
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { ConversationManager } from '@/conversation/ConversationManager';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { ConversationManager } from '@/conversation/ConversationManager';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedNoticeEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import type { ProactiveConversationPlugin } from '@/plugins/plugins/ProactiveConversationPlugin';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import { logger } from '@/utils/logger';
@@ -49,9 +49,9 @@ export class MessageOperationPlugin extends PluginBase {
     // MESSAGE_API / DATABASE_MANAGER / CONVERSATION_MANAGER are required
     // tokens (DITokens.ts) — `resolve` itself throws on missing, so the
     // hand-rolled isRegistered guards were redundant.
-    this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-    this.databaseManager = container.resolve<DatabaseManager>(DITokens.DATABASE_MANAGER);
-    this.conversationManager = container.resolve<ConversationManager>(DITokens.CONVERSATION_MANAGER);
+    this.messageAPI = container.resolve(MessageAPI);
+    this.databaseManager = container.resolve(DatabaseManager);
+    this.conversationManager = container.resolve(ConversationManager);
 
     // Load plugin-specific configuration
     try {
@@ -121,7 +121,7 @@ export class MessageOperationPlugin extends PluginBase {
 
     // Whitelist is highest constraint: never respond in non-whitelist groups (notice has no pipeline context)
     const groupIdStr = String(groupId);
-    const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+    const pluginManager = getContainer().resolve(PluginManager);
     const whitelistPlugin = pluginManager?.getPluginAs<WhitelistPlugin>('whitelist');
     if (whitelistPlugin) {
       if (whitelistPlugin.getGroupCapabilities(groupIdStr) === undefined) {
@@ -221,7 +221,7 @@ export class MessageOperationPlugin extends PluginBase {
     noticeEvent: NormalizedNoticeEvent;
   }): void {
     const groupId = String(context.groupId);
-    const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+    const pluginManager = getContainer().resolve(PluginManager);
     const proactivePlugin = pluginManager?.getPluginAs<ProactiveConversationPlugin>('proactiveConversation');
     if (!proactivePlugin) {
       logger.warn('[MessageOperationPlugin] ProactiveConversationPlugin not found, cannot mute');

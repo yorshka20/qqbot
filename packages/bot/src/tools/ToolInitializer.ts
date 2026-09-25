@@ -3,7 +3,7 @@
 // Registration pattern:
 //   1. Decorate executor class with @Tool({ name, description, executor, ... })
 //   2. Export from src/tools/executors/index.ts (ensures decorator runs at import time)
-//   3. Call ToolInitializer.initialize() — auto-discovers all decorated tools
+//   3. Call ToolInitializer.createToolManager() — auto-discovers all decorated tools
 //
 // This is the ONLY supported registration method. Do not use filesystem scanning.
 
@@ -11,30 +11,23 @@
 import '@/tools/executors';
 
 import { logger } from '@/utils/logger';
-import type { ToolManager } from './ToolManager';
-import type { ToolExecutor } from './types';
+import { ToolManager } from './ToolManager';
 
 export class ToolInitializer {
   /**
-   * Initialize tool system.
-   * Discovers all @Tool-decorated executors (imported via '@/tools/executors')
-   * and registers them in the ToolManager.
+   * Build the app's ToolManager: discovers all @Tool-decorated executors
+   * (imported via '@/tools/executors') and registers them.
    */
-  static initialize(toolManager: ToolManager, executorInstances?: Map<string, ToolExecutor>): void {
+  static createToolManager(): ToolManager {
     logger.info('📋 [ToolInitializer] Starting initialization...');
 
+    const toolManager = new ToolManager();
     toolManager.autoRegisterTools();
-
-    if (executorInstances) {
-      for (const [name, executor] of executorInstances.entries()) {
-        toolManager.registerExecutor(executor);
-        logger.info(`✅ [ToolInitializer] Registered executor instance: ${name}`);
-      }
-    }
 
     const tools = toolManager.getAllTools();
     logger.info(
       `✅ [ToolInitializer] Initialized with ${tools.length} tool(s): ${tools.map((t) => t.name).join(', ')}`,
     );
+    return toolManager;
   }
 }

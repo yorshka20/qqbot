@@ -3,11 +3,11 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { CommandManager } from '@/command/CommandManager';
+import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import { hasWhitelistCapability } from '@/context/HookContextHelpers';
-import type { ProactiveConversationService } from '@/conversation/proactive';
-import type { ThreadService } from '@/conversation/thread';
+import { ProactiveConversationService } from '@/conversation/proactive';
+import { ThreadService } from '@/conversation/thread';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -106,10 +106,8 @@ export class ProactiveConversationPlugin extends PluginBase {
 
     // Get dependencies from DI container
     const container = getContainer();
-    this.threadService = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
-    this.proactiveConversationService = container.resolve<ProactiveConversationService>(
-      DITokens.PROACTIVE_CONVERSATION_SERVICE,
-    );
+    this.threadService = container.resolve(ThreadService);
+    this.proactiveConversationService = container.resolve<ProactiveConversationService>(ProactiveConversationService);
     if (!this.proactiveConversationService) {
       throw new Error('[ProactiveConversationPlugin] ProactiveConversationService not found');
     }
@@ -158,7 +156,7 @@ export class ProactiveConversationPlugin extends PluginBase {
     }
 
     // Register /proactive command
-    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
+    this.commandManager = container.resolve(CommandManager);
     const proactiveCommandHandler = new PluginCommandHandler(
       'proactive',
       'Manage proactive conversation. Subcommands: cooldown [minutes] — mute proactive for N minutes (default from config); resume — lift cooldown immediately.',

@@ -20,8 +20,7 @@
 
 import { inject, injectable, singleton } from 'tsyringe';
 import type { ConversationMessageEntry } from '@/conversation/history';
-import type { ThreadContextCompressionService, ThreadService } from '@/conversation/thread';
-import { DITokens } from '@/core/DITokens';
+import { ThreadContextCompressionService, ThreadService } from '@/conversation/thread';
 import { logger } from '@/utils/logger';
 import type { AvatarSource } from '../types';
 
@@ -32,8 +31,8 @@ const LIVE2D_PREFERENCE_PREFIX = 'live2d';
 @singleton()
 export class AvatarSessionService {
   constructor(
-    @inject(DITokens.THREAD_SERVICE) private threadService: ThreadService,
-    @inject(DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE)
+    @inject(ThreadService) private threadService: ThreadService,
+    @inject(ThreadContextCompressionService)
     private compressionService: ThreadContextCompressionService,
   ) {}
 

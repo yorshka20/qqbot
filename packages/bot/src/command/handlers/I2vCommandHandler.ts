@@ -4,16 +4,16 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
-import type { AIService } from '@/ai/AIService';
+import { AIService } from '@/ai/AIService';
 import { isImage2VideoCapability } from '@/ai/capabilities/Image2VideoCapability';
 import { prepareImageForI2v } from '@/ai/utils/imageResize';
 import { extractImagesFromMessageAndReply, visionImageToBuffer } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
 import { FileAPI } from '@/api/methods/FileAPI';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getSessionId } from '@/core/config/SessionUtils';
 import { DITokens } from '@/core/DITokens';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { uploadFileBuffer } from '@/utils/fileUpload';
 import { logger } from '@/utils/logger';
@@ -51,10 +51,10 @@ export class I2vCommandHandler implements CommandHandler {
 
   constructor(
     @inject(DITokens.API_CLIENT) private apiClient: APIClient,
-    @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
-    @inject(DITokens.AI_SERVICE) private aiService: AIService,
+    @inject(DatabaseManager) private databaseManager: DatabaseManager,
+    @inject(AIService) private aiService: AIService,
     @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
-    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
   ) {
     this.fileAPI = new FileAPI(this.apiClient);
   }

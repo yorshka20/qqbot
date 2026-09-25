@@ -8,8 +8,7 @@
 // filters also compose: "what did X say about Y" was previously unexpressible.
 
 import { inject, injectable } from 'tsyringe';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import { DITokens } from '@/core/DITokens';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { formatDateTimeShort } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
@@ -64,9 +63,7 @@ const MAX_RESULTS = 50;
 export class SearchChatHistoryToolExecutor extends BaseToolExecutor {
   name = 'search_chat_history';
 
-  constructor(
-    @inject(DITokens.CONVERSATION_HISTORY_SERVICE) private conversationHistoryService: ConversationHistoryService,
-  ) {
+  constructor(@inject(ConversationHistoryService) private conversationHistoryService: ConversationHistoryService) {
     super();
   }
 

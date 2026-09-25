@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   const alias = getArg('alias');
   const configPath = process.env.CONFIG_PATH;
   const config = configPath ? new Config(configPath) : new Config();
-  const registry = new ProjectRegistry(config.getProjectRegistryConfig());
+  const registry = new ProjectRegistry(config);
 
   console.log(`Syncing cluster-tickets repo (alias "${alias ?? CLUSTER_TICKETS_REGISTRY_ALIAS}")...`);
   const r = await runClusterTicketsSyncWithRegistry(registry, alias);

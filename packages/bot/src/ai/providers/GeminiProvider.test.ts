@@ -7,9 +7,9 @@ import 'reflect-metadata';
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { container } from 'tsyringe';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
-import { DITokens } from '@/core/DITokens';
 import type { AIGenerateOptions } from '../types';
 import { GeminiProvider } from './GeminiProvider';
+import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
 
 function baseConfig(): GeminiProviderConfig {
   return {
@@ -54,8 +54,8 @@ const promptOpts = { messages: [{ role: 'user' as const, content: 'hi' }] };
 
 describe('GeminiProvider model resolution', () => {
   beforeEach(() => {
-    container.register(DITokens.RESOURCE_CLEANUP_SERVICE, {
-      useValue: { registerFileCleanup: () => {} },
+    container.register(ResourceCleanupService, {
+      useValue: { registerFileCleanup: () => {} } as unknown as ResourceCleanupService,
     });
   });
 
@@ -82,8 +82,8 @@ describe('GeminiProvider model resolution', () => {
 
 describe('GeminiProvider reasoning effort → thinkingConfig', () => {
   beforeEach(() => {
-    container.register(DITokens.RESOURCE_CLEANUP_SERVICE, {
-      useValue: { registerFileCleanup: () => {} },
+    container.register(ResourceCleanupService, {
+      useValue: { registerFileCleanup: () => {} } as unknown as ResourceCleanupService,
     });
   });
 
@@ -140,8 +140,8 @@ describe('GeminiProvider reasoning effort → thinkingConfig', () => {
 
 describe('GeminiProvider thought parts → reasoningContent', () => {
   beforeEach(() => {
-    container.register(DITokens.RESOURCE_CLEANUP_SERVICE, {
-      useValue: { registerFileCleanup: () => {} },
+    container.register(ResourceCleanupService, {
+      useValue: { registerFileCleanup: () => {} } as unknown as ResourceCleanupService,
     });
   });
 

@@ -1,7 +1,7 @@
 // Bilibili API service
 // Provides direct access to bilibili's APIs with WBI signing and anti-scraping handling.
 
-import { injectable } from 'tsyringe';
+import { singleton } from 'tsyringe';
 import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
 import type {
@@ -22,7 +22,7 @@ const BILIBILI_HEADERS = {
   'Accept-Language': 'zh-CN,zh;q=0.9',
 };
 
-@injectable()
+@singleton()
 export class BilibiliService {
   private readonly httpClient: HttpClient;
   private readonly hotSearchClient: HttpClient;

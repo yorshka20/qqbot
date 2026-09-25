@@ -18,12 +18,11 @@
 // idle clock and the consecutive-fire counter.
 
 import { inject, injectable, singleton } from 'tsyringe';
-import type { MessagePipeline } from '@/conversation/MessagePipeline';
+import { MessagePipeline } from '@/conversation/MessagePipeline';
 import { makeSyntheticEvent } from '@/conversation/synthetic';
 import type { MessageProcessingContext } from '@/conversation/types';
-import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
-import type { LivemodeState } from '../livemode/LivemodeState';
+import { LivemodeState } from '../livemode/LivemodeState';
 
 const CHECK_INTERVAL_MS = 15_000;
 const IDLE_THRESHOLD_MS = 90_000;
@@ -65,8 +64,8 @@ export class AvatarIdleTrigger {
   private kickoffCursorByUser = new Map<string, number>();
 
   constructor(
-    @inject(DITokens.LIVEMODE_STATE) private state: LivemodeState,
-    @inject(DITokens.MESSAGE_PIPELINE) private messagePipeline: MessagePipeline,
+    @inject(LivemodeState) private state: LivemodeState,
+    @inject(MessagePipeline) private messagePipeline: MessagePipeline,
   ) {}
 
   start(): void {

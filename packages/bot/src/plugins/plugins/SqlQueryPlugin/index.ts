@@ -10,7 +10,7 @@
 // a first query without spending a round trip on schema discovery.
 
 import { resolve } from 'node:path';
-import type { CommandManager } from '@/command/CommandManager';
+import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
@@ -84,7 +84,7 @@ export class SqlQueryPlugin extends PluginBase {
     toolManager.registerTool(this.buildToolSpec(await this.probeTableNames()));
     toolManager.registerExecutor(new SqlQueryToolExecutor(this.runner, this.limits));
 
-    const commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
+    const commandManager = container.resolve(CommandManager);
     commandManager.register(
       new PluginCommandHandler(
         'sql',

@@ -3,8 +3,7 @@
 // a worker drains the queue in-order and logs failures instead of crashing.
 
 import { inject, injectable, singleton } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { BilibiliDanmakuRecord } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 import type { DanmakuEvent } from './BilibiliLiveClient';
@@ -26,7 +25,7 @@ export class DanmakuStore {
   /** Upper bound on the backlog to keep memory bounded if the DB stalls. */
   private readonly MAX_QUEUE = 10_000;
 
-  constructor(@inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager) {}
+  constructor(@inject(DatabaseManager) private databaseManager: DatabaseManager) {}
 
   /**
    * Enqueue a danmaku for persistence. Fire-and-forget — no promise to await.

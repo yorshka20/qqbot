@@ -13,14 +13,12 @@
 //   - Provider resolution precedence (override → taskProviders.memoryExtract
 //     → avatar.llmProvider → defaultProviders.llm)
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import { container } from 'tsyringe';
+import { describe, expect, mock, test } from 'bun:test';
 import type { Config } from '@/core/config';
-import { DITokens } from '@/core/DITokens';
-import type { MemoryExtractService } from '@/memory';
 import type { AvatarSource } from '../../types';
 import { AvatarMemoryExtractionCoordinator } from '../AvatarMemoryExtractionCoordinator';
 import type { AvatarSessionService } from '../AvatarSessionService';
+import type { MemoryExtractService } from '@/memory/MemoryExtractService';
 
 /**
  * Default source used across tests. Must match the default allowlist in
@@ -77,14 +75,9 @@ interface SetupOptions {
   entries?: FakeEntry[];
   /** Override the allowlist; default matches production (`['bilibili-danmaku-batch']`). */
   allowedSources?: string[];
-  /** If false, the coordinator won't find MemoryExtractService at all. */
-  registerExtractService?: boolean;
 }
 
 function setup(opts: SetupOptions = {}): CoordinatorEnv {
-  // Isolate DI container per test so we don't leak instances.
-  container.reset();
-
   const fakeConfig: Record<string, unknown> = {
     avatar: {
       llmProvider: opts.avatarLlmProvider,
@@ -122,13 +115,10 @@ function setup(opts: SetupOptions = {}): CoordinatorEnv {
     extractAndUpsert: mock(async () => undefined),
   };
 
-  if (opts.registerExtractService !== false) {
-    container.registerInstance(DITokens.MEMORY_EXTRACT_SERVICE, extractService as unknown as MemoryExtractService);
-  }
-
   const coordinator = new AvatarMemoryExtractionCoordinator(
     configShim as Config,
     fakeSession as unknown as AvatarSessionService,
+    extractService as unknown as MemoryExtractService,
   );
 
   return { coordinator, fakeConfig, fakeSession, extractService };
@@ -139,10 +129,6 @@ function sleep(ms: number): Promise<void> {
 }
 
 describe('AvatarMemoryExtractionCoordinator', () => {
-  beforeEach(() => {
-    // No global setup needed; each test calls setup() which resets container.
-  });
-
   test('is a no-op when avatar.memoryExtraction.enabled is false', async () => {
     const env = setup({ enabled: false });
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
@@ -309,20 +295,6 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     env.coordinator.cancel('thread-1');
     await sleep(80);
-    expect(env.extractService.extractAndUpsert).not.toHaveBeenCalled();
-  });
-
-  test('is a no-op when MemoryExtractService is not registered in the container', async () => {
-    const env = setup({
-      enabled: true,
-      debounceMs: 20,
-      minUserEntries: 1,
-      entries: [makeEntry({ content: 'hi', isBotReply: false, userId: 'u-1' })],
-      registerExtractService: false,
-    });
-    env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
-    await sleep(80);
-    // No call should have happened — coordinator should have bailed silently.
     expect(env.extractService.extractAndUpsert).not.toHaveBeenCalled();
   });
 

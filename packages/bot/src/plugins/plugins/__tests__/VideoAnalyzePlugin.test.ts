@@ -1,7 +1,5 @@
 import 'reflect-metadata';
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { AIService } from '@/ai/AIService';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -12,6 +10,8 @@ import {
   type VideoAnalyzePayload,
   VideoAnalyzePlugin,
 } from '../VideoAnalyzePlugin';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { AIService } from '@/ai/AIService';
 
 // ---------------------------------------------------------------------------
 // Mock helpers
@@ -114,8 +114,8 @@ async function initPlugin(
   const mockAIService = overrides.aiService ?? createMockAIService();
   const mockConfig = overrides.config ?? createMockConfig();
 
-  container.registerInstance(DITokens.AI_SERVICE, mockAIService, { allowOverride: true });
-  container.registerInstance(DITokens.MESSAGE_API, msgApi as any, { allowOverride: true });
+  container.registerInstance(AIService, mockAIService, { allowOverride: true });
+  container.registerInstance(MessageAPI, msgApi as any, { allowOverride: true });
   container.registerInstance(DITokens.EVENT_ROUTER, mockEventRouter, { allowOverride: true });
   container.registerInstance(DITokens.CONFIG, mockConfig, { allowOverride: true });
 

@@ -1,3 +1,4 @@
+import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Bot } from '@/core/Bot';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -22,7 +23,7 @@ export async function wireClusterEscalation(
   try {
     const { MessageAPI } = await import('@/api/methods/MessageAPI');
     const container = getContainer();
-    const messageAPI = container.resolve<InstanceType<typeof MessageAPI>>(DITokens.MESSAGE_API);
+    const messageAPI = container.resolve<InstanceType<typeof MessageAPI>>(MessageAPI);
     const enabledProtocols = config.getEnabledProtocols();
     const preferredProtocol = enabledProtocols[0]?.name;
     const ownerId = container.resolve<PermissionChecker>(DITokens.PERMISSION_CHECKER).getOwnerId(preferredProtocol);

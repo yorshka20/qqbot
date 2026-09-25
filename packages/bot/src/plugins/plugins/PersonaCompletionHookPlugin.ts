@@ -9,12 +9,12 @@
 // `mind/prompt/PromptPatchAssembler.ts`.
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import { getReply } from '@/context/HookContextHelpers';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { HookManager } from '@/hooks/HookManager';
+import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { PersonaService } from '@/persona';
 import { parseSubtextTags } from '@/persona/prompt/subtextTagParser';
@@ -52,11 +52,11 @@ export class PersonaCompletionHookPlugin extends PluginBase {
     // All other deps are required tokens (DITokens.ts) — resolve directly.
     // If any is missing, the resolve call throws and PluginManager surfaces
     // an aggregate error to bootstrap, which is the signal we want.
-    const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+    const llmService = container.resolve(LLMService);
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-    const historyService = container.resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
+    const historyService = container.resolve(ConversationHistoryService);
     const toolManager = container.resolve<ToolManager>(DITokens.TOOL_MANAGER);
-    const hookManager = container.resolve<HookManager>(DITokens.HOOK_MANAGER);
+    const hookManager = container.resolve(HookManager);
     const personaId = this.persona.getConfig().personaId;
 
     this.reflectionEngine = new ReflectionEngine(

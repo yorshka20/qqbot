@@ -15,8 +15,7 @@
 // own private chat, so no owner/admin gate.
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import type { LivemodeState } from '@/integrations/avatar/livemode/LivemodeState';
+import { LivemodeState } from '@/integrations/avatar/livemode/LivemodeState';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -39,7 +38,7 @@ export class LivemodeCommandHandler implements CommandHandler {
     'Toggle mock-livestream mode for your private chat. While on, your messages feed the Live2D avatar as aggregated "danmaku" batches instead of producing regular 1:1 replies.';
   usage = '/livemode <on|off|status> [--proactive=on|off]';
 
-  constructor(@inject(DITokens.LIVEMODE_STATE) private state: LivemodeState) {}
+  constructor(@inject(LivemodeState) private state: LivemodeState) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     const userId = context.userId;

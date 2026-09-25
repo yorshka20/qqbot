@@ -8,10 +8,10 @@
 // glossary insufficient.
 
 import { inject, injectable } from 'tsyringe';
+import { VKBContextEngine } from '@/services/vkb/VKBContextEngine';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
-import type { VKBContextEngine } from '../VKBContextEngine';
 
 @Tool({
   name: 'lookup_meme',
@@ -36,7 +36,7 @@ import type { VKBContextEngine } from '../VKBContextEngine';
 export class VKBLookupToolExecutor extends BaseToolExecutor {
   name = 'lookup_meme';
 
-  constructor(@inject('VKBContextEngine') private readonly vkbContextEngine: VKBContextEngine) {
+  constructor(@inject(VKBContextEngine) private readonly vkbContextEngine: VKBContextEngine) {
     super();
   }
 

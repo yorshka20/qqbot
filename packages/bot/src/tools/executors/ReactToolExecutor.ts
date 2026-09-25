@@ -2,8 +2,7 @@
 
 import { injectable } from 'tsyringe';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import { ReactionPlugin } from '@/plugins/plugins/ReactionPlugin';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -44,9 +43,7 @@ export class ReactToolExecutor extends BaseToolExecutor {
       return this.error('只能在群聊里贴表情', 'not a group message');
     }
 
-    const plugin = getContainer()
-      .resolve<PluginManager>(DITokens.PLUGIN_MANAGER)
-      .getPluginAs<ReactionPlugin>('reaction');
+    const plugin = getContainer().resolve(PluginManager).getPluginAs<ReactionPlugin>('reaction');
     if (!plugin) {
       return this.error('表情回应功能未启用', 'reaction plugin not registered');
     }

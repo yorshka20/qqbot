@@ -2,8 +2,7 @@
 // Uses RAG (vector search) when available, falls back to keyword matching
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import { GROUP_MEMORY_USER_ID, type MemoryService } from '@/memory/MemoryService';
+import { GROUP_MEMORY_USER_ID, MemoryService } from '@/memory/MemoryService';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -49,7 +48,7 @@ const DEFAULT_MIN_SCORE = 0.6;
 export class SearchMemoryToolExecutor extends BaseToolExecutor {
   name = 'search_memory';
 
-  constructor(@inject(DITokens.MEMORY_SERVICE) private memoryService: MemoryService) {
+  constructor(@inject(MemoryService) private memoryService: MemoryService) {
     super();
   }
 

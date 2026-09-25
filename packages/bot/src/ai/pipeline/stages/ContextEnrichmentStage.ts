@@ -10,7 +10,7 @@ import { formatMemoryMarkdown } from '@/memory/formatMemoryMarkdown';
 import type { MemoryService } from '@/memory/MemoryService';
 import type { RetrievalService } from '@/services/retrieval';
 import { QdrantClient } from '@/services/retrieval';
-import type { VKBContextEngine } from '@/services/vkb';
+import { VKBContextEngine } from '@/services/vkb/VKBContextEngine';
 import { logger } from '@/utils/logger';
 import type { PromptManager } from '../../prompt/PromptManager';
 import { formatRAGConversationContext } from '../../utils/formatRAGConversationContext';
@@ -47,7 +47,7 @@ export class ContextEnrichmentStage implements ReplyStage {
     // VKBContextEngine is always registered (no-op when disabled) — resolve
     // via DI to avoid bloating AIService's 14-arg constructor for an
     // optional augmentation source.
-    this.vkbContextEngine = getContainer().resolve<VKBContextEngine>('VKBContextEngine');
+    this.vkbContextEngine = getContainer().resolve(VKBContextEngine);
     this.auditEventStore = getContainer().resolve<AuditEventStore>(DITokens.AUDIT_EVENT_STORE);
     this.sessionMemoStore = getContainer().resolve<SessionMemoStore>(DITokens.SESSION_MEMO_STORE);
   }

@@ -29,6 +29,7 @@ import { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, ToolDefinition } from '@/ai/types';
 import { parseCardDeck } from '@/services/card/cardTypes';
 import { ToolManager } from '@/tools/ToolManager';
+import { createLLMService } from '@/ai/services/__tests__/createLLMService';
 
 /** The send_card tool definition exactly as it ships to the model. */
 function getSendCardDefinition(): ToolDefinition {
@@ -47,7 +48,7 @@ for (const providerName of ALL_TOOL_USE_PROVIDERS) {
   describe.skipIf(!getIntegrationProvider(providerName))(
     `send_card LLM integration (${providerName}, real API)`,
     () => {
-      const llmService = new LLMService(createAIManagerWithProvider(providerName));
+      const llmService = createLLMService(createAIManagerWithProvider(providerName));
 
       test(
         'model emits a schema-valid card deck (content, not a type-only card)',

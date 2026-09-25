@@ -4,15 +4,15 @@
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import type { ConversationHistoryService } from '@/conversation/history';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { MemoryExtractUserCursor } from '@/database/models/types';
 import { GroupDayFanout } from '@/fanout/contexts/groupDay/GroupDayFanout';
-import type { MemoryExtractService } from '@/memory';
 import { GroupDayMemoryTask } from '@/memory/GroupDayMemoryTask';
+import { MemoryExtractService } from '@/memory/MemoryExtractService';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { RegisterPlugin } from '../decorators';
@@ -71,11 +71,9 @@ export class MemoryPlugin extends PluginBase {
     this.enabled = true;
 
     const container = getContainer();
-    this.conversationHistoryService = container.resolve<ConversationHistoryService>(
-      DITokens.CONVERSATION_HISTORY_SERVICE,
-    );
-    this.memoryExtractService = container.resolve<MemoryExtractService>(DITokens.MEMORY_EXTRACT_SERVICE);
-    this.databaseManager = container.resolve<DatabaseManager>(DITokens.DATABASE_MANAGER);
+    this.conversationHistoryService = container.resolve<ConversationHistoryService>(ConversationHistoryService);
+    this.memoryExtractService = container.resolve(MemoryExtractService);
+    this.databaseManager = container.resolve(DatabaseManager);
 
     const config = container.resolve<Config>(DITokens.CONFIG);
     this.botSelfId = config.getConfig().bot.selfId;

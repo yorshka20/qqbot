@@ -8,10 +8,13 @@ import type { MessageSegment } from '@/message/types';
  * Command Router
  * Determines if a message is a command and routes accordingly
  */
+/** Prefixes that mark a message as a command, for both routing and message rendering. */
+export const COMMAND_PREFIXES = ['/', '!'];
+
 export class CommandRouter {
   private parser: CommandParser;
 
-  constructor(prefixes: string[] = ['/', '!']) {
+  constructor(prefixes: string[] = COMMAND_PREFIXES) {
     this.parser = new CommandParser(prefixes);
   }
 

@@ -1,5 +1,6 @@
 // Thread Service - in-memory threads per group (Phase 1 single; Phase 3 multiple per group)
 
+import { singleton } from 'tsyringe';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { formatTimeOnly } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
@@ -49,6 +50,7 @@ export interface ProactiveThread {
  * Thread Service (Phase 3: multiple active threads per group)
  * In-memory; same group can have multiple active threads. Reply context uses "current" thread per group.
  */
+@singleton()
 export class ThreadService {
   /** groupId -> list of active threads (order: oldest first) */
   private threadsByGroup = new Map<string, ProactiveThread[]>();

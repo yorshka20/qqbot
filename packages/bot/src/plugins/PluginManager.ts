@@ -1,15 +1,16 @@
 // Plugin loading and lifecycle management
 //
 // Plugins register themselves via the `@RegisterPlugin` decorator at import
-// time. The barrel import below pulls every first-party builtin plugin
-// module into memory so their decorators fire and populate the static plugin
+// time. Bootstrap (the composition root) imports the builtins barrel
+// (`@/plugins/plugins`) so their decorators fire and populate the static plugin
 // registry (see `decorators.ts`). PluginManager then iterates that registry
-// — it does NOT walk the filesystem. Mirrors the CommandManager
+// — it does NOT walk the filesystem, and it does not import the plugins
+// itself: they depend on services PluginManager's consumers also use, so
+// importing them here would close an import cycle. Mirrors the CommandManager
 // registry-consumption pattern.
 //
-// PluginManager only imports the **builtins** barrel. Other plugin sources
-// register themselves through their own initialization paths so that
-// PluginManager stays unaware of integrations / services / third-party:
+// Other plugin sources register themselves through their own initialization
+// paths so that PluginManager stays unaware of integrations / services / third-party:
 //   - Service-owned plugins (e.g. ClaudeCodePlugin under
 //     `services/claudeCode/plugins/`) — registered via the service module's
 //     own re-exports (`services/claudeCode/index.ts`), imported by
@@ -21,54 +22,38 @@
 //   - Third-party plugins under `<repo>/plugins/` are NOT YET SUPPORTED —
 //     see `plugins/README.md` for the open design questions.
 
-// Side-effect import: trigger @RegisterPlugin decorators for first-party builtins.
-import './plugins';
-
+import { inject, singleton } from 'tsyringe';
 import type { APIClient } from '@/api/APIClient';
 import type { CommandContext } from '@/command/types';
-import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import type { Config } from '@/core/config';
 import { getSessionId, getSessionType } from '@/core/config/SessionUtils';
+import { DITokens } from '@/core/DITokens';
 import type { EventRouter } from '@/events/EventRouter';
-import type { HookManager } from '@/hooks/HookManager';
+import { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookHandler } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { getAllPluginMetadata, getPluginHooks, type HookMetadata, type PluginMetadata } from './decorators';
 import type { Plugin, PluginContext } from './types';
 
-/**
- * Constructor dependencies for PluginManager (all explicit; no context object).
- * PluginContext is built internally when passing to plugins.
- * Config is resolved from container when the factory runs.
- */
-export interface PluginManagerDeps {
-  apiClient: APIClient;
-  eventRouter: EventRouter;
-  config: Config;
-  hookManager: HookManager;
-  conversationConfigService: ConversationConfigService;
-}
-
+@singleton()
 export class PluginManager {
   private plugins = new Map<string, Plugin>();
   private enabledPlugins = new Set<string>();
   private startedPlugins = new Set<string>();
   private running = false;
 
-  private readonly apiClient: APIClient;
-  private readonly eventRouter: EventRouter;
-  private readonly config: Config;
-  private readonly hookManager: HookManager;
-  private readonly conversationConfigService: ConversationConfigService;
-
-  constructor(deps: PluginManagerDeps) {
-    this.apiClient = deps.apiClient;
-    this.eventRouter = deps.eventRouter;
-    this.config = deps.config;
-    this.hookManager = deps.hookManager;
-    this.conversationConfigService = deps.conversationConfigService;
-  }
+  // EVENT_ROUTER is registered by the event-system startup step, so the manager is first
+  // resolved after it (plugin loading is the step right after).
+  constructor(
+    @inject(DITokens.API_CLIENT) private readonly apiClient: APIClient,
+    @inject(DITokens.EVENT_ROUTER) private readonly eventRouter: EventRouter,
+    @inject(DITokens.CONFIG) private readonly config: Config,
+    @inject(HookManager) private readonly hookManager: HookManager,
+    @inject(ConversationConfigService)
+    private readonly conversationConfigService: ConversationConfigService,
+  ) {}
 
   /** Build PluginContext for plugins (used in loadConfig). Config: resolve from DI (DITokens.CONFIG). */
   private getContext(): PluginContext {

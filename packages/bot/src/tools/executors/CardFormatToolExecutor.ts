@@ -3,7 +3,7 @@ import type { AIManager } from '@/ai/AIManager';
 import { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { HookManager } from '@/hooks/HookManager';
+import { HookManager } from '@/hooks/HookManager';
 import { CardRenderingService } from '@/services/card';
 import { CARD_ITEM_SCHEMA, parseCardDeck } from '@/services/card/cardTypes';
 import { logger } from '@/utils/logger';
@@ -73,7 +73,7 @@ export class CardFormatToolExecutor extends BaseToolExecutor {
     if (!this._cardHelper) {
       const container = getContainer();
       const aiManager = container.resolve<AIManager>(DITokens.AI_MANAGER);
-      const hookManager = container.resolve<HookManager>(DITokens.HOOK_MANAGER);
+      const hookManager = container.resolve(HookManager);
       this._cardHelper = new CardRenderingHelper(new CardRenderingService(aiManager), hookManager);
     }
     return this._cardHelper;

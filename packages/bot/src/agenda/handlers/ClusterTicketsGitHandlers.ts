@@ -5,8 +5,7 @@
 import { injectable } from 'tsyringe';
 import { runClusterTicketsSyncWithRegistry } from '@/cluster/clusterTicketsGitSync';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
-import type { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
 @injectable()
@@ -27,7 +26,7 @@ export class ClusterTicketsSyncHandler implements ActionHandler {
       }
     }
 
-    const registry = getContainer().resolve<ProjectRegistry>(DITokens.PROJECT_REGISTRY);
+    const registry = getContainer().resolve(ProjectRegistry);
     const r = await runClusterTicketsSyncWithRegistry(registry, alias);
     if (!r.ok) {
       return r.message;

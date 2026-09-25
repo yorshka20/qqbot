@@ -8,6 +8,7 @@ import { GroupDedupCommandHandler } from '@/command/handlers/GroupDedupCommandHa
 import type { CommandContext } from '@/command/types';
 import { FileReadService } from '@/services/file';
 import * as repoRoot from '@/utils/repoRoot';
+import { createFileReadService } from '@/services/file/__tests__/createFileReadService';
 
 // bun's module mock is process-wide, so it must behave like the real module whenever this
 // file's temp root is not set; otherwise every later test file sees an undefined repo root.
@@ -63,7 +64,7 @@ describe('GroupDedupCommandHandler', () => {
       utimesSync(oldestFile, 1000, 1000);
       utimesSync(duplicateFile, 2000, 2000);
 
-      const handler = new GroupDedupCommandHandler(new FileReadService(), createAiServiceMock());
+      const handler = new GroupDedupCommandHandler(createFileReadService(), createAiServiceMock());
       const result = await handler.execute(['123456'], createContext());
 
       expect(result.success).toBe(true);
@@ -89,7 +90,7 @@ describe('GroupDedupCommandHandler', () => {
       mkdirSync(tempRoot, { recursive: true });
       process.env.__TEST_REPO_ROOT__ = tempRoot;
 
-      const handler = new GroupDedupCommandHandler(new FileReadService(), createAiServiceMock());
+      const handler = new GroupDedupCommandHandler(createFileReadService(), createAiServiceMock());
       const result = await handler.execute(['123456'], createContext());
 
       expect(result.success).toBe(true);

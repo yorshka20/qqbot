@@ -1,13 +1,16 @@
 // LLM Service - provides LLM text generation capability
 
+import { inject, singleton } from 'tsyringe';
+import { ProviderSelector } from '@/ai/ProviderSelector';
 import { HttpClientError } from '@/api/http/HttpClient';
 import { getCurrentMessageContext } from '@/context/MessageContextStorage';
-import type { HealthCheckManager } from '@/core/health';
+import type { Config } from '@/core/config';
+import { DITokens } from '@/core/DITokens';
+import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import { logger } from '@/utils/logger';
 import type { AIManager } from '../AIManager';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import { isLLMCapability } from '../capabilities/LLMCapability';
-import type { ProviderSelector } from '../ProviderSelector';
 import { foldReasoningIntoContent } from '../prompt/PromptMessageAssembler';
 import { TokenRateLimiter, type TokenRateLimiterConfig } from '../rateLimit';
 import { TOKEN_BUDGET } from '../tokenBudget';
@@ -131,6 +134,7 @@ export function isTransientLLMError(err: Error, opts?: { retryOnTimeout?: boolea
  * LLM Service
  * Provides LLM text generation capability
  */
+@singleton()
 export class LLMService {
   private readonly providersWithNativeWebSearch = ['doubao', 'anthropic'];
 
@@ -187,12 +191,25 @@ export class LLMService {
   }
 
   constructor(
-    private aiManager: AIManager,
-    private providerSelector?: ProviderSelector,
-    private healthCheckManager?: HealthCheckManager,
-    config?: LLMServiceConfig,
+    @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
+    @inject(ProviderSelector) private providerSelector: ProviderSelector,
+    @inject(HealthCheckManager) private healthCheckManager: HealthCheckManager,
+    @inject(DITokens.CONFIG) config: Config,
   ) {
-    this.config = config ?? { toolUseProviders: [], fallback: { fallbackOrder: [] } };
+    const aiConfig = config.getAIConfig();
+    if (!aiConfig?.llmFallback) {
+      throw new Error('[LLMService] ai.llmFallback is required in config');
+    }
+    this.config = {
+      toolUseProviders: aiConfig.toolUseProviders ?? [],
+      fallback: aiConfig.llmFallback,
+      rateLimit: aiConfig.rateLimit
+        ? {
+            defaultTokensPerMinute: aiConfig.rateLimit.defaultTokensPerMinute ?? 0,
+            providers: aiConfig.rateLimit.providers,
+          }
+        : undefined,
+    };
     this.rateLimiter = new TokenRateLimiter(this.config.rateLimit);
   }
 
@@ -320,7 +337,7 @@ export class LLMService {
           `[LLMService] Requested provider "${providerName}" is not registered for LLM capability; falling back to default`,
         );
       }
-    } else if (sessionId && this.providerSelector) {
+    } else if (sessionId) {
       const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'llm');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('llm', sessionProviderName);
@@ -341,7 +358,7 @@ export class LLMService {
 
     if (!provider || !resolvedName) return null;
 
-    const isUnhealthy = this.healthCheckManager ? !this.healthCheckManager.isServiceHealthySync(resolvedName) : false;
+    const isUnhealthy = !this.healthCheckManager.isServiceHealthySync(resolvedName);
 
     // Only swap for non-explicit requests. Explicit caller intent (prefix routing,
     // taskProviders.convert etc.) must actually attempt the requested provider so
@@ -420,10 +437,7 @@ export class LLMService {
       if (excludeProvider && name === excludeProvider) {
         return false;
       }
-      if (this.healthCheckManager) {
-        return this.healthCheckManager.isServiceHealthySync(name);
-      }
-      return true; // No health manager = assume healthy
+      return this.healthCheckManager.isServiceHealthySync(name);
     });
   }
 
@@ -498,13 +512,13 @@ export class LLMService {
       }
       this.logLLMUsage(providerName, prompt, options, result);
       this.emitTrace('generateFixed', providerName, prompt, options, result, startedAt);
-      this.healthCheckManager?.markServiceHealthy(providerName);
+      this.healthCheckManager.markServiceHealthy(providerName);
       result.resolvedProviderName = providerName;
       this.stampResolvedModel(result, provider, options);
       return result;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      this.healthCheckManager?.markServiceUnhealthy(providerName, error.message);
+      this.healthCheckManager.markServiceUnhealthy(providerName, error.message);
       throw error;
     }
   }
@@ -556,14 +570,14 @@ export class LLMService {
       this.logLLMUsage(resolvedName, prompt, effectiveOptions, result);
       this.emitTrace('generate', resolvedName, prompt, effectiveOptions, result, startedAt);
       // Mark provider as healthy on success
-      this.healthCheckManager?.markServiceHealthy(resolvedName);
+      this.healthCheckManager.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
       this.stampResolvedModel(result, provider, effectiveOptions);
       return result;
     } catch (err) {
       // Mark provider as failed
       const errorMessage = err instanceof Error ? err.message : String(err);
-      this.healthCheckManager?.markServiceUnhealthy(resolvedName, errorMessage);
+      this.healthCheckManager.markServiceUnhealthy(resolvedName, errorMessage);
       logger.error(`[LLMService] Provider "${resolvedName}" generate failed:`, err);
       // Strip provider-specific model from options so fallback providers use their own defaults
       const fallbackOptions = options ? { ...options, model: undefined } : options;
@@ -626,13 +640,13 @@ export class LLMService {
       );
       this.logLLMUsage(resolvedName, prompt, mergedOptions, result);
       this.emitTrace('generateLite', resolvedName, prompt, mergedOptions, result, startedAt);
-      this.healthCheckManager?.markServiceHealthy(resolvedName);
+      this.healthCheckManager.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
       this.stampResolvedModel(result, provider, mergedOptions);
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      this.healthCheckManager?.markServiceUnhealthy(resolvedName, errorMessage);
+      this.healthCheckManager.markServiceUnhealthy(resolvedName, errorMessage);
       logger.error(`[LLMService] Provider "${resolvedName}" generateLite failed:`, err);
       // Strip provider-specific model from options so fallback providers use their own defaults
       const fallbackOptions: AIGenerateOptions = { ...mergedOptions, model: undefined };
@@ -708,7 +722,7 @@ export class LLMService {
         this.optionsForProvider(provider, effectiveOptions),
       );
       // Mark provider as healthy on success
-      this.healthCheckManager?.markServiceHealthy(resolvedName);
+      this.healthCheckManager.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
       this.stampResolvedModel(result, provider, effectiveOptions);
       this.emitTrace('generateStream', resolvedName, prompt, effectiveOptions, result, startedAt);
@@ -716,7 +730,7 @@ export class LLMService {
     } catch (err) {
       // Mark provider as failed
       const errorMessage = err instanceof Error ? err.message : String(err);
-      this.healthCheckManager?.markServiceUnhealthy(resolvedName, errorMessage);
+      this.healthCheckManager.markServiceUnhealthy(resolvedName, errorMessage);
       logger.error(`[LLMService] Provider "${resolvedName}" generateStream failed:`, err);
       // Strip provider-specific model from options so fallback providers use their own defaults
       const fallbackOptions = options ? { ...options, model: undefined } : options;
@@ -767,7 +781,7 @@ export class LLMService {
       let foundToolUseProvider = false;
       for (const toolProviderName of this.config.toolUseProviders) {
         // Skip unhealthy providers
-        if (this.healthCheckManager && !this.healthCheckManager.isServiceHealthySync(toolProviderName)) {
+        if (!this.healthCheckManager.isServiceHealthySync(toolProviderName)) {
           logger.debug(`[LLMService] Skipping unhealthy tool-use provider "${toolProviderName}"`);
           continue;
         }
@@ -1178,7 +1192,7 @@ export class LLMService {
         if (p.name === excludeProvider) return false;
         if (!p.isAvailable()) return false;
         // Filter out unhealthy providers
-        if (this.healthCheckManager && !this.healthCheckManager.isServiceHealthySync(p.name)) {
+        if (!this.healthCheckManager.isServiceHealthySync(p.name)) {
           logger.debug(`[LLMService] Excluding unhealthy provider "${p.name}" from alternatives`);
           return false;
         }

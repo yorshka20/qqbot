@@ -1,23 +1,17 @@
-// FanoutInitializer — registers every fan-out in FANOUT_CONTEXTS and builds the FanoutManager.
+// FanoutInitializer — exposes every fan-out in FANOUT_CONTEXTS to the FanoutManager,
+// which receives them through @injectAll(DITokens.FANOUT_CONTEXTS).
 //
-// Runs before the agenda (whose `action fanout` handler needs the manager) and before
-// plugins load (they resolve a fan-out class and register their tasks on it in onEnable).
-// Every fan-out and FanoutServices are DI singletons, so a plugin resolving
-// GroupDayFanout gets the instance the manager runs.
+// Each fan-out is a class-keyed singleton, so a plugin resolving GroupDayFanout and the
+// manager's lookup by name reach the same instance, whichever is resolved first.
 
 import type { DIContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import { FANOUT_CONTEXTS } from './contexts';
-import { FanoutManager } from './core/FanoutManager';
-import { FanoutServices } from './core/FanoutServices';
 
 export class FanoutInitializer {
-  static initialize(container: DIContainer): FanoutManager {
-    container.registerSingleton(FanoutServices);
-    const manager = new FanoutManager();
+  static registerProviders(container: DIContainer): void {
     for (const type of FANOUT_CONTEXTS) {
-      container.registerSingleton(type);
-      manager.register(container.resolve(type));
+      container.registerAlias(DITokens.FANOUT_CONTEXTS, type);
     }
-    return manager;
   }
 }

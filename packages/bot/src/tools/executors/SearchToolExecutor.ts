@@ -1,8 +1,7 @@
 // Search task executor - handles web search queries
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import type { RetrievalService } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import type { SearchResult } from '@/services/retrieval/searxng/types';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
@@ -35,7 +34,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 export class SearchToolExecutor extends BaseToolExecutor {
   name = 'search';
 
-  constructor(@inject(DITokens.RETRIEVAL_SERVICE) private retrievalService: RetrievalService) {
+  constructor(@inject(RetrievalService) private retrievalService: RetrievalService) {
     super();
   }
 

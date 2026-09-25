@@ -87,7 +87,7 @@ The bot requires a `config.jsonc` file (JSONC with comments). Copy from `config.
 - **TypeScript Strict Mode**: All code uses strict TypeScript
 - **Path Aliases**: Use `@/` for `src/` imports
 - **Formatting**: 2-space indentation, single quotes, trailing commas (Biome)
-- **Dependency Injection**: Use `@injectable()` and `@singleton()` decorators
+- **Dependency Injection**: A service is a `@singleton()` class that names every constructor dependency with an explicit `@inject(Class)` or `@inject(DITokens.X)` — never rely on inferred metadata (Biome turns type-only class imports into `import type`, which silently breaks it). Read config values from an injected `Config` in the constructor. Don't add a `registerInstance` / factory for a service; keep `DITokens` for external values, config-assembled registries, interfaces, gated optionals and startup products, and expose a class under a string token only with `registerAlias`. A service module never imports its own consumers — decorator registries are imported by `bootstrap.ts`
 - **Async/Await**: Prefer async/await over callbacks
 - **Error Handling**: Custom error types (ConfigError, APIError, ConnectionError)
 - **Control Flow**: Always use curly braces for `if`/`else`; ESM `import` only, never inline `require()`
@@ -169,7 +169,7 @@ After writing a comment, ask yourself: **"Half a year from now, will a newcomer 
 When testing changes:
 1. Run `bun run typecheck` — static type checking
 2. Run `bun run lint` — code quality
-3. Run `bun run smoke-test` — **MANDATORY**. Boots the real application through the full initialization path (`packages/bot/src/core/bootstrap.ts`), verifying DI registration, module loading order, and plugin initialization. This catches circular imports, TDZ errors, and missing DI tokens that typecheck cannot detect. **A change is NOT considered fixed/complete until smoke-test passes.**
+3. Run `bun run smoke-test` — **MANDATORY**. Boots the real application through `startApp()` (`packages/bot/src/core/app.ts`) without live connections — full bootstrap, plugins enabled as configured, a settle window for async failures, then the real shutdown — verifying DI registration, module loading order, and plugin initialization. This catches circular imports, TDZ errors, and missing DI tokens that typecheck cannot detect. **A change is NOT considered fixed/complete until smoke-test passes.**
 4. Use `bun run debug` for interactive mock message testing when needed
 5. Check WebSocket connections with `LOG_LEVEL=debug` for protocol-level debugging
 
@@ -185,11 +185,11 @@ to prove the behaviour.
 
 ### Why smoke-test is required
 
-`typecheck` and `build` only validate static types — they cannot catch runtime initialization order issues (circular imports causing TDZ errors, DI tokens referenced before registration, etc.). The `smoke-test` runs the exact same `bootstrapApp()` function as `packages/bot/src/index.ts`, ensuring every service, plugin, and tool executor initializes successfully without live network connections.
+`typecheck` and `build` only validate static types — they cannot catch runtime initialization order issues (circular imports causing TDZ errors, DI tokens referenced before registration, etc.). The `smoke-test` runs the exact same `startApp()` as `packages/bot/src/index.ts`, only without `connect`, so it loads the same module graph and exercises the same initialization and shutdown code.
 
 ### Bootstrap architecture
 
-All initialization logic lives in `packages/bot/src/core/bootstrap.ts` as a single `bootstrapApp()` function. Both `packages/bot/src/index.ts` (production) and `packages/bot/src/cli/smoke-test.ts` call this same function. When adding new services or changing initialization order, only modify `bootstrap.ts` — never duplicate initialization logic elsewhere.
+All initialization logic lives in `packages/bot/src/core/bootstrap.ts` as a single `bootstrapApp()` function, reached only through `startApp()` in `packages/bot/src/core/app.ts`, which adds the connect phase and the one shutdown sequence. Production, the smoke test, cluster-e2e and the debug CLI all call `startApp()`. When adding new services or changing initialization order, only modify `bootstrap.ts` / `app.ts` — never duplicate initialization logic elsewhere.
 
 ## Plugin Development
 

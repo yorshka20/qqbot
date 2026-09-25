@@ -1,4 +1,6 @@
-import type { Bot } from '@/core/Bot';
+import { inject, singleton } from 'tsyringe';
+import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { PermissionChecker } from '@/permission';
@@ -25,14 +27,15 @@ const STACK_LINE_LIMIT = 10;
  * Owner id and protocol are resolved at send time (not construction time)
  * because protocols may not be connected yet when the service is built.
  */
+@singleton()
 export class AdminAlertService {
-  private readonly config: ReturnType<Bot['getConfig']>;
+  private readonly config: Config;
   private readonly lastSentAt = new Map<string, number>();
   private readonly sentTimestamps: number[] = [];
   private capNoticeSent = false;
   private boundaryInstalled = false;
 
-  constructor(config: ReturnType<Bot['getConfig']>) {
+  constructor(@inject(DITokens.CONFIG) config: Config) {
     this.config = config;
   }
 
@@ -87,7 +90,7 @@ export class AdminAlertService {
     try {
       const { MessageAPI } = await import('@/api/methods/MessageAPI');
       const container = getContainer();
-      const messageAPI = container.resolve<InstanceType<typeof MessageAPI>>(DITokens.MESSAGE_API);
+      const messageAPI = container.resolve<InstanceType<typeof MessageAPI>>(MessageAPI);
       const enabledProtocols = this.config.getEnabledProtocols();
       const preferredProtocol = enabledProtocols[0]?.name;
       const ownerId = container.resolve<PermissionChecker>(DITokens.PERMISSION_CHECKER).getOwnerId(preferredProtocol);

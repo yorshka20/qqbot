@@ -3,8 +3,7 @@
 
 import { join } from 'node:path';
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import type { FileReadService } from '@/services/file';
+import { FileReadService } from '@/services/file/FileReadService';
 import { formatBytes, resolveGroupDirs, runDeduplication } from '@/utils/fileDedup';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
@@ -50,7 +49,7 @@ const DOWNLOAD_ROOT = 'output/downloads';
 export class DeduplicateFilesToolExecutor extends BaseToolExecutor {
   name = 'deduplicate_files';
 
-  constructor(@inject(DITokens.FILE_READ_SERVICE) private fileService: FileReadService) {
+  constructor(@inject(FileReadService) private fileService: FileReadService) {
     super();
   }
 

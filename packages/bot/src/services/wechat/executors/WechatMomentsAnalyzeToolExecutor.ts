@@ -1,10 +1,9 @@
 // WeChat moments topic analysis — retrieves relevant moments then calls LLMService for deep analysis
 
 import { inject, injectable } from 'tsyringe';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
-import { DITokens } from '@/core/DITokens';
-import type { RetrievalService } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { loadAnalysisPrompt } from '@/services/wechat/moments/momentsTags';
 import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { Tool } from '@/tools/decorators';
@@ -65,8 +64,8 @@ export class WechatMomentsAnalyzeToolExecutor extends BaseToolExecutor {
   name = 'wechat_moments_analyze';
 
   constructor(
-    @inject(DITokens.RETRIEVAL_SERVICE) private retrievalService: RetrievalService,
-    @inject(DITokens.LLM_SERVICE) private llmService: LLMService,
+    @inject(RetrievalService) private retrievalService: RetrievalService,
+    @inject(LLMService) private llmService: LLMService,
   ) {
     super();
   }

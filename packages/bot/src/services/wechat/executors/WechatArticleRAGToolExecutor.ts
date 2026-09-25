@@ -1,8 +1,7 @@
 // WeChat article RAG search — semantic search over chunked WeChat articles
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import type { RetrievalService } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
@@ -51,7 +50,7 @@ const MAX_CHUNK_DISPLAY_LEN = 500;
 export class WechatArticleRAGToolExecutor extends BaseToolExecutor {
   name = 'wechat_article_rag';
 
-  constructor(@inject(DITokens.RETRIEVAL_SERVICE) private retrievalService: RetrievalService) {
+  constructor(@inject(RetrievalService) private retrievalService: RetrievalService) {
     super();
   }
 

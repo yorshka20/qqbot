@@ -6,8 +6,8 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
+import type { SummarizeService } from '@/ai/services/SummarizeService';
+import type { Config } from '@/core/config';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 
 interface Row {
@@ -39,12 +39,11 @@ function serviceOver(rows: Row[]): ConversationHistoryService {
     },
   };
 
-  getContainer().registerInstance(
-    DITokens.SUMMARIZE_SERVICE,
-    { summarize: () => Promise.resolve('') },
-    { allowOverride: true },
+  return new ConversationHistoryService(
+    { getAdapter: () => adapter } as unknown as DatabaseManager,
+    { summarize: () => Promise.resolve('') } as unknown as SummarizeService,
+    { getContextMemoryConfig: () => undefined } as unknown as Config,
   );
-  return new ConversationHistoryService({ getAdapter: () => adapter } as unknown as DatabaseManager);
 }
 
 async function resolve(rows: Row[], name: string) {

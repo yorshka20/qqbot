@@ -1,10 +1,9 @@
 // AutoRecallPlugin - automatically recalls messages with images in private/temp chats
 
 import { hasImages } from '@/ai/utils/imageUtils';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getReplyContent } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
@@ -32,7 +31,7 @@ export class AutoRecallPlugin extends PluginBase {
     // Cleanup any existing timers when plugin is initialized
     this.recallTimers.clear();
     // Resolve the shared MessageAPI singleton from DI.
-    this.messageAPI = getContainer().resolve<MessageAPI>(DITokens.MESSAGE_API);
+    this.messageAPI = getContainer().resolve(MessageAPI);
     // Load configuration
     const config = (this.pluginConfig?.config || {}) as AutoRecallPluginConfig;
     this.recallDelay = config.recallDelay ?? 60000;

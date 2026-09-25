@@ -1,6 +1,6 @@
 // BaseFanout — the base every fan-out extends, as tool executors extend BaseToolExecutor.
 //
-// A subclass is an @injectable class listed in FANOUT_CONTEXTS. It passes FanoutServices
+// A subclass is a @singleton() class listed in FANOUT_CONTEXTS. It passes FanoutServices
 // to super and injects only what its own context needs. It says what the shared context
 // is (buildContext), which system prompt and model the run uses, and nothing else. Task selection, the envelope, the hook context
 // tools run under and the one-run-per-target guard all live here, so no subclass can

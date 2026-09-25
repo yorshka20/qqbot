@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import { describe, expect, it, beforeAll } from 'bun:test';
 import type { DatabaseManager } from '@/database/DatabaseManager';
-import { DITokens } from '@/core/DITokens';
-import { getContainer } from '@/core/DIContainer';
+import type { SummarizeService } from '@/ai/services/SummarizeService';
+import type { Config } from '@/core/config';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 
 describe('appendBotReplyToGroup metadata', () => {
@@ -38,13 +38,10 @@ describe('appendBotReplyToGroup metadata', () => {
       getAdapter: () => adapter,
     } as unknown as DatabaseManager;
 
-    const fakeSummarizeService = { summarize: () => Promise.resolve('summary') };
+    const fakeSummarizeService = { summarize: () => Promise.resolve('summary') } as unknown as SummarizeService;
+    const fakeConfig = { getContextMemoryConfig: () => undefined } as unknown as Config;
 
-    getContainer().registerInstance(DITokens.SUMMARIZE_SERVICE, fakeSummarizeService, {
-      allowOverride: true,
-    });
-
-    const service = new ConversationHistoryService(fakeDatabaseManager);
+    const service = new ConversationHistoryService(fakeDatabaseManager, fakeSummarizeService, fakeConfig);
 
     Object.defineProperty(globalThis, '__testService', {
       value: service,

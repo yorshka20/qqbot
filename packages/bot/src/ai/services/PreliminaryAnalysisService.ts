@@ -1,11 +1,13 @@
 // Ollama Preliminary Analysis Service - decides whether to proactively join (no RAG)
 
+import { inject, singleton } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import type { LLMCapability } from '@/ai/capabilities/LLMCapability';
 import { isLLMCapability } from '@/ai/capabilities/LLMCapability';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { type PreliminaryAnalysisResult, PreliminaryAnalysisSchema } from '@/ai/schemas';
 import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { TOKEN_BUDGET } from '../tokenBudget';
 
@@ -49,10 +51,11 @@ export interface PreliminaryAnalysisOptions {
  * Uses an LLM (Ollama, Doubao, etc.) to analyze recent messages and decide whether the bot should join.
  * Does not use RAG / preference knowledge base. Provider is configurable via plugin config (analysisProvider).
  */
+@singleton()
 export class PreliminaryAnalysisService {
   constructor(
-    private aiManager: AIManager,
-    private promptManager: PromptManager,
+    @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
   ) {}
 
   /**

@@ -3,9 +3,8 @@
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { AIProvider } from '../base/AIProvider';
@@ -151,7 +150,7 @@ export class ProactiveReplyGenerationService {
   ): { baseSystemPrompt: string; proactiveSystemPrompt: string; finalUserQuery: string } {
     let whitelistFragment = '';
     if (context.sessionId) {
-      const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+      const pluginManager = getContainer().resolve(PluginManager);
       const whitelistPlugin = pluginManager?.getPluginAs<WhitelistPlugin>('whitelist');
       const caps = whitelistPlugin?.getGroupCapabilities?.(context.sessionId);
       if (caps && caps.length > 0) {

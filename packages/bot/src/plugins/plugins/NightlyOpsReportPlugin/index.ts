@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { getContainer } from '@/core/DIContainer';
@@ -47,7 +47,7 @@ export class NightlyOpsReportPlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    this.messageAPI = container.resolve(MessageAPI);
 
     const pluginCfg = (this.pluginConfig?.config ?? {}) as NightlyOpsReportPluginConfig;
     this.cron = pluginCfg.cron ?? '*/10 * * * *';

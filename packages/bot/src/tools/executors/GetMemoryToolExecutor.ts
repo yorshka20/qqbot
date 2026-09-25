@@ -1,9 +1,8 @@
 // Get memory task executor - reads group/user memory slots for local tool use
 
 import { inject, injectable } from 'tsyringe';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import { DITokens } from '@/core/DITokens';
-import { GROUP_MEMORY_USER_ID, type MemoryService } from '@/memory/MemoryService';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import { GROUP_MEMORY_USER_ID, MemoryService } from '@/memory/MemoryService';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
@@ -50,8 +49,8 @@ export class GetMemoryToolExecutor extends BaseToolExecutor {
   name = 'get_memory';
 
   constructor(
-    @inject(DITokens.MEMORY_SERVICE) private memoryService: MemoryService,
-    @inject(DITokens.CONVERSATION_HISTORY_SERVICE) private conversationHistoryService: ConversationHistoryService,
+    @inject(MemoryService) private memoryService: MemoryService,
+    @inject(ConversationHistoryService) private conversationHistoryService: ConversationHistoryService,
   ) {
     super();
   }

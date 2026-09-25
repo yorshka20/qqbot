@@ -1,7 +1,7 @@
 import { inject, injectable } from 'tsyringe';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
-import type { MemoryService } from '@/memory/MemoryService';
+import { MemoryService } from '@/memory/MemoryService';
 import type { PermissionChecker } from '@/permission';
 import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
@@ -28,8 +28,8 @@ export class MemorySyncCommand implements CommandHandler {
   usage = '/memory_sync [group|<userId>]';
 
   constructor(
-    @inject(DITokens.MEMORY_SERVICE) private memoryService: MemoryService,
-    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+    @inject(MemoryService) private memoryService: MemoryService,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
     @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
   ) {}
 

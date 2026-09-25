@@ -1,28 +1,32 @@
 // AI Service — pure facade delegating to specialized sub-services.
 
+import { inject, singleton } from 'tsyringe';
 import { SubAgentExecutor } from '@/agent/SubAgentExecutor';
 import { SubAgentManager } from '@/agent/SubAgentManager';
 import { ToolRunner } from '@/agent/ToolRunner';
 import type { SubAgentConfig, SubAgentType } from '@/agent/types';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { ProviderSelector } from '@/ai/ProviderSelector';
+import { ProviderRouter } from '@/ai/routing/ProviderRouter';
+import { LLMService } from '@/ai/services/LLMService';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ProactiveReplyInjectContext } from '@/context/types';
-import type { ConversationHistoryService } from '@/conversation/history';
-import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
-import type { AIChatConfig } from '@/core/config/types/ai';
-import type { DatabaseManager } from '@/database/DatabaseManager';
-import type { HookManager } from '@/hooks/HookManager';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
+import type { Config } from '@/core/config';
+import { DITokens } from '@/core/DITokens';
+import { DatabaseManager } from '@/database/DatabaseManager';
+import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
-import type { MemoryService } from '@/memory/MemoryService';
+import { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
 import type { PermissionChecker } from '@/permission';
 import { type CardData, CardRenderingService } from '@/services/card';
-import type { RetrievalService } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolResult } from '@/tools/types';
 import type { AIManager } from './AIManager';
 import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from './capabilities/types';
-import type { ProviderSelector } from './ProviderSelector';
 import { CardRenderingHelper } from './pipeline/helpers/CardRenderingHelper';
 import { EpisodeCacheManager } from './pipeline/helpers/EpisodeCacheManager';
 import { ReplyPipelineOrchestrator } from './pipeline/ReplyPipelineOrchestrator';
@@ -35,12 +39,10 @@ import { PromptAssemblyStage } from './pipeline/stages/PromptAssemblyStage';
 import { ProviderSelectionStage } from './pipeline/stages/ProviderSelectionStage';
 import { ResponseDispatchStage } from './pipeline/stages/ResponseDispatchStage';
 import type { PromptManager } from './prompt/PromptManager';
-import type { ProviderRouter } from './routing/ProviderRouter';
 import type { I2VPromptResult } from './schemas';
 import { ImageFacadeService } from './services/ImageFacadeService';
 import { ImageGenerationService } from './services/ImageGenerationService';
 import { ImagePromptService } from './services/ImagePromptService';
-import type { LLMService } from './services/LLMService';
 import { NsfwReplyService } from './services/NsfwReplyService';
 import { ProactiveReplyGenerationService } from './services/ProactiveReplyGenerationService';
 import { VisionService } from './services/VisionService';
@@ -58,6 +60,7 @@ import type { AIGenerateResponse } from './types';
  *
  * Other systems (like ReplySystem) should inject this service to use AI capabilities.
  */
+@singleton()
 export class AIService {
   private replyPipeline: ReplyPipelineOrchestrator;
   private nsfwReplyService: NsfwReplyService;
@@ -68,23 +71,27 @@ export class AIService {
   private visionService: VisionService;
 
   constructor(
-    aiManager: AIManager,
-    hookManager: HookManager,
-    promptManager: PromptManager,
-    toolManager: ToolManager,
-    conversationHistoryService: ConversationHistoryService,
-    providerSelector: ProviderSelector,
-    retrievalService: RetrievalService,
-    memoryService: MemoryService,
-    messageAPI: MessageAPI,
-    databaseManager: DatabaseManager,
-    llmService: LLMService,
-    providerRouter: ProviderRouter,
-    permissionChecker: PermissionChecker,
-    registry: PromptInjectionRegistry,
-    subagentConfig?: { providerName?: string | string[]; model?: string },
-    chatConfig?: AIChatConfig,
+    @inject(DITokens.AI_MANAGER) aiManager: AIManager,
+    @inject(HookManager) hookManager: HookManager,
+    @inject(DITokens.PROMPT_MANAGER) promptManager: PromptManager,
+    @inject(DITokens.TOOL_MANAGER) toolManager: ToolManager,
+    @inject(ConversationHistoryService) conversationHistoryService: ConversationHistoryService,
+    @inject(ProviderSelector) providerSelector: ProviderSelector,
+    @inject(RetrievalService) retrievalService: RetrievalService,
+    @inject(MemoryService) memoryService: MemoryService,
+    @inject(MessageAPI) messageAPI: MessageAPI,
+    @inject(DatabaseManager) databaseManager: DatabaseManager,
+    @inject(LLMService) llmService: LLMService,
+    @inject(ProviderRouter) providerRouter: ProviderRouter,
+    @inject(DITokens.PERMISSION_CHECKER) permissionChecker: PermissionChecker,
+    @inject(PromptInjectionRegistry) registry: PromptInjectionRegistry,
+    @inject(DITokens.CONFIG) config: Config,
   ) {
+    const aiConfig = config.getAIConfig();
+    const subagentProviderName = aiConfig?.taskProviders?.subagent;
+    const subagentModel = aiConfig?.taskProviders?.subagentModel;
+    const chatConfig = aiConfig?.chat;
+
     this.visionService = new VisionService(aiManager, providerSelector);
     this.cardRenderingService = new CardRenderingService(aiManager);
     const imageGenerationService = new ImageGenerationService(aiManager, providerSelector);
@@ -105,8 +112,8 @@ export class AIService {
       toolRunner,
       promptManager,
       permissionChecker,
-      subagentConfig?.providerName,
-      subagentConfig?.model,
+      subagentProviderName,
+      subagentModel,
     );
     subAgentManager.setExecutor(subAgentExecutor);
 

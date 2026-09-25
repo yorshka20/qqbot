@@ -4,7 +4,7 @@
 // stage so long replies don't get sent as images).
 
 import { inject, injectable } from 'tsyringe';
-import type { MessagePipeline } from '@/conversation/MessagePipeline';
+import { MessagePipeline } from '@/conversation/MessagePipeline';
 import { makeSyntheticEvent } from '@/conversation/synthetic';
 import type { MessageProcessingContext } from '@/conversation/types';
 import type { Config } from '@/core/config';
@@ -35,7 +35,7 @@ export class AvatarCommandHandler implements CommandHandler {
   private readonly MAX_INPUT_CHARS = 500;
 
   constructor(
-    @inject(DITokens.MESSAGE_PIPELINE) private messagePipeline: MessagePipeline,
+    @inject(MessagePipeline) private messagePipeline: MessagePipeline,
     @inject(DITokens.CONFIG) private config: Config,
   ) {}
 

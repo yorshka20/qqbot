@@ -5,17 +5,16 @@
 import { inject, injectable } from 'tsyringe';
 import { getRolePreset } from '@/agent/SubAgentRolePresets';
 import type { PromptManager } from '@/ai';
-import type { AIService } from '@/ai/AIService';
+import { AIService } from '@/ai/AIService';
 import type { AIProvider } from '@/ai/base/AIProvider';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import { executeToolCall, formatToolCatalog } from '@/ai/tools/replyTools';
 import type { ChatMessage, ToolDefinition } from '@/ai/types';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import { normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { ConversationHistoryService, normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { DITokens } from '@/core/DITokens';
-import type { HookManager } from '@/hooks/HookManager';
+import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
 import type { ToolManager } from '@/tools/ToolManager';
@@ -52,13 +51,13 @@ export class AgentLoop {
   private readonly preferredProtocol: ProtocolName = 'milky';
 
   constructor(
-    @inject(DITokens.LLM_SERVICE) private llmService: LLMService,
-    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
-    @inject(DITokens.CONVERSATION_HISTORY_SERVICE) private conversationHistoryService: ConversationHistoryService,
+    @inject(LLMService) private llmService: LLMService,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
+    @inject(ConversationHistoryService) private conversationHistoryService: ConversationHistoryService,
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     @inject(DITokens.TOOL_MANAGER) private toolManager: ToolManager,
-    @inject(DITokens.HOOK_MANAGER) private hookManager: HookManager,
-    @inject(DITokens.AI_SERVICE) private aiService: AIService,
+    @inject(HookManager) private hookManager: HookManager,
+    @inject(AIService) private aiService: AIService,
   ) {}
 
   /**

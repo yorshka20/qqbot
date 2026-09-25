@@ -1,11 +1,14 @@
 // Thread Context Compression Service (Phase 4) - async summarize oldest segment, replace in thread; periodic topic cleaning
 
+import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { buildSpeakerTag } from '@/ai/prompt/speakerTag';
+import { SummarizeService } from '@/ai/services/SummarizeService';
+import { DITokens } from '@/core/DITokens';
 import { formatTimeCompact } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
-import type { SummarizeService } from '../../ai/services/SummarizeService';
-import type { ThreadMessage, ThreadService } from './ThreadService';
+import type { ThreadMessage } from './ThreadService';
+import { ThreadService } from './ThreadService';
 
 /**
  * When thread message count exceeds this, `compressThreadIfNeeded` may replace the
@@ -25,13 +28,14 @@ const MIN_MESSAGES_FOR_TOPIC_CLEAN = 8;
  * Triggered after analysis; only one compression run per thread at a time.
  * Can optionally run LLM-based topic cleaning to remove off-topic messages from thread context.
  */
+@singleton()
 export class ThreadContextCompressionService {
   private compressingThreadIds = new Set<string>();
 
   constructor(
-    private threadService: ThreadService,
-    private summarizeService: SummarizeService,
-    private promptManager?: PromptManager,
+    @inject(ThreadService) private threadService: ThreadService,
+    @inject(SummarizeService) private summarizeService: SummarizeService,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
   ) {}
 
   /**

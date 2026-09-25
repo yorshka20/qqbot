@@ -1,17 +1,17 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
 import { FileReadService } from '@/services/file';
 import { ToolInitializer } from '@/tools/ToolInitializer';
 import type { ToolManager } from '@/tools/ToolManager';
-import { ToolManager as ToolManagerImpl } from '@/tools/ToolManager';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import type { SubAgentManager } from '../SubAgentManager';
 import { ToolRunner } from '../ToolRunner';
 import type { SubAgentSession } from '../types';
 import { SubAgentType } from '../types';
+import { createFileReadService } from '@/services/file/__tests__/createFileReadService';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 
 function createMockSession(overrides?: Partial<SubAgentSession>): SubAgentSession {
   return {
@@ -78,11 +78,10 @@ describe('ToolRunner', () => {
   });
 
   it('run read_file list with real ToolManager returns real execution result', async () => {
-    getContainer().registerInstance(DITokens.FILE_READ_SERVICE, new FileReadService(), {
+    getContainer().registerInstance(FileReadService, createFileReadService(), {
       allowOverride: true,
     });
-    const toolManager = new ToolManagerImpl();
-    ToolInitializer.initialize(toolManager);
+    const toolManager = ToolInitializer.createToolManager();
     const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
     const session = createMockSession();
 
@@ -99,11 +98,10 @@ describe('ToolRunner', () => {
   });
 
   it('run read_file read with real ToolManager returns file content (text only, no card render)', async () => {
-    getContainer().registerInstance(DITokens.FILE_READ_SERVICE, new FileReadService(), {
+    getContainer().registerInstance(FileReadService, createFileReadService(), {
       allowOverride: true,
     });
-    const toolManager = new ToolManagerImpl();
-    ToolInitializer.initialize(toolManager);
+    const toolManager = ToolInitializer.createToolManager();
     const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
     const session = createMockSession();
 
@@ -129,11 +127,10 @@ describe('ToolRunner', () => {
     const mockRetrievalService = {
       getPageContentFetchService: () => mockFetchService,
     };
-    getContainer().registerInstance(DITokens.RETRIEVAL_SERVICE, mockRetrievalService, {
+    getContainer().registerInstance(RetrievalService, mockRetrievalService, {
       allowOverride: true,
     });
-    const toolManager = new ToolManagerImpl();
-    ToolInitializer.initialize(toolManager);
+    const toolManager = ToolInitializer.createToolManager();
     const runner = new ToolRunner(toolManager, {} as SubAgentManager, new HookManager());
     const session = createMockSession();
 

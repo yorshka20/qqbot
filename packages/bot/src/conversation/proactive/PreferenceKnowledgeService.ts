@@ -1,15 +1,18 @@
 // PreferenceKnowledgeService - RAG retrieval for proactive reply (Phase 2)
 
+import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
-import type { RetrievalService, SearchResult } from '@/services/retrieval';
+import { DITokens } from '@/core/DITokens';
+import type { SearchResult } from '@/services/retrieval';
 import {
   buildSummariesFromStringChunks,
   FILTER_REFINE_MAX_ROUNDS,
   FILTER_SUPPLEMENT_MAX_RESULTS,
 } from '@/services/retrieval';
 import { extractEntriesFromChunks } from '@/services/retrieval/fetch';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 
@@ -72,11 +75,12 @@ function resultsToChunks(results: SearchResult[]): string[] {
  * Search decision (whether/what to search) is done at analysis stage.
  * After first retrieve, one short LLM check: if information insufficient, run one supplement search (option B).
  */
+@singleton()
 export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeService {
   constructor(
-    private readonly retrievalService: RetrievalService,
-    private readonly llmService: LLMService,
-    private readonly promptManager: PromptManager,
+    @inject(RetrievalService) private readonly retrievalService: RetrievalService,
+    @inject(LLMService) private readonly llmService: LLMService,
+    @inject(DITokens.PROMPT_MANAGER) private readonly promptManager: PromptManager,
   ) {}
 
   async retrieve(

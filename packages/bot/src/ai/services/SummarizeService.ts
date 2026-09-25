@@ -1,9 +1,12 @@
 // Summarize Service - single implementation for llm.summarize (thread compression, context memory, etc.)
 
+import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { KeepIndicesSchema } from '@/ai/schemas';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
+import type { Config } from '@/core/config';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { TOKEN_BUDGET } from '../tokenBudget';
 
@@ -29,12 +32,18 @@ const DEFAULT_MAX_TOKENS = TOKEN_BUDGET.analysis;
  * Unified summarization: renders llm.summarize prompt and calls LLM.
  * Runs on `ai.taskProviders.summarize` unless a call overrides it via options.provider.
  */
+@singleton()
 export class SummarizeService {
+  private readonly defaultProvider: string | undefined;
+
   constructor(
-    private llmService: LLMService,
-    private promptManager: PromptManager,
-    private defaultProvider?: string,
-  ) {}
+    @inject(LLMService) private llmService: LLMService,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+    @inject(DITokens.CONFIG) config: Config,
+  ) {
+    const aiConfig = config.getAIConfig();
+    this.defaultProvider = aiConfig?.taskProviders?.summarize ?? aiConfig?.defaultProviders?.llm;
+  }
 
   /**
    * Summarize conversation text using llm.summarize template.

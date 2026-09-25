@@ -1,12 +1,14 @@
 // Conversation History Service - single implementation for loading history from DB and formatting (User<userId:nickname> / Assistant)
 
-import type { SummarizeService } from '@/ai/services/SummarizeService';
-import type { ThreadService } from '@/conversation/thread';
+import { inject, singleton } from 'tsyringe';
+import { SummarizeService } from '@/ai/services/SummarizeService';
+import { ThreadService } from '@/conversation/thread';
+import type { Config } from '@/core/config';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { Conversation, Message } from '@/database/models/types';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
@@ -99,14 +101,17 @@ export function normalizeGroupId(groupId: string | number): { sessionId: string;
  * Single module for: loading recent messages from DB (group or any session), formatting with User<userId:nickname> / Assistant,
  * and building conversation history string for prompt (thread first, then in-memory, then DB fallback).
  */
+@singleton()
 export class ConversationHistoryService {
-  private summarizeService: SummarizeService;
+  private readonly defaultLimit = 30;
+  private readonly maxHistoryMessages: number;
+
   constructor(
-    private databaseManager: DatabaseManager,
-    private defaultLimit = 30,
-    private maxHistoryMessages = 10,
+    @inject(DatabaseManager) private databaseManager: DatabaseManager,
+    @inject(SummarizeService) private summarizeService: SummarizeService,
+    @inject(DITokens.CONFIG) config: Config,
   ) {
-    this.summarizeService = getContainer().resolve<SummarizeService>(DITokens.SUMMARIZE_SERVICE);
+    this.maxHistoryMessages = config.getContextMemoryConfig()?.maxHistoryMessages ?? 10;
   }
 
   /**
@@ -526,7 +531,7 @@ export class ConversationHistoryService {
     const proactiveThreadId = context.metadata.get('proactiveThreadId');
     if (proactiveThreadId) {
       // THREAD_SERVICE is required (DITokens.ts).
-      const threadService = getContainer().resolve<ThreadService>(DITokens.THREAD_SERVICE);
+      const threadService = getContainer().resolve(ThreadService);
       const text = threadService.getContextFormatted(proactiveThreadId);
       if (text) {
         return text;

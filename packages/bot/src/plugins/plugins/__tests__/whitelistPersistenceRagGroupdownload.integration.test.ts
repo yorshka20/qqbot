@@ -12,8 +12,8 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { PromptManager } from '@/ai/prompt/PromptManager';
 import { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import { CommandBuilder } from '@/command/CommandBuilder';
-import { CommandRouter } from '@/conversation/CommandRouter';
 import { Lifecycle } from '@/conversation/Lifecycle';
+import { ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { System } from '@/core/system';
@@ -27,6 +27,12 @@ import { GroupDownloadPlugin } from '../GroupDownloadPlugin';
 import { MessageTriggerPlugin } from '../MessageTriggerPlugin';
 import { ProactiveConversationPlugin } from '../ProactiveConversationPlugin';
 import { WhitelistPlugin } from '../WhitelistPlugin';
+import { CommandManager } from '@/command/CommandManager';
+import { ThreadService } from '@/conversation/thread/ThreadService';
+import { ProactiveConversationService } from '@/conversation/proactive/ProactiveConversationService';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { FileReadService } from '@/services/file/FileReadService';
+import { LLMService } from '@/ai/services/LLMService';
 
 // ---- Spy systems: only record that COMPLETE stage ran (trigger); no real DB/RAG write ----
 
@@ -129,8 +135,7 @@ describe('Whitelist functional: non-whitelist skipped but DB+RAG run', () => {
 
   async function setupLifecycle(whitelistGroupIds: string[]) {
     hookManager = new HookManager();
-    const commandRouter = new CommandRouter(['/', '!']);
-    lifecycle = new Lifecycle(hookManager, commandRouter);
+    lifecycle = new Lifecycle(hookManager, new ProcessStageInterceptorRegistry());
 
     dbSpy = { called: false };
     ragSpy = { called: false };
@@ -149,23 +154,23 @@ describe('Whitelist functional: non-whitelist skipped but DB+RAG run', () => {
     const promptManager = new PromptManager();
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
-      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      ProactiveConversationService,
       { getGroupPreferenceKeys: () => [], isGroupSuppressed: () => false },
       { allowOverride: true },
     );
     container.registerInstance(
-      DITokens.THREAD_SERVICE,
+      ThreadService,
       { getActiveThread: () => null, hasActiveThread: () => false },
       { allowOverride: true },
     );
     container.registerInstance(
-      DITokens.LLM_SERVICE,
+      LLMService,
       { generateLite: async () => ({ text: 'true' }) },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.CONFIG, { getAIConfig: () => undefined }, { allowOverride: true });
     container.registerInstance(
-      DITokens.PROVIDER_ROUTER,
+      ProviderRouter,
       new ProviderRouter({ getProviderForCapability: () => ({ isAvailable: () => true }) } as never),
       { allowOverride: true },
     );
@@ -202,8 +207,7 @@ describe('Whitelist functional: whitelist group can trigger proactive, messageTr
 
   async function setupLifecycleWithProactive() {
     hookManager = new HookManager();
-    const commandRouter = new CommandRouter(['/', '!']);
-    lifecycle = new Lifecycle(hookManager, commandRouter);
+    lifecycle = new Lifecycle(hookManager, new ProcessStageInterceptorRegistry());
 
     dbSpy = { called: false };
     ragSpy = { called: false };
@@ -224,7 +228,7 @@ describe('Whitelist functional: whitelist group can trigger proactive, messageTr
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     const scheduleForGroup = mock(() => {});
     container.registerInstance(
-      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      ProactiveConversationService,
       {
         getGroupPreferenceKeys: () => [],
         setGroupConfig: () => {},
@@ -236,22 +240,22 @@ describe('Whitelist functional: whitelist group can trigger proactive, messageTr
       { allowOverride: true },
     );
     container.registerInstance(
-      DITokens.THREAD_SERVICE,
+      ThreadService,
       { getActiveThread: () => null, hasActiveThread: () => false },
       { allowOverride: true },
     );
     container.registerInstance(
-      DITokens.LLM_SERVICE,
+      LLMService,
       { generateLite: async () => ({ text: 'true' }) },
       { allowOverride: true },
     );
     container.registerInstance(DITokens.CONFIG, { getAIConfig: () => undefined }, { allowOverride: true });
     container.registerInstance(
-      DITokens.PROVIDER_ROUTER,
+      ProviderRouter,
       new ProviderRouter({ getProviderForCapability: () => ({ isAvailable: () => true }) } as never),
       { allowOverride: true },
     );
-    container.registerInstance(DITokens.COMMAND_MANAGER, { register: () => {} } as never, { allowOverride: true });
+    container.registerInstance(CommandManager, { register: () => {} } as never, { allowOverride: true });
 
     const trigger = new MessageTriggerPlugin({ name: 'messageTrigger', version: 'test', description: 'test' });
     trigger.loadConfig(
@@ -326,13 +330,13 @@ describe('GroupDownload functional: plugin uses onMessageComplete hook at COMPLE
 
   it('when lifecycle runs COMPLETE (onMessageComplete), GroupDownload handler is actually invoked', async () => {
     getContainer().registerInstance(
-      DITokens.MESSAGE_API,
+      MessageAPI,
       { getResourceTempUrl: async () => null },
       { allowOverride: true },
     );
     // GroupDownloadPlugin.onInit resolves FILE_READ_SERVICE as a hard dependency
     // (used for deduplication); no download runs in this test, a stub suffices.
-    getContainer().registerInstance(DITokens.FILE_READ_SERVICE, {}, { allowOverride: true });
+    getContainer().registerInstance(FileReadService, {}, { allowOverride: true });
 
     const plugin = new GroupDownloadPlugin({
       name: 'groupDownload',

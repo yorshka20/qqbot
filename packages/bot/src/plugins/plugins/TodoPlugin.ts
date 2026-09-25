@@ -13,9 +13,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
-import type { CommandManager } from '@/command/CommandManager';
+import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
@@ -48,8 +48,8 @@ export class TodoPlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
-    this.llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+    this.commandManager = container.resolve(CommandManager);
+    this.llmService = container.resolve(LLMService);
     this.promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
     this.config = container.resolve<Config>(DITokens.CONFIG);
 

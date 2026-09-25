@@ -14,7 +14,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
+import { inject, singleton } from 'tsyringe';
+import type { Config } from '@/core/config';
 import type { FileReadServiceConfig } from '@/core/config/types/bot';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 
 /** Default cap for the human `/cat` path. The read_file tool passes its own. */
@@ -119,12 +122,14 @@ function normalizeExtension(ext: string): string {
   return bare;
 }
 
+@singleton()
 export class FileReadService {
   private readonly projectRoot: string;
   private readonly filterPaths: string[];
   private readonly filterExtensions: string[];
 
-  constructor(config?: FileReadServiceConfig) {
+  constructor(@inject(DITokens.CONFIG) botConfig: Config) {
+    const config: FileReadServiceConfig | undefined = botConfig.getFileReadServiceConfig();
     this.projectRoot = resolve(config?.root ?? process.cwd());
     this.filterPaths = config?.filterPaths ?? [];
     this.filterExtensions = (config?.filterExtensions ?? []).map(normalizeExtension).filter((ext) => ext.length > 0);
@@ -142,7 +147,7 @@ export class FileReadService {
       return true;
     }
     const rel = relative(rootPath, resolvedPath);
-    const withinRoot = (!rel || !rel.startsWith('..')) && !isAbsolute(rel);
+    const withinRoot = !rel?.startsWith('..') && !isAbsolute(rel);
     return withinRoot && this.filterPaths.every((filter) => !rel.includes(filter));
   }
 

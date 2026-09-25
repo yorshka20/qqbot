@@ -1,12 +1,13 @@
 // Retrieval service - unified facade for web search and vector RAG
 
+import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
+import type { Config } from '@/core/config';
 import type { MCPConfig } from '@/core/config/types/mcp';
 import type { RAGConfig } from '@/core/config/types/rag';
-import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { HealthCheckManager } from '@/core/health';
+import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { PageContentFetchService } from './fetch';
@@ -16,17 +17,19 @@ import type { FilterAndRefineOptions, FilterRefineResult } from './searchFilterR
 import { SearchService } from './searxng/SearchService';
 import type { SearchOptions, SearchResult } from './searxng/types';
 
+@singleton()
 export class RetrievalService {
   private searchService: SearchService;
   private ragService: RAGService | null = null;
   private readonly pageContentFetchService: PageContentFetchService;
 
   constructor(
-    mcpConfig: MCPConfig | undefined,
-    ragConfig: RAGConfig | undefined,
-    healthCheckManager: HealthCheckManager,
+    @inject(DITokens.CONFIG) config: Config,
+    @inject(HealthCheckManager) healthCheckManager: HealthCheckManager,
+    @inject(DITokens.PROMPT_MANAGER) promptManager: PromptManager,
   ) {
-    const promptManager = getContainer().resolve<PromptManager>(DITokens.PROMPT_MANAGER);
+    const mcpConfig: MCPConfig | undefined = config.getMCPConfig();
+    const ragConfig: RAGConfig | undefined = config.getRAGConfig();
     this.pageContentFetchService = new PageContentFetchService({
       config: mcpConfig?.search?.fetch ?? undefined,
     });

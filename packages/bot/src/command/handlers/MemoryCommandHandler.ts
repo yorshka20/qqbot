@@ -1,15 +1,15 @@
 // Memory command handlers: deep extract and memory edit
 
 import { inject, injectable } from 'tsyringe';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { MemoryExtractService } from '@/memory';
-import type { MemoryService } from '@/memory/MemoryService';
+import { MemoryExtractService } from '@/memory/MemoryExtractService';
+import { MemoryService } from '@/memory/MemoryService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { PermissionChecker } from '@/permission';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import type { MemoryPlugin } from '@/plugins/plugins/MemoryPlugin';
 import { logger } from '@/utils/logger';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
@@ -41,8 +41,8 @@ export class MemoryDeepCommand implements CommandHandler {
   };
 
   constructor(
-    @inject(DITokens.PLUGIN_MANAGER) private pluginManager: PluginManager,
-    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+    @inject(PluginManager) private pluginManager: PluginManager,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
     @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
   ) {}
 
@@ -130,9 +130,9 @@ export class MemoryEditCommand implements CommandHandler {
   };
 
   constructor(
-    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
-    @inject(DITokens.MEMORY_SERVICE) private memoryService: MemoryService,
-    @inject(DITokens.MEMORY_EXTRACT_SERVICE) private memoryExtractService: MemoryExtractService,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
+    @inject(MemoryService) private memoryService: MemoryService,
+    @inject(MemoryExtractService) private memoryExtractService: MemoryExtractService,
     @inject(DITokens.CONFIG) private config: Config,
     @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
   ) {}

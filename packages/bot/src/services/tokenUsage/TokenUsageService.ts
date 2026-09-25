@@ -5,10 +5,10 @@
 // persistence failure must never break reply generation. Aggregation happens at
 // read time (modest volume; keeps the schema flexible and adapter-agnostic).
 
-import { inject, injectable } from 'tsyringe';
+import { inject, singleton } from 'tsyringe';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { TokenUsageRecord } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 
@@ -73,10 +73,10 @@ export interface DailyUsageAgg {
   byProvider: ProviderUsageAgg[];
 }
 
-@injectable()
+@singleton()
 export class TokenUsageService {
   constructor(
-    @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
+    @inject(DatabaseManager) private databaseManager: DatabaseManager,
     @inject(DITokens.CONFIG) private config: Config,
   ) {}
 

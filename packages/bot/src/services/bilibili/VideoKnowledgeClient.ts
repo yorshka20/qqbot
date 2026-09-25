@@ -3,9 +3,10 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { injectable } from 'tsyringe';
+import { inject, singleton } from 'tsyringe';
 import { HttpClient } from '@/api/http/HttpClient';
-import type { VideoKnowledgeConfig } from '@/core/config';
+import type { Config, VideoKnowledgeConfig } from '@/core/config';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import type {
   VideoKnowledgeAnalyzeRequest,
@@ -19,7 +20,7 @@ import type {
 
 const LOG_TAG = '[VideoKnowledgeClient]';
 
-@injectable()
+@singleton()
 export class VideoKnowledgeClient {
   private readonly httpClient: HttpClient;
   private readonly dataDir?: string;
@@ -27,7 +28,11 @@ export class VideoKnowledgeClient {
   private readonly pollTimeoutMs: number;
   private readonly enabled: boolean;
 
-  constructor(config: VideoKnowledgeConfig) {
+  constructor(@inject(DITokens.CONFIG) botConfig: Config) {
+    const config: VideoKnowledgeConfig = botConfig.getConfig().videoKnowledge ?? {
+      enabled: false,
+      baseURL: 'http://localhost:8080',
+    };
     this.enabled = config.enabled;
     this.dataDir = config.dataDir;
     this.pollIntervalMs = config.pollIntervalMs ?? 5000;

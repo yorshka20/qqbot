@@ -11,11 +11,10 @@
 // infrastructure that should run for every reply without requiring a config entry.
 
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { Hook, RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
-import type { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
+import { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
 import { logger } from '@/utils/logger';
 
 @RegisterPlugin({
@@ -30,8 +29,8 @@ export class UsageTrackingPlugin extends PluginBase {
   private getUsageService(): TokenUsageService | null {
     if (this.usageService) return this.usageService;
     const container = getContainer();
-    if (container.isRegistered(DITokens.TOKEN_USAGE_SERVICE)) {
-      this.usageService = container.resolve<TokenUsageService>(DITokens.TOKEN_USAGE_SERVICE);
+    if (container.isRegistered(TokenUsageService)) {
+      this.usageService = container.resolve(TokenUsageService);
     }
     return this.usageService;
   }

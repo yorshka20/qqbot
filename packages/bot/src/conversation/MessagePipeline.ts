@@ -1,20 +1,23 @@
 // Message Pipeline - processes messages through the complete flow
 
+import { inject, singleton } from 'tsyringe';
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import { MESSAGE_RECEIVED_EVENT } from '@/agenda/types';
-import type { ProviderRouter } from '@/ai/routing/ProviderRouter';
-import type { ContextManager, ConversationContext } from '@/context';
+import { ProviderRouter } from '@/ai/routing/ProviderRouter';
+import type { ConversationContext } from '@/context';
+import { ContextManager } from '@/context/ContextManager';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { getReply, getReplyContent } from '@/context/HookContextHelpers';
 import { enterMessageContext } from '@/context/MessageContextStorage';
+import { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import { Lifecycle } from '@/conversation/Lifecycle';
+import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
-import type { HookManager } from '@/hooks/HookManager';
+import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
 import { logger } from '@/utils/logger';
 import { getLogColorForKey, getLogTag } from '@/utils/messageLogContext';
-import type { ConversationConfigService } from './ConversationConfigService';
-import type { Lifecycle } from './Lifecycle';
 import { deriveSourceFromEvent, type MessageSource } from './sources';
 import { getSourceConfig } from './sources/registry';
 import type { MessageProcessingContext, MessageProcessingResult } from './types';
@@ -26,6 +29,7 @@ import type { MessageProcessingContext, MessageProcessingResult } from './types'
  * Each process run registers its message context in a Map (keyed by sessionId_messageId); the key is set in
  * async local storage so PromptManager can look up the correct context for this async chain when rendering.
  */
+@singleton()
 export class MessagePipeline {
   /** Sessions (sessionId) with a message currently in flight, for sources whose
    * concurrency mode is 'drop'. A second message for a session already in this set
@@ -33,18 +37,17 @@ export class MessagePipeline {
   private inFlightSessions = new Set<string>();
 
   constructor(
-    private lifecycle: Lifecycle,
-    private hookManager: HookManager,
-    private contextManager: ContextManager,
-    private conversationConfigService: ConversationConfigService,
-    private providerRouter: ProviderRouter,
+    @inject(Lifecycle) private lifecycle: Lifecycle,
+    @inject(HookManager) private hookManager: HookManager,
+    @inject(ContextManager) private contextManager: ContextManager,
+    @inject(ConversationConfigService) private conversationConfigService: ConversationConfigService,
+    @inject(ProviderRouter) private providerRouter: ProviderRouter,
     /**
-     * Optional — when present, the pipeline publishes
-     * `MESSAGE_RECEIVED_EVENT` after every successful `lifecycle.execute`
-     * so PersonaService can translate it into an attention stimulus and
-     * AgendaService can match onMessage items. Absent in tests / setups without mind.
+     * The pipeline publishes `MESSAGE_RECEIVED_EVENT` after every successful
+     * `lifecycle.execute` so PersonaService can translate it into an attention
+     * stimulus and AgendaService can match onMessage items.
      */
-    private internalEventBus?: InternalEventBus,
+    @inject(DITokens.INTERNAL_EVENT_BUS) private internalEventBus: InternalEventBus,
   ) {}
 
   /**
@@ -308,7 +311,6 @@ export class MessagePipeline {
     context: MessageProcessingContext,
     triggeredBot: boolean,
   ): void {
-    if (!this.internalEventBus) return;
     const source = context.source;
     if (source !== 'qq-private' && source !== 'qq-group' && source !== 'discord') return;
     try {

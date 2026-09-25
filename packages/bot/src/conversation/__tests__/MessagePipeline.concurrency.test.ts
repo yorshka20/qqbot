@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { describe, expect, it, mock } from 'bun:test';
+import { InternalEventBus } from '@/agenda/InternalEventBus';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { MessagePipeline } from '../MessagePipeline';
 import type { MessageProcessingContext } from '../types';
@@ -59,7 +60,14 @@ function makePipeline(lifecycleExecuteImpl: () => Promise<boolean>) {
     route: mock(() => ({ hasExplicitProvider: false, providerName: null, strippedMessage: '', triggerKind: null })),
   } as any;
 
-  return new MessagePipeline(lifecycle, hookManager, contextManager, conversationConfigService, providerRouter);
+  return new MessagePipeline(
+    lifecycle,
+    hookManager,
+    contextManager,
+    conversationConfigService,
+    providerRouter,
+    new InternalEventBus(),
+  );
 }
 
 describe('MessagePipeline concurrency modes', () => {

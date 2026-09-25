@@ -11,6 +11,7 @@ import {
   getIntegrationProvider,
   INTEGRATION_TEST_TIMEOUT_MS,
 } from './integrationTestHelpers';
+import { createLLMService } from '@/ai/services/__tests__/createLLMService';
 
 function createMockAIManager(): AIManager {
   return {
@@ -21,7 +22,7 @@ function createMockAIManager(): AIManager {
 
 describe('LLMService', () => {
   describe('providerSupportsToolUse', () => {
-    const service = new LLMService(createMockAIManager(), undefined, undefined, {
+    const service = createLLMService(createMockAIManager(), {
       toolUseProviders: ['openai', 'anthropic', 'doubao', 'gemini', 'deepseek'],
       fallback: { fallbackOrder: [] },
     });
@@ -46,7 +47,7 @@ describe('LLMService', () => {
     });
 
     it('returns false for all providers when no config provided', () => {
-      const noConfigService = new LLMService(createMockAIManager());
+      const noConfigService = createLLMService(createMockAIManager());
       expect(noConfigService.providerSupportsToolUse('openai')).toBe(false);
     });
   });
@@ -67,7 +68,7 @@ describe('LLMService', () => {
         getProviderForCapability: (_cap: string, name?: string) => (name ? mockProvider : null),
         getDefaultProvider: () => mockProvider,
       } as unknown as AIManager;
-      const llmService = new LLMService(aiManager);
+      const llmService = createLLMService(aiManager);
 
       await llmService.generateLite('test prompt');
       expect(lastOptions).toBeDefined();
@@ -81,7 +82,7 @@ describe('LLMService', () => {
 
     it('returns fallback when no provider available', async () => {
       const aiManager = createMockAIManager();
-      const llmService = new LLMService(aiManager);
+      const llmService = createLLMService(aiManager);
       const res = await llmService.generateLite('hello', undefined, 'nonexistent');
       expect(res.text).toContain('unavailable');
     });
@@ -90,7 +91,7 @@ describe('LLMService', () => {
   // Integration: real LLM API calls when provider is configured (CONFIG_PATH / config.jsonc).
   describe.skipIf(!getIntegrationProvider('doubao'))('integration (real API)', () => {
     const aiManager = createAIManagerWithProvider('doubao');
-    const llmService = new LLMService(aiManager);
+    const llmService = createLLMService(aiManager);
 
     test(
       'generate returns text and optional usage',
@@ -173,7 +174,7 @@ describe('LLMService same-provider retry', () => {
       getProvidersForCapability: () => [],
       getDefaultProvider: () => provider,
     } as unknown as AIManager;
-    return { service: new LLMService(aiManager), getCalls: () => calls };
+    return { service: createLLMService(aiManager), getCalls: () => calls };
   }
 
   it('retries a transient 529 then returns the successful response (with resolvedModel)', async () => {
@@ -217,7 +218,7 @@ describe('LLMService trace observers', () => {
       getProvidersForCapability: () => [],
       getDefaultProvider: () => provider,
     } as unknown as AIManager;
-    const service = new LLMService(aiManager);
+    const service = createLLMService(aiManager);
 
     const seen: import('@/ai/types').LLMTraceEntry[] = [];
     service.addTraceObserver((e) => seen.push(e));
@@ -246,7 +247,7 @@ describe('LLMService trace observers', () => {
       getProvidersForCapability: () => [],
       getDefaultProvider: () => provider,
     } as unknown as AIManager;
-    const service = new LLMService(aiManager);
+    const service = createLLMService(aiManager);
     service.addTraceObserver(() => {
       throw new Error('observer boom');
     });
@@ -270,7 +271,7 @@ describe('LLMService resolvedModel stamping', () => {
       getProvidersForCapability: () => [],
       getDefaultProvider: () => provider,
     } as unknown as AIManager;
-    const service = new LLMService(aiManager);
+    const service = createLLMService(aiManager);
 
     const res = await service.generate('hi', undefined, 'mock');
     expect(res.resolvedModel).toBe('gpt-4o-mini');
@@ -289,7 +290,7 @@ describe('LLMService resolvedModel stamping', () => {
       getProvidersForCapability: () => [],
       getDefaultProvider: () => provider,
     } as unknown as AIManager;
-    const service = new LLMService(aiManager);
+    const service = createLLMService(aiManager);
 
     const res = await service.generate('hi', undefined, 'mock');
     expect(res.resolvedModel).toBe('gemini-3.5-flash');
@@ -309,7 +310,7 @@ describe('LLMService resolvedModel stamping', () => {
       getProvidersForCapability: () => [],
       getDefaultProvider: () => provider,
     } as unknown as AIManager;
-    const service = new LLMService(aiManager, undefined, undefined, {
+    const service = createLLMService(aiManager, {
       toolUseProviders: ['mock'],
       fallback: { fallbackOrder: [] },
     });
@@ -350,7 +351,7 @@ describe('LLMService resolvedModel stamping', () => {
         getProvidersForCapability: () => [],
         getDefaultProvider: () => provider,
       } as unknown as AIManager;
-      return new LLMService(aiManager, undefined, undefined, {
+      return createLLMService(aiManager, {
         toolUseProviders: ['mock'],
         fallback: { fallbackOrder: [] },
       });
@@ -500,7 +501,7 @@ describe('LLMService resolvedModel stamping', () => {
         getProvidersForCapability: () => [],
         getDefaultProvider: () => provider,
       } as unknown as AIManager;
-      return new LLMService(aiManager, undefined, undefined, {
+      return createLLMService(aiManager, {
         toolUseProviders: [],
         fallback: { fallbackOrder: [] },
       });

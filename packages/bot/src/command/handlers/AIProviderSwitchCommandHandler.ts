@@ -1,6 +1,6 @@
 import { inject, injectable } from 'tsyringe';
 import type { AIManager, CapabilityType } from '@/ai';
-import type { ProviderSelector } from '@/ai/ProviderSelector';
+import { ProviderSelector } from '@/ai/ProviderSelector';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { Command } from '../decorators';
@@ -20,7 +20,7 @@ export class AIProviderSwitchCommandHandler implements CommandHandler {
 
   constructor(
     @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
-    @inject(DITokens.PROVIDER_SELECTOR) private providerSelector: ProviderSelector,
+    @inject(ProviderSelector) private providerSelector: ProviderSelector,
   ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {

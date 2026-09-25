@@ -1,6 +1,7 @@
 // Proactive Thread Persistence Service - persist ended threads to DB
 
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { inject, singleton } from 'tsyringe';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { ProactiveThreadRecord } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 import type { ProactiveThread } from '../thread';
@@ -21,8 +22,9 @@ export interface ProactiveThreadPersistenceService {
 /**
  * Default implementation: writes to proactive_threads table via DatabaseManager.
  */
+@singleton()
 export class DefaultProactiveThreadPersistenceService implements ProactiveThreadPersistenceService {
-  constructor(private databaseManager: DatabaseManager) {}
+  constructor(@inject(DatabaseManager) private databaseManager: DatabaseManager) {}
 
   async saveEndedThread(thread: ProactiveThread, summary?: string): Promise<void> {
     const adapter = this.databaseManager.getAdapter();

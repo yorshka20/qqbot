@@ -1,65 +1,37 @@
 // Conversation Initializer - initializes all conversation-related components
 
 import { AgendaInitializer } from '@/agenda';
-import type { InternalEventBus } from '@/agenda/InternalEventBus';
-import {
-  AIManager,
-  AIService,
-  type CapabilityType,
-  LLMService,
-  type LLMServiceConfig,
-  type PromptManager,
-  ProviderFactory,
-  ProviderSelector,
-} from '@/ai';
-import { ProviderRouter } from '@/ai/routing/ProviderRouter';
-import { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
-import type { APIClient } from '@/api/APIClient';
+import type { AIManager, PromptManager } from '@/ai';
+import { AIService } from '@/ai/AIService';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { CommandManager } from '@/command';
-import { ContextManager } from '@/context';
+import { ContextManager } from '@/context/ContextManager';
 import { ConversationConfigService } from '@/conversation/ConversationConfigService';
-import { ConversationHistoryService, SessionHistoryStore } from '@/conversation/history';
-import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
-import type { AIConfig, Config } from '@/core/config';
+import { Lifecycle } from '@/conversation/Lifecycle';
+import { ReplySystem } from '@/conversation/systems/ReplySystem';
+import type { Config } from '@/core/config';
 import { GlobalConfigManager } from '@/core/config/GlobalConfigManager';
 import { type DIContainer, getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { type HealthCheckManager, ProviderHealthAdapter } from '@/core/health';
+import { ProviderHealthAdapter } from '@/core/health';
+import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import { type SystemContext, SystemRegistry } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
-import { FanoutInitializer } from '@/fanout/FanoutInitializer';
 import { HookManager } from '@/hooks/HookManager';
-import { MemoryExtractService, MemoryRAGService, MemoryService } from '@/memory';
+import { MemoryRAGService } from '@/memory';
+import { MemoryService } from '@/memory/MemoryService';
 import { MessageUtils } from '@/message/MessageUtils';
-import { DefaultPermissionChecker } from '@/permission';
 import { PersonaInitializer } from '@/persona';
-import { BilibiliService } from '@/services/bilibili';
-import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
-import { FileReadService } from '@/services/file';
-import type { RetrievalService } from '@/services/retrieval';
-import { ResourceCleanupService, VideoDownloadService } from '@/services/video';
-import { VKBContextEngine } from '@/services/vkb';
-import { ToolInitializer, ToolManager } from '@/tools';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
+import type { ToolManager } from '@/tools';
 import { logger } from '@/utils/logger';
-import { SummarizeService } from '../ai/services/SummarizeService';
-import { CommandRouter } from './CommandRouter';
+import { COMMAND_PREFIXES } from './CommandRouter';
 import { ConversationManager } from './ConversationManager';
-import { Lifecycle } from './Lifecycle';
-import { MessagePipeline } from './MessagePipeline';
-import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
-import {
-  DefaultProactiveThreadPersistenceService,
-  ProactiveConversationService,
-  SearXNGPreferenceKnowledgeService,
-} from './proactive';
 import { CommandSystem } from './systems/CommandSystem';
 import { DatabasePersistenceSystem } from './systems/DatabasePersistenceSystem';
 import { RAGPersistenceSystem } from './systems/RAGPersistenceSystem';
 import { ReplyPrepareSystem } from './systems/ReplyPrepareSystem';
-import { ReplySystem } from './systems/ReplySystem';
 import { SendSystem } from './systems/SendSystem';
-import { ThreadContextCompressionService, ThreadService } from './thread';
 
 export interface ConversationComponents {
   conversationManager: ConversationManager;
@@ -89,43 +61,76 @@ type CompleteServices = {
 
 /**
  * Conversation Initializer
- * Initializes all conversation-related components
- * Organized into clear phases:
- * 1. Infrastructure Setup - DI container and service registry
- * 2. Core Services Creation - Create service instances
- * 3. Service Configuration - Configure services (providers, executors, etc.)
- * 4. Service Registration - Register services to DI container
- * 5. Service Wiring - Connect services together (dependencies)
- * 6. Component Assembly - Assemble high-level components (Pipeline, Manager)
- * 7. System Initialization - Register and initialize business systems
+ * Startup steps of the conversation system: connect the database, migrate, register the
+ * stores that depend on the adapter, start agenda and persona, assemble the components and
+ * initialize the business systems.
  */
 export class ConversationInitializer {
   /**
-   * Initialize all conversation components
+   * Startup steps of the conversation system, in the order their side effects need. Every
+   * service is a DI singleton built on first resolve; this method only connects, migrates,
+   * attaches and assembles.
    */
-  static async initialize(config: Config, apiClient: APIClient): Promise<ConversationComponents> {
+  static async initialize(config: Config): Promise<ConversationComponents> {
     const container = getContainer();
-    const commandPrefixes = ['/', '!'];
 
-    // Phase 1: Infrastructure Setup
-    container.registerInstance(DITokens.CONFIG, config);
-    container.registerInstance(DITokens.API_CLIENT, apiClient);
-
-    // Phase 2: Create baseline infra services.
-    // DatabaseManager must be initialized before ConversationConfigService.
-    const dbConfig = config.getDatabaseConfig();
-    const databaseManager = new DatabaseManager();
-    await databaseManager.initialize(dbConfig);
-    container.registerInstance(DITokens.DATABASE_MANAGER, databaseManager);
-
-    // Memory service persists extracted facts to local files.
-    const memoryDir = config.getMemoryConfig().dir;
-    const memoryService = new MemoryService({ memoryDir });
-    container.registerInstance(DITokens.MEMORY_SERVICE, memoryService);
+    // Connect first: every provider that reads the adapter is built after this line.
+    const databaseManager = container.resolve(DatabaseManager);
+    await databaseManager.initialize(config.getDatabaseConfig());
 
     // Auto-migrate legacy single-file memory format to new directory structure
+    const memoryService = container.resolve(MemoryService);
     await memoryService.migrateLegacyFiles();
 
+    await ConversationInitializer.registerSqliteStores(container, databaseManager);
+    ConversationInitializer.attachMemoryRag(container, config, memoryService);
+    ConversationInitializer.registerAIHealthChecks(container);
+
+    // Agenda framework: AgendaService + AgentLoop + InternalEventBus.
+    const agendaComponents = await AgendaInitializer.initialize({
+      databaseManager,
+      promptManager: container.resolve<PromptManager>(DITokens.PROMPT_MANAGER),
+    });
+    container.registerInstance(DITokens.AGENDA_SERVICE, agendaComponents.agendaService);
+    container.registerInstance(DITokens.AGENT_LOOP, agendaComponents.agentLoop);
+    container.registerInstance(DITokens.INTERNAL_EVENT_BUS, agendaComponents.internalEventBus);
+    container.registerInstance(DITokens.AGENDA_REPORTER, agendaComponents.reporter);
+    container.registerInstance(DITokens.SCHEDULE_FILE_SERVICE, agendaComponents.scheduleFileService);
+
+    // Mind framework: phenotype ODE + modulation adapter for avatar.
+    // Must run AFTER agenda so it can share the same InternalEventBus;
+    // bootstrap wires personaService.start() + pose provider + avatar
+    // modulation injection after AvatarService is ready.
+    const mindComponents = await PersonaInitializer.initialize({
+      rawConfig: config.getPersonaConfig(),
+      internalEventBus: agendaComponents.internalEventBus,
+    });
+    container.registerInstance(DITokens.PERSONA_SERVICE, mindComponents.personaService);
+    container.registerInstance(DITokens.PERSONA_CONFIG, mindComponents.config);
+    container.registerInstance(DITokens.PERSONA_MODULATION_PROVIDER, mindComponents.modulationProvider);
+
+    const services: CompleteServices = {
+      databaseManager,
+      aiManager: container.resolve<AIManager>(DITokens.AI_MANAGER),
+      aiService: container.resolve(AIService),
+      contextManager: container.resolve(ContextManager),
+      commandManager: container.resolve(CommandManager),
+      toolManager: container.resolve<ToolManager>(DITokens.TOOL_MANAGER),
+      hookManager: container.resolve(HookManager),
+      conversationConfigService: container.resolve(ConversationConfigService),
+      globalConfigManager: container.resolve(GlobalConfigManager),
+    };
+
+    const components = ConversationInitializer.assembleComponents(services, container);
+    await ConversationInitializer.registerAndInitializeSystems(components, services, config, container);
+    return components;
+  }
+
+  /**
+   * SQLite-backed stores: registered only when the adapter is SQLite (SessionMemoStore
+   * falls back to memory otherwise), which is known only after the database connects.
+   */
+  private static async registerSqliteStores(container: DIContainer, databaseManager: DatabaseManager): Promise<void> {
     // Memory fact metadata service (quality tracking for memory facts via SQLite)
     try {
       const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
@@ -182,122 +187,12 @@ export class ConversationInitializer {
         `[ConversationInitializer] SessionMemoStore registered (persistence=${sessionMemoRawDb ? 'sqlite' : 'memory'})`,
       );
     }
+  }
 
-    // Conversation config services are required by CommandManager.
-    const globalConfigManager = new GlobalConfigManager();
-    container.registerInstance(DITokens.GLOBAL_CONFIG_MANAGER, globalConfigManager);
-    const conversationConfigService = new ConversationConfigService(databaseManager.getAdapter(), globalConfigManager);
-    container.registerInstance(DITokens.CONVERSATION_CONFIG_SERVICE, conversationConfigService);
-
-    // Create remaining core services.
-    const services = await ConversationInitializer.createCoreServices(
-      config,
-      conversationConfigService,
-      databaseManager,
-      container,
-    );
-
-    // Video pipeline + Gemini file cleanup: must exist before ProviderFactory constructs
-    // GeminiProvider (constructor resolves ResourceCleanupService via DI).
-    container.registerInstance(DITokens.VIDEO_DOWNLOAD_SERVICE, new VideoDownloadService());
-    container.registerInstance(DITokens.RESOURCE_CLEANUP_SERVICE, new ResourceCleanupService());
-
-    // Phase 3: Service Configuration
-    await ConversationInitializer.configureServices(services, config);
-
-    // Phase 3.5: Register AIManager with health check manager (for aggregate health; it checks
-    // every provider it manages). HEALTH_CHECK_MANAGER is registered by bootstrap beforehand.
-    const healthCheckManager = container.resolve<HealthCheckManager>(DITokens.HEALTH_CHECK_MANAGER);
-    healthCheckManager.registerService(services.aiManager, {
-      cacheDuration: 120000, // AI providers are usually stable
-      timeout: 10000,
-      retries: 0,
-      checkInterval: 3600000,
-    });
-
-    // Phase 3.6: Register each AI provider individually with HealthCheckManager
-    // Skip providers that opt out (e.g. serverless providers to avoid cold-start costs)
-    for (const provider of services.aiManager.getAllProviders()) {
-      if (provider.skipHealthCheck) {
-        logger.info(
-          `[ConversationInitializer] Skipping health check registration for ${provider.name} (skipHealthCheck=true)`,
-        );
-        continue;
-      }
-      const adapter = new ProviderHealthAdapter(provider);
-      healthCheckManager.registerService(adapter, { cacheDuration: 60000, timeout: 8000 });
-    }
-
-    // NOTE: Startup health check is deferred to bootstrap.ts AFTER plugins are loaded,
-    // so that plugins (e.g. CloudflareWorkerProxy) can replace httpClient before checks run.
-
-    // Phase 4: Wire AI-facing services.
-    const providerSelector = new ProviderSelector(services.aiManager, conversationConfigService);
-    container.registerInstance(DITokens.PROVIDER_SELECTOR, providerSelector);
-
-    const providerRouter = new ProviderRouter(services.aiManager);
-    container.registerInstance(DITokens.PROVIDER_ROUTER, providerRouter);
-
-    // Build LLM service config from AI config
-    const aiConfig = config.getAIConfig();
-    if (!aiConfig?.llmFallback) {
-      throw new Error('[ConversationInitializer] ai.llmFallback is required in config');
-    }
-    const llmServiceConfig: LLMServiceConfig = {
-      toolUseProviders: aiConfig.toolUseProviders ?? [],
-      fallback: aiConfig.llmFallback,
-      rateLimit: aiConfig.rateLimit
-        ? {
-            defaultTokensPerMinute: aiConfig.rateLimit.defaultTokensPerMinute ?? 0,
-            providers: aiConfig.rateLimit.providers,
-          }
-        : undefined,
-    };
-
-    const llmService = new LLMService(services.aiManager, providerSelector, healthCheckManager, llmServiceConfig);
-    container.registerInstance(DITokens.LLM_SERVICE, llmService);
-
-    const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-    // SummarizeService is reused by context memory and proactive thread compression. Must be registered before ConversationHistoryService (it resolves it in constructor).
-    const summarizeService = new SummarizeService(
-      llmService,
-      promptManager,
-      aiConfig.taskProviders?.summarize ?? aiConfig.defaultProviders?.llm,
-    );
-    container.registerInstance(DITokens.SUMMARIZE_SERVICE, summarizeService);
-
-    const memoryConfig = config.getContextMemoryConfig();
-    const maxBufferSize = memoryConfig?.maxBufferSize ?? 30;
-    const maxHistoryMessages = memoryConfig?.maxHistoryMessages ?? 10;
-
-    // Conversation history service is shared by reply generation and task analysis flows.
-    const conversationHistoryService = new ConversationHistoryService(databaseManager, 30, maxHistoryMessages);
-    container.registerInstance(DITokens.CONVERSATION_HISTORY_SERVICE, conversationHistoryService);
-
-    // Memory extraction is triggered by memory-related hooks/tasks.
-    const memoryExtractService = new MemoryExtractService(
-      promptManager,
-      llmService,
-      memoryService,
-      databaseManager,
-      config,
-    );
-    container.registerInstance(DITokens.MEMORY_EXTRACT_SERVICE, memoryExtractService);
-
-    const sessionHistoryStore = new SessionHistoryStore(maxBufferSize);
-    const contextManager = new ContextManager(sessionHistoryStore);
-
-    // File reading service is used by file-related task executors.
-    const fileReadService = new FileReadService(config.getFileReadServiceConfig());
-    container.registerInstance(DITokens.FILE_READ_SERVICE, fileReadService);
-
-    // AIService is the facade used by systems/hooks for generation and analysis.
-    const messageAPI = new MessageAPI(apiClient);
-    const retrievalService = container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE);
-    container.registerInstance(DITokens.MESSAGE_API, messageAPI);
-
+  /** Semantic memory filtering over the RAG backend, when RAG is configured. */
+  private static attachMemoryRag(container: DIContainer, config: Config, memoryService: MemoryService): void {
     // Configure Memory RAG if RAG is enabled - enables semantic search for memory filtering
-    const ragService = retrievalService.getRAGService();
+    const ragService = container.resolve(RetrievalService).getRAGService();
     if (ragService) {
       const memoryRAGService = new MemoryRAGService(ragService);
       // Wire up MemoryFactMetaService for incremental diff indexing
@@ -318,360 +213,57 @@ export class ConversationInitializer {
       }
       logger.info('[ConversationInitializer] Memory RAG enabled for semantic memory filtering');
     }
-
-    const promptInjectionRegistry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
-    const aiService = new AIService(
-      services.aiManager,
-      services.hookManager,
-      promptManager,
-      services.toolManager,
-      conversationHistoryService,
-      providerSelector,
-      retrievalService,
-      memoryService,
-      messageAPI,
-      databaseManager,
-      llmService,
-      providerRouter,
-      services.permissionChecker,
-      promptInjectionRegistry,
-      {
-        providerName: aiConfig.taskProviders?.subagent,
-        model: aiConfig.taskProviders?.subagentModel,
-      },
-      aiConfig.chat,
-    );
-    container.registerInstance(DITokens.AI_SERVICE, aiService);
-    // Expose SubAgentManager to DI so tool executors (e.g. ResearchToolExecutor) can inject it.
-    container.registerInstance(DITokens.SUB_AGENT_MANAGER, aiService.getSubAgentManager());
-
-    // ReplySystem must exist before ProactiveConversationService is resolved from DI.
-    const useSkills = config.getUseSkills();
-    if (!useSkills) {
-      logger.warn('[ConversationInitializer] ai.useSkills=false is no longer supported; forcing skill-loop reply flow');
-    }
-    const replySystem = new ReplySystem(aiService);
-    container.registerInstance(DITokens.REPLY_SYSTEM, replySystem);
-
-    // ProactiveConversationService and its dependencies are assembled via container resolution.
-    ConversationInitializer.configureProactiveConversationService(container);
-
-    // Fan-out: shared-prefix task runs. Before the agenda (its `action fanout` handler needs the
-    // manager) and before plugins load (they register tasks on a fan-out in onEnable).
-    const fanoutManager = FanoutInitializer.initialize(container);
-    container.registerInstance(DITokens.FANOUT_MANAGER, fanoutManager);
-
-    // Agenda framework: AgendaService + AgentLoop + InternalEventBus.
-    // AgentLoop resolves its services from DI; everything it injects is registered above.
-    const agendaComponents = await AgendaInitializer.initialize({
-      databaseManager,
-      promptManager: container.resolve<PromptManager>(DITokens.PROMPT_MANAGER),
-    });
-    container.registerInstance(DITokens.AGENDA_SERVICE, agendaComponents.agendaService);
-    container.registerInstance(DITokens.AGENT_LOOP, agendaComponents.agentLoop);
-    container.registerInstance(DITokens.INTERNAL_EVENT_BUS, agendaComponents.internalEventBus);
-    container.registerInstance(DITokens.AGENDA_REPORTER, agendaComponents.reporter);
-    container.registerInstance(DITokens.SCHEDULE_FILE_SERVICE, agendaComponents.scheduleFileService);
-
-    // Mind framework: phenotype ODE + modulation adapter for avatar.
-    // Must run AFTER agenda so it can share the same InternalEventBus;
-    // bootstrap wires personaService.start() + pose provider + avatar
-    // modulation injection after AvatarService is ready.
-    const mindComponents = await PersonaInitializer.initialize({
-      rawConfig: config.getPersonaConfig(),
-      internalEventBus: agendaComponents.internalEventBus,
-    });
-    container.registerInstance(DITokens.PERSONA_SERVICE, mindComponents.personaService);
-    container.registerInstance(DITokens.PERSONA_CONFIG, mindComponents.config);
-    container.registerInstance(DITokens.PERSONA_MODULATION_PROVIDER, mindComponents.modulationProvider);
-
-    const completeServices: CompleteServices = {
-      ...services,
-      aiService,
-      contextManager,
-      conversationConfigService,
-      globalConfigManager,
-    };
-    container.registerInstance(DITokens.CONTEXT_MANAGER, contextManager);
-    container.registerInstance(DITokens.COMMAND_MANAGER, services.commandManager);
-
-    // Phase 6: Component assembly.
-    const components = ConversationInitializer.assembleComponents(completeServices, commandPrefixes, container);
-
-    // Phase 7: Register and initialize business systems.
-    await ConversationInitializer.registerAndInitializeSystems(components, completeServices, config, container);
-
-    return components;
   }
 
-  /**
-   * Phase 3: Create core service instances.
-   * ConversationConfigService is provided because CommandManager depends on it.
-   */
-  private static async createCoreServices(
-    config: Config,
-    conversationConfigService: ConversationConfigService,
-    databaseManager: DatabaseManager,
-    container: DIContainer,
-  ): Promise<{
-    databaseManager: DatabaseManager;
-    aiManager: AIManager;
-    commandManager: CommandManager;
-    toolManager: ToolManager;
-    hookManager: HookManager;
-    permissionChecker: DefaultPermissionChecker;
-  }> {
-    const aiManager = new AIManager();
-    container.registerInstance(DITokens.AI_MANAGER, aiManager);
-
-    const botConfig = config.getConfig();
-
-    const permissionChecker = new DefaultPermissionChecker(config);
-    container.registerInstance(DITokens.PERMISSION_CHECKER, permissionChecker);
-
-    const commandManager = new CommandManager(permissionChecker, conversationConfigService);
-
-    // Register BilibiliService (used by bilibili command and tool executor)
-    const bilibiliService = new BilibiliService();
-    container.registerInstance('BilibiliService', bilibiliService);
-
-    // Register VideoKnowledgeClient (video analysis backend)
-    const vkConfig = botConfig.videoKnowledge;
-    const videoKnowledgeClient = new VideoKnowledgeClient(
-      vkConfig ?? { enabled: false, baseURL: 'http://localhost:8080' },
-    );
-    container.registerInstance('VideoKnowledgeClient', videoKnowledgeClient);
-
-    // Register VKBContextEngine (per-message knowledge retrieval).
-    // Same VKB instance as VideoKnowledgeClient but a different endpoint
-    // surface (chat/evidence-preview vs analyze/ingest/tasks), so a
-    // separate service keeps the two responsibilities cleanly split.
-    const vkbCtxConfig = botConfig.vkbContextEngine;
-    const vkbContextEngine = new VKBContextEngine(vkbCtxConfig ?? { enabled: false, baseURL: 'http://localhost:8080' });
-    container.registerInstance('VKBContextEngine', vkbContextEngine);
-
-    // Registered as soon as they exist: DI consumers built before the conversation phase
-    // (FanoutServices, ahead of the agenda) resolve them from the container.
-    const toolManager = new ToolManager();
-    const hookManager = new HookManager();
-    container.registerInstance(DITokens.TOOL_MANAGER, toolManager);
-    container.registerInstance(DITokens.HOOK_MANAGER, hookManager);
-
-    return {
-      databaseManager,
-      aiManager,
-      commandManager,
-      toolManager,
-      hookManager,
-      permissionChecker,
-    };
-  }
-
-  /**
-   * Phase 3: Configure services (providers, executors, etc.)
-   */
-  private static async configureServices(
-    services: {
-      aiManager: AIManager;
-      toolManager: ToolManager;
-    },
-    config: Config,
-  ): Promise<void> {
-    ConversationInitializer.configureAIManager(services.aiManager, config);
-    ConversationInitializer.configureToolManager(services.toolManager);
-  }
-
-  /**
-   * Configure AI Manager with providers from config
-   */
-  private static configureAIManager(aiManager: AIManager, config: Config): void {
-    const aiConfig = config.getAIConfig();
-    if (!aiConfig) {
-      logger.warn('[ConversationInitializer] No AI configuration found. AI capabilities will not be available.');
-      return;
-    }
-
-    const providers = ProviderFactory.createProviders(aiConfig.providers);
-    const registeredProviders: string[] = [];
-
-    for (const { name, provider } of providers) {
-      try {
-        aiManager.registerProvider(provider);
-        registeredProviders.push(name);
-      } catch (error) {
-        logger.warn(`[ConversationInitializer] Failed to register provider ${name}:`, error);
-      }
-    }
-
-    if (registeredProviders.length === 0) {
-      return;
-    }
-
-    ConversationInitializer.configureDefaultProviders(aiManager, aiConfig);
-  }
-
-  /**
-   * Register proactive dependencies and resolve ProactiveConversationService from DI.
-   */
-  private static configureProactiveConversationService(container: DIContainer): {
-    threadService: ThreadService;
-    proactiveConversationService: ProactiveConversationService;
-  } {
-    const databaseManager = container.resolve<DatabaseManager>(DITokens.DATABASE_MANAGER);
+  /** AIManager aggregate health plus one check per provider that has not opted out. */
+  private static registerAIHealthChecks(container: DIContainer): void {
+    // Register AIManager with health check manager (for aggregate health; it checks
+    // every provider it manages).
+    const healthCheckManager = container.resolve(HealthCheckManager);
     const aiManager = container.resolve<AIManager>(DITokens.AI_MANAGER);
-    const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-    const summarizeService = container.resolve<SummarizeService>(DITokens.SUMMARIZE_SERVICE);
+    healthCheckManager.registerService(aiManager, {
+      cacheDuration: 120000, // AI providers are usually stable
+      timeout: 10000,
+      retries: 0,
+      checkInterval: 3600000,
+    });
 
-    const threadService = new ThreadService();
-    container.registerInstance(DITokens.THREAD_SERVICE, threadService);
-    container.registerInstance(
-      DITokens.PRELIMINARY_ANALYSIS_SERVICE,
-      new PreliminaryAnalysisService(aiManager, promptManager),
-    );
-
-    // RETRIEVAL_SERVICE is required (DITokens.ts) — bootstrap registers it
-    // unconditionally before this runs.
-    const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
-    const preferenceKnowledge = new SearXNGPreferenceKnowledgeService(
-      container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE),
-      llmService,
-      promptManager,
-    );
-    container.registerInstance(DITokens.PREFERENCE_KNOWLEDGE_SERVICE, preferenceKnowledge);
-    container.registerInstance(
-      DITokens.PROACTIVE_THREAD_PERSISTENCE_SERVICE,
-      new DefaultProactiveThreadPersistenceService(databaseManager),
-    );
-    container.registerInstance(
-      DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE,
-      new ThreadContextCompressionService(threadService, summarizeService, promptManager),
-    );
-
-    container.registerSingleton(DITokens.PROACTIVE_CONVERSATION_SERVICE, ProactiveConversationService);
-    const proactiveConversationService = container.resolve<ProactiveConversationService>(
-      DITokens.PROACTIVE_CONVERSATION_SERVICE,
-    );
-    const threadServiceResolved = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
-    return { threadService: threadServiceResolved, proactiveConversationService };
-  }
-
-  /**
-   * Configure default providers by capability
-   * Priority: 1. Config specified providers, 2. First available provider
-   */
-  private static configureDefaultProviders(aiManager: AIManager, aiConfig: AIConfig): void {
-    const validCapabilities: CapabilityType[] = ['llm', 'vision', 'video_analysis', 'text2img', 'img2img', 'i2v'];
-
-    // Log configured defaults to simplify provider setup debugging.
-    if (aiConfig.defaultProviders) {
-      logger.debug(
-        `[ConversationInitializer] defaultProviders from config: ${JSON.stringify(aiConfig.defaultProviders)}`,
-      );
-    }
-
-    // First pass: respect explicit defaults from config.
-    if (aiConfig.defaultProviders) {
-      for (const capability of validCapabilities) {
-        const providerName = aiConfig.defaultProviders[capability];
-        if (!providerName) {
-          continue;
-        }
-
-        try {
-          aiManager.setDefaultProvider(capability, providerName);
-        } catch (error) {
-          logger.warn(
-            `[ConversationInitializer] Failed to set default provider ${providerName} for ${capability}:`,
-            error,
-          );
-        }
-      }
-    }
-
-    // Second pass: use the first available provider for any unset capability.
-    for (const capability of validCapabilities) {
-      if (aiManager.getDefaultProvider(capability)) {
+    // Register each AI provider individually with HealthCheckManager
+    // Skip providers that opt out (e.g. serverless providers to avoid cold-start costs)
+    for (const provider of aiManager.getAllProviders()) {
+      if (provider.skipHealthCheck) {
+        logger.info(
+          `[ConversationInitializer] Skipping health check registration for ${provider.name} (skipHealthCheck=true)`,
+        );
         continue;
       }
-
-      const allProviders = aiManager.getAllProviders();
-      const firstAvailableProvider = allProviders.find(
-        (p) => p.getCapabilities().includes(capability) && p.isAvailable(),
-      );
-
-      if (firstAvailableProvider) {
-        try {
-          aiManager.setDefaultProvider(capability, firstAvailableProvider.name);
-          logger.info(
-            `[ConversationInitializer] Set ${firstAvailableProvider.name} as default provider for ${capability} (first available)`,
-          );
-        } catch (error) {
-          logger.warn(
-            `[ConversationInitializer] Failed to set default provider ${firstAvailableProvider.name} for ${capability}:`,
-            error,
-          );
-        }
-      } else {
-        logger.warn(`[ConversationInitializer] No available providers for capability ${capability}`);
-      }
+      const adapter = new ProviderHealthAdapter(provider);
+      healthCheckManager.registerService(adapter, { cacheDuration: 60000, timeout: 8000 });
     }
+
+    // NOTE: Startup health check is deferred to bootstrap.ts AFTER plugins are loaded,
+    // so that plugins (e.g. CloudflareWorkerProxy) can replace httpClient before checks run.
   }
 
   /**
-   * Configure Task Manager
-   * Task registration is handled by ToolInitializer using decorators
+   * Assemble high-level components.
    */
-  private static configureToolManager(toolManager: ToolManager): void {
-    // Initialize task system - this will auto-register all decorated task executors
-    ToolInitializer.initialize(toolManager);
-  }
-
-  /**
-   * Phase 6: Assemble high-level components.
-   */
-  private static assembleComponents(
-    services: CompleteServices,
-    commandPrefixes: string[],
-    container: DIContainer,
-  ): ConversationComponents {
-    const systemRegistry = new SystemRegistry();
-    const commandRouter = new CommandRouter(commandPrefixes);
-    const processStageInterceptorRegistry = new ProcessStageInterceptorRegistry();
-    container.registerInstance(DITokens.PROCESS_STAGE_INTERCEPTOR_REGISTRY, processStageInterceptorRegistry);
-
-    MessageUtils.initialize(commandPrefixes);
-
-    const lifecycle = new Lifecycle(services.hookManager, commandRouter, processStageInterceptorRegistry);
-    container.registerInstance(DITokens.LIFECYCLE, lifecycle);
-
-    // INTERNAL_EVENT_BUS is required (DITokens.ts) — registered earlier in
-    // this same initializer, right after the agenda is built.
-    const pipeline = new MessagePipeline(
-      lifecycle,
-      services.hookManager,
-      services.contextManager,
-      services.conversationConfigService,
-      container.resolve<ProviderRouter>(DITokens.PROVIDER_ROUTER),
-      container.resolve<InternalEventBus>(DITokens.INTERNAL_EVENT_BUS),
-    );
-    container.registerInstance(DITokens.MESSAGE_PIPELINE, pipeline);
-    const conversationManager = new ConversationManager(pipeline);
-    container.registerInstance(DITokens.CONVERSATION_MANAGER, conversationManager);
-
+  private static assembleComponents(services: CompleteServices, container: DIContainer): ConversationComponents {
+    MessageUtils.initialize(COMMAND_PREFIXES);
     return {
-      conversationManager,
+      conversationManager: container.resolve(ConversationManager),
       hookManager: services.hookManager,
       commandManager: services.commandManager,
       toolManager: services.toolManager,
       contextManager: services.contextManager,
       databaseManager: services.databaseManager,
-      systemRegistry,
-      lifecycle,
+      systemRegistry: new SystemRegistry(),
+      lifecycle: container.resolve(Lifecycle),
     };
   }
 
   /**
-   * Phase 7: Register and initialize business systems.
+   * Register and initialize business systems.
    */
   private static async registerAndInitializeSystems(
     components: ConversationComponents,
@@ -694,15 +286,14 @@ export class ConversationInitializer {
       return new CommandSystem(services.commandManager, services.hookManager);
     });
 
-    // ReplySystem was pre-created before proactive service resolution.
-    const replySystem = container.resolve<ReplySystem>(DITokens.REPLY_SYSTEM);
+    const replySystem = container.resolve(ReplySystem);
     systemRegistry.registerSystemFactory('reply', () => replySystem);
 
     systemRegistry.registerSystemFactory('reply-prepare', () => {
       return new ReplyPrepareSystem();
     });
 
-    const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    const messageAPI = container.resolve(MessageAPI);
     systemRegistry.registerSystemFactory('send', () => {
       return new SendSystem(messageAPI, services.hookManager);
     });
@@ -711,7 +302,7 @@ export class ConversationInitializer {
       return new DatabasePersistenceSystem(services.databaseManager);
     });
 
-    const retrievalService = container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE);
+    const retrievalService = container.resolve(RetrievalService);
     const ragConfig = config.getRAGConfig();
     systemRegistry.registerSystemFactory('rag-persistence', () => {
       return new RAGPersistenceSystem(retrievalService, ragConfig);

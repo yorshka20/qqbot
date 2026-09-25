@@ -3,15 +3,15 @@
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
 import { CommandBuilder } from '@/command/CommandBuilder';
-import type { CommandManager } from '@/command/CommandManager';
+import { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
-import type { ContextManager } from '@/context/ContextManager';
+import { ContextManager } from '@/context/ContextManager';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { Config, ProtocolName } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { HookManager } from '@/hooks/HookManager';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { HookManager } from '@/hooks/HookManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../decorators';
@@ -92,9 +92,9 @@ export class RulePlugin extends PluginBase {
   async onInit(): Promise<void> {
     // Get dependencies from DI container
     const container = getContainer();
-    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
-    this.hookManager = container.resolve<HookManager>(DITokens.HOOK_MANAGER);
-    this.contextManager = container.resolve<ContextManager>(DITokens.CONTEXT_MANAGER);
+    this.commandManager = container.resolve(CommandManager);
+    this.hookManager = container.resolve(HookManager);
+    this.contextManager = container.resolve(ContextManager);
 
     if (!this.commandManager) {
       throw new Error('[RulePlugin] CommandManager not found');
@@ -180,7 +180,7 @@ export class RulePlugin extends PluginBase {
    */
   private buildActionHandlers(): Map<string, RuleActionHandler> {
     const map = new Map<string, RuleActionHandler>();
-    const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+    const pluginManager = getContainer().resolve(PluginManager);
     const whitelist = pluginManager?.getPluginAs<WhitelistPlugin>('whitelist');
     if (whitelist) {
       map.set(RULE_ACTION_WHITELIST_ADD, (rule) => {

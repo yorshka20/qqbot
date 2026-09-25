@@ -1,11 +1,8 @@
 // Fetch history by time range task executor - retrieves conversation history within a time window
 
 import { inject, injectable } from 'tsyringe';
-import type {
-  ConversationHistoryService,
-  ConversationMessageEntry,
-} from '@/conversation/history/ConversationHistoryService';
-import { DITokens } from '@/core/DITokens';
+import type { ConversationMessageEntry } from '@/conversation/history/ConversationHistoryService';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { DATE_TIMEZONE, dateInTimezone, formatDateTimeShort } from '@/utils/dateTime';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -126,9 +123,7 @@ function parseTimeInput(input: string): Date | null {
 export class FetchHistoryByTimeToolExecutor extends BaseToolExecutor {
   name = 'fetch_history_by_time';
 
-  constructor(
-    @inject(DITokens.CONVERSATION_HISTORY_SERVICE) private conversationHistoryService: ConversationHistoryService,
-  ) {
+  constructor(@inject(ConversationHistoryService) private conversationHistoryService: ConversationHistoryService) {
     super();
   }
 

@@ -1,32 +1,40 @@
 // Proactive Conversation Service - orchestrates debounced analysis, Ollama, thread, and proactive reply (Phase 1 + Phase 2 RAG)
 
-import { inject, injectable } from 'tsyringe';
-import type { AIService } from '@/ai/AIService';
+import { inject, singleton } from 'tsyringe';
+import { AIService } from '@/ai/AIService';
 import type { VisionImage } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { PreliminaryAnalysisResult, PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
+import type { PreliminaryAnalysisResult } from '@/ai/services/PreliminaryAnalysisService';
+import { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
 import { extractImagesFromMessageAndReply } from '@/ai/utils/imageUtils';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { SendMessageResult } from '@/api/types';
-import type { ConversationHistoryService, ConversationMessageEntry } from '@/conversation/history';
+import type { ConversationMessageEntry } from '@/conversation/history';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import { SearXNGPreferenceKnowledgeService } from '@/conversation/proactive/PreferenceKnowledgeService';
+import { DefaultProactiveThreadPersistenceService } from '@/conversation/proactive/ProactiveThreadPersistenceService';
 import type { Config } from '@/core/config';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent } from '@/events/types';
-import type { MemoryService } from '@/memory/MemoryService';
+import { MemoryService } from '@/memory/MemoryService';
 import type { MessageSegment } from '@/message/types';
 import { parseSubtextTags } from '@/persona/prompt/subtextTagParser';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import type { ReactionPlugin } from '@/plugins/plugins/ReactionPlugin';
-import type { RetrievalService } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { logger } from '@/utils/logger';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { groupHasWhitelistCapability, WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
-import type { ThreadContextCompressionService } from '../thread';
-import { isReadableTextForThread, type ProactiveThread, type ThreadService } from '../thread';
+import {
+  isReadableTextForThread,
+  type ProactiveThread,
+  ThreadContextCompressionService,
+  ThreadService,
+} from '../thread';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import { ProactiveReplyContextBuilder } from './ProactiveReplyContextBuilder';
 import type { ProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
@@ -60,7 +68,7 @@ const RECENT_ACTIVITY_GRACE_MS = 2 * 60 * 1_000;
  * Analysis runs are serialized per group (queued, not skipped) so each run sees prior replies in thread context.
  * Dependencies are injected via DI container (see DITokens).
  */
-@injectable()
+@singleton()
 export class ProactiveConversationService {
   /** groupId -> preferenceKeys[] (multiple preferences per group). */
   private groupConfig = new Map<string, string[]>();
@@ -93,19 +101,19 @@ export class ProactiveConversationService {
   private fetchProgressNotifier: FetchProgressNotifier;
 
   constructor(
-    @inject(DITokens.CONVERSATION_HISTORY_SERVICE) private conversationHistoryService: ConversationHistoryService,
-    @inject(DITokens.THREAD_SERVICE) private threadService: ThreadService,
-    @inject(DITokens.PRELIMINARY_ANALYSIS_SERVICE) private preliminaryAnalysis: PreliminaryAnalysisService,
-    @inject(DITokens.PREFERENCE_KNOWLEDGE_SERVICE) preferenceKnowledge: PreferenceKnowledgeService,
-    @inject(DITokens.PROACTIVE_THREAD_PERSISTENCE_SERVICE) private threadPersistence: ProactiveThreadPersistenceService,
-    @inject(DITokens.AI_SERVICE) private aiService: AIService,
-    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+    @inject(ConversationHistoryService) private conversationHistoryService: ConversationHistoryService,
+    @inject(ThreadService) private threadService: ThreadService,
+    @inject(PreliminaryAnalysisService) private preliminaryAnalysis: PreliminaryAnalysisService,
+    @inject(SearXNGPreferenceKnowledgeService) preferenceKnowledge: PreferenceKnowledgeService,
+    @inject(DefaultProactiveThreadPersistenceService) private threadPersistence: ProactiveThreadPersistenceService,
+    @inject(AIService) private aiService: AIService,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
-    @inject(DITokens.THREAD_CONTEXT_COMPRESSION_SERVICE) private threadCompression: ThreadContextCompressionService,
+    @inject(ThreadContextCompressionService) private threadCompression: ThreadContextCompressionService,
     @inject(DITokens.CONFIG) private config: Config,
-    @inject(DITokens.MEMORY_SERVICE) memoryService?: MemoryService,
-    @inject(DITokens.DATABASE_MANAGER) private databaseManager?: DatabaseManager,
-    @inject(DITokens.RETRIEVAL_SERVICE) retrievalService?: RetrievalService,
+    @inject(MemoryService) memoryService?: MemoryService,
+    @inject(DatabaseManager) private databaseManager?: DatabaseManager,
+    @inject(RetrievalService) retrievalService?: RetrievalService,
   ) {
     this.replyContextBuilder = new ProactiveReplyContextBuilder({
       threadService,
@@ -578,9 +586,7 @@ export class ProactiveConversationService {
       return;
     }
 
-    const plugin = getContainer()
-      .resolve<PluginManager>(DITokens.PLUGIN_MANAGER)
-      .getPluginAs<ReactionPlugin>('reaction');
+    const plugin = getContainer().resolve(PluginManager).getPluginAs<ReactionPlugin>('reaction');
     if (!plugin) {
       return;
     }

@@ -18,6 +18,10 @@ import type { HookContext } from '@/hooks/types';
 import { MessageTriggerPlugin } from '../MessageTriggerPlugin';
 import { ProactiveConversationPlugin } from '../ProactiveConversationPlugin';
 import { WhitelistPlugin } from '../WhitelistPlugin';
+import { CommandManager } from '@/command/CommandManager';
+import { ThreadService } from '@/conversation/thread/ThreadService';
+import { ProactiveConversationService } from '@/conversation/proactive/ProactiveConversationService';
+import { LLMService } from '@/ai/services/LLMService';
 
 function makeHookContext(opts: {
   messageText: string;
@@ -100,19 +104,19 @@ async function initMessageTrigger(config: { wakeWords?: string[] } = {}) {
   const promptManager = new PromptManager();
   container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
   container.registerInstance(
-    DITokens.PROACTIVE_CONVERSATION_SERVICE,
+    ProactiveConversationService,
     { getGroupPreferenceKeys: () => [], isGroupSuppressed: () => false },
     { allowOverride: true },
   );
-  container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
+  container.registerInstance(ThreadService, { hasActiveThread: () => false }, { allowOverride: true });
   container.registerInstance(
-    DITokens.LLM_SERVICE,
+    LLMService,
     { generateLite: async () => ({ text: 'true' }) },
     { allowOverride: true },
   );
   container.registerInstance(DITokens.CONFIG, { getAIConfig: () => undefined }, { allowOverride: true });
   container.registerInstance(
-    DITokens.PROVIDER_ROUTER,
+    ProviderRouter,
     new ProviderRouter({ getProviderForCapability: () => ({ isAvailable: () => true }) } as never),
     { allowOverride: true },
   );
@@ -242,7 +246,7 @@ describe('Whitelist + MessageTrigger integration', () => {
       });
       container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
       container.registerInstance(
-        DITokens.PROACTIVE_CONVERSATION_SERVICE,
+        ProactiveConversationService,
         {
           getGroupPreferenceKeys: () => [],
           setGroupConfig: () => {},
@@ -253,8 +257,8 @@ describe('Whitelist + MessageTrigger integration', () => {
         },
         { allowOverride: true },
       );
-      container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
-      container.registerInstance(DITokens.COMMAND_MANAGER, { register: () => {} } as never, { allowOverride: true });
+      container.registerInstance(ThreadService, { getActiveThread: () => null }, { allowOverride: true });
+      container.registerInstance(CommandManager, { register: () => {} } as never, { allowOverride: true });
 
       const proactive = new ProactiveConversationPlugin({
         name: 'proactiveConversation',
@@ -370,7 +374,7 @@ describe('Whitelist + MessageTrigger integration', () => {
       promptManager.registerTemplate({ name: 'acg.trigger', namespace: 'preference', content: 'hello' });
       container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
       container.registerInstance(
-        DITokens.PROACTIVE_CONVERSATION_SERVICE,
+        ProactiveConversationService,
         {
           getGroupPreferenceKeys: () => [],
           setGroupConfig: () => {},
@@ -381,9 +385,9 @@ describe('Whitelist + MessageTrigger integration', () => {
         },
         { allowOverride: true },
       );
-      container.registerInstance(DITokens.THREAD_SERVICE, { getActiveThread: () => null }, { allowOverride: true });
+      container.registerInstance(ThreadService, { getActiveThread: () => null }, { allowOverride: true });
       container.registerInstance(DITokens.CONFIG, { getAIConfig: () => ({}) }, { allowOverride: true });
-      container.registerInstance(DITokens.COMMAND_MANAGER, { register: () => {} } as never, { allowOverride: true });
+      container.registerInstance(CommandManager, { register: () => {} } as never, { allowOverride: true });
       const proactive = new ProactiveConversationPlugin({
         name: 'proactiveConversation',
         version: 'test',

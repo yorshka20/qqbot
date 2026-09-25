@@ -30,6 +30,13 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { ToolManager } from '@/tools/ToolManager';
 import type { ToolCall, ToolResult } from '@/tools/types';
+import { createLLMService } from '@/ai/services/__tests__/createLLMService';
+import { CommandManager } from '@/command/CommandManager';
+import { FileReadService } from '@/services/file/FileReadService';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import { MemoryService } from '@/memory/MemoryService';
+import { PluginManager } from '@/plugins/PluginManager';
 
 // ── DI Setup: register stubbed services so real executors can be instantiated ──
 
@@ -39,7 +46,7 @@ function setupDIContainer(): ToolManager {
   // Stub RetrievalService (used by SearchToolExecutor, FetchPageToolExecutor, RagSearchToolExecutor)
   // Must match the real RetrievalService interface methods called by executors.
   di.registerInstance(
-    DITokens.RETRIEVAL_SERVICE,
+    RetrievalService,
     {
       isSearchEnabled: () => true,
       search: async (query: string) => [
@@ -64,7 +71,7 @@ function setupDIContainer(): ToolManager {
   // Stub MemoryService (used by GetMemoryToolExecutor, SearchMemoryToolExecutor)
   // Must match MemoryService.getMemory(groupId, userId?) signature.
   di.registerInstance(
-    DITokens.MEMORY_SERVICE,
+    MemoryService,
     {
       getMemory: (groupId: string, userId?: string) => ({
         userId: userId ?? '__group__',
@@ -83,7 +90,7 @@ function setupDIContainer(): ToolManager {
 
   // Stub FileReadService (used by ReadFileToolExecutor, SearchCodeToolExecutor, DeduplicateFilesToolExecutor)
   di.registerInstance(
-    DITokens.FILE_READ_SERVICE,
+    FileReadService,
     {
       readFile: async (path: string) => ({ success: true, content: `Contents of ${path}` }),
       listDirectory: async (_path: string) => ({
@@ -103,7 +110,7 @@ function setupDIContainer(): ToolManager {
 
   // Stub ConversationHistoryService (used by FetchHistoryByTimeToolExecutor)
   di.registerInstance(
-    DITokens.CONVERSATION_HISTORY_SERVICE,
+    ConversationHistoryService,
     {
       getHistoryByTimeRange: async () => ({
         messages: [
@@ -127,14 +134,14 @@ function setupDIContainer(): ToolManager {
 
   // Stub CommandManager + PluginManager (used by ListBotFeaturesToolExecutor)
   di.registerInstance(
-    DITokens.COMMAND_MANAGER,
+    CommandManager,
     {
       getAllCommandInfos: () => [{ name: 'help', description: 'Show help', permission: 'user', usage: '/help' }],
     },
     { allowOverride: true },
   );
   di.registerInstance(
-    DITokens.PLUGIN_MANAGER,
+    PluginManager,
     {
       getAllPlugins: () => [{ name: 'test-plugin', version: '1.0', description: 'Test', enabled: true }],
     },
@@ -329,7 +336,7 @@ function scenarios(): TestScenario[] {
 function defineProviderSuite(providerName: IntegrationProviderName): void {
   describe.skipIf(!getIntegrationProvider(providerName))(`ExecuteCode LLM — ${providerName}`, () => {
     const aiManager = createAIManagerWithProvider(providerName);
-    const llmService = new LLMService(aiManager, undefined, undefined, LLM_CONFIG);
+    const llmService = createLLMService(aiManager, LLM_CONFIG);
 
     for (const scenario of scenarios()) {
       test(scenario.name, async () => {

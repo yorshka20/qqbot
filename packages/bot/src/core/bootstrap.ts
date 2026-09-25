@@ -16,28 +16,22 @@ import { createToolInstructProducer } from '@/ai/prompt/producers/ToolInstructPr
 import { createVoiceReplyProducer } from '@/ai/prompt/producers/VoiceReplyProducer';
 import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
-import { AuditEventStore } from '@/conversation/audit/AuditEventStore';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
-import type { MessagePipeline } from '@/conversation/MessagePipeline';
-import type { ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
+import { ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
 import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import { makeSyntheticEvent } from '@/conversation/synthetic';
-import { AdminAlertService } from '@/core/alert';
 import { Bot } from '@/core/Bot';
 import type { ProtocolConfig } from '@/core/config';
 import type { Connection } from '@/core/connection';
 import { WebSocketConnection } from '@/core/connection';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { HealthCheckManager } from '@/core/health';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
 import { LivemodeInterceptor } from '@/integrations/avatar/livemode/LivemodeInterceptor';
 import { LivemodeState } from '@/integrations/avatar/livemode/LivemodeState';
 import { AvatarIdleTrigger } from '@/integrations/avatar/services/AvatarIdleTrigger';
-import { AvatarMemoryExtractionCoordinator } from '@/integrations/avatar/services/AvatarMemoryExtractionCoordinator';
-import { AvatarSessionService } from '@/integrations/avatar/services/AvatarSessionService';
 import { type PersonaModulationAdapter, type PersonaService, startPersonaSubsystem } from '@/persona';
 import { PluginInitializer } from '@/plugins/PluginInitializer';
 import { DiscordConnection } from '@/protocol/discord/DiscordConnection';
@@ -48,10 +42,7 @@ import { DanmakuBuffer } from '@/services/bilibili/live/DanmakuBuffer';
 import { DanmakuStore } from '@/services/bilibili/live/DanmakuStore';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
-import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
-import { RetrievalService } from '@/services/retrieval';
 import { initStaticServer } from '@/services/staticServer';
-import { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
 import { FishAudioProvider } from '@/services/tts/providers/FishAudioProvider';
 import { SovitsProvider } from '@/services/tts/providers/SovitsProvider';
 import { TTSManager } from '@/services/tts/TTSManager';
@@ -61,10 +52,23 @@ import { registerSpeakTool } from '@/tools/executors/SpeakToolExecutor';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger, setMessageLogFilter } from '@/utils/logger';
 import { registerConnectionClass } from './connection/ConnectionManager';
+import { registerProviders } from './wiring';
 
+// Decorator registries: command handlers and plugins register themselves at import time,
+// so the composition root imports their barrels. CommandManager / PluginManager must not:
+// a service module importing its own consumers closes an import cycle, and class-token
+// injection in those consumers then fails with a TDZ error that depends on load order.
+import '@/command/handlers';
+import '@/plugins/plugins';
 // Avatar integration registers its own plugins via this barrel side-effect
 // import — PluginManager stays unaware of integrations.
 import '@/integrations/avatar/plugins';
+import { MessagePipeline } from '@/conversation/MessagePipeline';
+import { AdminAlertService } from '@/core/alert/AdminAlertService';
+import { HealthCheckManager } from '@/core/health/HealthCheckManager';
+import type { DatabaseManager } from '@/database/DatabaseManager';
+import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 
 export interface BootstrapResult {
   bot: Bot;
@@ -81,12 +85,10 @@ export interface BootstrapResult {
  * Bootstrap the application: initialize all services, DI registrations, and plugins.
  *
  * Covers every initialization step that does NOT require live network I/O:
- *   Config → API client → Prompt → Plugin factory → MCP init →
- *   Health/Retrieval → Static server → Claude Code init →
- *   Conversation system → Event system → Service registry verify →
- *   Protocol adapter registration → Plugin load and enable
+ *   Config → API client → Wiring → Prompt → Health/Retrieval → Static server →
+ *   Claude Code init → Conversation system → Event system →
+ *   Protocol adapter registration → Plugin load and enable → DI contract check
  */
-
 export async function bootstrapApp(configPath?: string): Promise<BootstrapResult> {
   // ── Config & basic setup ──
   const bot = new Bot(configPath);
@@ -110,19 +112,16 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   const apiConfig = config.getAPIConfig();
   const apiClient = new APIClient(apiConfig.strategy, apiConfig.preferredProtocol);
 
+  // ── Wiring: a provider for every core service; each is built on first resolve ──
+  registerProviders(config, apiClient);
+
   // ── Prompt system ──
   PromptInitializer.initialize(config);
 
-  // ── Plugin factory registration (must run BEFORE ConversationInitializer) ──
-  PluginInitializer.initialize(config);
-
   // ── Health + Retrieval ──
-  const healthCheckManager = new HealthCheckManager();
-  container.registerInstance(DITokens.HEALTH_CHECK_MANAGER, healthCheckManager);
-  const mcpConfig = config.getMCPConfig();
+  const healthCheckManager = container.resolve(HealthCheckManager);
+  const retrievalService = container.resolve(RetrievalService);
   const ragConfig = config.getRAGConfig();
-  const retrievalService = new RetrievalService(mcpConfig, ragConfig, healthCheckManager);
-  container.registerInstance(DITokens.RETRIEVAL_SERVICE, retrievalService);
   if (ragConfig?.enabled) {
     logger.info(
       `[Bootstrap] RAG enabled | ollama=${ragConfig.ollama?.url} model=${ragConfig.ollama?.model} qdrant=${ragConfig.qdrant?.url}`,
@@ -141,11 +140,6 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
     await initStaticServer(staticServerConfig, { disabledBackendIds, config });
   }
 
-  // ── ProjectRegistry (independent, before ClaudeCode so it can be resolved by both) ──
-  const projectRegistry = new ProjectRegistry(config.getProjectRegistryConfig());
-  container.registerInstance(DITokens.PROJECT_REGISTRY, projectRegistry);
-  logger.info('[Bootstrap] ProjectRegistry initialized');
-
   // ── Claude Code init (sync, no connections) ──
   const claudeCodeService = ClaudeCodeInitializer.initialize(config);
 
@@ -154,19 +148,8 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   const clusterRawConfig = config.getClusterConfig();
   const clusterConfig = parseClusterConfig(clusterRawConfig);
 
-  // ── PromptInjectionRegistry (before ConversationInitializer so PromptAssemblyStage can resolve it) ──
-  container.registerSingleton(DITokens.PROMPT_INJECTION_REGISTRY, PromptInjectionRegistry);
-
-  // ── Audit event ledger (before ConversationInitializer so ContextEnrichmentStage can resolve it) ──
-  // In-memory, dependency-free. Written by the COMPLETE-stage AuditEventPlugin,
-  // read into <recent_actions> by ContextEnrichmentStage.
-  container.registerInstance(DITokens.AUDIT_EVENT_STORE, new AuditEventStore());
-
   // ── Conversation system (tools, hooks, commands, AI, DB, context, agenda) ──
-  const conversationComponents = await ConversationInitializer.initialize(config, apiClient);
-
-  // ── Per-user token/image usage tracking (DB is ready after ConversationInitializer) ──
-  container.registerSingleton(DITokens.TOKEN_USAGE_SERVICE, TokenUsageService);
+  const conversationComponents = await ConversationInitializer.initialize(config);
 
   // ── Register core prompt producers (after PromptManager and PromptInjectionRegistry are ready) ──
   // PromptManager is registered by PromptInitializer above; PromptInjectionRegistry is registered
@@ -177,7 +160,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   // Volatile persona-runtime producer is registered later by PersonaInitializer (via startPersonaSubsystem).
   {
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-    const registry = container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
+    const registry = container.resolve(PromptInjectionRegistry);
     const wakeWords =
       (config.getPluginConfig('messageTrigger') as { wakeWords?: string[] } | undefined)?.wakeWords ?? [];
     registry.register(createBaselineProducer({ promptManager }));
@@ -191,9 +174,8 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
     );
   }
 
-  // ── Admin alerting (before Agent Cluster so its health probe can resolve it) ──
-  const adminAlertService = new AdminAlertService(config);
-  container.registerInstance(DITokens.ADMIN_ALERT_SERVICE, adminAlertService);
+  // ── Admin alerting: route uncaught process errors to the owner ──
+  const adminAlertService = container.resolve(AdminAlertService);
   adminAlertService.installProcessBoundary();
 
   // ── Agent Cluster (after DB is ready) ──
@@ -201,7 +183,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
     try {
       const { DatabaseManager } = await import('@/database/DatabaseManager');
       const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
-      const dbManager = container.resolve<InstanceType<typeof DatabaseManager>>(DITokens.DATABASE_MANAGER);
+      const dbManager = container.resolve<InstanceType<typeof DatabaseManager>>(DatabaseManager);
       const adapter = dbManager.getAdapter();
       if (!(adapter instanceof SQLiteAdapter)) {
         throw new Error('[Bootstrap] Agent Cluster requires SQLite database adapter');
@@ -210,9 +192,10 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
       if (!rawDb) {
         throw new Error('[Bootstrap] Agent Cluster requires SQLite — raw DB not available');
       }
-      const projectRegistry = container.resolve<
-        InstanceType<typeof import('@/services/claudeCode/ProjectRegistry').ProjectRegistry>
-      >(DITokens.PROJECT_REGISTRY);
+      const projectRegistry =
+        container.resolve<InstanceType<typeof import('@/services/claudeCode/ProjectRegistry').ProjectRegistry>>(
+          ProjectRegistry,
+        );
       clusterManager = new ClusterManager(clusterConfig, rawDb, projectRegistry, ticketsDir);
       container.registerInstance(DITokens.CLUSTER_MANAGER, clusterManager);
 
@@ -262,8 +245,8 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   }
   ProtocolAdapterInitializer.initialize(config, connectionManager, eventRouter, apiClient);
 
-  // ── Load plugins (triggers onInit for all enabled plugins, e.g. WeChatIngestPlugin DI registration) ──
-  // Plugin load throws an aggregate error if any plugin's onInit failed —
+  // ── Load plugins (onInit for every plugin, onEnable for the ones enabled in config) ──
+  // Plugin load throws an aggregate error if any plugin's onInit/onEnable failed —
   // that's the smoke-test signal for "DI wiring is broken at load time".
   await PluginInitializer.loadPlugins(config);
 
@@ -356,7 +339,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
       limits: voiceReplyLimits,
     });
     if (voiceReplyAvailable) {
-      container.resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY).register(
+      container.resolve(PromptInjectionRegistry).register(
         createVoiceReplyProducer({
           promptManager: container.resolve<PromptManager>(DITokens.PROMPT_MANAGER),
           limits: voiceReplyLimits,
@@ -396,30 +379,13 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   const modulationProvider = container.resolve<PersonaModulationAdapter>(DITokens.PERSONA_MODULATION_PROVIDER);
   startPersonaSubsystem(personaService, modulationProvider, avatarService);
 
-  // ── AvatarSessionService (rolling thread history for avatar runs) ──
-  // Avatar session service: rolling thread history for avatar runs.
-  const avatarSessionService = container.resolve(AvatarSessionService);
-  container.registerInstance(DITokens.AVATAR_SESSION_SERVICE, avatarSessionService);
-
-  // ── AvatarMemoryExtractionCoordinator (write side of <memory_context>) ──
-  // Resolves MemoryExtractService lazily, so if it isn't registered yet
-  // (edge cases / test harnesses) the coordinator degrades to a no-op
-  // instead of failing construction. Ordering against the MemoryExtract
-  // registration therefore doesn't matter.
-  const avatarMemoryExtractionCoordinator = container.resolve(AvatarMemoryExtractionCoordinator);
-  container.registerInstance(DITokens.AVATAR_MEMORY_EXTRACTION_COORDINATOR, avatarMemoryExtractionCoordinator);
-
-  // ── LivemodeState (per-user mock-livestream buffers) ──
-  // Registered here so both the /livemode command and the PROCESS-stage
-  // interceptor can resolve the same singleton. Its flush handler is wired
-  // below (avoids a construction-order cycle).
-  const livemodeState = container.resolve(LivemodeState);
-  container.registerInstance(DITokens.LIVEMODE_STATE, livemodeState);
-
   // ── Livemode wiring ──
+  // The flush handler is wired here rather than in LivemodeState's constructor, which
+  // avoids a construction-order cycle with the message pipeline.
+  const livemodeState = container.resolve(LivemodeState);
   // Resolve idle trigger before wiring the flush handler so the handler can
   // call `markActivity()` to reset the per-user idle clock on every flush.
-  const messagePipeline = container.resolve<MessagePipeline>(DITokens.MESSAGE_PIPELINE);
+  const messagePipeline = container.resolve(MessagePipeline);
   const avatarIdleTrigger = container.resolve(AvatarIdleTrigger);
   livemodeState.setFlushHandler((userId, payload) => {
     avatarIdleTrigger.markActivity(userId);
@@ -445,9 +411,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   });
   avatarIdleTrigger.start();
   try {
-    const interceptorRegistry = container.resolve<ProcessStageInterceptorRegistry>(
-      DITokens.PROCESS_STAGE_INTERCEPTOR_REGISTRY,
-    );
+    const interceptorRegistry = container.resolve<ProcessStageInterceptorRegistry>(ProcessStageInterceptorRegistry);
     interceptorRegistry.register(new LivemodeInterceptor(livemodeState));
     logger.info('[Bootstrap] Livemode interceptor + idle trigger registered');
   } catch (err) {

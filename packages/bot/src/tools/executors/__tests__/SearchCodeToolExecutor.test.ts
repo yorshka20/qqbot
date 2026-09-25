@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { FileReadService } from '@/services/file';
 import type { ToolCall, ToolExecutionContext } from '@/tools/types';
 import { SEARCH_CODE_MAX_CHARS, SearchCodeToolExecutor, searchCodeTruncationNotice } from '../SearchCodeToolExecutor';
+import { createFileReadService } from '@/services/file/__tests__/createFileReadService';
 
 const context = { userId: 1, messageType: 'private' } as ToolExecutionContext;
 
@@ -16,7 +17,7 @@ function searchCall(parameters: Record<string, unknown>): ToolCall {
 describe('search_code grep proxy', () => {
   const dir = mkdtempSync(join(tmpdir(), 'search-code-'));
   const executor = new SearchCodeToolExecutor(
-    new FileReadService({
+    createFileReadService({
       root: dir,
       filterPaths: ['node_modules', 'logs', 'data', 'config.json'],
       filterExtensions: [],

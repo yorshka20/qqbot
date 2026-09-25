@@ -1,18 +1,17 @@
 // Conversation Config Plugin - manages conversation-level configuration
 // Provides commands to enable/disable commands and plugins per conversation
 
-import type { CommandManager } from '@/command/CommandManager';
+import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
-import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { getSessionId, getSessionType } from '@/core/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { PermissionLevel } from '@/permission';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import { logger } from '@/utils/logger';
 
 /**
@@ -69,9 +68,9 @@ export class ConversationConfigPlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
-    this.pluginManager = container.resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
-    this.conversationConfigService = container.resolve<ConversationConfigService>(DITokens.CONVERSATION_CONFIG_SERVICE);
+    this.commandManager = container.resolve(CommandManager);
+    this.pluginManager = container.resolve(PluginManager);
+    this.conversationConfigService = container.resolve(ConversationConfigService);
 
     if (!this.commandManager) {
       throw new Error('[ConversationConfigPlugin] CommandManager not found');

@@ -10,6 +10,7 @@ import { LLMService } from '@/ai/services/LLMService';
 import type { FunctionCall, ToolDefinition } from '@/ai/types';
 import { SubAgentManager } from '../SubAgentManager';
 import { SubAgentType } from '../types';
+import { createLLMService } from '@/ai/services/__tests__/createLLMService';
 
 // ---------------------------------------------------------------------------
 // Unit tests (no real LLM; mock executor)
@@ -152,7 +153,7 @@ const mockToolRunner: IToolRunner = {
 
 describe.skipIf(!getIntegrationProvider('doubao'))('SubAgentManager integration (real LLM - Doubao)', () => {
   const aiManager = createAIManagerWithProvider('doubao');
-  const llmService = new LLMService(aiManager);
+  const llmService = createLLMService(aiManager);
   const manager = new SubAgentManager();
   const mockPromptManager = {
     render: (_name: string, vars?: Record<string, string>) => vars?.message ?? '',

@@ -1,7 +1,7 @@
 import { inject, injectable } from 'tsyringe';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { BilibiliService } from '@/services/bilibili';
-import type { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
+import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -30,8 +30,8 @@ export class BilibiliHotCommandHandler implements CommandHandler {
   usage = '/b站 [热搜|热门|搜索 <关键词>|视频 <BV号或链接>|分析 <BV号或链接>|分析状态 <任务ID>]';
 
   constructor(
-    @inject('BilibiliService') private bilibiliService: BilibiliService,
-    @inject('VideoKnowledgeClient') private videoKnowledgeClient: VideoKnowledgeClient,
+    @inject(BilibiliService) private bilibiliService: BilibiliService,
+    @inject(VideoKnowledgeClient) private videoKnowledgeClient: VideoKnowledgeClient,
   ) {}
 
   async execute(args: string[], _context: CommandContext): Promise<CommandResult> {

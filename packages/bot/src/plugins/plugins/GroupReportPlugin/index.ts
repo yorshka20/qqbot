@@ -7,10 +7,10 @@
 
 import type { AgendaService } from '@/agenda/AgendaService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { CommandManager } from '@/command/CommandManager';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -40,7 +40,7 @@ export class GroupReportPlugin extends PluginBase {
       this.context,
       ['admin', 'owner'],
     );
-    getContainer().resolve<CommandManager>(DITokens.COMMAND_MANAGER).register(cmdHandler, this.name);
+    getContainer().resolve(CommandManager).register(cmdHandler, this.name);
     logger.info('[GroupReportPlugin] Initialized (command registered)');
   }
 
@@ -48,7 +48,7 @@ export class GroupReportPlugin extends PluginBase {
     await super.onEnable();
     const container = getContainer();
     const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-    const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    const messageAPI = container.resolve(MessageAPI);
     const botSelfId = container.resolve<Config>(DITokens.CONFIG).getConfig().bot.selfId;
     const fanout = this.groupDay();
     fanout.registerTask(new ReportTask({ promptManager, renderer: new GroupReportRenderer(messageAPI) }));
@@ -56,7 +56,7 @@ export class GroupReportPlugin extends PluginBase {
       new ComicTask({
         promptManager,
         messageAPI,
-        historyService: container.resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE),
+        historyService: container.resolve(ConversationHistoryService),
         botSelfId,
       }),
     );

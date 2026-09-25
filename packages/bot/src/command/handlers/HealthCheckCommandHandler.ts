@@ -1,8 +1,8 @@
 // Admin command to inspect and force-refresh health check status for registered services (providers, RAG, etc.)
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import { type HealthCheckManager, type HealthCheckResult, HealthStatus } from '@/core/health';
+import { type HealthCheckResult, HealthStatus } from '@/core/health';
+import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
@@ -50,7 +50,7 @@ export class HealthCheckCommandHandler implements CommandHandler {
   description = 'Inspect or force-refresh service health status (admin).';
   usage = '/healthcheck [<service> | all | reset <service>]';
 
-  constructor(@inject(DITokens.HEALTH_CHECK_MANAGER) private readonly healthCheckManager: HealthCheckManager) {}
+  constructor(@inject(HealthCheckManager) private readonly healthCheckManager: HealthCheckManager) {}
 
   async execute(args: string[], _context: CommandContext): Promise<CommandResult> {
     const [sub, ...rest] = args;

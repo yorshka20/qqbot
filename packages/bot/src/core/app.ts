@@ -7,17 +7,16 @@
 // in production and in the smoke test.
 
 import type { Database } from 'bun:sqlite';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { initLanRelay } from '@/lan';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import { killAllMcpChildren } from '@/services/retrieval/searxng/mcp/childReaper';
 import { stopStaticServer } from '@/services/staticServer';
-import type { ResourceCleanupService } from '@/services/video';
+import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
 import { logger } from '@/utils/logger';
 import { type BootstrapResult, bootstrapApp } from './bootstrap';
 import { getContainer } from './DIContainer';
-import { DITokens } from './DITokens';
 
 export interface StartAppOptions {
   /**
@@ -36,8 +35,8 @@ export async function startApp(configPath: string | undefined, options: StartApp
   const { conversationComponents, eventRouter, retrievalService } = bootstrap;
 
   const container = getContainer();
-  const pluginManager = container.resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
-  const resourceCleanupService = container.resolve<ResourceCleanupService>(DITokens.RESOURCE_CLEANUP_SERVICE);
+  const pluginManager = container.resolve(PluginManager);
+  const resourceCleanupService = container.resolve(ResourceCleanupService);
 
   const disconnect = options.connect ? await connect(bootstrap, pluginManager) : null;
 
@@ -71,7 +70,7 @@ async function connect(bootstrap: BootstrapResult, pluginManager: PluginManager)
     bilibiliLiveBridge,
   } = bootstrap;
   const config = bot.getConfig();
-  const messageAPI = getContainer().resolve<MessageAPI>(DITokens.MESSAGE_API);
+  const messageAPI = getContainer().resolve(MessageAPI);
 
   // Start bot (opens WebSocket connections)
   await bot.start();

@@ -11,7 +11,7 @@
 
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
+import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { PersonaModulationAdapter } from '@/integrations/avatar/services/PersonaModulationAdapter';
@@ -98,7 +98,7 @@ export class PersonaInitializer {
     // PromptAssemblyStage groups fragments by PromptLayer so each lands in the right position.
     // PROMPT_INJECTION_REGISTRY is required (DITokens.ts) — registered by
     // bootstrap before ConversationInitializer runs.
-    const registry = getContainer().resolve<PromptInjectionRegistry>(DITokens.PROMPT_INJECTION_REGISTRY);
+    const registry = getContainer().resolve(PromptInjectionRegistry);
     registry.register(createPersonaStableProducer({ personaService, config }));
     registry.register(createPersonaVolatileProducer({ personaService, config }));
     registry.register(createPersonaRelationshipProducer({ personaService, config }));

@@ -1,7 +1,7 @@
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 
 /**
@@ -46,9 +46,7 @@ export const WHITELIST_CAPABILITY_KEYS: WhitelistCapability[] = [
  */
 export function groupHasWhitelistCapability(groupId: string, capability: WhitelistCapability): boolean {
   const id = String(groupId);
-  const whitelistPlugin = getContainer()
-    .resolve<PluginManager>(DITokens.PLUGIN_MANAGER)
-    ?.getPluginAs<WhitelistPlugin>('whitelist');
+  const whitelistPlugin = getContainer().resolve(PluginManager)?.getPluginAs<WhitelistPlugin>('whitelist');
 
   if (!whitelistPlugin) {
     const config = getContainer().resolve<Config>(DITokens.CONFIG);

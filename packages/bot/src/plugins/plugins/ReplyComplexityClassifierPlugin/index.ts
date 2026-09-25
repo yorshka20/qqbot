@@ -5,11 +5,11 @@
 
 import { z } from 'zod';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import { getReply } from '@/context/HookContextHelpers';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -42,9 +42,9 @@ export class ReplyComplexityClassifierPlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    this.llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+    this.llmService = container.resolve(LLMService);
     this.promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-    this.historyService = container.resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
+    this.historyService = container.resolve(ConversationHistoryService);
     this.config = container.resolve<Config>(DITokens.CONFIG);
     logger.info('[ReplyComplexityClassifier] Enabled');
   }

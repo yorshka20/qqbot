@@ -1,8 +1,7 @@
 // WeChat moments semantic search — search over personal moments in Qdrant
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import type { RetrievalService } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
@@ -60,7 +59,7 @@ const MAX_CONTENT_DISPLAY_LEN = 800;
 export class WechatMomentsSearchToolExecutor extends BaseToolExecutor {
   name = 'wechat_moments_search';
 
-  constructor(@inject(DITokens.RETRIEVAL_SERVICE) private retrievalService: RetrievalService) {
+  constructor(@inject(RetrievalService) private retrievalService: RetrievalService) {
     super();
   }
 

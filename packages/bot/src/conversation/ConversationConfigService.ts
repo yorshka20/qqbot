@@ -1,10 +1,12 @@
 // Conversation Config Service - manages conversation-level configuration with fallback to global config
 
+import { inject, singleton } from 'tsyringe';
+import { GlobalConfigManager } from '@/core/config/GlobalConfigManager';
 import type { DatabaseAdapter } from '@/database/base/DatabaseAdapter';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { ConversationConfigData } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 import { updateEnabledDisabled } from '../core/config/ConfigUtils';
-import type { GlobalConfigManager } from '../core/config/GlobalConfigManager';
 
 export type SessionType = 'user' | 'group';
 
@@ -12,14 +14,21 @@ export type SessionType = 'user' | 'group';
  * Conversation Config Service
  * Manages conversation-level configuration with fallback to global config
  */
+@singleton()
 export class ConversationConfigService {
   // In-memory cache for conversation configs
   private configCache = new Map<string, ConversationConfigData>();
 
+  private readonly databaseAdapter: DatabaseAdapter;
+
+  // The adapter exists only once the database is connected, so this service must be
+  // resolved after DatabaseManager.initialize().
   constructor(
-    private databaseAdapter: DatabaseAdapter,
-    private globalConfigManager: GlobalConfigManager,
-  ) {}
+    @inject(DatabaseManager) databaseManager: DatabaseManager,
+    @inject(GlobalConfigManager) private globalConfigManager: GlobalConfigManager,
+  ) {
+    this.databaseAdapter = databaseManager.getAdapter();
+  }
 
   /**
    * Get conversation config key for cache

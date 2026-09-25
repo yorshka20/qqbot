@@ -7,8 +7,7 @@
 // nothing for the agenda to send.
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import type { FanoutManager } from '@/fanout/core/FanoutManager';
+import { FanoutManager } from '@/fanout/core/FanoutManager';
 import type { FanoutTarget } from '@/fanout/core/types';
 import { logger } from '@/utils/logger';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
@@ -22,7 +21,7 @@ interface FanoutActionParams {
 export class FanoutActionHandler implements ActionHandler {
   readonly name = 'fanout';
 
-  constructor(@inject(DITokens.FANOUT_MANAGER) private readonly fanoutManager: FanoutManager) {}
+  constructor(@inject(FanoutManager) private readonly fanoutManager: FanoutManager) {}
 
   async execute(ctx: ActionHandlerContext): Promise<string | undefined> {
     const params = parseParams(ctx.item.actionParams);

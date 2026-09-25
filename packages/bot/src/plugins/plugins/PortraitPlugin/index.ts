@@ -4,13 +4,13 @@
 // Everything lives in this folder; there is no separate command-handler file or
 // DI-registered service.
 
-import type { CommandManager } from '@/command/CommandManager';
+import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandHandler, CommandResult } from '@/command/types';
 import { isNoReplyPath } from '@/context/HookContextHelpers';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookContext, HookResult } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { BrowserService } from '@/services/browser/BrowserService';
@@ -40,8 +40,8 @@ export class PortraitPlugin extends PluginBase {
       return;
     }
 
-    const databaseManager = container.resolve<DatabaseManager>(DITokens.DATABASE_MANAGER);
-    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
+    const databaseManager = container.resolve(DatabaseManager);
+    this.commandManager = container.resolve(CommandManager);
     this.service = new PortraitService(databaseManager, config);
   }
 

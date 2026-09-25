@@ -18,7 +18,7 @@
 // `lanRelay.client.disabledPlugins: ["lanControl"]`, but it also no-ops if
 // the runtime singleton is not in host mode.
 
-import type { CommandManager } from '@/command/CommandManager';
+import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
@@ -52,7 +52,7 @@ export class LanControlPlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
+    this.commandManager = container.resolve(CommandManager);
     this.config = container.resolve<Config>(DITokens.CONFIG);
     this.permissionChecker = container.resolve<PermissionChecker>(DITokens.PERMISSION_CHECKER);
   }

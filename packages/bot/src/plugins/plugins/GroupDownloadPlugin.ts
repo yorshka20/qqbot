@@ -3,12 +3,12 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
-import type { FileReadService } from '@/services/file';
+import { FileReadService } from '@/services/file/FileReadService';
 import { runDeduplication } from '@/utils/fileDedup';
 import { getDefaultExtension, getExtensionFromUrl, hashForFilename, uniqueFilename } from '@/utils/fileNameHelpers';
 import { logger } from '@/utils/logger';
@@ -52,8 +52,8 @@ export class GroupDownloadPlugin extends PluginBase {
     // MESSAGE_API and FILE_READ_SERVICE are required tokens (DITokens.ts);
     // resolve directly so a missing registration becomes a hard failure
     // surfaced through PluginManager → bootstrap.
-    this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-    this.fileService = container.resolve<FileReadService>(DITokens.FILE_READ_SERVICE);
+    this.messageAPI = container.resolve(MessageAPI);
+    this.fileService = container.resolve(FileReadService);
 
     try {
       const pluginConfig = this.pluginConfig?.config as GroupDownloadPluginConfig | undefined;

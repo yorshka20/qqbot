@@ -4,18 +4,18 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
-import type { AIService } from '@/ai/AIService';
+import { AIService } from '@/ai/AIService';
 import type { CapabilityType } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { ProactiveConversationService } from '@/conversation/proactive';
+import { ProactiveConversationService } from '@/conversation/proactive';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { PermissionLevel } from '@/permission';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import type { InfoCardData, ListCardData } from '@/services/card';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
-import type { CommandManager } from '../CommandManager';
+import { CommandManager } from '../CommandManager';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
@@ -46,8 +46,8 @@ export class HelpCommand implements CommandHandler {
   usage = '/help [command]';
 
   constructor(
-    @inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager,
-    @inject(DITokens.AI_SERVICE) private aiService: AIService,
+    @inject(CommandManager) private commandManager: CommandManager,
+    @inject(AIService) private aiService: AIService,
   ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
@@ -211,7 +211,7 @@ export class EchoCommand implements CommandHandler {
   description = 'Toggle EchoPlugin enabled/disabled state';
   usage = '/echo';
 
-  constructor(@inject(DITokens.PLUGIN_MANAGER) private pluginManager: PluginManager) {}
+  constructor(@inject(PluginManager) private pluginManager: PluginManager) {}
 
   async execute(): Promise<CommandResult> {
     const pluginName = 'echo';
@@ -266,7 +266,7 @@ export class RoleCommand implements CommandHandler {
   usage = '/role';
 
   constructor(
-    @inject(DITokens.PROACTIVE_CONVERSATION_SERVICE) private proactiveConversationService: ProactiveConversationService,
+    @inject(ProactiveConversationService) private proactiveConversationService: ProactiveConversationService,
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
   ) {}
 

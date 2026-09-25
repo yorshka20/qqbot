@@ -1,6 +1,6 @@
 import { injectable } from 'tsyringe';
 import type { AgendaService } from '@/agenda/AgendaService';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
@@ -125,7 +125,7 @@ export class WatchMessagesToolExecutor extends BaseToolExecutor {
       return direct ? { userId: direct } : null;
     }
 
-    const history = getContainer().resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
+    const history = getContainer().resolve(ConversationHistoryService);
     const resolution = await resolveSender(history, scope, params);
     switch (resolution.kind) {
       case 'resolved':

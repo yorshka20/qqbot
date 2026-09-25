@@ -1,6 +1,7 @@
 import { inject, injectable } from 'tsyringe';
-import type { AIService, ImageGenerationResponse, Text2ImageOptions } from '@/ai';
+import type { ImageGenerationResponse, Text2ImageOptions } from '@/ai';
 import type { AIManager } from '@/ai/AIManager';
+import { AIService } from '@/ai/AIService';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
@@ -52,7 +53,7 @@ export class Text2ImageCommand implements CommandHandler {
   };
 
   constructor(
-    @inject(DITokens.AI_SERVICE) private aiService: AIService,
+    @inject(AIService) private aiService: AIService,
     @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
   ) {}
 

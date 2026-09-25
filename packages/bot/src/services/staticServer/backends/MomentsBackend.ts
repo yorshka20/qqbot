@@ -19,7 +19,7 @@
 
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { RetrievalService } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WeChatDatabase } from '@/services/wechat/WeChatDatabase';
 import { logger } from '@/utils/logger';
@@ -155,7 +155,7 @@ export class MomentsBackend implements Backend {
     if (this.retrieval) return this.retrieval;
     try {
       const container = getContainer();
-      this.retrieval = container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE);
+      this.retrieval = container.resolve(RetrievalService);
       if (!this.retrieval.isRAGEnabled()) {
         this.retrieval = null;
       }

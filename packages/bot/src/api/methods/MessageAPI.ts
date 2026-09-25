@@ -1,7 +1,9 @@
 // Message API method wrappers
 
+import { inject, singleton } from 'tsyringe';
 import type { CommandContext } from '@/command/types';
 import type { ProtocolName } from '@/core/config/types/protocol';
+import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
@@ -30,24 +32,25 @@ interface ExtractedContextFields {
   messageScene?: string;
 }
 
+@singleton()
 export class MessageAPI {
   /**
    * Hard singleton — exactly one instance is allowed per process. It's
    * constructed by `ConversationInitializer` and registered into DI as
-   * `DITokens.MESSAGE_API`; every other consumer must resolve from the
+   * `MessageAPI`; every other consumer must resolve from the
    * container. Multiple instances would fragment outbound state (rate
    * limiters, dedup buffers, retry queues) and silently drift apart, so
    * the second `new` throws to enforce the contract at the language
    * level. Tests that need a fake should `container.registerInstance(
-   * DITokens.MESSAGE_API, mock, { allowOverride: true })`, not `new`.
+   * MessageAPI, mock, { allowOverride: true })`, not `new`.
    */
   private static _constructed = false;
 
-  constructor(private apiClient: APIClient) {
+  constructor(@inject(DITokens.API_CLIENT) private apiClient: APIClient) {
     if (MessageAPI._constructed) {
       throw new Error(
         '[MessageAPI] Singleton violation — only one MessageAPI may exist per process. ' +
-          'Resolve via getContainer().resolve(DITokens.MESSAGE_API) instead of `new MessageAPI(...)`.',
+          'Resolve via getContainer().resolve(MessageAPI) instead of `new MessageAPI(...)`.',
       );
     }
     MessageAPI._constructed = true;

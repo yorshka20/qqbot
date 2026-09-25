@@ -1,8 +1,8 @@
 // RAG search task executor - retrieves local vector-store results for the current conversation or a named collection
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import { QdrantClient, type RetrievalService } from '@/services/retrieval';
+import { QdrantClient } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
@@ -44,7 +44,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 export class RagSearchToolExecutor extends BaseToolExecutor {
   name = 'rag_search';
 
-  constructor(@inject(DITokens.RETRIEVAL_SERVICE) private retrievalService: RetrievalService) {
+  constructor(@inject(RetrievalService) private retrievalService: RetrievalService) {
     super();
   }
 

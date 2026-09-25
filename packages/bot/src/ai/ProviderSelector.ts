@@ -1,6 +1,8 @@
 // Provider Selector - manages session-level provider selection
 
-import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import { inject, singleton } from 'tsyringe';
+import { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import { DITokens } from '@/core/DITokens';
 import type { ProviderSelection } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 import type { AIManager } from './AIManager';
@@ -16,13 +18,14 @@ export interface SessionProviderSelection extends ProviderSelection {}
  * Manages provider selection at the session level (based on sessionId)
  * Persists to conversation_configs table via ConversationConfigService
  */
+@singleton()
 export class ProviderSelector {
   // In-memory cache of session provider selections
   private sessionSelections = new Map<string, SessionProviderSelection>();
 
   constructor(
-    private aiManager: AIManager,
-    private configService: ConversationConfigService,
+    @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
+    @inject(ConversationConfigService) private configService: ConversationConfigService,
   ) {}
 
   /**

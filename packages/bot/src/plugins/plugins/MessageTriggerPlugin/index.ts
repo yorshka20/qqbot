@@ -1,17 +1,17 @@
 // MessageTriggerPlugin - unified message trigger entry point
 // Decides whether to run the reply pipeline AND optionally spawns background subagents.
 
-import type { AIService } from '@/ai/AIService';
+import { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { ProviderRouter } from '@/ai/routing/ProviderRouter';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { parseLlmTrueFalse } from '@/ai/utils/llmJsonExtract';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { hasWhitelistCapability } from '@/context/HookContextHelpers';
-import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
-import type { ProactiveConversationService } from '@/conversation/proactive';
-import type { ThreadService } from '@/conversation/thread';
+import { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import { ProactiveConversationService } from '@/conversation/proactive';
+import { ThreadService } from '@/conversation/thread';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -53,13 +53,11 @@ export class MessageTriggerPlugin extends PluginBase {
   async onInit(): Promise<void> {
     this.enabled = true;
     const container = getContainer();
-    this.llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+    this.llmService = container.resolve(LLMService);
     this.promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-    this.threadService = container.resolve<ThreadService>(DITokens.THREAD_SERVICE);
+    this.threadService = container.resolve(ThreadService);
     this.config = container.resolve<Config>(DITokens.CONFIG);
-    const proactiveConversationService = container.resolve<ProactiveConversationService>(
-      DITokens.PROACTIVE_CONVERSATION_SERVICE,
-    );
+    const proactiveConversationService = container.resolve<ProactiveConversationService>(ProactiveConversationService);
 
     const pluginConfig = this.pluginConfig?.config as MessageTriggerPluginConfig | undefined;
 
@@ -67,16 +65,14 @@ export class MessageTriggerPlugin extends PluginBase {
     const globalWakeWords = (pluginConfig?.wakeWords ?? []).map((w) => w.trim().toLowerCase()).filter(Boolean);
 
     this.wakeWordMatcher = new WakeWordMatcher(globalWakeWords, this.promptManager, proactiveConversationService);
-    this.providerRouter = container.resolve<ProviderRouter>(DITokens.PROVIDER_ROUTER);
+    this.providerRouter = container.resolve(ProviderRouter);
 
     // SubAgent triggers (optional — only instantiated when rules are configured)
     const subAgentRules: SubAgentTriggerRule[] = pluginConfig?.subAgentTriggers ?? [];
     if (subAgentRules.length > 0) {
-      const aiService = container.resolve<AIService>(DITokens.AI_SERVICE);
-      const messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-      const conversationConfigService = container.resolve<ConversationConfigService>(
-        DITokens.CONVERSATION_CONFIG_SERVICE,
-      );
+      const aiService = container.resolve(AIService);
+      const messageAPI = container.resolve(MessageAPI);
+      const conversationConfigService = container.resolve<ConversationConfigService>(ConversationConfigService);
       const protocol = this.config.getEnabledProtocols()[0]?.name ?? 'milky';
       const botSelfId = this.config.getBotUserId();
       this.subAgentTriggerHandler = new SubAgentTriggerHandler(

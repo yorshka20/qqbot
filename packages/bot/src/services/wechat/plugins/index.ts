@@ -2,19 +2,19 @@
 // All core logic lives in src/services/wechat/
 
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
-import type { AIService } from '@/ai/AIService';
+import { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { CommandManager } from '@/command/CommandManager';
+import { LLMService } from '@/ai/services/LLMService';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { CommandManager } from '@/command/CommandManager';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
-import type { PluginManager } from '@/plugins/PluginManager';
-import type { RetrievalService } from '@/services/retrieval';
+import { PluginManager } from '@/plugins/PluginManager';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import type { WeChatIngestConfig, WeChatRealtimeRule } from '@/services/wechat';
 import {
   resolveConfig,
@@ -49,7 +49,7 @@ export class WeChatIngestPlugin extends PluginBase {
    * cannot stand in for this.
    */
   static isEnabled(): boolean {
-    return getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER).isPluginEnabled(PLUGIN_NAME);
+    return getContainer().resolve(PluginManager).isPluginEnabled(PLUGIN_NAME);
   }
 
   private ingestService: WeChatIngestService | null = null;
@@ -67,9 +67,9 @@ export class WeChatIngestPlugin extends PluginBase {
     const container = getContainer();
     const config = container.resolve<Config>(DITokens.CONFIG);
 
-    this.retrieval = container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE);
-    this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
+    this.retrieval = container.resolve(RetrievalService);
+    this.messageAPI = container.resolve(MessageAPI);
+    this.commandManager = container.resolve(CommandManager);
 
     const raw = config.getPluginConfig('wechatIngest') as WeChatIngestConfig | undefined;
     const resolved = resolveConfig(raw);
@@ -193,7 +193,7 @@ export class WeChatIngestPlugin extends PluginBase {
 
     // Create article analysis service (uses LLMService.generateFixed — no fallback, retry-only)
     try {
-      const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+      const llmService = container.resolve(LLMService);
       const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
       const aiConfig = config.getAIConfig();
       const articleAnalysisProvider = raw?.analysis?.provider ?? aiConfig?.taskProviders?.articleAnalysis ?? 'doubao';
@@ -231,13 +231,13 @@ export class WeChatIngestPlugin extends PluginBase {
     if (padProClient) {
       let aiService: AIService | null = null;
       try {
-        aiService = container.resolve<AIService>(DITokens.AI_SERVICE);
+        aiService = container.resolve(AIService);
       } catch {
         logger.warn('[WeChatIngestPlugin] AIService not available — /wechat analyze disabled');
       }
 
       // Create moments analysis service (reuses LLMService already resolved above)
-      const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+      const llmService = container.resolve(LLMService);
       const momentsAnalysis = new WechatMomentsAnalysisService(llmService, this.retrieval, this.db as WeChatDatabase, {
         provider: raw?.analysis?.provider ?? 'ollama',
       });

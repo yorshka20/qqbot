@@ -1,9 +1,8 @@
 // Reply task executor - handles simple reply tasks
 
 import { inject, injectable } from 'tsyringe';
-import type { AIService } from '@/ai/AIService';
+import { AIService } from '@/ai/AIService';
 import { getReply, getReplyContent } from '@/context/HookContextHelpers';
-import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult } from '../types';
@@ -24,7 +23,7 @@ import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult } from '.
 export class ReplyToolExecutor implements ToolExecutor {
   name = 'reply';
 
-  constructor(@inject(DITokens.AI_SERVICE) private aiService: AIService) {}
+  constructor(@inject(AIService) private aiService: AIService) {}
 
   async execute(_task: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     logger.debug('[ReplyToolExecutor] Executing reply task');

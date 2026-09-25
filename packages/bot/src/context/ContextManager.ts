@@ -1,7 +1,11 @@
 // Context Manager - builds and manages conversation contexts
 
+import { inject, singleton } from 'tsyringe';
 import type { ConversationHistoryRole } from '@/ai/types';
-import type { ConversationMessageEntry, SessionHistoryStore } from '@/conversation/history';
+import type { ConversationMessageEntry } from '@/conversation/history';
+import { SessionHistoryStore } from '@/conversation/history/SessionHistoryStore';
+import type { Config } from '@/core/config';
+import { DITokens } from '@/core/DITokens';
 import type { ContextBuilderOptions, ConversationContext, GlobalContext, SessionContext } from './types';
 
 export interface AddMessageOptions {
@@ -23,10 +27,14 @@ export interface BuildContextOptions extends ContextBuilderOptions {
  * Context Manager
  * Builds and manages conversation contexts; session history is owned by SessionHistoryStore (conversation/history).
  */
+@singleton()
 export class ContextManager {
   private globalContext: GlobalContext | null = null;
+  private readonly sessionHistoryStore: SessionHistoryStore;
 
-  constructor(private sessionHistoryStore: SessionHistoryStore) {}
+  constructor(@inject(DITokens.CONFIG) config: Config) {
+    this.sessionHistoryStore = new SessionHistoryStore(config.getContextMemoryConfig()?.maxBufferSize ?? 30);
+  }
 
   setGlobalContext(context: GlobalContext): void {
     this.globalContext = context;

@@ -1,6 +1,6 @@
 // AI Provider abstract base class
 
-import type { ContextManager } from '@/context/ContextManager';
+import { ContextManager } from '@/context/ContextManager';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
@@ -73,7 +73,7 @@ export abstract class AIProvider {
    * token (DITokens.ts); this just sugars the resolve call.
    */
   protected getContextManager(): ContextManager {
-    return getContainer().resolve<ContextManager>(DITokens.CONTEXT_MANAGER);
+    return getContainer().resolve(ContextManager);
   }
 
   /**

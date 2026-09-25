@@ -19,9 +19,11 @@
 //
 // Fails soft: any error / disabled state / empty query → empty string.
 
-import { injectable } from 'tsyringe';
+import { inject, singleton } from 'tsyringe';
 import { HttpClient, HttpClientError } from '@/api/http/HttpClient';
+import type { Config } from '@/core/config';
 import type { VKBContextEngineConfig } from '@/core/config/types/vkbContextEngine';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import type {
   VKBEntityEvidence,
@@ -45,7 +47,7 @@ const DEFAULT_MAX_RELATED_PER_TERM = 3;
 const DEFAULT_MAX_USAGE_EXAMPLES = 5;
 const DEFAULT_MAX_EXAMPLE_LEN = 80;
 
-@injectable()
+@singleton()
 export class VKBContextEngine {
   private readonly httpClient: HttpClient;
   private readonly enabled: boolean;
@@ -59,7 +61,11 @@ export class VKBContextEngine {
   private readonly maxExampleLen: number;
   private readonly tokenManager: VKBTokenManager;
 
-  constructor(config: VKBContextEngineConfig) {
+  constructor(@inject(DITokens.CONFIG) botConfig: Config) {
+    const config: VKBContextEngineConfig = botConfig.getConfig().vkbContextEngine ?? {
+      enabled: false,
+      baseURL: 'http://localhost:8080',
+    };
     this.enabled = config.enabled;
     this.scope = config.scope ?? DEFAULT_SCOPE;
     this.tokenBudget = config.tokenBudget ?? DEFAULT_TOKEN_BUDGET;

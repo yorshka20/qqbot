@@ -3,11 +3,11 @@
 import 'reflect-metadata';
 
 import readline from 'node:readline';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { CommandManager } from '@/command/CommandManager';
 import type { ConversationManager } from '@/conversation/ConversationManager';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import type { APIClient } from '../api/APIClient';
-import type { MessageAPI } from '../api/methods/MessageAPI';
 import { type App, startApp } from '../core/app';
 import type { Config, ProtocolName } from '../core/config';
 import { getContainer } from '../core/DIContainer';
@@ -482,8 +482,8 @@ class DebugCLI {
       this.config = this.app.bot.getConfig();
       const container = getContainer();
       this.apiClient = container.resolve<APIClient>(DITokens.API_CLIENT);
-      this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
-      this.pluginManager = container.resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+      this.messageAPI = container.resolve(MessageAPI);
+      this.pluginManager = container.resolve(PluginManager);
       this.conversationManager = this.app.conversationComponents.conversationManager;
       this.commandManager = this.app.conversationComponents.commandManager;
 

@@ -1,7 +1,7 @@
 // Global dependency injection container management
 // Provides a centralized container for dependency injection using TSyringe
 
-import { container, type DependencyContainer } from 'tsyringe';
+import { container, type DependencyContainer, instanceCachingFactory } from 'tsyringe';
 import { logger } from '@/utils/logger';
 import { DITokens, getRequiredTokens, getTokenMeta } from './DITokens';
 
@@ -38,14 +38,23 @@ export class DIContainer {
   /**
    * Register a service instance
    *
-   * @param token - Service token (from DITokens)
+   * @param token - Service token (from DITokens), or a service class to replace its class-token registration (e.g. a test double)
    * @param instance - Service instance to register
    * @param options - Registration options
    * @param options.allowOverride - Allow overriding existing registration (default: false)
    * @param options.logRegistration - Log registration (default: true)
    */
-  registerInstance<T>(token: string, instance: T, options?: { allowOverride?: boolean }): void {
+  registerInstance<T>(
+    token: string | (new (...args: any[]) => unknown),
+    instance: T,
+    options?: { allowOverride?: boolean },
+  ): void {
     const allowOverride = options?.allowOverride ?? false;
+
+    if (typeof token !== 'string') {
+      this._container.register(token, { useValue: instance });
+      return;
+    }
 
     // Check if already registered
     if (this.registeredTokens.has(token) && !allowOverride) {
@@ -75,10 +84,34 @@ export class DIContainer {
   }
 
   /**
+   * Expose a class-token singleton under a string token as well. `useToken` resolves to
+   * the class's own registration, so both tokens return the same instance; registering
+   * the class again with `registerSingleton(token, ctor)` would build a second one.
+   */
+  registerAlias<T>(token: string, target: new (...args: any[]) => T): void {
+    this._container.register(token, { useToken: target });
+    this.registeredTokens.add(token);
+  }
+
+  /**
    * Register a factory function
    */
   registerFactory<T>(token: string, factory: (container: DependencyContainer) => T): void {
     this._container.register(token, { useFactory: factory });
+  }
+
+  /**
+   * Register a provider that is built on first resolve and reused afterwards. The factory
+   * resolves its own dependencies, so the container builds them first: registration order
+   * does not matter, only that every dependency has a provider by the time it is resolved.
+   */
+  registerSingletonFactory<T>(token: string, factory: (container: DIContainer) => T): void {
+    if (this.registeredTokens.has(token)) {
+      logger.warn(`[DIContainer] Service "${token}" is already registered; keeping the first provider.`);
+      return;
+    }
+    this._container.register(token, { useFactory: instanceCachingFactory(() => factory(this)) });
+    this.registeredTokens.add(token);
   }
 
   /**
@@ -91,7 +124,10 @@ export class DIContainer {
   /**
    * Check if a service is registered
    */
-  isRegistered(token: string): boolean {
+  isRegistered(token: string | (new (...args: any[]) => unknown)): boolean {
+    if (typeof token !== 'string') {
+      return this._container.isRegistered(token, true);
+    }
     return this.registeredTokens.has(token) || this._container.isRegistered(token);
   }
 
@@ -112,9 +148,24 @@ export class DIContainer {
     if (missing.length > 0) {
       throw new Error(
         `[DIContainer] Bootstrap left required DI tokens unregistered: ${missing.join(', ')}. ` +
-          'Either fix the registration order or, if the token is feature-gated, mark it ' +
+          'Either register a provider for it or, if the token is feature-gated, mark it ' +
           '`required: false, gatedBy: ...` in DITokens.ts.',
       );
+    }
+
+    // A registered provider can still fail to build (a dependency without a provider, a
+    // cycle). Resolving every required token here also builds the lazy singletons, so the
+    // process ends bootstrap with the same instances an eager wiring would have made.
+    const unbuildable: string[] = [];
+    for (const token of getRequiredTokens()) {
+      try {
+        this._container.resolve(token);
+      } catch (err) {
+        unbuildable.push(`${token}: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`);
+      }
+    }
+    if (unbuildable.length > 0) {
+      throw new Error(`[DIContainer] Required DI tokens could not be built:\n  ${unbuildable.join('\n  ')}`);
     }
 
     const skipped: string[] = [];

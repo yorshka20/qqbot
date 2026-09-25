@@ -4,7 +4,7 @@
 
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
-import type { CommandManager } from '@/command/CommandManager';
+import { CommandManager } from '@/command/CommandManager';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -38,7 +38,7 @@ export class ZhihuFeedPlugin extends PluginBase {
     const container = getContainer();
     const config = container.resolve<Config>(DITokens.CONFIG);
 
-    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
+    this.commandManager = container.resolve(CommandManager);
 
     const raw = config.getPluginConfig('zhihuFeed') ?? DEFAULT_ZHIHU_CONFIG;
     if (!raw.cookie) {

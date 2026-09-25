@@ -1,10 +1,11 @@
 import { inject, injectable } from 'tsyringe';
-import type { AIService, Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from '@/ai';
+import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from '@/ai';
+import { AIService } from '@/ai/AIService';
 import { extractImagesFromMessageAndReply, visionImageToString } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookContext } from '@/hooks/types';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import type { MessageSegment } from '@/message/types';
@@ -48,10 +49,10 @@ export class NovelAICommand implements CommandHandler {
   };
 
   constructor(
-    @inject(DITokens.AI_SERVICE) private aiService: AIService,
+    @inject(AIService) private aiService: AIService,
     @inject(DITokens.API_CLIENT) private apiClient: APIClient,
-    @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
-    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+    @inject(DatabaseManager) private databaseManager: DatabaseManager,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
   ) {}
 
   /**

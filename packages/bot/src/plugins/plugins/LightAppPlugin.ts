@@ -1,7 +1,7 @@
 // LightApp Plugin - when user sends a mini-program (light_app) message,
 // parse json_payload, extract URLs, and send them as a forward message
 
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { isNoReplyPath } from '@/context/HookContextHelpers';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
@@ -44,7 +44,7 @@ export class LightAppPlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     this.enabled = true;
-    this.messageAPI = getContainer().resolve<MessageAPI>(DITokens.MESSAGE_API);
+    this.messageAPI = getContainer().resolve(MessageAPI);
     const pluginConfig = this.pluginConfig?.config as LightAppPluginConfig | undefined;
     if (pluginConfig?.prefix !== undefined) {
       this.prefix = String(pluginConfig.prefix);

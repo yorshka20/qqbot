@@ -1,10 +1,9 @@
 import { join } from 'node:path';
 import { inject, injectable } from 'tsyringe';
-import type { AIService } from '@/ai';
-import { DITokens } from '@/core/DITokens';
+import { AIService } from '@/ai/AIService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { InfoCardData } from '@/services/card';
-import type { FileReadService } from '@/services/file';
+import { FileReadService } from '@/services/file/FileReadService';
 import { formatBytes, runDeduplication } from '@/utils/fileDedup';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
@@ -29,8 +28,8 @@ export class GroupDedupCommandHandler implements CommandHandler {
   usage = '/dedup_group <groupId>';
 
   constructor(
-    @inject(DITokens.FILE_READ_SERVICE) private fileService: FileReadService,
-    @inject(DITokens.AI_SERVICE) private aiService: AIService,
+    @inject(FileReadService) private fileService: FileReadService,
+    @inject(AIService) private aiService: AIService,
   ) {}
 
   async execute(args: string[], _context: CommandContext): Promise<CommandResult> {

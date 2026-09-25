@@ -48,55 +48,22 @@ export const DITokens = {
   CONFIG: defineToken('Config', { required: true }),
   /** Outbound API client (HTTP). Registered alongside CONFIG. */
   API_CLIENT: defineToken('APIClient', { required: true }),
-  /** Aggregate health-check manager. Registered by `bootstrap.ts`. */
-  HEALTH_CHECK_MANAGER: defineToken('HealthCheckManager', { required: true }),
-  /** Lifecycle bus for graceful shutdown. */
-  LIFECYCLE: defineToken('Lifecycle', { required: true }),
 
   // ── Database / persistence (required) ──
-  DATABASE_MANAGER: defineToken('DatabaseManager', { required: true }),
-  MEMORY_SERVICE: defineToken('MemoryService', { required: true }),
-  GLOBAL_CONFIG_MANAGER: defineToken('GlobalConfigManager', { required: true }),
-  CONVERSATION_CONFIG_SERVICE: defineToken('ConversationConfigService', { required: true }),
 
   // ── AI / LLM (required) ──
   AI_MANAGER: defineToken('AIManager', { required: true }),
-  AI_SERVICE: defineToken('AIService', { required: true }),
   PROMPT_MANAGER: defineToken('PromptManager', { required: true }),
-  LLM_SERVICE: defineToken('LLMService', { required: true }),
-  PROVIDER_SELECTOR: defineToken('ProviderSelector', { required: true }),
-  PROVIDER_ROUTER: defineToken('ProviderRouter', { required: true }),
-  SUMMARIZE_SERVICE: defineToken('SummarizeService', { required: true }),
   SUB_AGENT_MANAGER: defineToken('SubAgentManager', { required: true }),
-  MEMORY_EXTRACT_SERVICE: defineToken('MemoryExtractService', { required: true }),
 
   // ── Conversation pipeline (required) ──
-  CONVERSATION_HISTORY_SERVICE: defineToken('ConversationHistoryService', { required: true }),
-  CONTEXT_MANAGER: defineToken('ContextManager', { required: true }),
-  MESSAGE_PIPELINE: defineToken('MessagePipeline', { required: true }),
-  MESSAGE_API: defineToken('MessageAPI', { required: true }),
-  CONVERSATION_MANAGER: defineToken('ConversationManager', { required: true }),
-  REPLY_SYSTEM: defineToken('ReplySystem', { required: true }),
-  PROCESS_STAGE_INTERCEPTOR_REGISTRY: defineToken('ProcessStageInterceptorRegistry', { required: true }),
-  PROMPT_INJECTION_REGISTRY: defineToken('PromptInjectionRegistry', { required: true }),
-  THREAD_SERVICE: defineToken('ThreadService', { required: true }),
-  PROACTIVE_CONVERSATION_SERVICE: defineToken('ProactiveConversationService', { required: true }),
-  PREFERENCE_KNOWLEDGE_SERVICE: defineToken('PreferenceKnowledgeService', { required: true }),
 
   // ── Hooks / commands / tools (required) ──
-  HOOK_MANAGER: defineToken('HookManager', { required: true }),
-  COMMAND_MANAGER: defineToken('CommandManager', { required: true }),
   PERMISSION_CHECKER: defineToken('PermissionChecker', { required: true }),
   TOOL_MANAGER: defineToken('ToolManager', { required: true }),
-  PLUGIN_MANAGER: defineToken('PluginManager', { required: true }),
   EVENT_ROUTER: defineToken('EventRouter', { required: true }),
 
   // ── Auxiliary services (required) ──
-  RETRIEVAL_SERVICE: defineToken('RetrievalService', { required: true }),
-  FILE_READ_SERVICE: defineToken('FileReadService', { required: true }),
-  PROJECT_REGISTRY: defineToken('ProjectRegistry', { required: true }),
-  VIDEO_DOWNLOAD_SERVICE: defineToken('VideoDownloadService', { required: true }),
-  RESOURCE_CLEANUP_SERVICE: defineToken('ResourceCleanupService', { required: true }),
 
   // ── Agenda framework (required — initialized unconditionally in ConversationInitializer) ──
   AGENDA_SERVICE: defineToken('AgendaService', { required: true }),
@@ -106,7 +73,8 @@ export const DITokens = {
   SCHEDULE_FILE_SERVICE: defineToken('ScheduleFileService', { required: true }),
 
   // ── Fan-out (required — registered unconditionally in ConversationInitializer, before agenda) ──
-  FANOUT_MANAGER: defineToken('FanoutManager', { required: true }),
+  /** Multi-provider: one registration per class in FANOUT_CONTEXTS. */
+  FANOUT_CONTEXTS: defineToken('FanoutContexts', { required: true }),
 
   // ── Persona / mind subsystem (required — PersonaInitializer always returns components) ──
   PERSONA_SERVICE: defineToken('PersonaService', { required: true }),
@@ -121,9 +89,6 @@ export const DITokens = {
 
   // ── Avatar dependents that bootstrap.ts always registers (required) ──
   TTS_MANAGER: defineToken('TTSManager', { required: true }),
-  AVATAR_SESSION_SERVICE: defineToken('AvatarSessionService', { required: true }),
-  AVATAR_MEMORY_EXTRACTION_COORDINATOR: defineToken('AvatarMemoryExtractionCoordinator', { required: true }),
-  LIVEMODE_STATE: defineToken('LivemodeState', { required: true }),
 
   // ── Optional: SQLite-only persistence ──
   /** Optional — SQLite adapter only. */
@@ -171,17 +136,8 @@ export const DITokens = {
     required: false,
     gatedBy: 'claudeCode.enabled config',
   }),
-  /** Required — registered unconditionally in bootstrap right after the DB is ready. */
-  TOKEN_USAGE_SERVICE: defineToken('TokenUsageService', { required: true }),
-  /** Required — registered unconditionally by ConversationInitializer.createWiringServices. */
-  PRELIMINARY_ANALYSIS_SERVICE: defineToken('PreliminaryAnalysisService', { required: true }),
-  /** Required — registered unconditionally by ConversationInitializer.createWiringServices. */
-  PROACTIVE_THREAD_PERSISTENCE_SERVICE: defineToken('ProactiveThreadPersistenceService', { required: true }),
-  /** Required — registered unconditionally by ConversationInitializer.createWiringServices. */
-  THREAD_CONTEXT_COMPRESSION_SERVICE: defineToken('ThreadContextCompressionService', { required: true }),
 
   // ── Admin alerting (required — registered unconditionally in bootstrap.ts) ──
-  ADMIN_ALERT_SERVICE: defineToken('AdminAlertService', { required: true }),
 } as const;
 
 export type DIToken = (typeof DITokens)[keyof typeof DITokens];

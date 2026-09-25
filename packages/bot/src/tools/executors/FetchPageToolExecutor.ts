@@ -1,8 +1,7 @@
 // Fetch page task executor - fetches main article/page content from a URL for agent use
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import type { RetrievalService } from '@/services/retrieval';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -39,7 +38,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 export class FetchPageToolExecutor extends BaseToolExecutor {
   name = 'fetch_page';
 
-  constructor(@inject(DITokens.RETRIEVAL_SERVICE) private retrievalService: RetrievalService) {
+  constructor(@inject(RetrievalService) private retrievalService: RetrievalService) {
     super();
   }
 

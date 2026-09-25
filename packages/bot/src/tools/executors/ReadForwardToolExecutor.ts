@@ -1,9 +1,8 @@
 // Read forward tool executor - opens a merged-forward (聊天记录) by its forward_id
 
 import { inject, injectable } from 'tsyringe';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ForwardedMessageNode } from '@/api/types';
-import { DITokens } from '@/core/DITokens';
 import { formatDateTimeShort } from '@/utils/dateTime';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -53,7 +52,7 @@ const MAX_TRANSCRIPT_CHARS = 20_000;
 export class ReadForwardToolExecutor extends BaseToolExecutor {
   name = 'read_forward';
 
-  constructor(@inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI) {
+  constructor(@inject(MessageAPI) private messageAPI: MessageAPI) {
     super();
   }
 

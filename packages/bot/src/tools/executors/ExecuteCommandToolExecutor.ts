@@ -8,11 +8,10 @@
 // user-typed command.
 
 import { inject, injectable } from 'tsyringe';
-import type { CommandManager } from '@/command/CommandManager';
+import { CommandManager } from '@/command/CommandManager';
 import type { CommandResult } from '@/command/types';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
-import type { Lifecycle } from '@/conversation/Lifecycle';
-import { DITokens } from '@/core/DITokens';
+import { Lifecycle } from '@/conversation/Lifecycle';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -54,8 +53,8 @@ export class ExecuteCommandToolExecutor extends BaseToolExecutor {
   name = 'execute_command';
 
   constructor(
-    @inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager,
-    @inject(DITokens.LIFECYCLE) private lifecycle: Lifecycle,
+    @inject(CommandManager) private commandManager: CommandManager,
+    @inject(Lifecycle) private lifecycle: Lifecycle,
   ) {
     super();
   }

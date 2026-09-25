@@ -5,8 +5,7 @@
 import { existsSync } from 'node:fs';
 import { relative } from 'node:path';
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import type { FileReadService } from '@/services/file';
+import { FileReadService } from '@/services/file/FileReadService';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -75,7 +74,7 @@ export function searchCodeTruncationNotice(): string {
 export class SearchCodeToolExecutor extends BaseToolExecutor {
   name = 'search_code';
 
-  constructor(@inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService) {
+  constructor(@inject(FileReadService) private fileReadService: FileReadService) {
     super();
   }
 

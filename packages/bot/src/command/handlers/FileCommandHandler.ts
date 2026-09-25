@@ -2,12 +2,11 @@
 
 import { basename } from 'node:path';
 import { inject, injectable } from 'tsyringe';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import { DITokens } from '@/core/DITokens';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { InfoCardData } from '@/services/card';
 import { CardRenderer } from '@/services/card';
-import type { FileReadService } from '@/services/file';
+import { FileReadService } from '@/services/file/FileReadService';
 import { logger } from '@/utils/logger';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
@@ -28,7 +27,7 @@ export class LsCommand implements CommandHandler {
   description = 'List files in a directory (relative to project root)';
   usage = '/ls [path]';
 
-  constructor(@inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService) {}
+  constructor(@inject(FileReadService) private fileReadService: FileReadService) {}
 
   execute(args: string[], context: CommandContext): CommandResult {
     const path = args[0] ?? '.';
@@ -74,7 +73,7 @@ export class CatCommand implements CommandHandler {
     },
   };
 
-  constructor(@inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService) {}
+  constructor(@inject(FileReadService) private fileReadService: FileReadService) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     const { text: pathArg, options } = CommandArgsParser.parse<{ plainText?: boolean }>(args, this.argsConfig);
@@ -141,7 +140,7 @@ export class TouchCommand implements CommandHandler {
   description = 'Create an empty file (or update its mtime). Admins can use absolute paths.';
   usage = '/touch <path>';
 
-  constructor(@inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService) {}
+  constructor(@inject(FileReadService) private fileReadService: FileReadService) {}
 
   execute(args: string[], context: CommandContext): CommandResult {
     const path = args.join(' ').trim();
@@ -192,7 +191,7 @@ export class WriteCommand implements CommandHandler {
     },
   };
 
-  constructor(@inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService) {}
+  constructor(@inject(FileReadService) private fileReadService: FileReadService) {}
 
   execute(args: string[], context: CommandContext): CommandResult {
     const { text, options } = CommandArgsParser.parse<{ newline?: boolean }>(args, this.argsConfig);
@@ -245,8 +244,8 @@ export class FetchCommand implements CommandHandler {
   usage = '/fetch <path>';
 
   constructor(
-    @inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService,
-    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+    @inject(FileReadService) private fileReadService: FileReadService,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
   ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {

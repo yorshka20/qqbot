@@ -1,11 +1,13 @@
 // Command manager - registers and manages commands
+//
+// Builtin handlers register through their @Command decorators when '@/command/handlers'
+// is imported; bootstrap (the composition root) does that, not this module.
 
-// import handler to register commands
-import './handlers';
-
-import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import { inject, singleton } from 'tsyringe';
+import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { getSessionId, getSessionType } from '@/core/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
+import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { PermissionChecker, PermissionLevel } from '@/permission';
@@ -13,6 +15,7 @@ import { logger } from '@/utils/logger';
 import { getAllCommandMetadata } from './decorators';
 import type { CommandContext, CommandHandler, CommandRegistration, CommandResult, ParsedCommand } from './types';
 
+@singleton()
 export class CommandManager {
   private commands = new Map<string, CommandRegistration>();
   private builtinCommands = new Map<string, CommandRegistration>();
@@ -22,8 +25,8 @@ export class CommandManager {
   private groupCommandStates = new Map<number | string, Map<string, boolean>>();
 
   constructor(
-    private permissionChecker: PermissionChecker,
-    private conversationConfigService: ConversationConfigService,
+    @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
+    @inject(ConversationConfigService) private conversationConfigService: ConversationConfigService,
   ) {
     this.autoRegisterDecoratedCommands();
   }

@@ -1,32 +1,36 @@
 // Message Lifecycle Orchestrator - orchestrates the message processing lifecycle
 
+import { inject, singleton } from 'tsyringe';
 import type { ParsedCommand } from '@/command';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { isNoReplyPath } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemStage } from '@/core/system';
-import type { HookManager } from '@/hooks/HookManager';
+import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
-import type { CommandRouter } from './CommandRouter';
-import type { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
+import { CommandRouter } from './CommandRouter';
+import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 
 /**
  * Message Lifecycle Orchestrator
  * Orchestrates the entire message processing lifecycle
  * Coordinates all stages: RECEIVE → PREPROCESS → PROCESS → PREPARE → SEND → COMPLETE
  */
+@singleton()
 export class Lifecycle {
   readonly name = 'lifecycle';
   readonly version = '1.0.0';
 
   private systems = new Map<SystemStage, System[]>();
 
+  private readonly commandRouter = new CommandRouter();
+
   constructor(
-    private hookManager: HookManager,
-    private commandRouter: CommandRouter,
-    private processStageInterceptorRegistry?: ProcessStageInterceptorRegistry,
+    @inject(HookManager) private hookManager: HookManager,
+    @inject(ProcessStageInterceptorRegistry)
+    private processStageInterceptorRegistry: ProcessStageInterceptorRegistry,
   ) {}
 
   enabled(): boolean {
@@ -195,16 +199,14 @@ export class Lifecycle {
     logger.debug(`[Lifecycle] 🟦[3] Stage: PROCESS`);
 
     // Run interceptors (e.g. NSFW mode) before systems; if any handles, skip systems
-    if (this.processStageInterceptorRegistry) {
-      const interceptors = this.processStageInterceptorRegistry.getInterceptors();
-      for (const interceptor of interceptors) {
-        const should = interceptor.shouldIntercept(context);
-        const shouldIntercept = typeof should === 'boolean' ? should : await should;
-        if (shouldIntercept) {
-          await interceptor.handle(context);
-          logger.debug(`[Lifecycle] Process stage handled by interceptor | messageId=${messageId}`);
-          return true;
-        }
+    const interceptors = this.processStageInterceptorRegistry.getInterceptors();
+    for (const interceptor of interceptors) {
+      const should = interceptor.shouldIntercept(context);
+      const shouldIntercept = typeof should === 'boolean' ? should : await should;
+      if (shouldIntercept) {
+        await interceptor.handle(context);
+        logger.debug(`[Lifecycle] Process stage handled by interceptor | messageId=${messageId}`);
+        return true;
       }
     }
 

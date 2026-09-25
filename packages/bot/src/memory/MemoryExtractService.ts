@@ -1,16 +1,18 @@
 // Memory Extract Service - extract from messages, merge with existing via analyze, then upsert
 // Supports hierarchical scopes: [core_scope:subtag] format
 
+import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import type { Config } from '@/core/config';
 import { GROUP_CORE_SCOPES, type ParsedScope, USER_CORE_SCOPES } from '@/core/config/types/memory';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { DITokens } from '@/core/DITokens';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { MemoryNoteBuffer } from '@/database/models/types';
+import { MemoryService } from '@/memory/MemoryService';
 import { logger } from '@/utils/logger';
-import type { MemoryService } from './MemoryService';
 import { GROUP_MEMORY_USER_ID } from './MemoryService';
 
 /**
@@ -43,6 +45,7 @@ export interface MemoryExtractServiceOptions {
   model?: string;
 }
 
+@singleton()
 export class MemoryExtractService {
   /** Serial queue: only one extract/analyze job runs at a time; others wait. */
   private extractQueue: Promise<void> = Promise.resolve();
@@ -58,11 +61,11 @@ export class MemoryExtractService {
   private static readonly NOTE_FLUSH_DEBOUNCE_MS = 5 * 60 * 1000;
 
   constructor(
-    private promptManager: PromptManager,
-    private llmService: LLMService,
-    private memoryService: MemoryService,
-    private databaseManager: DatabaseManager,
-    private config: Config,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+    @inject(LLMService) private llmService: LLMService,
+    @inject(MemoryService) private memoryService: MemoryService,
+    @inject(DatabaseManager) private databaseManager: DatabaseManager,
+    @inject(DITokens.CONFIG) private config: Config,
   ) {}
 
   // ============================================================================

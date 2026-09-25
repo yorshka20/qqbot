@@ -17,7 +17,7 @@ import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import { logger } from '@/utils/logger';
 import type { ActionHandler, ActionHandlerRegistry } from './ActionHandlerRegistry';
 import type { AgendaReporter } from './AgendaReporter';
@@ -691,7 +691,7 @@ export class AgendaService {
   private findMissingDependencies(actionTarget: string): string[] {
     const handler = this.actionHandlerRegistry.get(actionTarget);
     if (!handler?.dependsOn?.length) return [];
-    const pluginManager = getContainer().resolve<PluginManager>(DITokens.PLUGIN_MANAGER);
+    const pluginManager = getContainer().resolve(PluginManager);
     const enabled = new Set(pluginManager.getEnabledPlugins());
     return handler.dependsOn.filter((name) => !enabled.has(name));
   }

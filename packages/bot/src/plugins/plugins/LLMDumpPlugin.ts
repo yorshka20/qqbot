@@ -16,10 +16,9 @@ import { join } from 'node:path';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
 import { isAssembledEnvelope } from '@/ai/prompt/PromptMessageAssembler';
-import type { LLMService } from '@/ai/services/LLMService';
+import { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, ChatMessageContent, LLMTraceEntry } from '@/ai/types';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import { archiveDateDirs } from '@/utils/dateDirArchive';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
@@ -77,11 +76,11 @@ export class LLMDumpPlugin extends PluginBase {
     super.onEnable();
     if (this.registered) return;
     const container = getContainer();
-    if (!container.isRegistered(DITokens.LLM_SERVICE)) {
+    if (!container.isRegistered(LLMService)) {
       logger.warn('[LLMDumpPlugin] LLM_SERVICE not registered; dump observer not attached');
       return;
     }
-    const llmService = container.resolve<LLMService>(DITokens.LLM_SERVICE);
+    const llmService = container.resolve(LLMService);
     llmService.addTraceObserver((entry) => this.handleEntry(entry));
     this.registered = true;
     logger.info(

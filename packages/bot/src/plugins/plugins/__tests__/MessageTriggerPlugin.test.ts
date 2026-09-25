@@ -9,6 +9,12 @@ import { DITokens } from '@/core/DITokens';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import { MessageTriggerPlugin } from '../MessageTriggerPlugin';
+import { ThreadService } from '@/conversation/thread/ThreadService';
+import { ProactiveConversationService } from '@/conversation/proactive/ProactiveConversationService';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import { LLMService } from '@/ai/services/LLMService';
+import { AIService } from '@/ai/AIService';
 
 /** Creates a ProviderRouter backed by a mock AIManager where all known providers are available. */
 function createMockProviderRouter(): ProviderRouter {
@@ -132,15 +138,15 @@ describe('MessageTriggerPlugin', () => {
 
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
-      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      ProactiveConversationService,
       {
         getGroupPreferenceKeys: (gid: string) => (gid === '1' && opts.preferenceKeys ? opts.preferenceKeys : []),
         isGroupSuppressed: () => false,
       },
       { allowOverride: true },
     );
-    container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
-    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
+    container.registerInstance(ThreadService, { hasActiveThread: () => false }, { allowOverride: true });
+    container.registerInstance(LLMService, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
     container.registerInstance(
       DITokens.CONFIG,
       {
@@ -151,15 +157,15 @@ describe('MessageTriggerPlugin', () => {
       },
       { allowOverride: true },
     );
-    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
+    container.registerInstance(ProviderRouter, createMockProviderRouter(), { allowOverride: true });
     container.registerInstance(
-      DITokens.AI_SERVICE,
+      AIService,
       { runSubAgent: async () => 'result', processReplyMaybeCard: async () => null },
       { allowOverride: true },
     );
-    container.registerInstance(DITokens.MESSAGE_API, mockMessageAPI, { allowOverride: true });
+    container.registerInstance(MessageAPI, mockMessageAPI, { allowOverride: true });
     container.registerInstance(
-      DITokens.CONVERSATION_CONFIG_SERVICE,
+      ConversationConfigService,
       { getUseForwardMsg: async () => false },
       { allowOverride: true },
     );
@@ -186,14 +192,14 @@ describe('MessageTriggerPlugin', () => {
 
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
-      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      ProactiveConversationService,
       { getGroupPreferenceKeys: () => [], isGroupSuppressed: () => false },
       { allowOverride: true },
     );
-    container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
-    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
+    container.registerInstance(ThreadService, { hasActiveThread: () => false }, { allowOverride: true });
+    container.registerInstance(LLMService, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
     container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
-    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
+    container.registerInstance(ProviderRouter, createMockProviderRouter(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -335,14 +341,14 @@ describe('MessageTriggerPlugin', () => {
     promptManager.registerTemplate(triggerTemplate);
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
-      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      ProactiveConversationService,
       { getGroupPreferenceKeys: (groupId: string) => (groupId === '1' ? ['acg'] : []), isGroupSuppressed: () => false },
       { allowOverride: true },
     );
-    container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
-    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
+    container.registerInstance(ThreadService, { hasActiveThread: () => false }, { allowOverride: true });
+    container.registerInstance(LLMService, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
     container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
-    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
+    container.registerInstance(ProviderRouter, createMockProviderRouter(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -374,14 +380,14 @@ describe('MessageTriggerPlugin', () => {
     });
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
-      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      ProactiveConversationService,
       { getGroupPreferenceKeys: (groupId: string) => (groupId === '1' ? ['acg'] : []), isGroupSuppressed: () => false },
       { allowOverride: true },
     );
-    container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
-    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
+    container.registerInstance(ThreadService, { hasActiveThread: () => false }, { allowOverride: true });
+    container.registerInstance(LLMService, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
     container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
-    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
+    container.registerInstance(ProviderRouter, createMockProviderRouter(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -441,18 +447,18 @@ describe('MessageTriggerPlugin', () => {
     const container = getContainer();
     container.registerInstance(DITokens.PROMPT_MANAGER, new PromptManager(), { allowOverride: true });
     container.registerInstance(
-      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      ProactiveConversationService,
       { getGroupPreferenceKeys: () => [], isGroupSuppressed: () => false },
       { allowOverride: true },
     );
     container.registerInstance(
-      DITokens.THREAD_SERVICE,
+      ThreadService,
       { hasActiveThread: (gid: string) => gid === '1' },
       { allowOverride: true },
     );
-    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
+    container.registerInstance(LLMService, createMockLLMServiceForPrefixCheck(true), { allowOverride: true });
     container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
-    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
+    container.registerInstance(ProviderRouter, createMockProviderRouter(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -550,16 +556,16 @@ describe('MessageTriggerPlugin', () => {
     });
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
-      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      ProactiveConversationService,
       { getGroupPreferenceKeys: () => [], isGroupSuppressed: () => false },
       { allowOverride: true },
     );
-    container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
-    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(false), {
+    container.registerInstance(ThreadService, { hasActiveThread: () => false }, { allowOverride: true });
+    container.registerInstance(LLMService, createMockLLMServiceForPrefixCheck(false), {
       allowOverride: true,
     });
     container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
-    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
+    container.registerInstance(ProviderRouter, createMockProviderRouter(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',
@@ -591,16 +597,16 @@ describe('MessageTriggerPlugin', () => {
     });
     container.registerInstance(DITokens.PROMPT_MANAGER, promptManager, { allowOverride: true });
     container.registerInstance(
-      DITokens.PROACTIVE_CONVERSATION_SERVICE,
+      ProactiveConversationService,
       { getGroupPreferenceKeys: () => [], isGroupSuppressed: () => false },
       { allowOverride: true },
     );
-    container.registerInstance(DITokens.THREAD_SERVICE, { hasActiveThread: () => false }, { allowOverride: true });
-    container.registerInstance(DITokens.LLM_SERVICE, createMockLLMServiceForPrefixCheck(false), {
+    container.registerInstance(ThreadService, { hasActiveThread: () => false }, { allowOverride: true });
+    container.registerInstance(LLMService, createMockLLMServiceForPrefixCheck(false), {
       allowOverride: true,
     });
     container.registerInstance(DITokens.CONFIG, createMockConfig(), { allowOverride: true });
-    container.registerInstance(DITokens.PROVIDER_ROUTER, createMockProviderRouter(), { allowOverride: true });
+    container.registerInstance(ProviderRouter, createMockProviderRouter(), { allowOverride: true });
 
     const plugin = new MessageTriggerPlugin({
       name: 'messageTrigger',

@@ -15,7 +15,8 @@ import type { AIManager } from '@/ai/AIManager';
 import type { GeminiProvider } from '@/ai/providers/GeminiProvider';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { DITokens } from '@/core/DITokens';
-import type { ResourceCleanupService, VideoDownloadService } from '@/services/video';
+import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
+import { VideoDownloadService } from '@/services/video/VideoDownloadService';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -57,8 +58,8 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
 
   constructor(
     @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
-    @inject(DITokens.VIDEO_DOWNLOAD_SERVICE) private videoDownloadService: VideoDownloadService,
-    @inject(DITokens.RESOURCE_CLEANUP_SERVICE) private resourceCleanupService: ResourceCleanupService,
+    @inject(VideoDownloadService) private videoDownloadService: VideoDownloadService,
+    @inject(ResourceCleanupService) private resourceCleanupService: ResourceCleanupService,
   ) {
     super();
   }

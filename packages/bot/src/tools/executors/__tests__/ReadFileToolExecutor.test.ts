@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { FileReadService } from '@/services/file';
 import type { ToolCall, ToolExecutionContext } from '@/tools/types';
 import { READ_FILE_TOOL_MAX_CHARS, ReadFileToolExecutor, readFileTruncationNotice } from '../ReadFileToolExecutor';
+import { createFileReadService } from '@/services/file/__tests__/createFileReadService';
 
 const context = { userId: 1, messageType: 'private' } as ToolExecutionContext;
 
@@ -15,7 +16,7 @@ function readCall(path: string): ToolCall {
 
 describe('read_file tool output cap', () => {
   const dir = mkdtempSync(join(tmpdir(), 'read-file-tool-'));
-  const executor = new ReadFileToolExecutor(new FileReadService({ root: dir, filterPaths: [], filterExtensions: [] }));
+  const executor = new ReadFileToolExecutor(createFileReadService({ root: dir, filterPaths: [], filterExtensions: [] }));
 
   afterAll(() => {
     rmSync(dir, { recursive: true, force: true });

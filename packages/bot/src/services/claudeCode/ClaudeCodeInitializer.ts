@@ -9,9 +9,9 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config, ProtocolName } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
 import { logger } from '@/utils/logger';
 import { ClaudeCodeService } from './ClaudeCodeService';
-import type { ProjectRegistry } from './ProjectRegistry';
 
 let serviceInstance: ClaudeCodeService | null = null;
 
@@ -30,7 +30,7 @@ export class ClaudeCodeInitializer {
     serviceInstance = new ClaudeCodeService(claudeConfig);
 
     const container = getContainer();
-    const registry = container.resolve<ProjectRegistry>(DITokens.PROJECT_REGISTRY);
+    const registry = container.resolve(ProjectRegistry);
     serviceInstance.setProjectRegistry(registry);
 
     container.registerInstance(DITokens.CLAUDE_CODE_SERVICE, serviceInstance);

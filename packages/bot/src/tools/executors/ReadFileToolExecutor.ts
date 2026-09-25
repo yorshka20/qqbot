@@ -1,8 +1,7 @@
 // Read file task executor - handles file listing and file content reading
 
 import { inject, injectable } from 'tsyringe';
-import { DITokens } from '@/core/DITokens';
-import type { FileReadService } from '@/services/file';
+import { FileReadService } from '@/services/file/FileReadService';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -52,7 +51,7 @@ export function readFileTruncationNotice(): string {
 export class ReadFileToolExecutor extends BaseToolExecutor {
   name = 'read_file';
 
-  constructor(@inject(DITokens.FILE_READ_SERVICE) private fileReadService: FileReadService) {
+  constructor(@inject(FileReadService) private fileReadService: FileReadService) {
     super();
   }
 

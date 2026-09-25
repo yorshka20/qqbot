@@ -17,14 +17,14 @@
 // add a one-line caption instead of re-describing the picture.
 
 import { inject, injectable } from 'tsyringe';
-import type { AIService, Image2ImageOptions, Text2ImageOptions } from '@/ai';
+import type { Image2ImageOptions, Text2ImageOptions } from '@/ai';
+import { AIService } from '@/ai/AIService';
 import { ImageRequestAssembler } from '@/ai/services/ImageRequestAssembler';
 import { extractImagesFromMessageAndReply, visionImageToString } from '@/ai/utils/imageUtils';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { ConversationHistoryService } from '@/conversation/history';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
@@ -127,9 +127,9 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
   name = 'generate_image';
 
   constructor(
-    @inject(DITokens.AI_SERVICE) private aiService: AIService,
-    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
-    @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
+    @inject(AIService) private aiService: AIService,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
+    @inject(DatabaseManager) private databaseManager: DatabaseManager,
   ) {
     super();
   }
@@ -236,7 +236,7 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
     const isGroup = message.messageType === 'group';
     const targetId = isGroup ? message.groupId : message.userId;
     if (targetId == null) return;
-    const historyService = getContainer().resolve<ConversationHistoryService>(DITokens.CONVERSATION_HISTORY_SERVICE);
+    const historyService = getContainer().resolve(ConversationHistoryService);
     const botSelfId = Number(hookContext.metadata.get('botSelfId'));
     await historyService.appendBotMessageToSession(
       { sessionType: isGroup ? 'group' : 'user', targetId },

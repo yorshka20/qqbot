@@ -1,5 +1,6 @@
 // Hook Manager - manages and executes hooks
 
+import { singleton } from 'tsyringe';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { logger } from '@/utils/logger';
 import type { CoreHookName, HookContext, HookHandler, HookName, HookRegistration } from './types';
@@ -8,6 +9,7 @@ import type { CoreHookName, HookContext, HookHandler, HookName, HookRegistration
  * Hook Manager
  * Manages hook registration and execution
  */
+@singleton()
 export class HookManager {
   /**
    * Core hook names - only message lifecycle hooks

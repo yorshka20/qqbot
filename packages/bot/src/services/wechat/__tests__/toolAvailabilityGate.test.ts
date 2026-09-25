@@ -6,15 +6,15 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { ToolManager } from '@/tools/ToolManager';
 import type { ToolSpec } from '@/tools/types';
+import { PluginManager } from '@/plugins/PluginManager';
 
 const enabled = new Set<string>();
 
 getContainer().registerInstance(
-  DITokens.PLUGIN_MANAGER,
+  PluginManager,
   { isPluginEnabled: (name: string) => enabled.has(name) },
   { allowOverride: true },
 );

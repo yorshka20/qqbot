@@ -1,6 +1,5 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
-import type { PluginManagerDeps } from '../PluginManager';
 import { PluginManager } from '../PluginManager';
 import type { Plugin } from '../types';
 
@@ -25,7 +24,8 @@ function createPlugin(name: string, log: string[]): Plugin {
 }
 
 function createManager(plugins: Plugin[]): PluginManager {
-  const manager = new PluginManager({} as PluginManagerDeps);
+  const unused = {} as never;
+  const manager = new PluginManager(unused, unused, unused, unused, unused);
   const registry = (manager as unknown as { plugins: Map<string, Plugin> }).plugins;
   for (const plugin of plugins) {
     registry.set(plugin.name, plugin);

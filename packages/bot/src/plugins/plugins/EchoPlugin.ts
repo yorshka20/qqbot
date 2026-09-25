@@ -1,14 +1,14 @@
 // Echo Plugin - automatically converts admin messages to TTS
 
-import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { CommandBuilder } from '@/command/CommandBuilder';
-import type { CommandManager } from '@/command/CommandManager';
+import { CommandManager } from '@/command/CommandManager';
 import { CommandContextBuilder } from '@/context/CommandContextBuilder';
 import { hasWhitelistCapability } from '@/context/HookContextHelpers';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { HookManager } from '@/hooks/HookManager';
+import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageUtils } from '@/message/MessageUtils';
 import type { TextSegment } from '@/message/types';
@@ -35,9 +35,9 @@ export class EchoPlugin extends PluginBase {
   async onInit(): Promise<void> {
     // Get CommandManager and HookManager from DI container
     const container = getContainer();
-    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
-    this.hookManager = container.resolve<HookManager>(DITokens.HOOK_MANAGER);
-    this.messageAPI = container.resolve<MessageAPI>(DITokens.MESSAGE_API);
+    this.commandManager = container.resolve(CommandManager);
+    this.hookManager = container.resolve(HookManager);
+    this.messageAPI = container.resolve(MessageAPI);
 
     if (!this.commandManager) {
       throw new Error('CommandManager not found');

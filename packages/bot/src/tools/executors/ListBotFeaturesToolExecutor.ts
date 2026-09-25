@@ -1,10 +1,9 @@
 // ListBotFeatures tool executor — lists bot commands, plugins, and features for AI to explain to users
 
 import { inject, injectable } from 'tsyringe';
-import type { CommandManager } from '@/command/CommandManager';
-import { DITokens } from '@/core/DITokens';
+import { CommandManager } from '@/command/CommandManager';
 import type { PermissionLevel } from '@/permission';
-import type { PluginManager } from '@/plugins/PluginManager';
+import { PluginManager } from '@/plugins/PluginManager';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
@@ -31,8 +30,8 @@ export class ListBotFeaturesToolExecutor extends BaseToolExecutor {
   name = 'list_bot_features';
 
   constructor(
-    @inject(DITokens.COMMAND_MANAGER) private commandManager: CommandManager,
-    @inject(DITokens.PLUGIN_MANAGER) private pluginManager: PluginManager,
+    @inject(CommandManager) private commandManager: CommandManager,
+    @inject(PluginManager) private pluginManager: PluginManager,
   ) {
     super();
   }

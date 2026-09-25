@@ -5,10 +5,11 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { FileReadService } from '@/services/file';
 import { ReadOnlyShellService } from '../ReadOnlyShellService';
+import { createFileReadService } from '@/services/file/__tests__/createFileReadService';
 
 // Tests run from the repo root, which is also the service's project root —
 // spawn-based cases exercise the real git/ls/cat binaries on this repo.
-const service = new ReadOnlyShellService(new FileReadService(), process.cwd());
+const service = new ReadOnlyShellService(createFileReadService(), process.cwd());
 
 describe('ReadOnlyShellService — binary allowlist', () => {
   it.each(['echo hi', 'node -e 1', 'curl http://x', 'bash -c ls', 'sh -c ls', '/bin/ls'])(
@@ -146,7 +147,7 @@ describe('ReadOnlyShellService — secret bytes never reach output', () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'shell-secret-')));
   const marker = 'synthetic-shell-secret';
   const local = new ReadOnlyShellService(
-    new FileReadService({ root: dir, filterPaths: [], filterExtensions: [] }),
+    createFileReadService({ root: dir, filterPaths: [], filterExtensions: [] }),
     dir,
   );
 

@@ -1,13 +1,13 @@
 // NSFW Mode Plugin - toggle NSFW mode per session; when on, uses fixed reply flow with llm.nsfw_reply template
 
-import type { AIService } from '@/ai/AIService';
-import type { CommandManager } from '@/command/CommandManager';
+import { AIService } from '@/ai/AIService';
+import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
-import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
-import type { ProcessStageInterceptor, ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
+import { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import type { ProcessStageInterceptor } from '@/conversation/ProcessStageInterceptor';
+import { ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
 import { getSessionId, getSessionType, normalizeSessionForConfig } from '@/core/config/SessionUtils';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { RegisterPlugin } from '@/plugins/decorators';
@@ -38,12 +38,12 @@ export class NsfwModePlugin extends PluginBase {
 
   async onInit(): Promise<void> {
     const container = getContainer();
-    this.commandManager = container.resolve<CommandManager>(DITokens.COMMAND_MANAGER);
-    this.conversationConfigService = container.resolve<ConversationConfigService>(DITokens.CONVERSATION_CONFIG_SERVICE);
+    this.commandManager = container.resolve(CommandManager);
+    this.conversationConfigService = container.resolve(ConversationConfigService);
     this.processStageInterceptorRegistry = container.resolve<ProcessStageInterceptorRegistry>(
-      DITokens.PROCESS_STAGE_INTERCEPTOR_REGISTRY,
+      ProcessStageInterceptorRegistry,
     );
-    this.aiService = container.resolve<AIService>(DITokens.AI_SERVICE);
+    this.aiService = container.resolve(AIService);
 
     if (
       !this.commandManager ||

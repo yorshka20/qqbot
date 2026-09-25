@@ -3,9 +3,8 @@
 import { inject, injectable } from 'tsyringe';
 import type { ContentPart } from '@/ai/types';
 import { extractImagesFromSegmentsAsync, normalizeVisionImages } from '@/ai/utils/imageUtils';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import { DITokens } from '@/core/DITokens';
-import type { DatabaseManager } from '@/database/DatabaseManager';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
@@ -42,8 +41,8 @@ export class FetchImageToolExecutor extends BaseToolExecutor {
   name = 'fetch_image';
 
   constructor(
-    @inject(DITokens.DATABASE_MANAGER) private databaseManager: DatabaseManager,
-    @inject(DITokens.MESSAGE_API) private messageAPI: MessageAPI,
+    @inject(DatabaseManager) private databaseManager: DatabaseManager,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
   ) {
     super();
   }

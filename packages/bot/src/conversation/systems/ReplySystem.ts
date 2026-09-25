@@ -1,6 +1,7 @@
 // Reply System - handles reply generation through unified AI skill-loop flow
 
-import type { AIService } from '@/ai/AIService';
+import { inject, singleton } from 'tsyringe';
+import { AIService } from '@/ai/AIService';
 import { hasReply, isNoReplyPath } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
@@ -12,13 +13,14 @@ import type { HookContext } from '@/hooks/types';
  * Handles AI reply generation through a single entry:
  * - Unified skill-loop flow (no legacy task analysis phase)
  */
+@singleton()
 export class ReplySystem implements System {
   readonly name = 'reply';
   readonly version = '1.0.0';
   readonly stage = SystemStage.PROCESS;
   readonly priority = SystemPriority.Task;
 
-  constructor(private aiService: AIService) {}
+  constructor(@inject(AIService) private aiService: AIService) {}
 
   enabled(): boolean {
     return true;

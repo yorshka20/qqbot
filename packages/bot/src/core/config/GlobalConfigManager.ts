@@ -1,5 +1,6 @@
 // Global Config Manager - manages runtime global configuration (in-memory)
 
+import { singleton } from 'tsyringe';
 import type { ConversationConfigData } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 import { updateEnabledDisabled } from './ConfigUtils';
@@ -9,6 +10,7 @@ import { updateEnabledDisabled } from './ConfigUtils';
  * Manages runtime global configuration (in-memory, not persisted)
  * Config is loaded from config.jsonc at startup and can be modified at runtime
  */
+@singleton()
 export class GlobalConfigManager {
   private globalConfig: ConversationConfigData = {
     commands: {

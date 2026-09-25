@@ -15,7 +15,6 @@ export type {
   MemoryLayer,
   MemorySearchResult,
   MemorySection,
-  MemoryServiceOptions,
   MemorySource,
 } from './MemoryService';
 export { GROUP_MEMORY_USER_ID, MemoryService } from './MemoryService';

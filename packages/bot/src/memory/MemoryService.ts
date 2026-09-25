@@ -5,7 +5,10 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { inject, singleton } from 'tsyringe';
+import type { Config } from '@/core/config';
 import { ALL_CORE_SCOPES, type MemoryQualityScoringConfig, type ParsedScope } from '@/core/config/types/memory';
+import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 import type { MemoryFactMetaService } from './MemoryFactMetaService';
 import type { MemoryRAGService } from './MemoryRAGService';
@@ -30,13 +33,6 @@ export type MemoryLayer = 'manual' | 'auto';
 
 /** Memory source for tracking */
 export type MemorySource = 'manual' | 'llm_extract';
-
-export interface MemoryServiceOptions {
-  /** Base directory for memory files (resolved from repo root). Default "data/memory". */
-  memoryDir?: string;
-  /** Max length for memory content (truncate if exceeded). */
-  maxContentLength?: number;
-}
 
 export interface MemorySearchResult {
   userId: string;
@@ -94,6 +90,7 @@ const DEFAULT_SCORING: Required<MemoryQualityScoringConfig> = {
   frequencyBoostCap: 1.3,
 };
 
+@singleton()
 export class MemoryService {
   private readonly basePath: string;
   private readonly maxContentLength: number;
@@ -101,10 +98,10 @@ export class MemoryService {
   private factMetaService: MemoryFactMetaService | null = null;
   private scoringConfig: Required<MemoryQualityScoringConfig> = DEFAULT_SCORING;
 
-  constructor(options: MemoryServiceOptions = {}) {
-    const memoryDir = options.memoryDir ?? DEFAULT_MEMORY_DIR;
+  constructor(@inject(DITokens.CONFIG) config: Config) {
+    const memoryDir = config.getMemoryConfig().dir ?? DEFAULT_MEMORY_DIR;
     this.basePath = join(process.cwd(), memoryDir);
-    this.maxContentLength = options.maxContentLength ?? DEFAULT_MAX_CONTENT_LENGTH;
+    this.maxContentLength = DEFAULT_MAX_CONTENT_LENGTH;
   }
 
   /**
