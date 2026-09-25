@@ -1,8 +1,8 @@
 // Tool module exports
 
+export { createToolManager } from './createToolManager';
 export * from './decorators';
 export * from './executors';
-export { ToolInitializer } from './ToolInitializer';
 export { ToolManager } from './ToolManager';
 export type {
   ToolAnalysisResult,

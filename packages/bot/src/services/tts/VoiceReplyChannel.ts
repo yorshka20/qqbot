@@ -1,7 +1,7 @@
 // VoiceReplyChannel — the LLM's voice output: the `speak` tool plus the prompt fragment that
 // tells the model when to use it.
 //
-// Registered at startup rather than by ToolInitializer: the tool's voice enum and cue
+// Registered at startup rather than through the @Tool registry: the tool's voice enum and cue
 // vocabulary are facts about the configured TTS provider. registerSpeakTool returns the
 // tool's live availability gate and the prompt fragment shares it, so neither can outlive
 // the backend's health.

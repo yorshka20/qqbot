@@ -14,7 +14,7 @@ import { DITokens } from '@/core/DITokens';
 import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import { DefaultPermissionChecker } from '@/permission';
 import { createTTSManager } from '@/services/tts/createTTSManager';
-import { ToolInitializer } from '@/tools/ToolInitializer';
+import { createToolManager } from '@/tools/createToolManager';
 
 export function registerProviders(config: Config, apiClient: APIClient): void {
   const container = getContainer();
@@ -25,7 +25,7 @@ export function registerProviders(config: Config, apiClient: APIClient): void {
 
   // Registries whose contents come from config or decorator metadata, assembled on build.
   container.registerSingletonFactory(DITokens.AI_MANAGER, () => createAIManager(config));
-  container.registerSingletonFactory(DITokens.TOOL_MANAGER, () => ToolInitializer.createToolManager());
+  container.registerSingletonFactory(DITokens.TOOL_MANAGER, createToolManager);
   container.registerSingletonFactory(DITokens.TTS_MANAGER, () =>
     createTTSManager(config, container.resolve(HealthCheckManager)),
   );

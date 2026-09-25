@@ -51,12 +51,14 @@ import { logger, setMessageLogFilter } from '@/utils/logger';
 import { registerConnectionClass } from './connection/ConnectionManager';
 import { registerProviders } from './wiring';
 
-// Decorator registries: command handlers and plugins register themselves at import time,
-// so the composition root imports their barrels. CommandManager / PluginManager must not:
-// a service module importing its own consumers closes an import cycle, and class-token
-// injection in those consumers then fails with a TDZ error that depends on load order.
+// Decorator registries: command handlers, plugins and tool executors register themselves
+// at import time, so the composition root imports their barrels. The managers that read
+// those registries must not: a service module importing its own consumers closes an import
+// cycle, and class-token injection in those consumers then fails with a TDZ error that
+// depends on load order.
 import '@/command/handlers';
 import '@/plugins/plugins';
+import '@/tools/executors';
 // Avatar integration registers its own plugins via this barrel side-effect
 // import — PluginManager stays unaware of integrations.
 import '@/integrations/avatar/plugins';

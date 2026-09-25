@@ -3,7 +3,8 @@ import { describe, expect, it } from 'bun:test';
 import { getContainer } from '@/core/DIContainer';
 import { HookManager } from '@/hooks/HookManager';
 import { FileReadService } from '@/services/file';
-import { ToolInitializer } from '@/tools/ToolInitializer';
+import '@/tools/executors';
+import { createToolManager } from '@/tools/createToolManager';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { ToolRunner } from '../ToolRunner';
@@ -79,7 +80,7 @@ describe('ToolRunner', () => {
     getContainer().registerInstance(FileReadService, createFileReadService(), {
       allowOverride: true,
     });
-    const toolManager = ToolInitializer.createToolManager();
+    const toolManager = createToolManager();
     const runner = new ToolRunner(toolManager, new HookManager());
     const session = createMockSession();
 
@@ -99,7 +100,7 @@ describe('ToolRunner', () => {
     getContainer().registerInstance(FileReadService, createFileReadService(), {
       allowOverride: true,
     });
-    const toolManager = ToolInitializer.createToolManager();
+    const toolManager = createToolManager();
     const runner = new ToolRunner(toolManager, new HookManager());
     const session = createMockSession();
 
@@ -128,7 +129,7 @@ describe('ToolRunner', () => {
     getContainer().registerInstance(RetrievalService, mockRetrievalService, {
       allowOverride: true,
     });
-    const toolManager = ToolInitializer.createToolManager();
+    const toolManager = createToolManager();
     const runner = new ToolRunner(toolManager, new HookManager());
     const session = createMockSession();
 
