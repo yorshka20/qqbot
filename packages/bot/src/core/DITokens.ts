@@ -72,8 +72,6 @@ export const DITokens = {
   SCHEDULE_FILE_SERVICE: defineToken('ScheduleFileService', { required: true }),
 
   // ── Fan-out (required — registered unconditionally in ConversationInitializer, before agenda) ──
-  /** Multi-provider: one registration per class in FANOUT_CONTEXTS. */
-  FANOUT_CONTEXTS: defineToken('FanoutContexts', { required: true }),
 
   // ── Persona / mind subsystem (required — PersonaInitializer always returns components) ──
   PERSONA_SERVICE: defineToken('PersonaService', { required: true }),

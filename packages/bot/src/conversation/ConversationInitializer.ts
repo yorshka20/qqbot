@@ -11,7 +11,7 @@ import { Lifecycle } from '@/conversation/Lifecycle';
 import { ReplySystem } from '@/conversation/systems/ReplySystem';
 import type { Config } from '@/core/config';
 import { GlobalConfigManager } from '@/core/config/GlobalConfigManager';
-import { type DIContainer, getContainer } from '@/core/DIContainer';
+import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { ProviderHealthAdapter } from '@/core/health';
 import { HealthCheckManager } from '@/core/health/HealthCheckManager';
@@ -82,9 +82,9 @@ export class ConversationInitializer {
     const memoryService = container.resolve(MemoryService);
     await memoryService.migrateLegacyFiles();
 
-    await ConversationInitializer.registerSqliteStores(container, databaseManager);
-    ConversationInitializer.attachMemoryRag(container, config, memoryService);
-    ConversationInitializer.registerAIHealthChecks(container);
+    await ConversationInitializer.registerSqliteStores(databaseManager);
+    ConversationInitializer.attachMemoryRag(config, memoryService);
+    ConversationInitializer.registerAIHealthChecks();
 
     // Agenda framework: AgendaService + AgentLoop + InternalEventBus.
     const agendaComponents = await AgendaInitializer.initialize({
@@ -121,8 +121,8 @@ export class ConversationInitializer {
       globalConfigManager: container.resolve(GlobalConfigManager),
     };
 
-    const components = ConversationInitializer.assembleComponents(services, container);
-    await ConversationInitializer.registerAndInitializeSystems(components, services, config, container);
+    const components = ConversationInitializer.assembleComponents(services);
+    await ConversationInitializer.registerAndInitializeSystems(components, services, config);
     return components;
   }
 
@@ -130,7 +130,8 @@ export class ConversationInitializer {
    * SQLite-backed stores: registered only when the adapter is SQLite (SessionMemoStore
    * falls back to memory otherwise), which is known only after the database connects.
    */
-  private static async registerSqliteStores(container: DIContainer, databaseManager: DatabaseManager): Promise<void> {
+  private static async registerSqliteStores(databaseManager: DatabaseManager): Promise<void> {
+    const container = getContainer();
     // Memory fact metadata service (quality tracking for memory facts via SQLite)
     try {
       const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
@@ -190,7 +191,8 @@ export class ConversationInitializer {
   }
 
   /** Semantic memory filtering over the RAG backend, when RAG is configured. */
-  private static attachMemoryRag(container: DIContainer, config: Config, memoryService: MemoryService): void {
+  private static attachMemoryRag(config: Config, memoryService: MemoryService): void {
+    const container = getContainer();
     // Configure Memory RAG if RAG is enabled - enables semantic search for memory filtering
     const ragService = container.resolve(RetrievalService).getRAGService();
     if (ragService) {
@@ -216,7 +218,8 @@ export class ConversationInitializer {
   }
 
   /** AIManager aggregate health plus one check per provider that has not opted out. */
-  private static registerAIHealthChecks(container: DIContainer): void {
+  private static registerAIHealthChecks(): void {
+    const container = getContainer();
     // Register AIManager with health check manager (for aggregate health; it checks
     // every provider it manages).
     const healthCheckManager = container.resolve(HealthCheckManager);
@@ -248,7 +251,8 @@ export class ConversationInitializer {
   /**
    * Assemble high-level components.
    */
-  private static assembleComponents(services: CompleteServices, container: DIContainer): ConversationComponents {
+  private static assembleComponents(services: CompleteServices): ConversationComponents {
+    const container = getContainer();
     MessageUtils.initialize(COMMAND_PREFIXES);
     return {
       conversationManager: container.resolve(ConversationManager),
@@ -269,8 +273,8 @@ export class ConversationInitializer {
     components: ConversationComponents,
     services: CompleteServices,
     config: Config,
-    container: DIContainer,
   ): Promise<void> {
+    const container = getContainer();
     const { systemRegistry } = components;
 
     // Load all conversation configs from database

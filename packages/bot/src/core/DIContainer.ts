@@ -105,12 +105,12 @@ export class DIContainer {
    * resolves its own dependencies, so the container builds them first: registration order
    * does not matter, only that every dependency has a provider by the time it is resolved.
    */
-  registerSingletonFactory<T>(token: string, factory: (container: DIContainer) => T): void {
+  registerSingletonFactory<T>(token: string, factory: () => T): void {
     if (this.registeredTokens.has(token)) {
       logger.warn(`[DIContainer] Service "${token}" is already registered; keeping the first provider.`);
       return;
     }
-    this._container.register(token, { useFactory: instanceCachingFactory(() => factory(this)) });
+    this._container.register(token, { useFactory: instanceCachingFactory(() => factory()) });
     this.registeredTokens.add(token);
   }
 

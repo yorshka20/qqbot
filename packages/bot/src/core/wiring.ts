@@ -2,8 +2,8 @@
 //
 // Every other service is a @singleton() class that names its dependencies with @inject(...)
 // and is built on first resolve, so it needs no entry here. What remains: values built
-// outside the container, factories that assemble a registry from config, an interface
-// token, and the fan-out multi-provider list.
+// outside the container, factories that assemble a registry from config, and an
+// interface token.
 
 import { createAIManager } from '@/ai/createAIManager';
 import type { APIClient } from '@/api/APIClient';
@@ -12,7 +12,6 @@ import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { HealthCheckManager } from '@/core/health/HealthCheckManager';
-import { FanoutInitializer } from '@/fanout/FanoutInitializer';
 import { DefaultPermissionChecker } from '@/permission';
 import { createTTSManager } from '@/services/tts/createTTSManager';
 import { ToolInitializer } from '@/tools/ToolInitializer';
@@ -27,14 +26,12 @@ export function registerProviders(config: Config, apiClient: APIClient): void {
   // Registries whose contents come from config or decorator metadata, assembled on build.
   container.registerSingletonFactory(DITokens.AI_MANAGER, () => createAIManager(config));
   container.registerSingletonFactory(DITokens.TOOL_MANAGER, () => ToolInitializer.createToolManager());
-  container.registerSingletonFactory(DITokens.TTS_MANAGER, (c) =>
-    createTTSManager(config, c.resolve(HealthCheckManager)),
+  container.registerSingletonFactory(DITokens.TTS_MANAGER, () =>
+    createTTSManager(config, container.resolve(HealthCheckManager)),
   );
 
   container.registerAlias(DITokens.PERMISSION_CHECKER, DefaultPermissionChecker);
   // Undecorated on purpose: its options parameter exists for tests, and tsyringe builds a
   // class without constructor metadata by calling it with no arguments.
   container.registerSingleton(DITokens.AUDIT_EVENT_STORE, AuditEventStore);
-
-  FanoutInitializer.registerProviders(container);
 }

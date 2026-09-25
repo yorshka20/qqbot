@@ -1,5 +1,5 @@
-// Every concrete fan-out. Each is a DI singleton that FanoutInitializer exposes to the
-// FanoutManager; adding a fan-out is one class and one line here.
+// Every concrete fan-out. Each is a DI singleton that FanoutManager resolves by class;
+// adding a fan-out is one class and one line here.
 
 import { GroupDayFanout } from './groupDay/GroupDayFanout';
 
