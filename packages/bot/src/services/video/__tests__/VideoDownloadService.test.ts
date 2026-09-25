@@ -86,14 +86,17 @@ describe('VideoDownloadService', () => {
     const service = new VideoDownloadService();
     // Use a generic (non-platform) URL — yt-dlp is not attempted so fallback to HTTP is always triggered
     const result = await service.download('https://example.com/media/test.mp4');
+    // The constructor starts the probe immediately; wait for it so the warning
+    // is observed on this turn instead of landing after the assertion.
+    await (service as unknown as { ytDlpAvailabilityPromise: Promise<boolean> }).ytDlpAvailabilityPromise;
 
     expect(downloadToBase64).toHaveBeenCalledTimes(1);
     expect(write).toHaveBeenCalledTimes(1);
     expect(result.buffer.equals(Buffer.from('http-bytes'))).toBe(true);
-    // Generic URL skips yt-dlp entirely, so no warn about yt-dlp unavailability is
-    // expected. logger is a process-wide singleton — unrelated async work from other
-    // test files can warn while this test runs, so only assert on yt-dlp warns.
-    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('yt-dlp'));
+    // A failing --version probe warns even though this URL never downloads with
+    // yt-dlp. The logger is process-wide, so only match those two messages.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('yt-dlp is unavailable'));
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('yt-dlp failed'));
   });
 
   it('uses the HTTP path for generic URLs', async () => {

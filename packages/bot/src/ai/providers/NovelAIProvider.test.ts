@@ -6,7 +6,7 @@
 // silently — a stale field is accepted and ignored rather than rejected — hence these tests.
 
 import 'reflect-metadata';
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { NovelAIProvider } from './NovelAIProvider';
 
 type CapturedRequest = {
@@ -51,9 +51,17 @@ function makeProvider(model?: string) {
 
 describe('NovelAIProvider request body', () => {
   let captured: CapturedRequest[];
+  let restoreFetch: typeof fetch = globalThis.fetch;
 
   beforeEach(() => {
+    // bun test runs files in one process. Replacing fetch and leaving it
+    // there makes later files (HttpClient's real sockets) talk to this stub.
+    restoreFetch = globalThis.fetch;
     captured = stubFetch().captured;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = restoreFetch;
   });
 
   it('targets the image host and defaults to V5 Full', async () => {
