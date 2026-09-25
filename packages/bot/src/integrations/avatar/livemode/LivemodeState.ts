@@ -11,15 +11,17 @@
 // parallel would otherwise cross-contaminate).
 //
 // Lifecycle:
-//   - enable(userId, opts): create a buffer, wire its `flush` event to the
-//     supplied dispatcher, and start the 3s timer.
+//   - enable(userId, opts): create a buffer, wire its `flush` event to
+//     `dispatch` (the main MessagePipeline), and start the 3s timer.
 //   - disable(userId): stop the buffer, unsubscribe listeners, drop state.
 //     Any in-flight message still inside the buffer is flushed one last
 //     time before teardown so the user's final words get a response.
 //
 // This is process-memory only — a bot restart resets all livemode state.
 
-import { injectable, singleton } from 'tsyringe';
+import { inject, singleton } from 'tsyringe';
+import { MessagePipeline } from '@/conversation/MessagePipeline';
+import { makeSyntheticEvent } from '@/conversation/synthetic';
 import { DanmakuBuffer, type FlushPayload } from '@/services/bilibili/live/DanmakuBuffer';
 import { logger } from '@/utils/logger';
 
@@ -28,7 +30,8 @@ export interface LivemodeEnableOptions {
   proactive?: boolean;
 }
 
-export type LivemodeFlushHandler = (userId: string, payload: FlushPayload) => void;
+/** Called with the user id whenever real input from that user is flushed to the pipeline. */
+export type LivemodeInputListener = (userId: string) => void;
 
 interface LivemodeUserState {
   proactive: boolean;
@@ -37,19 +40,40 @@ interface LivemodeUserState {
   enabledAt: number;
 }
 
-@injectable()
 @singleton()
 export class LivemodeState {
   private users = new Map<string, LivemodeUserState>();
-  /**
-   * Dispatcher installed by the wiring code (bootstrap) that receives each
-   * buffer flush. Kept as a field so the state can be constructed without
-   * a pipeline reference (avoids a cycle at DI resolve time).
-   */
-  private flushHandler: LivemodeFlushHandler | null = null;
+  private readonly inputListeners: LivemodeInputListener[] = [];
 
-  setFlushHandler(handler: LivemodeFlushHandler): void {
-    this.flushHandler = handler;
+  constructor(@inject(MessagePipeline) private readonly messagePipeline: MessagePipeline) {}
+
+  onInput(listener: LivemodeInputListener): void {
+    this.inputListeners.push(listener);
+  }
+
+  /**
+   * Run one livemode turn for this user through the main pipeline. Every livemode
+   * turn — a flushed batch of the user's messages or an idle kickoff — enters here,
+   * so they share one session and one source.
+   */
+  async dispatch(userId: string, text: string): Promise<void> {
+    const event = makeSyntheticEvent({
+      source: 'idle-trigger',
+      userId,
+      groupId: null,
+      text,
+      messageType: 'private',
+      protocol: 'milky',
+    });
+    try {
+      await this.messagePipeline.process(
+        event,
+        { message: event, sessionId: `idle-${userId}`, sessionType: 'user', botSelfId: '', source: 'idle-trigger' },
+        'idle-trigger',
+      );
+    } catch (err) {
+      logger.warn(`[LivemodeState] dispatch failed | userId=${userId}:`, err);
+    }
   }
 
   isEnabled(userId: string | number): boolean {
@@ -81,7 +105,10 @@ export class LivemodeState {
 
     const buffer = new DanmakuBuffer({});
     const onFlush = (payload: FlushPayload): void => {
-      if (this.flushHandler) this.flushHandler(key, payload);
+      for (const listener of this.inputListeners) {
+        listener(key);
+      }
+      void this.dispatch(key, payload.summaryText);
     };
     buffer.on('flush', onFlush);
     buffer.start();

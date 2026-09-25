@@ -9,19 +9,21 @@
 //   - skips non-private messages (group chat is still handled normally even
 //     if the user has livemode on)
 //   - pushes the raw text into the user's buffer; the buffer's 3s flush
-//     timer fires asynchronously and dispatches to the avatar pipeline via the
-//     flush handler installed by bootstrap
+//     timer fires asynchronously and LivemodeState dispatches the batch to the
+//     main pipeline
 //
 // No reply is set on the context — SendSystem handles missing/empty replies
 // as "nothing to send", so the user sees silence on QQ side while the
 // avatar does its thing (matching the mock-livestream UX).
 
+import { inject, singleton } from 'tsyringe';
 import type { ProcessStageInterceptor } from '@/conversation/ProcessStageInterceptor';
 import type { HookContext } from '@/hooks/types';
-import type { LivemodeState } from './LivemodeState';
+import { LivemodeState } from './LivemodeState';
 
+@singleton()
 export class LivemodeInterceptor implements ProcessStageInterceptor {
-  constructor(private state: LivemodeState) {}
+  constructor(@inject(LivemodeState) private state: LivemodeState) {}
 
   shouldIntercept(ctx: HookContext): boolean {
     if (ctx.command) return false;

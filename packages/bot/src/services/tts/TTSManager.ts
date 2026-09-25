@@ -1,4 +1,3 @@
-import { singleton } from 'tsyringe';
 import type { HealthCheckManager } from '@/core/health';
 import { TtsProviderHealthAdapter } from '@/core/health/TtsProviderHealthAdapter';
 import { HealthStatus } from '@/core/health/types';
@@ -31,13 +30,12 @@ export interface TTSSynthesisOutcome {
  * Registry + routing for bot-level TTS backends.
  *
  * Health:
- * - When `attachHealthManager` is called (from bootstrap), each registered provider is
+ * - When `attachHealthManager` is called (from `createTTSManager`), each registered provider is
  *   also registered with `HealthCheckManager` under `provider.name`, using
  *   `TtsProviderHealthAdapter` (calls `TTSProvider.healthCheck()` when present).
  * - Selection/fallback (`resolveProvider`) uses `HealthCheckManager.checkHealth()` so
  *   cached probe results match global health status and `/tts` runtime markings.
  */
-@singleton()
 export class TTSManager {
   private readonly registry = new Map<string, TTSProvider>();
   private defaultName: string | null = null;
@@ -97,6 +95,31 @@ export class TTSManager {
 
   listAll(): TTSProvider[] {
     return [...this.registry.values()];
+  }
+
+  /**
+   * Fire-and-forget model warmup for providers that support it (Sovits mainly —
+   * forces model weights + reference audio into memory so the first real user
+   * utterance doesn't pay cold-start latency). Network I/O, so it runs in the
+   * app's connect phase.
+   */
+  warmup(): void {
+    for (const provider of this.registry.values()) {
+      if (typeof provider.warmup !== 'function' || !provider.isAvailable()) {
+        continue;
+      }
+      const started = Date.now();
+      provider
+        .warmup()
+        .then(() => {
+          logger.info(`[TTSManager] TTS warmup ok — provider="${provider.name}" took=${Date.now() - started}ms`);
+        })
+        .catch((err) => {
+          logger.debug(
+            `[TTSManager] TTS warmup failed (non-fatal) — provider="${provider.name}" err=${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+    }
   }
 
   /**

@@ -13,14 +13,11 @@
 //     stops talking to itself after a couple tries. The cap resets when
 //     real user input arrives (markActivity).
 //
-// `markActivity(userId)` is called from bootstrap's flush handler on
-// every real buffer flush, so viewer-generated input both resets the
-// idle clock and the consecutive-fire counter.
+// `markActivity(userId)` runs on every real buffer flush (LivemodeState's
+// input listener), so viewer-generated input both resets the idle clock and
+// the consecutive-fire counter.
 
-import { inject, injectable, singleton } from 'tsyringe';
-import { MessagePipeline } from '@/conversation/MessagePipeline';
-import { makeSyntheticEvent } from '@/conversation/synthetic';
-import type { MessageProcessingContext } from '@/conversation/types';
+import { inject, singleton } from 'tsyringe';
 import { logger } from '@/utils/logger';
 import { LivemodeState } from '../livemode/LivemodeState';
 
@@ -54,7 +51,6 @@ const IDLE_KICKOFFS = [
  */
 const MAX_CONSECUTIVE_IDLE_FIRES = 2;
 
-@injectable()
 @singleton()
 export class AvatarIdleTrigger {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -63,10 +59,9 @@ export class AvatarIdleTrigger {
   /** Round-robin cursor per user into IDLE_KICKOFFS. */
   private kickoffCursorByUser = new Map<string, number>();
 
-  constructor(
-    @inject(LivemodeState) private state: LivemodeState,
-    @inject(MessagePipeline) private messagePipeline: MessagePipeline,
-  ) {}
+  constructor(@inject(LivemodeState) private state: LivemodeState) {
+    state.onInput((userId) => this.markActivity(userId));
+  }
 
   start(): void {
     if (this.timer) return;
@@ -120,26 +115,7 @@ export class AvatarIdleTrigger {
       const kickoff = this.nextKickoff(userId);
       // TODO([4/5]→follow-up): IDLE_TEMPERATURE / scope metadata used to flow via
       // pipeline input meta — restore via MessageProcessingContext extension if needed.
-      const event = makeSyntheticEvent({
-        source: 'idle-trigger',
-        userId: String(userId),
-        groupId: null,
-        text: kickoff,
-        messageType: 'private',
-        protocol: 'milky',
-      });
-      const procContext: MessageProcessingContext = {
-        message: event,
-        sessionId: `idle-${userId}`,
-        sessionType: 'user',
-        botSelfId: '',
-        source: 'idle-trigger',
-      };
-      try {
-        await this.messagePipeline.process(event, procContext, 'idle-trigger');
-      } catch (err) {
-        logger.warn(`[AvatarIdleTrigger] enqueue failed | userId=${userId}:`, err);
-      }
+      await this.state.dispatch(userId, kickoff);
     }
   }
 

@@ -502,7 +502,7 @@ Sits inside the PROCESS stage of the message lifecycle. Fires `onCommandDetected
 
 ## TTS (Text-to-Speech)
 
-Text-to-speech is a **bot-core capability** (not part of the LLM stack). It lives under `packages/bot/src/services/tts/` and is registered in DI as `DITokens.TTS_MANAGER` from `packages/bot/src/core/bootstrap.ts`.
+Text-to-speech is a **bot-core capability** (not part of the LLM stack). It lives under `packages/bot/src/services/tts/` and is registered in DI as `DITokens.TTS_MANAGER` (a factory in `core/wiring.ts` that calls `createTTSManager`).
 
 ### Components
 
@@ -518,10 +518,9 @@ Text-to-speech is a **bot-core capability** (not part of the LLM stack). It live
 
 ### Wiring
 
-1. `bootstrapApp()` builds a `TTSManager`, instantiates providers from `tts` config (`tts.providers[]`, or the legacy single-provider `apiKey` shape for Fish Audio).
-2. `ttsManager.attachHealthManager(healthCheckManager)` registers each provider with `HealthCheckManager` before the manager is exposed on DI.
-3. Optional `warmup()` runs fire-and-forget for providers that support it (e.g. SoVITS cold start).
-4. `registerSpeakTool()` registers the `speak` tool when the configured provider supports inline cues, and returns the availability predicate that gates both the tool and its prompt fragment.
+1. `createTTSManager()` (`services/tts/createTTSManager.ts`) builds the `TTSManager` on first resolve: it instantiates providers from `tts` config (`tts.providers[]`, or the legacy single-provider `apiKey` shape for Fish Audio), applies `tts.defaultProvider`, and calls `attachHealthManager(healthCheckManager)` so each provider is registered with `HealthCheckManager` before anyone sees the manager.
+2. `ttsManager.warmup()` runs fire-and-forget in `startApp`'s connect phase for providers that support it (e.g. SoVITS cold start); a provider's `warmup()` rejects when the backend is unreachable, so the log reports the real outcome.
+3. `VoiceReplyChannel.install()` (called by bootstrap) runs `registerSpeakTool()`, which registers the `speak` tool when the configured provider supports inline cues and returns the availability predicate that gates both the tool and its prompt fragment.
 
 ### Delivery cues and provider capabilities
 

@@ -13,25 +13,25 @@ import { createModelIdentityProducer } from '@/ai/prompt/producers/ModelIdentity
 import { createProviderPatchProducer } from '@/ai/prompt/producers/ProviderPatchProducer';
 import { createSceneProducer } from '@/ai/prompt/producers/SceneProducer';
 import { createToolInstructProducer } from '@/ai/prompt/producers/ToolInstructProducer';
-import { createVoiceReplyProducer } from '@/ai/prompt/producers/VoiceReplyProducer';
 import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
+import { MessagePipeline } from '@/conversation/MessagePipeline';
 import { ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
 import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
-import { makeSyntheticEvent } from '@/conversation/synthetic';
+import { AdminAlertService } from '@/core/alert/AdminAlertService';
 import { Bot } from '@/core/Bot';
 import type { ProtocolConfig } from '@/core/config';
 import type { Connection } from '@/core/connection';
 import { WebSocketConnection } from '@/core/connection';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import { HealthCheckManager } from '@/core/health/HealthCheckManager';
+import type { DatabaseManager } from '@/database/DatabaseManager';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
 import { LivemodeInterceptor } from '@/integrations/avatar/livemode/LivemodeInterceptor';
-import { LivemodeState } from '@/integrations/avatar/livemode/LivemodeState';
-import { AvatarIdleTrigger } from '@/integrations/avatar/services/AvatarIdleTrigger';
 import { type PersonaModulationAdapter, type PersonaService, startPersonaSubsystem } from '@/persona';
 import { PluginInitializer } from '@/plugins/PluginInitializer';
 import { DiscordConnection } from '@/protocol/discord/DiscordConnection';
@@ -42,14 +42,11 @@ import { DanmakuBuffer } from '@/services/bilibili/live/DanmakuBuffer';
 import { DanmakuStore } from '@/services/bilibili/live/DanmakuStore';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
+import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { initStaticServer } from '@/services/staticServer';
-import { FishAudioProvider } from '@/services/tts/providers/FishAudioProvider';
-import { SovitsProvider } from '@/services/tts/providers/SovitsProvider';
-import { TTSManager } from '@/services/tts/TTSManager';
-import type { TTSProvider } from '@/services/tts/TTSProvider';
-import { resolveVoiceReplyConfig } from '@/services/tts/voiceReplyConfig';
-import { registerSpeakTool } from '@/tools/executors/SpeakToolExecutor';
-import type { ToolManager } from '@/tools/ToolManager';
+import type { TTSManager } from '@/services/tts/TTSManager';
+import { VoiceReplyChannel } from '@/services/tts/VoiceReplyChannel';
 import { logger, setMessageLogFilter } from '@/utils/logger';
 import { registerConnectionClass } from './connection/ConnectionManager';
 import { registerProviders } from './wiring';
@@ -63,12 +60,6 @@ import '@/plugins/plugins';
 // Avatar integration registers its own plugins via this barrel side-effect
 // import — PluginManager stays unaware of integrations.
 import '@/integrations/avatar/plugins';
-import { MessagePipeline } from '@/conversation/MessagePipeline';
-import { AdminAlertService } from '@/core/alert/AdminAlertService';
-import { HealthCheckManager } from '@/core/health/HealthCheckManager';
-import type { DatabaseManager } from '@/database/DatabaseManager';
-import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
 
 export interface BootstrapResult {
   bot: Bot;
@@ -270,86 +261,8 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
       logger.warn('[Bootstrap] Startup health check failed:', err);
     });
 
-  // ── TTS providers / registry ──
-  // Build the TTSManager from `tts.providers[]`. If the user still has the
-  // legacy single-provider shape (top-level `apiKey`/`model`), synthesize a
-  // one-element providers array inline so existing configs keep working
-  // without a config migration pass. The resulting manager is registered in
-  // DI so both TTSCommandHandler (QQ voice path) and AvatarService (renderer
-  // speech path) consume the same provider set.
-  const ttsManager = new TTSManager();
-  try {
-    const rawTTS = config.getTTSConfig() as Record<string, unknown> | undefined;
-    const providerEntries = collectTTSProviderEntries(rawTTS);
-    for (const entry of providerEntries) {
-      const provider = instantiateTTSProvider(entry);
-      if (provider) {
-        ttsManager.register(provider);
-      } else {
-        logger.warn(`[Bootstrap] Unknown TTS provider type: ${String(entry.type)} (skipped)`);
-      }
-    }
-    const desiredDefault = typeof rawTTS?.defaultProvider === 'string' ? rawTTS.defaultProvider : null;
-    if (desiredDefault) {
-      try {
-        ttsManager.setDefault(desiredDefault);
-      } catch (err) {
-        logger.warn(
-          `[Bootstrap] tts.defaultProvider="${desiredDefault}" is not a registered provider; falling back to first registered`,
-          err,
-        );
-      }
-    }
-    ttsManager.attachHealthManager(healthCheckManager);
-    container.registerInstance(DITokens.TTS_MANAGER, ttsManager);
-    const summary = ttsManager.listAll().map((p) => `${p.name}${p.isAvailable() ? '' : ' (unavailable)'}`);
-    if (summary.length > 0) {
-      logger.info(`[Bootstrap] TTS providers registered: ${summary.join(', ')}`);
-    } else {
-      logger.debug('[Bootstrap] No TTS providers configured');
-    }
-
-    // Fire-and-forget warmup for providers that support it (Sovits mainly —
-    // forces model weights + reference audio into memory so the first real
-    // user utterance doesn't pay cold-start latency).
-    for (const provider of ttsManager.listAll()) {
-      if (typeof provider.warmup === 'function' && provider.isAvailable()) {
-        const started = Date.now();
-        provider
-          .warmup()
-          .then(() => {
-            logger.info(`[Bootstrap] TTS warmup ok — provider="${provider.name}" took=${Date.now() - started}ms`);
-          })
-          .catch((err) => {
-            logger.debug(
-              `[Bootstrap] TTS warmup failed (non-fatal) — provider="${provider.name}" err=${err instanceof Error ? err.message : String(err)}`,
-            );
-          });
-      }
-    }
-    // ── LLM voice channel (`speak` tool + its prompt default) ──
-    // Registered here, not in ToolInitializer: the tool's voice enum and cue
-    // vocabulary are facts about the provider registered just above. The
-    // returned predicate is the tool's live availability gate; the prompt
-    // fragment shares it, so neither can outlive the backend's health.
-    const voiceReplyLimits = resolveVoiceReplyConfig(config.getTTSConfig()?.voiceReply);
-    const voiceReplyAvailable = registerSpeakTool({
-      toolManager: container.resolve<ToolManager>(DITokens.TOOL_MANAGER),
-      ttsManager,
-      limits: voiceReplyLimits,
-    });
-    if (voiceReplyAvailable) {
-      container.resolve(PromptInjectionRegistry).register(
-        createVoiceReplyProducer({
-          promptManager: container.resolve<PromptManager>(DITokens.PROMPT_MANAGER),
-          limits: voiceReplyLimits,
-          isAvailable: voiceReplyAvailable,
-        }),
-      );
-    }
-  } catch (err) {
-    logger.warn('[Bootstrap] TTS provider registry init failed (non-fatal):', err);
-  }
+  // ── LLM voice channel (`speak` tool + its prompt default) ──
+  container.resolve(VoiceReplyChannel).install();
 
   // ── Avatar system (sync init, no driver connections) ──
   // Config schema & defaults live in the avatar package; we just forward the
@@ -358,7 +271,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   let avatarService: AvatarService | null = null;
   try {
     avatarService = new AvatarService();
-    await avatarService.initialize(config.getAvatarConfig(), ttsManager);
+    await avatarService.initialize(config.getAvatarConfig(), container.resolve<TTSManager>(DITokens.TTS_MANAGER));
     if (avatarService.isEnabled()) {
       container.registerInstance(DITokens.AVATAR_SERVICE, avatarService);
       logger.info('[Bootstrap] Avatar service initialized');
@@ -379,44 +292,8 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   const modulationProvider = container.resolve<PersonaModulationAdapter>(DITokens.PERSONA_MODULATION_PROVIDER);
   startPersonaSubsystem(personaService, modulationProvider, avatarService);
 
-  // ── Livemode wiring ──
-  // The flush handler is wired here rather than in LivemodeState's constructor, which
-  // avoids a construction-order cycle with the message pipeline.
-  const livemodeState = container.resolve(LivemodeState);
-  // Resolve idle trigger before wiring the flush handler so the handler can
-  // call `markActivity()` to reset the per-user idle clock on every flush.
-  const messagePipeline = container.resolve(MessagePipeline);
-  const avatarIdleTrigger = container.resolve(AvatarIdleTrigger);
-  livemodeState.setFlushHandler((userId, payload) => {
-    avatarIdleTrigger.markActivity(userId);
-    const event = makeSyntheticEvent({
-      source: 'idle-trigger',
-      userId: String(userId),
-      groupId: null,
-      text: payload.summaryText,
-      messageType: 'private',
-      protocol: 'milky',
-    });
-    void messagePipeline.process(
-      event,
-      {
-        message: event,
-        sessionId: `idle-${userId}`,
-        sessionType: 'user',
-        botSelfId: '',
-        source: 'idle-trigger',
-      },
-      'idle-trigger',
-    );
-  });
-  avatarIdleTrigger.start();
-  try {
-    const interceptorRegistry = container.resolve<ProcessStageInterceptorRegistry>(ProcessStageInterceptorRegistry);
-    interceptorRegistry.register(new LivemodeInterceptor(livemodeState));
-    logger.info('[Bootstrap] Livemode interceptor + idle trigger registered');
-  } catch (err) {
-    logger.warn('[Bootstrap] Livemode interceptor registration failed (non-fatal):', err);
-  }
+  // ── Livemode: private chat of livemode users feeds their danmaku buffer ──
+  container.resolve(ProcessStageInterceptorRegistry).register(container.resolve(LivemodeInterceptor));
 
   // ── Bilibili live listener (optional) ──
   // Fully gated on `bilibili.live.enabled` — no side effects when absent.
@@ -440,7 +317,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
         streamerAliases: aliases,
       });
       const store = container.resolve(DanmakuStore);
-      bilibiliLiveBridge = new BilibiliLiveBridge(client, buffer, store, messagePipeline, {
+      bilibiliLiveBridge = new BilibiliLiveBridge(client, buffer, store, container.resolve(MessagePipeline), {
         roomId: String(liveCfg.roomId),
         pipeToLive2D: liveCfg.pipeToLive2D !== false,
         streamerAliases: aliases,
@@ -476,84 +353,4 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
     avatarService,
     bilibiliLiveBridge,
   };
-}
-
-interface TTSProviderEntry {
-  type: string;
-  name?: string;
-  [key: string]: unknown;
-}
-
-/**
- * Gather provider entries from the raw `tts` config blob.
- *
- * - If `tts.providers` is an array, return it as-is.
- * - Otherwise fall back to the legacy single-provider shape: top-level
- *   `apiKey` + optional `model`/`format`/`voiceMap`/`defaultVoice`/`referenceId`
- *   are synthesized into a single `{ type: 'fish-audio', name: 'fish-audio', … }`
- *   entry. This lets existing configs keep working without migration.
- * - Empty / missing `tts` returns `[]`.
- */
-function collectTTSProviderEntries(raw: Record<string, unknown> | undefined): TTSProviderEntry[] {
-  if (!raw) return [];
-  if (Array.isArray(raw.providers)) {
-    return raw.providers.filter((p): p is TTSProviderEntry => typeof p === 'object' && p !== null);
-  }
-  if (typeof raw.apiKey === 'string' && raw.apiKey.length > 0) {
-    return [
-      {
-        type: 'fish-audio',
-        name: 'fish-audio',
-        apiKey: raw.apiKey,
-        model: raw.model,
-        format: raw.format,
-        voiceMap: raw.voiceMap,
-        defaultVoice: raw.defaultVoice ?? raw.referenceId,
-      },
-    ];
-  }
-  return [];
-}
-
-/**
- * Instantiate a TTSProvider from a config entry. `type` discriminates which
- * concrete provider class to construct. Unknown types return null (caller
- * logs and skips so one bad entry doesn't block the rest).
- */
-function instantiateTTSProvider(entry: TTSProviderEntry): TTSProvider | null {
-  const name = typeof entry.name === 'string' && entry.name.length > 0 ? entry.name : undefined;
-  switch (entry.type) {
-    case 'fish-audio':
-      return new FishAudioProvider({
-        name,
-        apiKey: typeof entry.apiKey === 'string' ? entry.apiKey : '',
-        voiceMap:
-          entry.voiceMap && typeof entry.voiceMap === 'object' && !Array.isArray(entry.voiceMap)
-            ? (entry.voiceMap as Record<string, string>)
-            : {},
-        defaultVoice: typeof entry.defaultVoice === 'string' ? entry.defaultVoice : '',
-        model: typeof entry.model === 'string' ? entry.model : undefined,
-        format: entry.format === 'mp3' || entry.format === 'wav' ? (entry.format as 'mp3' | 'wav') : undefined,
-        endpoint: typeof entry.endpoint === 'string' ? entry.endpoint : undefined,
-      });
-    case 'sovits':
-      return new SovitsProvider({
-        name,
-        endpoint: typeof entry.endpoint === 'string' ? entry.endpoint : '',
-        bodyTemplate:
-          entry.bodyTemplate && typeof entry.bodyTemplate === 'object' && !Array.isArray(entry.bodyTemplate)
-            ? (entry.bodyTemplate as Record<string, unknown>)
-            : {},
-        method: entry.method === 'GET' || entry.method === 'POST' ? entry.method : undefined,
-        headers:
-          entry.headers && typeof entry.headers === 'object' && !Array.isArray(entry.headers)
-            ? (entry.headers as Record<string, string>)
-            : undefined,
-        defaultVoice: typeof entry.defaultVoice === 'string' ? entry.defaultVoice : undefined,
-        pcmSampleRate:
-          typeof entry.pcmSampleRate === 'number' && entry.pcmSampleRate > 0 ? entry.pcmSampleRate : undefined,
-      });
-    default:
-      return null;
-  }
 }

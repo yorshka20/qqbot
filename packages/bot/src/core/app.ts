@@ -8,15 +8,18 @@
 
 import type { Database } from 'bun:sqlite';
 import { MessageAPI } from '@/api/methods/MessageAPI';
+import { AvatarIdleTrigger } from '@/integrations/avatar/services/AvatarIdleTrigger';
 import { initLanRelay } from '@/lan';
 import { PluginManager } from '@/plugins/PluginManager';
 import { ClaudeCodeInitializer } from '@/services/claudeCode';
 import { killAllMcpChildren } from '@/services/retrieval/searxng/mcp/childReaper';
 import { stopStaticServer } from '@/services/staticServer';
+import type { TTSManager } from '@/services/tts/TTSManager';
 import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
 import { logger } from '@/utils/logger';
 import { type BootstrapResult, bootstrapApp } from './bootstrap';
 import { getContainer } from './DIContainer';
+import { DITokens } from './DITokens';
 
 export interface StartAppOptions {
   /**
@@ -139,10 +142,18 @@ async function connect(bootstrap: BootstrapResult, pluginManager: PluginManager)
     }
   }
 
+  // Warm TTS models so the first real utterance doesn't pay cold-start latency.
+  getContainer().resolve<TTSManager>(DITokens.TTS_MANAGER).warmup();
+
+  // Keeps livemode conversations alive when viewers go quiet.
+  const avatarIdleTrigger = getContainer().resolve(AvatarIdleTrigger);
+  avatarIdleTrigger.start();
+
   // Plugin timers, servers and startup jobs run only once the bot is connected.
   await pluginManager.startAll();
 
   return async () => {
+    avatarIdleTrigger.stop();
     if (bilibiliLiveBridge) {
       await bilibiliLiveBridge.stop();
     }
