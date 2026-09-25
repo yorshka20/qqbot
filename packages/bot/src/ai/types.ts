@@ -217,6 +217,8 @@ export interface AIGenerateResponse {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
+    /** Prompt tokens served from the provider's prefix cache; absent when the provider does not report it. */
+    cachedPromptTokens?: number;
   };
   metadata?: Record<string, unknown>;
   /**

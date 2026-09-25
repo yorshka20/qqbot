@@ -33,6 +33,8 @@ import {
   stripTextToolCalls,
 } from '../utils/dsmlParser';
 
+type TokenUsage = NonNullable<AIGenerateResponse['usage']>;
+
 /**
  * LLM fallback configuration
  */
@@ -810,7 +812,7 @@ export class LLMService {
     const allToolCalls: ToolResult[] = [];
     // Accumulate token usage across every round so the returned response reports
     // the full cost of the tool-augmented generation, not just the final round.
-    const accUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    const accUsage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
     let sawUsage = false;
     // Thinking from every round, not just the last: on a tool-using turn the
     // reasoning that chose the tools is usually the interesting part, and the
@@ -1074,14 +1076,14 @@ export class LLMService {
    * usage was present (so callers can tell "summed real numbers" from "no usage
    * reported at all" and avoid emitting a misleading all-zero total).
    */
-  private accumulateUsage(
-    acc: { promptTokens: number; completionTokens: number; totalTokens: number },
-    usage?: { promptTokens: number; completionTokens: number; totalTokens: number },
-  ): boolean {
+  private accumulateUsage(acc: TokenUsage, usage?: TokenUsage): boolean {
     if (!usage) return false;
     acc.promptTokens += usage.promptTokens;
     acc.completionTokens += usage.completionTokens;
     acc.totalTokens += usage.totalTokens;
+    if (usage.cachedPromptTokens !== undefined) {
+      acc.cachedPromptTokens = (acc.cachedPromptTokens ?? 0) + usage.cachedPromptTokens;
+    }
     return true;
   }
 
@@ -1244,9 +1246,11 @@ export class LLMService {
     const pt = result.usage?.promptTokens ?? 0;
     const ct = result.usage?.completionTokens ?? 0;
     const tt = result.usage?.totalTokens ?? 0;
-    // [STATS] tag: daily stats parses this line for token/char usage — do not remove
+    const cached = result.usage?.cachedPromptTokens;
+    // [STATS] tag: daily stats parses this line for token/char usage — do not remove.
+    // The cache field goes last so DailyStatsBackend's positional pattern still matches.
     logger.info(
-      `[STATS] [LLMService] usage | provider=${provider} | promptTokens=${pt} | completionTokens=${ct} | totalTokens=${tt} | promptChars=${promptChars} | responseChars=${responseChars}`,
+      `[STATS] [LLMService] usage | provider=${provider} | promptTokens=${pt} | completionTokens=${ct} | totalTokens=${tt} | promptChars=${promptChars} | responseChars=${responseChars}${cached === undefined ? '' : ` | cachedPromptTokens=${cached}`}`,
     );
   }
 

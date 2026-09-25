@@ -18,6 +18,22 @@ import { contentToPlainString } from '../utils/contentUtils';
 import { visionImageToDataUrl } from '../utils/imageUtils';
 import { clampMaxTokens } from './maxTokens';
 
+interface DeepSeekUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  prompt_cache_hit_tokens?: number;
+}
+
+function toUsage(usage: DeepSeekUsage): NonNullable<AIGenerateResponse['usage']> {
+  return {
+    promptTokens: usage.prompt_tokens,
+    completionTokens: usage.completion_tokens,
+    totalTokens: usage.total_tokens,
+    cachedPromptTokens: usage.prompt_cache_hit_tokens,
+  };
+}
+
 export interface DeepSeekProviderConfig {
   apiKey: string;
   model?: string;
@@ -335,7 +351,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
             tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>;
           };
         }>;
-        usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+        usage?: DeepSeekUsage;
         model: string;
       }>('/chat/completions', body, options?.timeout ? { timeout: options.timeout } : undefined);
 
@@ -350,13 +366,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
       if (!text && !msg?.tool_calls?.length && choice?.finish_reason && choice.finish_reason !== 'stop') {
         throw new Error(`DeepSeek returned no content (finish_reason=${choice.finish_reason})`);
       }
-      const usage = data.usage
-        ? {
-            promptTokens: data.usage.prompt_tokens,
-            completionTokens: data.usage.completion_tokens,
-            totalTokens: data.usage.total_tokens,
-          }
-        : undefined;
+      const usage = data.usage ? toUsage(data.usage) : undefined;
 
       const result: AIGenerateResponse = {
         text,
@@ -468,7 +478,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
 
               const data = JSON.parse(jsonStr) as {
                 choices?: Array<{ delta?: { content?: string } }>;
-                usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+                usage?: DeepSeekUsage;
               };
 
               const content = data.choices?.[0]?.delta?.content || '';
@@ -478,11 +488,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
               }
 
               if (data.usage) {
-                usage = {
-                  promptTokens: data.usage.prompt_tokens,
-                  completionTokens: data.usage.completion_tokens,
-                  totalTokens: data.usage.total_tokens,
-                };
+                usage = toUsage(data.usage);
               }
             } catch (parseError) {
               logger.debug('[DeepSeekProvider] Failed to parse stream chunk:', parseError);
