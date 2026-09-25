@@ -107,6 +107,7 @@ export class CommandManager {
         return cachedInstance;
       }
 
+      // container-lookup: registry handlers are built on first use from their decorator metadata
       const container = getContainer();
 
       // Try to resolve with dependency injection

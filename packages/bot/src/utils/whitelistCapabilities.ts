@@ -46,9 +46,11 @@ export const WHITELIST_CAPABILITY_KEYS: WhitelistCapability[] = [
  */
 export function groupHasWhitelistCapability(groupId: string, capability: WhitelistCapability): boolean {
   const id = String(groupId);
+  // container-lookup: plugin-state whitelist capabilities live on WhitelistPlugin
   const whitelistPlugin = getContainer().resolve(PluginManager)?.getPluginAs<WhitelistPlugin>('whitelist');
 
   if (!whitelistPlugin) {
+    // container-lookup: plugin-state the plugin config stands in until WhitelistPlugin is loaded
     const config = getContainer().resolve<Config>(DITokens.CONFIG);
     const groupIds = (config.getPluginConfig('whitelist') as { groupIds?: string[] } | undefined)?.groupIds;
     return !Array.isArray(groupIds) || groupIds.length === 0 || groupIds.includes(id);

@@ -43,6 +43,7 @@ export class RepeatingTodoWorkerHandler implements ActionHandler {
 
     let claudeCodeService: ClaudeCodeService;
     try {
+      // container-lookup: optional-service Claude Code exists only when configured
       claudeCodeService = getContainer().resolve<ClaudeCodeService>(DITokens.CLAUDE_CODE_SERVICE);
     } catch {
       logger.error(`${TAG} ClaudeCodeService not available`);

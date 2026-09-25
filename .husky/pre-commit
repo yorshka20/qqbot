@@ -1,2 +1,2 @@
 #!/usr/bin/env sh
-bun run typecheck && bun run smoke-test
+bun run typecheck && bun run lint:di && bun run smoke-test

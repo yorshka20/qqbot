@@ -116,6 +116,7 @@ export class RepeatingTicketDispatchHandler implements ActionHandler {
 
     let cluster: ClusterManager;
     try {
+      // container-lookup: optional-service the cluster exists only when cluster.enabled
       cluster = getContainer().resolve<ClusterManager>(DITokens.CLUSTER_MANAGER);
     } catch {
       logger.error(`${TAG} ClusterManager not registered`);

@@ -586,6 +586,7 @@ export class ProactiveConversationService {
       return;
     }
 
+    // container-lookup: plugin-state reactions go through ReactionPlugin
     const plugin = getContainer().resolve(PluginManager).getPluginAs<ReactionPlugin>('reaction');
     if (!plugin) {
       return;

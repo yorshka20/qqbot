@@ -43,6 +43,7 @@ export class ReactToolExecutor extends BaseToolExecutor {
       return this.error('只能在群聊里贴表情', 'not a group message');
     }
 
+    // container-lookup: plugin-state reactions go through ReactionPlugin
     const plugin = getContainer().resolve(PluginManager).getPluginAs<ReactionPlugin>('reaction');
     if (!plugin) {
       return this.error('表情回应功能未启用', 'reaction plugin not registered');

@@ -688,6 +688,7 @@ export class AgendaService {
   private findMissingDependencies(actionTarget: string): string[] {
     const handler = this.actionHandlerRegistry.get(actionTarget);
     if (!handler?.dependsOn?.length) return [];
+    // container-lookup: plugin-state PluginManager is built after the agenda starts
     const pluginManager = getContainer().resolve(PluginManager);
     const enabled = new Set(pluginManager.getEnabledPlugins());
     return handler.dependsOn.filter((name) => !enabled.has(name));

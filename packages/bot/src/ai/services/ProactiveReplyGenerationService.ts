@@ -153,6 +153,7 @@ export class ProactiveReplyGenerationService {
   ): { baseSystemPrompt: string; proactiveSystemPrompt: string; finalUserQuery: string } {
     let whitelistFragment = '';
     if (context.sessionId) {
+      // container-lookup: plugin-state whitelist capabilities live on WhitelistPlugin
       const pluginManager = getContainer().resolve(PluginManager);
       const whitelistPlugin = pluginManager?.getPluginAs<WhitelistPlugin>('whitelist');
       const caps = whitelistPlugin?.getGroupCapabilities?.(context.sessionId);

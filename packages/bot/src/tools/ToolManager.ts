@@ -58,6 +58,7 @@ export class ToolManager {
         return cachedInstance;
       }
 
+      // container-lookup: registry executors are built on first use from their @Tool metadata
       const container = getContainer();
 
       try {

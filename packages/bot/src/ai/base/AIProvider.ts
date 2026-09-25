@@ -73,6 +73,7 @@ export abstract class AIProvider {
    * token (DITokens.ts); this just sugars the resolve call.
    */
   protected getContextManager(): ContextManager {
+    // container-lookup: not-di-built ProviderFactory creates providers from config
     return getContainer().resolve(ContextManager);
   }
 

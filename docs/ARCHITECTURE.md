@@ -234,6 +234,8 @@ DIContainer.verifyRequiredTokens()
 
 Anything outside these six takes its dependencies in the constructor. When a new dependency seems awkward to inject, the fix is to let DI build the object (as `AIService`'s stages and sub-services now are), not to resolve it from the container.
 
+`bun run lint:di` (`scripts/lint/container-lookups.ts`, also run by `bun run lint` and the pre-commit hook) enforces this. Exceptions 1, 2 and 4 are allowed by path (plugin directories, the composition root, `*Initializer.ts`, `cli/`, static-server backends, tests). Every other `getContainer()` call fails the check unless the same line or the line above names its exception — `// container-lookup: <registry|not-di-built|plugin-state|optional-service|startup> <why>` — so each run-time lookup is a decision someone made, not a shortcut. Importing tsyringe's `container` directly also fails; the container is reached only through `getContainer()`.
+
 ### Protocol Layer
 
 #### ProtocolAdapter (Abstract Base Class)

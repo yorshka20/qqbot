@@ -14,6 +14,7 @@ export class FanoutManager {
     // Each fan-out is a class-keyed singleton, so this lookup by name and a plugin
     // resolving the class reach the same instance, whichever is built first.
     for (const type of FANOUT_CONTEXTS) {
+      // container-lookup: registry each fan-out class in FANOUT_CONTEXTS is a DI singleton
       const fanout = getContainer().resolve<BaseFanout<unknown>>(type);
       if (this.fanouts.has(fanout.name)) {
         throw new Error(`Fanout already registered: ${fanout.name}`);

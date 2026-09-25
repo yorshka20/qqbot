@@ -83,6 +83,7 @@ export class Live2DCommandHandler implements CommandHandler {
   }
 
   private resolveBridge(): BilibiliLiveBridge | null {
+    // container-lookup: optional-service the bridge exists only when bilibili.live is configured
     const container = getContainer();
     if (!container.isRegistered(DITokens.BILIBILI_LIVE_BRIDGE)) return null;
     return container.resolve<BilibiliLiveBridge>(DITokens.BILIBILI_LIVE_BRIDGE);

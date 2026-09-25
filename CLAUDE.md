@@ -17,7 +17,8 @@ bun run typecheck
 bun run type-check
 
 # Linting and formatting
-bun run lint          # Check for issues
+bun run lint          # Check for issues (Biome + lint:di)
+bun run lint:di       # Container-lookup check: see Code Conventions → Constructor Injection
 bun run lint:fix      # Auto-fix issues
 bun run format        # Format code
 
@@ -88,7 +89,7 @@ The bot requires a `config.jsonc` file (JSONC with comments). Copy from `config.
 - **Path Aliases**: Use `@/` for `src/` imports
 - **Formatting**: 2-space indentation, single quotes, trailing commas (Biome)
 - **Dependency Injection**: A service is a `@singleton()` class that names every constructor dependency with an explicit `@inject(Class)` or `@inject(DITokens.X)` — never rely on inferred metadata (Biome turns type-only class imports into `import type`, which silently breaks it). Read config values from an injected `Config` in the constructor. Don't add a `registerInstance` / factory for a service; keep `DITokens` for external values, config-assembled registries, interfaces, gated optionals and startup products, and expose a class under a string token only with `registerAlias`. A service module never imports its own consumers — decorator registries are imported by `bootstrap.ts`. The container is global (`getContainer()`) and is never passed as a parameter
-- **Constructor Injection, Not Lookup**: an object the container builds, whose dependencies exist when it is built, takes them all in its constructor — no `getContainer().resolve()` in its constructor or methods. Run-time lookup is correct only for: plugins (built by `PluginManager`, deliberately outside DI — never convert them), the composition root and startup steps (bootstrap / app / wiring / `*Initializer` / cli), registries resolving members by class (ToolManager, CommandManager, FanoutManager), objects DI does not build (AI providers, static-server backends), core code reading plugin state via `PluginManager`, and config-gated optional services checked with `isRegistered`. The full rule is in `docs/ARCHITECTURE.md` (Dependency injection)
+- **Constructor Injection, Not Lookup**: an object the container builds, whose dependencies exist when it is built, takes them all in its constructor — no `getContainer().resolve()` in its constructor or methods. Run-time lookup is correct only for: plugins (built by `PluginManager`, deliberately outside DI — never convert them), the composition root and startup steps (bootstrap / app / wiring / `*Initializer` / cli), registries resolving members by class (ToolManager, CommandManager, FanoutManager), objects DI does not build (AI providers, static-server backends), core code reading plugin state via `PluginManager`, and config-gated optional services checked with `isRegistered`. The full rule is in `docs/ARCHITECTURE.md` (Dependency injection). `bun run lint:di` (run by the pre-commit hook) fails on any other `getContainer()` call unless it is marked `// container-lookup: <registry|not-di-built|plugin-state|optional-service|startup> <why>` — add that marker only after deciding the lookup is really one of these exceptions
 - **Async/Await**: Prefer async/await over callbacks
 - **Error Handling**: Custom error types (ConfigError, APIError, ConnectionError)
 - **Control Flow**: Always use curly braces for `if`/`else`; ESM `import` only, never inline `require()`

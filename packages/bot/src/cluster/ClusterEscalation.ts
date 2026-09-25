@@ -22,6 +22,7 @@ export async function wireClusterEscalation(
 ): Promise<void> {
   try {
     const { MessageAPI } = await import('@/api/methods/MessageAPI');
+    // container-lookup: startup wiring step called from bootstrap
     const container = getContainer();
     const messageAPI = container.resolve<InstanceType<typeof MessageAPI>>(MessageAPI);
     const enabledProtocols = config.getEnabledProtocols();

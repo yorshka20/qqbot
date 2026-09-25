@@ -3,9 +3,9 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FileState, GoogleGenAI } from '@google/genai';
-import { container } from 'tsyringe';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
 import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
+import { getContainer } from '@/core/DIContainer';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { AIProvider } from '../base/AIProvider';
@@ -131,7 +131,8 @@ export class GeminiProvider
    * Register the cleanup function for the Gemini provider.
    */
   private registryResourceCleanup(): void {
-    const resourceCleanupService = container.resolve(ResourceCleanupService);
+    // container-lookup: not-di-built ProviderFactory creates providers from config
+    const resourceCleanupService = getContainer().resolve(ResourceCleanupService);
     resourceCleanupService.registerFileCleanup(this.name, this.deleteUploadedFile);
   }
 
