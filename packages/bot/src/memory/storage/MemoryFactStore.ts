@@ -47,6 +47,11 @@ export class MemoryFactStore {
     return this.model().find({ groupId, userId, status }, { orderBy: 'firstSeen', order: 'asc' });
   }
 
+  /** One member's facts across every group, in the order they were first seen. */
+  listUserFacts(userId: string, status?: MemoryFact['status']): Promise<MemoryFact[]> {
+    return this.model().find({ userId, status }, { orderBy: 'firstSeen', order: 'asc' });
+  }
+
   listGroup(groupId: string, status?: MemoryFact['status']): Promise<MemoryFact[]> {
     return this.model().find({ groupId, status }, { orderBy: 'firstSeen', order: 'asc' });
   }

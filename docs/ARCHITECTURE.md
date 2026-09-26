@@ -787,7 +787,7 @@ Daily, `MemoryReviewService` looks for facts unconfirmed and unreviewed past the
 
 ### Reading
 
-`MemoryRetrievalService.getMemoryForReply(groupId, userId, message)` returns the group's and the speaker's slot text: every manual fact, the automatic facts in `memory.filter.alwaysIncludeScopes` (default instruction and rule), and the automatic facts a vector search finds relevant to the message. A searched fact's final score is similarity × recency (transient facts decay from their last confirmation, stable ones do not) × a capped confirmation weight (`memory.scoring`); it must clear `memory.filter.minRelevanceScore`. Without RAG every automatic fact is included. `get_memory` returns a whole slot; `search_memory` searches the group.
+`MemoryRetrievalService.getMemoryForReply(groupId, userId, message)` returns the group's and the speaker's slot text: every manual fact, the automatic facts in `memory.filter.alwaysIncludeScopes` (default instruction and rule), and the automatic facts a vector search finds relevant to the message. A searched fact's final score is similarity × recency (transient facts decay from their last confirmation, stable ones do not) × a capped confirmation weight (`memory.scoring`); it must clear `memory.filter.minRelevanceScore`. Without RAG every automatic fact is included. A private chat has no group, so `getMemoryForPrivateReply(userId, message)` reads the person's own memory from every group they have it in, selected the same way, with a fact kept in several groups appearing once; no group's own memory (rules, context) goes into a private chat. `get_memory` returns a whole slot; `search_memory` searches the group.
 
 ### Offline maintenance
 

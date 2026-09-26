@@ -122,15 +122,22 @@ export class ContextEnrichmentStage implements ReplyStage {
     }
   }
 
+  /** A group chat reads that group's memory; a private chat reads the person's memory from every group. */
   private async getMemoryVarsAsync(context: HookContext): Promise<{ groupMemoryText: string; userMemoryText: string }> {
     const sessionType = context.metadata.get('sessionType');
     const sessionId = context.metadata.get('sessionId');
-    if (sessionType !== 'group' || !sessionId.startsWith('group:')) {
-      return { groupMemoryText: '', userMemoryText: '' };
-    }
-    const groupId = sessionId.replace(/^group:/, '');
     const userId = context.message?.userId?.toString();
-    return this.memoryRetrieval.getMemoryForReply(groupId, userId || undefined, context.message?.message ?? '');
+    const query = context.message?.message ?? '';
+    if (sessionType === 'group' && sessionId.startsWith('group:')) {
+      return this.memoryRetrieval.getMemoryForReply(sessionId.replace(/^group:/, ''), userId || undefined, query);
+    }
+    if (sessionType === 'user' && userId) {
+      return {
+        groupMemoryText: '',
+        userMemoryText: await this.memoryRetrieval.getMemoryForPrivateReply(userId, query),
+      };
+    }
+    return { groupMemoryText: '', userMemoryText: '' };
   }
 
   private async getMemoryContextTextAsync(context: HookContext): Promise<string> {

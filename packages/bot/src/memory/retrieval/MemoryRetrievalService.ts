@@ -1,9 +1,10 @@
 // The read side of memory: what a reply carries, a whole slot, and search across a group.
 //
-// A reply carries every manual fact of the group and the speaker (they win any conflict), their
+// A group reply carries every manual fact of the group and the speaker (they win any conflict), their
 // automatic facts in the always-include scopes, and the automatic facts a vector search finds
 // relevant to the message. Searched facts are reranked (scoring.ts) and must clear
-// `memory.filter.minRelevanceScore`; each one that makes it into a reply counts a hit.
+// `memory.filter.minRelevanceScore`; each one that makes it into a reply counts a hit. A private
+// reply carries the person's own memory from every group, and no group's memory.
 
 import { inject, singleton } from 'tsyringe';
 import type { Config } from '@/core/config';
@@ -60,18 +61,16 @@ export class MemoryRetrievalService {
   }
 
   /**
-   * Memory for one reply: every manual fact of the group and the speaker, their automatic facts
-   * in the always-include scopes, and the other automatic facts relevant to `query`.
+   * Memory for one group reply: every manual fact of the group and the speaker, their automatic
+   * facts in the always-include scopes, and the other automatic facts relevant to `query`.
    */
   async getMemoryForReply(groupId: string, userId: string | undefined, query: string): Promise<ReplyMemory> {
     const groupAuto = await this.store.listSlot(groupId, GROUP_MEMORY_USER_ID, 'active');
     const userAuto = userId ? await this.store.listSlot(groupId, userId, 'active') : [];
-    const always = (fact: MemoryFact) =>
-      this.filter.alwaysIncludeScopes.includes(fact.scope) ||
-      this.filter.alwaysIncludeScopes.includes(coreScopeOf(fact.scope));
-
-    const searched = await this.searchRelevant(groupId, userId, query, [...groupAuto, ...userAuto]);
-    const pick = (slotFacts: MemoryFact[]) => slotFacts.filter((fact) => always(fact) || searched.has(fact.id));
+    const owners: MemorySearchOwners = userId ? { userId, includeGroup: true } : 'group';
+    const searched = await this.searchRelevant([groupId], owners, query, [...groupAuto, ...userAuto]);
+    const pick = (slotFacts: MemoryFact[]) =>
+      slotFacts.filter((fact) => this.isAlwaysIncluded(fact) || searched.has(fact.id));
 
     return {
       groupMemoryText: renderSlot(this.manualStore.getFacts(groupId, GROUP_MEMORY_USER_ID), pick(groupAuto)),
@@ -80,12 +79,39 @@ export class MemoryRetrievalService {
   }
 
   /**
-   * Ids of the non-always-include facts relevant to `query`. Without a vector index every
-   * fact counts as relevant, so the reply carries the whole slot.
+   * Memory for one private-chat reply: the person's own memory from every group they have it
+   * in, selected the same way as in a group. No group's own memory: group rules and group
+   * context belong to that group's chat. A fact kept in more than one group appears once.
+   */
+  async getMemoryForPrivateReply(userId: string, query: string): Promise<string> {
+    const auto = await this.store.listUserFacts(userId, 'active');
+    const groupIds = [...new Set(auto.map((fact) => fact.groupId))];
+    const searched = await this.searchRelevant(groupIds, { userId, includeGroup: false }, query, auto);
+    const manual = this.manualStore
+      .listSlots()
+      .filter((slot) => slot.userId === userId)
+      .flatMap((slot) => this.manualStore.getFacts(slot.groupId, userId));
+    return renderSlot(
+      uniqueByContent(manual),
+      uniqueByContent(auto.filter((fact) => this.isAlwaysIncluded(fact) || searched.has(fact.id))),
+    );
+  }
+
+  private isAlwaysIncluded(fact: MemoryFact): boolean {
+    return (
+      this.filter.alwaysIncludeScopes.includes(fact.scope) ||
+      this.filter.alwaysIncludeScopes.includes(coreScopeOf(fact.scope))
+    );
+  }
+
+  /**
+   * Ids of the non-always-include facts relevant to `query`, searched in each group and ranked
+   * together; each one counts a hit. Without a vector index every fact counts as relevant, so
+   * the reply carries every candidate.
    */
   private async searchRelevant(
-    groupId: string,
-    userId: string | undefined,
+    groupIds: string[],
+    owners: MemorySearchOwners,
     query: string,
     candidates: MemoryFact[],
   ): Promise<Set<string>> {
@@ -95,8 +121,7 @@ export class MemoryRetrievalService {
     if (!query.trim() || candidates.length === 0) {
       return new Set();
     }
-    const owners: MemorySearchOwners = userId ? { userId, includeGroup: true } : 'group';
-    const ranked = await this.rank(groupId, query, owners, this.filter.count, this.coreAlwaysScopes(), candidates);
+    const ranked = await this.rank(groupIds, query, owners, this.filter.count, this.coreAlwaysScopes(), candidates);
     const ids = ranked.map((r) => r.fact.id);
     this.store.recordHits(ids, Date.now()).catch((err) => {
       logger.warn('[MemoryRetrievalService] hit count write failed:', err);
@@ -109,7 +134,7 @@ export class MemoryRetrievalService {
   }
 
   private async rank(
-    groupId: string,
+    groupIds: string[],
     query: string,
     owners: MemorySearchOwners,
     count: number,
@@ -117,12 +142,13 @@ export class MemoryRetrievalService {
     candidates: MemoryFact[],
   ): Promise<Array<{ fact: MemoryFact; score: number }>> {
     const byId = new Map(candidates.map((fact) => [fact.id, fact]));
-    const hits = await this.index.search(groupId, query, {
+    const options = {
       owners,
       excludeCoreScopes,
       limit: count * 3,
       minScore: this.filter.minRelevanceScore / this.scoring.confirmBoostCap,
-    });
+    };
+    const hits = (await Promise.all(groupIds.map((groupId) => this.index.search(groupId, query, options)))).flat();
     const now = Date.now();
     return hits
       .flatMap((hit) => {
@@ -174,7 +200,7 @@ export class MemoryRetrievalService {
         : options.includeGroupMemory
           ? 'everyone'
           : 'members';
-      autoFacts = (await this.rank(groupId, query, owners, options.limit, [], active)).map((r) => r.fact);
+      autoFacts = (await this.rank([groupId], query, owners, options.limit, [], active)).map((r) => r.fact);
     } else {
       autoFacts = active.filter((fact) => fact.content.toLowerCase().includes(needle)).slice(0, options.limit);
     }
@@ -212,4 +238,15 @@ export class MemoryRetrievalService {
       .join('\n\n');
     return { text, count };
   }
+}
+
+function uniqueByContent<T extends { content: string }>(facts: T[]): T[] {
+  const seen = new Set<string>();
+  return facts.filter((fact) => {
+    if (seen.has(fact.content)) {
+      return false;
+    }
+    seen.add(fact.content);
+    return true;
+  });
 }
