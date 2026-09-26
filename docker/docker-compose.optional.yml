@@ -1,0 +1,113 @@
+name: qqbot-optional
+
+# Optional. `docker compose up` does not read this file.
+# Start one group at a time, from this directory:
+#
+#   docker compose -f docker-compose.optional.yml --profile search up -d
+#   docker compose -f docker-compose.optional.yml --profile rag up -d
+#   docker compose -f docker-compose.optional.yml --profile wechat up -d
+#
+# search: SearXNG (web search)
+# rag:    Qdrant (vector store)
+# wechat: WeChatPadPro + MySQL + Redis
+
+services:
+  searxng:
+    profiles: ["search"]
+    image: searxng/searxng:latest
+    container_name: searxng
+    ports:
+      - "${SEARXNG_PORT:-8080}:8080"
+    environment:
+      SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-http://localhost:8080/}
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-}
+    volumes:
+      - searxng_data:/etc/searxng
+    restart: unless-stopped
+
+  qdrant:
+    profiles: ["rag"]
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  wechat_mysql:
+    profiles: ["wechat"]
+    image: mysql:8.0
+    container_name: wechat_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${WECHAT_MYSQL_ROOT_PASSWORD:-}
+      MYSQL_DATABASE: weixin
+      MYSQL_USER: weixin
+      MYSQL_PASSWORD: ${WECHAT_MYSQL_PASSWORD:-}
+    volumes:
+      - wechat_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  wechat_redis:
+    profiles: ["wechat"]
+    image: redis:7-alpine
+    container_name: wechat_redis
+    command: ["redis-server", "--requirepass", "${WECHAT_REDIS_PASSWORD:-}"]
+    volumes:
+      - wechat_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${WECHAT_REDIS_PASSWORD:-}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  wechatpadpro:
+    profiles: ["wechat"]
+    image: wechatpadpro/wechatpadpro:latest
+    container_name: wechatpadpro
+    ports:
+      - "${WECHAT_HTTP_PORT:-8059}:8059"
+      - "${WECHAT_SSE_PORT:-8098}:8098"
+      - "${WECHAT_WS_PORT:-1238}:1238"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      TZ: ${TZ:-Asia/Tokyo}
+      DB_HOST: wechat_mysql
+      DB_PORT: 3306
+      DB_DATABASE: weixin
+      DB_USERNAME: weixin
+      DB_PASSWORD: ${WECHAT_MYSQL_PASSWORD:-}
+      MYSQL_CONNECT_STR: weixin:${WECHAT_MYSQL_PASSWORD:-}@tcp(wechat_mysql:3306)/weixin?charset=utf8mb4&parseTime=true&loc=Local
+      REDIS_HOST: wechat_redis
+      REDIS_DB: 0
+      REDIS_PASSWORD: ${WECHAT_REDIS_PASSWORD:-}
+      ADMIN_KEY: ${WECHAT_ADMIN_KEY:-}
+      WECHAT_PORT: 8080
+      PORT: 8059
+      WEB_DOMAIN: ${WECHAT_WEB_DOMAIN:-localhost:8059}
+      WORKER_POOL_SIZE: 500
+      MAX_WORKER_TASK_LEN: 1000
+      DT: "true"
+      HEARTBEAT_INTERVAL: 25
+      ROCKET_MQ_ENABLED: "false"
+      RABBIT_MQ_ENABLED: "false"
+      KAFKA_ENABLED: "false"
+    depends_on:
+      wechat_mysql:
+        condition: service_healthy
+      wechat_redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  searxng_data:
+  qdrant_data:
+  wechat_mysql_data:
+  wechat_redis_data:

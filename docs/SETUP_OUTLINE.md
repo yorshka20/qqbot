@@ -1,6 +1,8 @@
 # Setup Guide — Outline
 
 > **Status: OUTLINE ONLY.** Each section below is intentionally a skeleton; prose will be fleshed out in a follow-up pass. The shape is captured separately so we can review structure before committing to writing.
+>
+> Operator deployment (LLBot in Docker, optional SearXNG / Qdrant / WeChat, then the bot process) is in the root [README](../README.md). This outline is the future end-user onboarding guide, not that deploy doc.
 
 ## Strategic Context
 

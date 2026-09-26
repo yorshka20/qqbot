@@ -103,6 +103,10 @@ local
 ops/nightly/env.sh
 /ops/reports/
 
+# Docker runtime for the protocol bridge (secrets and QQ/WeChat session data)
+/docker/.env
+/docker/llbot_config/
+
 
 # vrma json revert
 packages/avatar/assets/clips
