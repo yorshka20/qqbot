@@ -6,7 +6,7 @@ import type { ChatMessage, ContentPart } from '../../types';
 import { DeepSeekProvider } from '../DeepSeekProvider';
 
 interface RequestBody {
-  messages: Array<{ role: string; content: string | ContentPart[] }>;
+  messages: Array<{ role: string; content: string | ContentPart[]; reasoning_content?: string }>;
 }
 
 /** Stub the HTTP layer so no network is hit; returns the body the provider sent. */
@@ -69,7 +69,7 @@ describe('DeepSeekProvider vision', () => {
 
     expect(lastBody().messages).toEqual([
       { role: 'system', content: 'persona\n[Image]' },
-      { role: 'assistant', content: '我发过一张图\n[Image]' },
+      { role: 'assistant', content: '我发过一张图\n[Image]', reasoning_content: '' },
       { role: 'user', content: '还记得吗' },
     ]);
   });

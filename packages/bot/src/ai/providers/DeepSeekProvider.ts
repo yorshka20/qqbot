@@ -149,9 +149,13 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
    * `LLMService.generateWithFallback`), prior `assistant{tool_calls}` turns originate from another
    * provider: their tool_call ids / signatures / reasoning echo-back don't match what DeepSeek
    * expects, so those turns can be rejected. Foreign turns are therefore folded (see
-   * `foldForeignToolCalls`); DeepSeek's own turns are replayed verbatim — including turns where
-   * the model produced no reasoning_content that round (verified against the live API: the
-   * thinking mode accepts an assistant tool_calls turn without reasoning_content).
+   * `foldForeignToolCalls`); DeepSeek's own turns are replayed verbatim.
+   *
+   * Every assistant message carries a `reasoning_content` field, empty when there is no
+   * reasoning. With tools on, the thinking mode 400s ("The `reasoning_content` in the thinking
+   * mode must be passed back to the API") on any assistant message after the last user message
+   * that lacks the field — a folded recap included. It checks presence, not content; assistant
+   * messages of earlier turns are not checked, so emitting it everywhere is harmless.
    */
   private mapMessagesToApi(messages: ChatMessage[]): Array<Record<string, unknown>> {
     const folded = DeepSeekProvider.foldForeignToolCalls(messages);
@@ -164,7 +168,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
         };
       }
       if (m.role === 'assistant' && m.tool_calls?.length) {
-        const out: Record<string, unknown> = {
+        return {
           role: 'assistant',
           content: m.content ?? '',
           tool_calls: m.tool_calls.map((tc) => ({
@@ -172,21 +176,15 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
             type: 'function',
             function: { name: tc.name, arguments: tc.arguments },
           })),
+          reasoning_content: m.reasoning_content ?? '',
         };
-        if (m.reasoning_content) {
-          out.reasoning_content = m.reasoning_content;
-        }
-        return out;
       }
       if (m.role === 'assistant') {
-        const out: Record<string, unknown> = {
+        return {
           role: 'assistant',
           content: contentToPlainString(m.content),
+          reasoning_content: m.reasoning_content ?? '',
         };
-        if (m.reasoning_content) {
-          out.reasoning_content = m.reasoning_content;
-        }
-        return out;
       }
       // Image parts survive only on user turns: the API rejects an image in a system or
       // assistant message with a 400 (https://api-docs.deepseek.com/guides/vision).
@@ -220,7 +218,9 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
    * stay first-person: these are the bot's own past actions, and demoting them to a user-voice
    * recap makes the model burn reasoning tokens reconstructing "what did I actually do, in what
    * order". Plain assistant text turns carry no tool_calls, so no provider-specific signature /
-   * echo-back validation applies. DeepSeek's own turns pass through untouched.
+   * echo-back validation applies. The foreign turn's reasoning is plain text, so it moves onto
+   * the recap unchanged: it is the reasoning behind those calls. DeepSeek's own turns pass
+   * through untouched.
    */
   private static foldForeignToolCalls(messages: ChatMessage[]): ChatMessage[] {
     if (!messages.some((m) => DeepSeekProvider.isForeignToolCallTurn(m))) return messages;
@@ -254,7 +254,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
             lines.push(`→ 结果：${r}`);
           }
         }
-        result.push({ role: 'assistant', content: lines.join('\n') });
+        result.push({ role: 'assistant', content: lines.join('\n'), reasoning_content: m.reasoning_content });
         i = j;
         continue;
       }
