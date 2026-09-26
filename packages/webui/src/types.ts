@@ -679,6 +679,7 @@ export interface MemoryGlobalStats {
 
 export interface MemoryGroupStats {
   groupId: string;
+  groupName?: string;
   totalFacts: number;
   activeFacts: number;
   staleFacts: number;
@@ -689,6 +690,9 @@ export interface MemoryGroupStats {
 
 export interface MemoryGroupUserSummary {
   userId: string;
+  nickname?: string;
+  isGroupMemory: boolean;
+  hasManualText?: boolean;
   totalFacts: number;
   activeFacts: number;
   staleFacts: number;
@@ -698,6 +702,7 @@ export interface MemoryGroupUserSummary {
 
 export interface MemoryGroupDetail {
   groupId: string;
+  groupName?: string;
   totalFacts: number;
   users: MemoryGroupUserSummary[];
 }
@@ -718,9 +723,25 @@ export interface MemoryFactEntry {
 
 export interface MemoryUserFactDetail {
   groupId: string;
+  groupName?: string;
   userId: string;
-  totalFacts: number;
+  nickname?: string;
+  isGroupMemory: boolean;
+  manualText: string;
+  autoText: string;
+}
+
+export interface MemoryBrowseUser extends MemoryGroupUserSummary {
   facts: MemoryFactEntry[];
+}
+
+export interface MemoryBrowseGroup extends MemoryGroupStats {
+  users: MemoryBrowseUser[];
+}
+
+export interface MemoryBrowseResponse {
+  stats: MemoryGlobalStats;
+  groups: MemoryBrowseGroup[];
 }
 
 // ────────────────────────────────────────────────────────────────────────────

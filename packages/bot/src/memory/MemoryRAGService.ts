@@ -235,14 +235,10 @@ export class MemoryRAGService {
       return;
     }
 
-    if (sections.length === 0) {
-      logger.debug(`[MemoryRAGService] No sections to index for ${groupId}/${userId}`);
-      return;
-    }
-
     const isGroupMemory = userId === GROUP_MEMORY_USER_ID;
 
-    // Split all sections into individual facts
+    // Split all sections into individual facts. An empty document still goes
+    // through reconcile so a cleared manual file deletes its old facts.
     const allFacts: MemoryFact[] = [];
     for (const section of sections) {
       const facts = this.splitIntoFacts(section.scope, section.content);
@@ -250,7 +246,10 @@ export class MemoryRAGService {
     }
 
     if (allFacts.length === 0) {
-      logger.debug(`[MemoryRAGService] No facts to index for ${groupId}/${userId}`);
+      if (!this.factMetaService) {
+        return;
+      }
+      await this.indexMemorySectionsIncremental(groupId, userId, [], isGroupMemory, source, forceRebuild);
       return;
     }
 

@@ -40,6 +40,7 @@ import type {
   LanReportsResponse,
   LanStatusResponse,
   ListResponse,
+  MemoryBrowseResponse,
   MemoryGroupDetail,
   MemoryUserFactDetail,
   MomentsListResponse,
@@ -460,6 +461,15 @@ function memoryApiBase(): string {
   return getMemoryApiBase();
 }
 
+export async function getMemoryBrowse(): Promise<MemoryBrowseResponse> {
+  const res = await fetch(`${memoryApiBase()}/browse`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get memory browse failed: ${res.status}`);
+  }
+  return res.json() as Promise<MemoryBrowseResponse>;
+}
+
 export async function getMemoryStats(): Promise<{ stats: import('./types').MemoryGlobalStats }> {
   const res = await fetch(`${memoryApiBase()}/stats`);
   if (!res.ok) {
@@ -494,6 +504,26 @@ export async function getMemoryUserFacts(groupId: string, userId: string): Promi
     throw new Error(err.error ?? `Get memory user facts failed: ${res.status}`);
   }
   return res.json();
+}
+
+export async function saveManualMemory(
+  groupId: string,
+  userId: string,
+  content: string,
+): Promise<{ indexed: boolean }> {
+  const res = await fetch(
+    `${memoryApiBase()}/group/${encodeURIComponent(groupId)}/user/${encodeURIComponent(userId)}/manual`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    },
+  );
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Save manual memory failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ indexed: boolean }>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

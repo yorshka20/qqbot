@@ -177,7 +177,7 @@ export default function App() {
               }`}
             >
               <Brain className="w-4 h-4" />
-              Memory
+              记忆
             </button>
             <button
               type="button"

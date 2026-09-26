@@ -395,7 +395,8 @@ export class MemoryService {
     content: string,
     layer: MemoryLayer = 'auto',
     source: MemorySource = 'llm_extract',
-  ): Promise<void> {
+    options?: { index?: 'background' | 'await' },
+  ): Promise<{ indexed: boolean }> {
     const trimmed = this.truncate(content.trim());
 
     const path = this.getMemoryPath(groupId, userId, layer);
@@ -403,18 +404,75 @@ export class MemoryService {
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, trimmed, 'utf-8');
 
-      // Index to RAG if enabled (fire-and-forget, don't block on RAG errors)
+      // Index to RAG if enabled. Callers in the reply path must not wait on it;
+      // the webui save does, so the fact list matches the file just written.
       if (this.ragService?.isEnabled()) {
         const sections = this.parseMemorySections(trimmed);
-        this.ragService.indexMemorySections(groupId, userId, sections, source).catch((err) => {
+        const pending = this.ragService.indexMemorySections(groupId, userId, sections, source);
+        if (options?.index === 'await') {
+          try {
+            await pending;
+            return { indexed: true };
+          } catch (err) {
+            logger.warn(
+              '[MemoryService] RAG indexing failed after write:',
+              err instanceof Error ? err.message : err,
+            );
+            return { indexed: false };
+          }
+        }
+        pending.catch((err) => {
           logger.warn('[MemoryService] RAG indexing failed (non-blocking):', err instanceof Error ? err.message : err);
         });
+        return { indexed: false };
       }
+      return { indexed: false };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown');
       logger.error('[MemoryService] upsertMemory failed:', path, err);
       throw err;
     }
+  }
+
+  /**
+   * Replace one slot's manual.txt and wait for its fact index.
+   * userId omitted or GROUP_MEMORY_USER_ID writes the group's manual file.
+   */
+  async saveManualMemory(groupId: string, userId: string, content: string): Promise<{ indexed: boolean }> {
+    const targetUserId = userId.trim() ? userId.trim() : GROUP_MEMORY_USER_ID;
+    return this.upsertMemory(groupId, targetUserId, targetUserId === GROUP_MEMORY_USER_ID, content, 'manual', 'manual', {
+      index: 'await',
+    });
+  }
+
+  /**
+   * Non-empty manual.txt documents on disk. Group memory uses GROUP_MEMORY_USER_ID.
+   * These files are the manual source of truth; fact rows exist only after indexing.
+   */
+  listManualDocuments(): Array<{ groupId: string; userId: string; content: string }> {
+    if (!existsSync(this.basePath)) {
+      return [];
+    }
+    const docs: Array<{ groupId: string; userId: string; content: string }> = [];
+    const entries = readdirSync(this.basePath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const groupId = entry.name;
+      const groupManual = this.getGroupMemoryTextByLayer(groupId, 'manual').trim();
+      if (groupManual) {
+        docs.push({ groupId, userId: GROUP_MEMORY_USER_ID, content: groupManual });
+      }
+      const groupDir = join(this.basePath, groupId);
+      for (const userId of this.listUserIdsInGroup(groupDir)) {
+        const text = this.getUserMemoryTextByLayer(groupId, userId, 'manual').trim();
+        if (text) {
+          docs.push({ groupId, userId, content: text });
+        }
+      }
+    }
+    return docs;
   }
 
   // ============================================================================
