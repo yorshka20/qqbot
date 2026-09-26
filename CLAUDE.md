@@ -277,7 +277,7 @@ The startup probe really spawned a CLI per enabled template, trading a fixed ~11
 tokens for 9 output tokens each time. Each backend now hits its provider's model-metadata
 endpoint through verifyCredentials(): no process, no tokens.
 
-See workbook 2026-08-27(3).
+See workbook 2026-08-27-cluster-probe.
 ```
 
 Write the workbook entry first, then write the commit against it. The analysis then exists in exactly one place instead of being written twice and drifting.
@@ -300,7 +300,7 @@ The project maintains these two directories; you are **encouraged** (optional bu
 
 ### When Work Is Done
 
-1. **Update `.claude-workbook/`** (local): in the current month's folder, record your work in that day's dated file (`YYYY-MM/YYYY-MM-DD.md`) — problem description, root-cause analysis, solution, files involved, verification results — then update **that month's** `YYYY-MM/index.md` (add a line). On the first day of a new month, create the month folder + month index, and add a line for the month in the top-level `index.md`.
+1. **Update `.claude-workbook/`** (local): in the current month's folder, record your work in that day's dated file (`YYYY-MM/YYYY-MM-DD.md`) — problem description, root-cause analysis, solution, files involved, verification results — then update **that month's** `YYYY-MM/index.md` (add a line). **One session writes one workbook file by default**: later tasks in the same session are appended as new sections of that file, not given a file each. On the first day of a new month, create the month folder + month index, and add a line for the month in the top-level `index.md`.
 2. **Update `.claude-learnings/`** (local): write newly discovered key details and points into the corresponding scope file, or create a new scope file. Then update the `index.md` index.
 3. When committing and pushing, **include only** changes that the repo should track; **do not** add the two directories above to `git add`.
 
@@ -341,11 +341,11 @@ The sole job of the `index.md` in both directories is to **let you scan it in on
 
 #### Workbook (Folders by Month, grep First)
 
-- **Folders by month** `YYYY-MM/`, with daily files `YYYY-MM/YYYY-MM-DD.md` (multiple files on the same day use `-2`/`-3` suffixes) recording complete work (problem / root cause / solution / files involved / verification).
+- **Folders by month** `YYYY-MM/`, with daily files `YYYY-MM/YYYY-MM-DD.md` (a second file on the same day takes a short meaningful kebab-case suffix naming its topic, e.g. `2026-09-26-reasoning.md` — never a bare counter like `-2`/`-3`) recording complete work (problem / root cause / solution / files involved / verification).
 - **Search primarily with grep, don't read everything**: search by content with `grep -rn "keyword" .claude-workbook/` (across months); pin down a specific day with the month index. The index only tells you "roughly what was done on which day" — it doesn't replace grep.
 - The three index layers each have their own job:
   - Top-level `index.md`: lists **months only** (`- [YYYY-MM](YYYY-MM/index.md) — <one-line theme for the month>`) + grep guidance. **Does not list** individual daily reports.
-  - Month `YYYY-MM/index.md`: one line per day (`- [YYYY-MM-DD](YYYY-MM-DD.md) — <topic, ≤14 chars>`), dates in reverse order, multiple files on the same day ordered by `(2)(3)` ascending.
+  - Month `YYYY-MM/index.md`: one line per day (`- [YYYY-MM-DD](YYYY-MM-DD.md) — <topic, ≤14 chars>`), dates in reverse order, multiple files on the same day newest first, the link text carrying the suffix (`- [2026-09-26 reasoning](2026-09-26-reasoning.md) — …`). Files named with the older `-2`/`-3` counters stay as they are.
   - Daily files: the full content lives only here.
 
 #### Learnings
