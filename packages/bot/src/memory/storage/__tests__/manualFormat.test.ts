@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { coreScopeOf, parseManualFacts } from '../manualMemory';
+import { parseManualFacts } from '../manualFormat';
 
 describe('parseManualFacts', () => {
   it('reads one fact per line under each scope header', () => {
@@ -27,12 +27,5 @@ describe('parseManualFacts', () => {
 
   it('returns nothing for an empty file', () => {
     expect(parseManualFacts('  \n\n')).toEqual([]);
-  });
-});
-
-describe('coreScopeOf', () => {
-  it('drops the subtag', () => {
-    expect(coreScopeOf('preference:food')).toBe('preference');
-    expect(coreScopeOf('identity')).toBe('identity');
   });
 });

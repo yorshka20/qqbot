@@ -9,8 +9,8 @@ import { inject, singleton } from 'tsyringe';
 import type { MemoryFact } from '@/database/models/types';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import type { RAGService } from '@/services/retrieval/rag/RAGService';
-import { coreScopeOf } from './manualMemory';
-import { GROUP_MEMORY_USER_ID } from './memoryConstants';
+import { GROUP_MEMORY_USER_ID } from '../model/constants';
+import { coreScopeOf } from '../model/scopes';
 
 /** Qwen3-Embedding query instruction; documents are embedded without one. */
 const MEMORY_QUERY_PREFIX =

@@ -5,7 +5,7 @@
 // | Piece              | Who writes        | Scope          | Lifetime          | Purpose                                    |
 // |--------------------|-------------------|----------------|-------------------|--------------------------------------------|
 // | AuditEventStore    | Bot auto-hook     | Per-session    | ~45 min in-mem    | Factual "what I just did" ledger           |
-// | MemoryService      | LLM (extract)     | Per group/user | Long-term (file)  | Who the user IS / their preferences / rules|
+// | memory/ module     | People + LLM      | Per group/user | Long-term db/file | Who the user IS / their preferences / rules|
 // | SessionMemoStore   | LLM (tool)        | Per-session    | TTL + pinnable    | Short-to-medium-term notes bot wants across turns/sessions |
 //
 // The LLM writes memos here via the `session_memo` tool (Task 2). Examples:

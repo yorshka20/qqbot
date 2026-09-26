@@ -1,6 +1,6 @@
 import { inject, injectable } from 'tsyringe';
-import { MemoryExtractService } from '@/memory/MemoryExtractService';
-import { GROUP_MEMORY_USER_ID } from '@/memory/MemoryService';
+import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
+import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

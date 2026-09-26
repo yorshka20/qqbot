@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import type { MemoryFact } from '@/database/models/types';
-import { isDue, parseReviewDecisions } from '../MemoryReviewService';
+import { isDue, parseReviewDecisions } from '../reviewDecisions';
 
 const DAY = 86_400_000;
 const NOW = 1_000 * DAY;

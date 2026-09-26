@@ -1,8 +1,10 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import type { MemoryFact } from '@/database/models/types';
-import { numberFacts, parseDraft, parseSlotOperations } from '../MemoryConsolidationService';
-import { GROUP_MEMORY_USER_ID } from '../memoryConstants';
+import { parseDraft } from '../../llm/factDraft';
+import { numberFacts } from '../../llm/promptParts';
+import { GROUP_MEMORY_USER_ID } from '../../model/constants';
+import { parseSlotOperations } from '../slotOperations';
 
 const USER = '10000001';
 

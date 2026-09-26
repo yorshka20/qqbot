@@ -15,8 +15,8 @@ import type {
 } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
 import type { HookManager } from '@/hooks/HookManager';
-import { MemoryExtractService } from '@/memory/MemoryExtractService';
-import type { MemoryConsolidationService } from '@/memory/MemoryConsolidationService';
+import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
+import type { MemoryConsolidationService } from '@/memory/consolidation/MemoryConsolidationService';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { ComicTask } from '@/plugins/plugins/GroupReportPlugin/comicTask';
 import { KeywordMinesTask } from '@/plugins/plugins/GroupReportPlugin/keywordMines';

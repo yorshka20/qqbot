@@ -20,7 +20,7 @@ import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent } from '@/events/types';
-import { MemoryService } from '@/memory/MemoryService';
+import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';
 import type { MessageSegment } from '@/message/types';
 import { parseSubtextTags } from '@/persona/prompt/subtextTagParser';
 import { PluginManager } from '@/plugins/PluginManager';
@@ -111,7 +111,7 @@ export class ProactiveConversationService {
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     @inject(ThreadContextCompressionService) private threadCompression: ThreadContextCompressionService,
     @inject(DITokens.CONFIG) private config: Config,
-    @inject(MemoryService) memoryService?: MemoryService,
+    @inject(MemoryRetrievalService) memoryRetrieval?: MemoryRetrievalService,
     @inject(DatabaseManager) private databaseManager?: DatabaseManager,
     @inject(RetrievalService) retrievalService?: RetrievalService,
   ) {
@@ -120,7 +120,7 @@ export class ProactiveConversationService {
       conversationHistoryService,
       promptManager,
       preferenceKnowledge,
-      memoryService,
+      memoryRetrieval,
       retrievalService,
       searchLimit: this.searchLimit,
     });

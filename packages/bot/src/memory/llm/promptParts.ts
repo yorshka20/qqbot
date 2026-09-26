@@ -1,21 +1,10 @@
-// Which scopes a memory slot may hold, and how a prompt describes them.
+// Prompt fragments shared by the memory prompts (consolidate, review, migrate).
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { GROUP_CORE_SCOPES, USER_CORE_SCOPES } from '@/core/config/types/memory';
-import { coreScopeOf } from './manualMemory';
-import { GROUP_MEMORY_USER_ID } from './memoryConstants';
-
-export function allowedCoreScopes(userId: string): readonly string[] {
-  return userId === GROUP_MEMORY_USER_ID ? GROUP_CORE_SCOPES : USER_CORE_SCOPES;
-}
-
-export function isAllowedScope(userId: string, scope: string): boolean {
-  return /^[a-z_]+(:[a-z0-9_]+)?$/.test(scope) && allowedCoreScopes(userId).includes(coreScopeOf(scope));
-}
-
-export function slotLabel(userId: string): string {
-  return userId === GROUP_MEMORY_USER_ID ? '本群的群记忆' : `群成员 ${userId} 的个人记忆`;
-}
+import type { MemoryFact } from '@/database/models/types';
+import { GROUP_MEMORY_USER_ID } from '../model/constants';
+import type { ManualFact } from '../storage/manualFormat';
 
 /** The core scopes the slot may use, their meaning, and the rule/instruction boundary. */
 export function scopeGuide(promptManager: PromptManager, userId: string): string {
@@ -31,4 +20,16 @@ export function scopeGuide(promptManager: PromptManager, userId: string): string
     promptManager.render('memory.scopes_user'),
     '个人记忆不能有 `rule`：用户对 bot 的个人要求记为 `instruction`；涉及群规或 bot 群级设定的内容不属于个人记忆。',
   ].join('\n');
+}
+
+/** `#n [scope] (durability) content`, numbered from 1 in the order given. */
+export function numberFacts(facts: Array<Pick<MemoryFact, 'scope' | 'durability' | 'content'>>): string {
+  if (facts.length === 0) {
+    return '（无）';
+  }
+  return facts.map((fact, i) => `#${i + 1} [${fact.scope}] (${fact.durability}) ${fact.content}`).join('\n');
+}
+
+export function listManualFacts(facts: ManualFact[]): string {
+  return facts.length === 0 ? '（无）' : facts.map((fact) => `- [${fact.scope}] ${fact.content}`).join('\n');
 }

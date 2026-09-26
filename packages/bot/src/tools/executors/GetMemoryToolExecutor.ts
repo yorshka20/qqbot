@@ -2,7 +2,8 @@
 
 import { inject, injectable } from 'tsyringe';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import { GROUP_MEMORY_USER_ID, MemoryService } from '@/memory/MemoryService';
+import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';
+import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
@@ -49,7 +50,7 @@ export class GetMemoryToolExecutor extends BaseToolExecutor {
   name = 'get_memory';
 
   constructor(
-    @inject(MemoryService) private memoryService: MemoryService,
+    @inject(MemoryRetrievalService) private memoryRetrieval: MemoryRetrievalService,
     @inject(ConversationHistoryService) private conversationHistoryService: ConversationHistoryService,
   ) {
     super();
@@ -75,10 +76,10 @@ export class GetMemoryToolExecutor extends BaseToolExecutor {
     }
     const targetUserId = resolution.kind === 'resolved' ? resolution.userId : undefined;
 
-    const targetMemory = await this.memoryService.getMemory(groupId, targetUserId);
+    const targetMemory = await this.memoryRetrieval.getMemory(groupId, targetUserId);
     const parts: string[] = [];
     if (includeGroupMemory && targetUserId) {
-      const groupMemory = await this.memoryService.getMemory(groupId);
+      const groupMemory = await this.memoryRetrieval.getMemory(groupId);
       if (groupMemory.content) {
         parts.push(`群记忆:\n${groupMemory.content}`);
       }

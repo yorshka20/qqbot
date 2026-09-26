@@ -20,12 +20,12 @@ import { getContainer } from '@/core/DIContainer';
 import { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { MemoryFact } from '@/database/models/types';
-import { MemoryFactStore } from '@/memory/MemoryFactStore';
-import { MemoryService } from '@/memory/MemoryService';
-import { GROUP_MEMORY_USER_ID } from '@/memory/memoryConstants';
-import { MemoryDisplayNames, memorySubjectKey } from '@/memory/memoryDisplayNames';
-import { isAllowedScope } from '@/memory/memoryScopes';
+import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';
+import { isAllowedScope } from '@/memory/model/scopes';
+import { ManualMemoryStore } from '@/memory/storage/ManualMemoryStore';
+import { MemoryFactStore } from '@/memory/storage/MemoryFactStore';
 import { logger } from '@/utils/logger';
+import { MemoryDisplayNames, memorySubjectKey } from './memoryDisplayNames';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 
@@ -74,8 +74,8 @@ function toEntry(fact: MemoryFact) {
 export class MemoryStatusBackend implements Backend {
   readonly prefix = API_PREFIX;
 
-  private memory(): MemoryService {
-    return getContainer().resolve(MemoryService);
+  private manual(): ManualMemoryStore {
+    return getContainer().resolve(ManualMemoryStore);
   }
 
   private store(): MemoryFactStore {
@@ -129,12 +129,12 @@ export class MemoryStatusBackend implements Backend {
 
   private async handleStats(): Promise<Response> {
     const facts = await this.store().listAll();
-    return jsonResponse({ stats: { ...countFacts(facts), manualSlots: this.memory().listManualSlots().length } });
+    return jsonResponse({ stats: { ...countFacts(facts), manualSlots: this.manual().listSlots().length } });
   }
 
   private async handleGroups(): Promise<Response> {
     const facts = await this.store().listAll();
-    const manual = this.memory().listManualSlots();
+    const manual = this.manual().listSlots();
     const groupIds = [...new Set([...facts.map((f) => f.groupId), ...manual.map((s) => s.groupId)])].sort();
     const names = this.names()?.lookupLatestGroupNames(groupIds) ?? new Map<string, string>();
     const groups = groupIds.map((groupId) => {
@@ -156,8 +156,8 @@ export class MemoryStatusBackend implements Backend {
   private async handleGroup(groupId: string): Promise<Response> {
     const facts = await this.store().listGroup(groupId);
     const manualUserIds = new Set(
-      this.memory()
-        .listManualSlots()
+      this.manual()
+        .listSlots()
         .filter((s) => s.groupId === groupId)
         .map((s) => s.userId),
     );
@@ -203,7 +203,7 @@ export class MemoryStatusBackend implements Backend {
       userId,
       ...(nickname ? { nickname } : {}),
       isGroupMemory,
-      manualText: this.memory().getManualText(groupId, userId),
+      manualText: this.manual().getText(groupId, userId),
       facts: facts.map(toEntry),
     });
   }
@@ -233,7 +233,7 @@ export class MemoryStatusBackend implements Backend {
     if (!body || typeof body.content !== 'string') {
       return errorResponse('content must be a string', 400);
     }
-    await this.memory().saveManualMemory(groupId, userId, body.content);
+    await this.manual().save(groupId, userId, body.content);
     return jsonResponse({ saved: true });
   }
 

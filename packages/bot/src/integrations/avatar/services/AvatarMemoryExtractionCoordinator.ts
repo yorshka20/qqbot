@@ -31,7 +31,7 @@ import { inject, singleton } from 'tsyringe';
 import { formatConversationEntriesToText } from '@/conversation/history/format';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
-import { MemoryExtractService } from '@/memory/MemoryExtractService';
+import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
 import { logger } from '@/utils/logger';
 import type { AvatarSource } from '../types';
 import { AvatarSessionService } from './AvatarSessionService';

@@ -42,16 +42,19 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
 import { DatabaseManager } from '@/database/DatabaseManager';
-import { chunkLines } from '@/memory/chunkLines';
-import { listManualFacts, type NewFactDraft, parseDraft } from '@/memory/MemoryConsolidationService';
-import { MemoryExtractService } from '@/memory/MemoryExtractService';
-import { MemoryFactStore } from '@/memory/MemoryFactStore';
-import { MemoryIndex } from '@/memory/MemoryIndex';
-import { MemoryReviewService } from '@/memory/MemoryReviewService';
-import { MemoryService, scoreFact } from '@/memory/MemoryService';
-import { GROUP_MEMORY_USER_ID } from '@/memory/memoryConstants';
-import { generateMemoryJson, type MemoryLLMOptions } from '@/memory/memoryLLM';
-import { scopeGuide, slotLabel } from '@/memory/memoryScopes';
+import { chunkLines } from '@/memory/extraction/chunkLines';
+import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
+import { type NewFactDraft, parseDraft } from '@/memory/llm/factDraft';
+import { generateMemoryJson, type MemoryLLMOptions } from '@/memory/llm/memoryLLM';
+import { listManualFacts, scopeGuide } from '@/memory/llm/promptParts';
+import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';
+import { slotLabel } from '@/memory/model/scopes';
+import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';
+import { scoreFact } from '@/memory/retrieval/scoring';
+import { MemoryReviewService } from '@/memory/review/MemoryReviewService';
+import { ManualMemoryStore } from '@/memory/storage/ManualMemoryStore';
+import { MemoryFactStore } from '@/memory/storage/MemoryFactStore';
+import { MemoryIndex } from '@/memory/storage/MemoryIndex';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 
 const MEMORY_DIR = 'data/memory';
@@ -100,7 +103,7 @@ await databaseManager.initialize(config.getDatabaseConfig());
 const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
 const llmService = container.resolve(LLMService);
 const store = container.resolve(MemoryFactStore);
-const memoryService = container.resolve(MemoryService);
+const manualStore = container.resolve(ManualMemoryStore);
 
 function llmOptions(defaults: MemoryLLMOptions): MemoryLLMOptions {
   return { provider: arg('provider') ?? defaults.provider, model: arg('model') ?? defaults.model };
@@ -238,7 +241,7 @@ async function migrateDryRun(): Promise<void> {
     const prompt = promptManager.render('memory.migrate', {
       slotLabel: slotLabel(slot.userId),
       scopeGuide: scopeGuide(promptManager, slot.userId),
-      manualFacts: listManualFacts(memoryService.getManualFacts(slot.groupId, slot.userId)),
+      manualFacts: listManualFacts(manualStore.getFacts(slot.groupId, slot.userId)),
       legacyMemory: slot.text,
     });
     const answer = await generateMemoryJson(llmService, prompt, llm, 'MemoryMigrate');
@@ -351,7 +354,7 @@ async function reindex(onlyGroups: string[]): Promise<void> {
     .filter((groupId) => onlyGroups.length === 0 || onlyGroups.includes(groupId))
     .sort();
   for (const groupId of groupIds) {
-    const result = await memoryService.reconcileIndex(groupId);
+    const result = await store.reindexGroup(groupId);
     console.log(`  ${MemoryIndex.collectionName(groupId)}: upserted ${result.upserted}, removed ${result.removed}`);
   }
 }
@@ -384,7 +387,7 @@ async function evaluate(): Promise<void> {
     limit: Number(arg('limit') ?? '15'),
     minScore: 0,
   });
-  const scoring = memoryService.getScoring();
+  const scoring = container.resolve(MemoryRetrievalService).getScoring();
   const now = Date.now();
   console.log(`query: ${query}\n  sim    final  owner          fact`);
   for (const hit of hits) {
@@ -434,7 +437,7 @@ async function stats(): Promise<void> {
         .join(', ')}`,
     );
   }
-  console.log(`  manual slots: ${memoryService.listManualSlots().length}`);
+  console.log(`  manual slots: ${manualStore.listSlots().length}`);
 }
 
 async function main(): Promise<void> {

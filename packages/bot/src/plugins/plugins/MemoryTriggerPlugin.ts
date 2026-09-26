@@ -14,7 +14,7 @@ import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
-import { MemoryConsolidationService } from '@/memory/MemoryConsolidationService';
+import { MemoryConsolidationService } from '@/memory/consolidation/MemoryConsolidationService';
 import { QdrantClient } from '@/services/retrieval';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import type { RAGDocument } from '@/services/retrieval/rag/types';

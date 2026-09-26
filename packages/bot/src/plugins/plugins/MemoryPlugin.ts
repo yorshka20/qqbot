@@ -11,12 +11,11 @@ import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { MemoryExtractUserCursor } from '@/database/models/types';
 import { GroupDayFanout } from '@/fanout/contexts/groupDay/GroupDayFanout';
-import { chunkLines } from '@/memory/chunkLines';
-import { GroupDayMemoryTask } from '@/memory/GroupDayMemoryTask';
-import { MemoryExtractService } from '@/memory/MemoryExtractService';
-import { MemoryFactStore } from '@/memory/MemoryFactStore';
-import { MemoryReviewService } from '@/memory/MemoryReviewService';
-import { MemoryService } from '@/memory/MemoryService';
+import { chunkLines } from '@/memory/extraction/chunkLines';
+import { GroupDayMemoryTask } from '@/memory/extraction/GroupDayMemoryTask';
+import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
+import { MemoryReviewService } from '@/memory/review/MemoryReviewService';
+import { MemoryFactStore } from '@/memory/storage/MemoryFactStore';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { RegisterPlugin } from '../decorators';
@@ -158,12 +157,11 @@ export class MemoryPlugin extends PluginBase {
     const container = getContainer();
     const store = container.resolve(MemoryFactStore);
     const review = container.resolve(MemoryReviewService);
-    const memory = container.resolve(MemoryService);
     const options = { provider: this.extractProvider, model: this.extractModel };
     try {
       for (const groupId of await store.listGroupIds()) {
         const reviewed = await review.reviewGroup(groupId, options);
-        const indexed = memory.isSearchEnabled() ? await memory.reconcileIndex(groupId) : { upserted: 0, removed: 0 };
+        const indexed = store.isIndexed() ? await store.reindexGroup(groupId) : { upserted: 0, removed: 0 };
         logger.info(
           `[MemoryPlugin] Daily maintenance group=${groupId} | review due=${reviewed.due} kept=${reviewed.kept} ` +
             `retired=${reviewed.retired} merged=${reviewed.merged} | index upserted=${indexed.upserted} removed=${indexed.removed}`,

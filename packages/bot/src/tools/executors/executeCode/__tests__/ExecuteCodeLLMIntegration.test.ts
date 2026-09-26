@@ -35,7 +35,7 @@ import { CommandManager } from '@/command/CommandManager';
 import { FileReadService } from '@/services/file/FileReadService';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import { MemoryService } from '@/memory/MemoryService';
+import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';
 import { PluginManager } from '@/plugins/PluginManager';
 
 // ── DI Setup: register stubbed services so real executors can be instantiated ──
@@ -68,10 +68,10 @@ function setupDIContainer(): ToolManager {
     { allowOverride: true },
   );
 
-  // Stub MemoryService (used by GetMemoryToolExecutor, SearchMemoryToolExecutor)
-  // Must match MemoryService.getMemory(groupId, userId?) signature.
+  // Stub MemoryRetrievalService (used by GetMemoryToolExecutor, SearchMemoryToolExecutor)
+  // Must match MemoryRetrievalService.getMemory(groupId, userId?) signature.
   di.registerInstance(
-    MemoryService,
+    MemoryRetrievalService,
     {
       getMemory: (groupId: string, userId?: string) => ({
         userId: userId ?? '__group__',

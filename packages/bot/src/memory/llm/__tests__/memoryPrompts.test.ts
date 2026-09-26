@@ -3,8 +3,9 @@ import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
 import { PromptManager } from '@/ai/prompt/PromptManager';
 import { getRepoRoot } from '@/utils/repoRoot';
-import { GROUP_MEMORY_USER_ID } from '../memoryConstants';
-import { scopeGuide, slotLabel } from '../memoryScopes';
+import { GROUP_MEMORY_USER_ID } from '../../model/constants';
+import { slotLabel } from '../../model/scopes';
+import { scopeGuide } from '../promptParts';
 
 const promptManager = new PromptManager(join(getRepoRoot(), 'prompts'));
 

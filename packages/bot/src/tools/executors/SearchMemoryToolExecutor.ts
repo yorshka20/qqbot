@@ -2,7 +2,7 @@
 // (vector search over automatic facts, substring match over manual ones)
 
 import { inject, injectable } from 'tsyringe';
-import { MemoryService } from '@/memory/MemoryService';
+import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
@@ -46,7 +46,7 @@ const DEFAULT_LIMIT = 8;
 export class SearchMemoryToolExecutor extends BaseToolExecutor {
   name = 'search_memory';
 
-  constructor(@inject(MemoryService) private memoryService: MemoryService) {
+  constructor(@inject(MemoryRetrievalService) private memoryRetrieval: MemoryRetrievalService) {
     super();
   }
 
@@ -68,8 +68,8 @@ export class SearchMemoryToolExecutor extends BaseToolExecutor {
         ? Math.max(1, Math.floor(call.parameters.limit))
         : DEFAULT_LIMIT;
 
-    const result = await this.memoryService.searchMemory(groupId, query, { userId, includeGroupMemory, limit });
-    const method = this.memoryService.isSearchEnabled() ? 'vector' : 'keyword';
+    const result = await this.memoryRetrieval.searchMemory(groupId, query, { userId, includeGroupMemory, limit });
+    const method = this.memoryRetrieval.isSearchEnabled() ? 'vector' : 'keyword';
     if (result.count === 0) {
       return this.success('未找到相关记忆', { groupId, query, method, totalFound: 0 });
     }

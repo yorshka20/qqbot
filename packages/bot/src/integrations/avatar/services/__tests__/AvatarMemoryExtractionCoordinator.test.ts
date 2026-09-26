@@ -18,7 +18,7 @@ import type { Config } from '@/core/config';
 import type { AvatarSource } from '../../types';
 import { AvatarMemoryExtractionCoordinator } from '../AvatarMemoryExtractionCoordinator';
 import type { AvatarSessionService } from '../AvatarSessionService';
-import type { MemoryExtractService } from '@/memory/MemoryExtractService';
+import type { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
 
 /**
  * Default source used across tests. Must match the default allowlist in

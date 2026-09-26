@@ -5,15 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Config } from '@/core/config';
 import type { MemoryFact } from '@/database/models/types';
-import type { MemoryFactStore } from '../MemoryFactStore';
-import type { MemoryIndex, MemorySearchHit, MemorySearchOptions } from '../MemoryIndex';
-import { MemoryService, renderSlot, scoreFact } from '../MemoryService';
-import { GROUP_MEMORY_USER_ID } from '../memoryConstants';
+import { GROUP_MEMORY_USER_ID } from '../../model/constants';
+import { ManualMemoryStore } from '../../storage/ManualMemoryStore';
+import type { MemoryFactStore } from '../../storage/MemoryFactStore';
+import type { MemoryIndex, MemorySearchHit, MemorySearchOptions } from '../../storage/MemoryIndex';
+import { MemoryRetrievalService } from '../MemoryRetrievalService';
 
 const GROUP = '100000001';
 const USER = '10000001';
-const DAY = 86_400_000;
-const SCORING = { transientHalfLifeDays: 30, decayFloor: 0.5, confirmBoostPerConfirm: 0.03, confirmBoostCap: 1.3 };
 
 function fact(id: string, userId: string, scope: string, content: string, extra: Partial<MemoryFact> = {}): MemoryFact {
   return {
@@ -34,65 +33,9 @@ function fact(id: string, userId: string, scope: string, content: string, extra:
   };
 }
 
-describe('scoreFact', () => {
-  const now = 100 * DAY;
-
-  it('does not decay stable facts', () => {
-    expect(scoreFact(0.6, { durability: 'stable', lastConfirmedAt: 0, confirmCount: 1 }, SCORING, now)).toBeCloseTo(0.6);
-  });
-
-  it('halves a transient fact per half-life, down to the floor', () => {
-    const at = (days: number) => now - days * DAY;
-    expect(
-      scoreFact(0.6, { durability: 'transient', lastConfirmedAt: at(15), confirmCount: 1 }, SCORING, now),
-    ).toBeCloseTo(0.6 * 2 ** -0.5);
-    expect(
-      scoreFact(0.6, { durability: 'transient', lastConfirmedAt: at(300), confirmCount: 1 }, SCORING, now),
-    ).toBeCloseTo(0.3);
-  });
-
-  it('adds weight per confirmation, capped', () => {
-    expect(scoreFact(0.5, { durability: 'stable', lastConfirmedAt: now, confirmCount: 3 }, SCORING, now)).toBeCloseTo(
-      0.53,
-    );
-    expect(scoreFact(0.5, { durability: 'stable', lastConfirmedAt: now, confirmCount: 50 }, SCORING, now)).toBeCloseTo(
-      0.65,
-    );
-  });
-});
-
-describe('renderSlot', () => {
-  it('puts manual facts first under their own heading, then automatic facts by scope order', () => {
-    const text = renderSlot(
-      [{ scope: 'instruction', content: '不要用 emoji' }],
-      [
-        { scope: 'context', content: '群原本是技术群' },
-        { scope: 'identity:work', content: '做运营商工作' },
-      ],
-    );
-    expect(text).toBe(
-      [
-        '【人工维护，与其他条目冲突时以此为准】',
-        '[instruction]',
-        '- 不要用 emoji',
-        '',
-        '【自动整理】',
-        '[identity:work]',
-        '- 做运营商工作',
-        '',
-        '[context]',
-        '- 群原本是技术群',
-      ].join('\n'),
-    );
-  });
-
-  it('has no headings when there is no manual memory', () => {
-    expect(renderSlot([], [{ scope: 'rule', content: '不刷屏' }])).toBe('[rule]\n- 不刷屏');
-  });
-});
-
-describe('MemoryService.getMemoryForReply', () => {
+describe('MemoryRetrievalService.getMemoryForReply', () => {
   let dir: string;
+  let manual: ManualMemoryStore;
   const facts = [
     fact('g-rule', GROUP_MEMORY_USER_ID, 'rule:bot', '回复里不要用 emoji'),
     fact('g-topic', GROUP_MEMORY_USER_ID, 'topic:games', '群里常聊二次元游戏'),
@@ -110,7 +53,7 @@ describe('MemoryService.getMemoryForReply', () => {
     },
   } as unknown as MemoryFactStore;
 
-  function service(searchEnabled: boolean, hits: MemorySearchHit[]): MemoryService {
+  function service(searchEnabled: boolean, hits: MemorySearchHit[]): MemoryRetrievalService {
     const index = {
       isEnabled: () => searchEnabled,
       search: async (_g: string, _q: string, options: MemorySearchOptions) => {
@@ -119,7 +62,8 @@ describe('MemoryService.getMemoryForReply', () => {
       },
     } as unknown as MemoryIndex;
     const config = { getMemoryConfig: () => ({ dir }) } as unknown as Config;
-    return new MemoryService(config, store, index);
+    manual = new ManualMemoryStore(config);
+    return new MemoryRetrievalService(config, store, index, manual);
   }
 
   beforeEach(async () => {
@@ -138,7 +82,7 @@ describe('MemoryService.getMemoryForReply', () => {
       { id: 'g-topic', score: 0.6 },
       { id: 'u-food', score: 0.3 },
     ]);
-    await memory.saveManualMemory(GROUP, USER, '[instruction]\n称呼我为甲');
+    await manual.save(GROUP, USER, '[instruction]\n称呼我为甲');
 
     const result = await memory.getMemoryForReply(GROUP, USER, '你还记得我玩什么游戏吗');
 

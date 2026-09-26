@@ -8,7 +8,7 @@ import {
   type ConversationMessageEntry,
   normalizeGroupId,
 } from '@/conversation/history';
-import type { MemoryService } from '@/memory/MemoryService';
+import type { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';
 import type { RetrievalService } from '@/services/retrieval';
 import { QdrantClient } from '@/services/retrieval';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
@@ -20,7 +20,7 @@ export interface ProactiveReplyContextBuilderDeps {
   conversationHistoryService: ConversationHistoryService;
   promptManager: PromptManager;
   preferenceKnowledge: PreferenceKnowledgeService;
-  memoryService?: MemoryService;
+  memoryRetrieval?: MemoryRetrievalService;
   /** Optional: for conversation history vector search (RAG over group chat history). */
   retrievalService?: RetrievalService;
   searchLimit: number;
@@ -116,11 +116,11 @@ export class ProactiveReplyContextBuilder {
    * @param userMessage - Optional user message the searched facts must be relevant to
    */
   async getMemoryContext(groupId: string, userId?: string, userMessage?: string): Promise<string> {
-    if (!this.deps.memoryService) {
+    if (!this.deps.memoryRetrieval) {
       return '';
     }
 
-    const { groupMemoryText, userMemoryText } = await this.deps.memoryService.getMemoryForReply(
+    const { groupMemoryText, userMemoryText } = await this.deps.memoryRetrieval.getMemoryForReply(
       groupId,
       userId,
       userMessage ?? '',

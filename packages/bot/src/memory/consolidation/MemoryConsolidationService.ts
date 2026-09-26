@@ -11,24 +11,13 @@ import { LLMService } from '@/ai/services/LLMService';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryFact } from '@/database/models/types';
 import { logger } from '@/utils/logger';
-import { MemoryFactStore } from './MemoryFactStore';
-import { MemoryService } from './MemoryService';
-import type { ManualFact } from './manualMemory';
-import { GROUP_MEMORY_USER_ID } from './memoryConstants';
-import { generateMemoryJson, type MemoryLLMOptions } from './memoryLLM';
-import { isAllowedScope, scopeGuide, slotLabel } from './memoryScopes';
-
-export interface NewFactDraft {
-  scope: string;
-  content: string;
-  durability: MemoryFact['durability'];
-}
-
-export type SlotOperation =
-  | { op: 'add'; fact: NewFactDraft }
-  | { op: 'confirm'; id: string }
-  | { op: 'update'; ids: string[]; fact: NewFactDraft }
-  | { op: 'delete'; id: string; reason: string };
+import { generateMemoryJson, type MemoryLLMOptions } from '../llm/memoryLLM';
+import { listManualFacts, numberFacts, scopeGuide } from '../llm/promptParts';
+import { GROUP_MEMORY_USER_ID } from '../model/constants';
+import { slotLabel } from '../model/scopes';
+import { ManualMemoryStore } from '../storage/ManualMemoryStore';
+import { MemoryFactStore } from '../storage/MemoryFactStore';
+import { parseSlotOperations, type SlotOperation } from './slotOperations';
 
 export interface ConsolidationSummary {
   added: number;
@@ -38,94 +27,13 @@ export interface ConsolidationSummary {
   rejected: number;
 }
 
-const MAX_FACT_LENGTH = 120;
-
-/** `#n [scope] (durability) content`, numbered from 1 in the order given. */
-export function numberFacts(facts: Array<Pick<MemoryFact, 'scope' | 'durability' | 'content'>>): string {
-  if (facts.length === 0) {
-    return '（无）';
-  }
-  return facts.map((fact, i) => `#${i + 1} [${fact.scope}] (${fact.durability}) ${fact.content}`).join('\n');
-}
-
-export function listManualFacts(facts: ManualFact[]): string {
-  return facts.length === 0 ? '（无）' : facts.map((fact) => `- [${fact.scope}] ${fact.content}`).join('\n');
-}
-
-/**
- * A draft fact from model output, or null when it cannot be stored as is. A missing or unknown
- * durability reads as transient: such a fact decays and comes up for review instead of lingering.
- */
-export function parseDraft(raw: Record<string, unknown>, userId: string): NewFactDraft | null {
-  const scope = typeof raw.scope === 'string' ? raw.scope.trim().toLowerCase() : '';
-  const content = typeof raw.content === 'string' ? raw.content.trim() : '';
-  if (!content || content.length > MAX_FACT_LENGTH || !isAllowedScope(userId, scope)) {
-    return null;
-  }
-  return { scope, content, durability: raw.durability === 'stable' ? 'stable' : 'transient' };
-}
-
-/**
- * Validate the model's operations against the numbered facts. Each existing fact is named by
- * at most one operation; later operations naming it again are rejected.
- */
-export function parseSlotOperations(
-  answer: Record<string, unknown>,
-  numbered: MemoryFact[],
-  userId: string,
-): { operations: SlotOperation[]; rejected: number } {
-  const raw = Array.isArray(answer.operations) ? answer.operations : [];
-  const claimed = new Set<string>();
-  const factAt = (value: unknown): MemoryFact | null => {
-    const index = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
-    const fact = Number.isInteger(index) ? numbered[index - 1] : undefined;
-    return fact && !claimed.has(fact.id) ? fact : null;
-  };
-  const operations: SlotOperation[] = [];
-  let rejected = 0;
-  for (const item of raw) {
-    const op = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
-    if (op.op === 'add') {
-      const fact = parseDraft(op, userId);
-      if (fact) {
-        operations.push({ op: 'add', fact });
-        continue;
-      }
-    } else if (op.op === 'confirm' || op.op === 'delete') {
-      const target = factAt(op.id);
-      if (target) {
-        claimed.add(target.id);
-        operations.push(
-          op.op === 'confirm'
-            ? { op: 'confirm', id: target.id }
-            : { op: 'delete', id: target.id, reason: typeof op.reason === 'string' ? op.reason : '被新信息推翻' },
-        );
-        continue;
-      }
-    } else if (op.op === 'update') {
-      const fact = parseDraft(op, userId);
-      const targets = (Array.isArray(op.ids) ? op.ids : [op.id]).map(factAt);
-      if (fact && targets.length > 0 && targets.every((t): t is MemoryFact => t !== null)) {
-        const ids = [...new Set(targets.map((t) => t.id))];
-        for (const id of ids) {
-          claimed.add(id);
-        }
-        operations.push({ op: 'update', ids, fact });
-        continue;
-      }
-    }
-    rejected++;
-  }
-  return { operations, rejected };
-}
-
 @singleton()
 export class MemoryConsolidationService {
   constructor(
     @inject(DITokens.PROMPT_MANAGER) private readonly promptManager: PromptManager,
     @inject(LLMService) private readonly llmService: LLMService,
     @inject(MemoryFactStore) private readonly store: MemoryFactStore,
-    @inject(MemoryService) private readonly memoryService: MemoryService,
+    @inject(ManualMemoryStore) private readonly manualStore: ManualMemoryStore,
   ) {}
 
   /** Consolidate candidates into the group's slot and each member's slot, one slot at a time. */
@@ -160,7 +68,7 @@ export class MemoryConsolidationService {
     const prompt = this.promptManager.render('memory.consolidate', {
       slotLabel: slotLabel(userId),
       scopeGuide: scopeGuide(this.promptManager, userId),
-      manualFacts: listManualFacts(this.memoryService.getManualFacts(groupId, userId)),
+      manualFacts: listManualFacts(this.manualStore.getFacts(groupId, userId)),
       existingFacts: numberFacts(existing),
       newFacts: newFacts.map((fact) => `- ${fact}`).join('\n'),
     });

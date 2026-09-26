@@ -5,8 +5,8 @@ import type { AuditEventStore } from '@/conversation/audit/AuditEventStore';
 import type { SessionMemoStore } from '@/conversation/memo/SessionMemoStore';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
-import { formatMemoryMarkdown } from '@/memory/formatMemoryMarkdown';
-import { MemoryService } from '@/memory/MemoryService';
+import { formatMemoryMarkdown } from '@/memory/retrieval/formatMemoryMarkdown';
+import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';
 import { QdrantClient } from '@/services/retrieval';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { VKBContextEngine } from '@/services/vkb/VKBContextEngine';
@@ -30,7 +30,7 @@ export class ContextEnrichmentStage implements ReplyStage {
   readonly name = 'context-enrichment';
 
   constructor(
-    @inject(MemoryService) private memoryService: MemoryService,
+    @inject(MemoryRetrievalService) private memoryRetrieval: MemoryRetrievalService,
     @inject(RetrievalService) private retrievalService: RetrievalService,
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     // No-op when `vkbContextEngine.enabled` is false.
@@ -130,7 +130,7 @@ export class ContextEnrichmentStage implements ReplyStage {
     }
     const groupId = sessionId.replace(/^group:/, '');
     const userId = context.message?.userId?.toString();
-    return this.memoryService.getMemoryForReply(groupId, userId || undefined, context.message?.message ?? '');
+    return this.memoryRetrieval.getMemoryForReply(groupId, userId || undefined, context.message?.message ?? '');
   }
 
   private async getMemoryContextTextAsync(context: HookContext): Promise<string> {

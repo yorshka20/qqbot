@@ -7,8 +7,8 @@
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
 import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
+import { MEMORY_JOB_TIMEOUT_MS, type MemoryLLMOptions } from '../llm/memoryLLM';
 import type { MemoryExtractService } from './MemoryExtractService';
-import { MEMORY_JOB_TIMEOUT_MS, type MemoryLLMOptions } from './memoryLLM';
 
 export class GroupDayMemoryTask implements FanoutTask<GroupDayContext, null> {
   static readonly NAME = 'memory';

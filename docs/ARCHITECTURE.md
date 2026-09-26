@@ -739,10 +739,24 @@ The bot maintains three distinct memory stores that divide responsibility by wri
 | Piece | Writer | Scope | Lifetime | Purpose |
 |---|---|---|---|---|
 | `AuditEventStore` (audit log) | Bot auto-hooks (`onMessageComplete` for reply/silence, `onToolExecuted` for tool calls) | Per-session | ~45min in-mem, time-pruned only (no item cap) | Factual "what I just did" ledger — reply / silence / tool actions |
-| `MemoryService` / `memory_note` tool | People (manual.txt) and LLM (extraction + explicit tool) | Per group / per user | Long-term (manual files + `memory_facts` rows) | Who the user IS / their preferences / group rules |
+| `memory/` module / `memory_note` tool | People (manual.txt) and LLM (extraction + explicit tool) | Per group / per user | Long-term (manual files + `memory_facts` rows) | Who the user IS / their preferences / group rules |
 | `SessionMemoStore` / `session_memo` tool | LLM (via tool at reply stage) | Per-session | TTL or pinned; persisted to SQLite when available, in-memory otherwise | What the bot chose to remember for the next few turns/sessions (positions, temporary agreements, upcoming events) |
 
 These three pieces are rendered into the final user message in this order: `<memory_context>` → `<rag_context>` → `<glossary>` → persona state blocks → `<session_memo>` → `<recent_actions>` → `<current_query>`. The ordering places long-term context first so the model has stable background before reading volatile items, then self-chosen short-term notes directly above recent actions, and the current query last so it is closest to the generation boundary.
+
+### Module layout
+
+`src/memory/` is layered; each directory depends only on the ones listed before it:
+
+| Directory | Holds |
+|---|---|
+| `model/` | Scope rules and constants; no I/O |
+| `storage/` | `MemoryFactStore` (the `memory_facts` rows and the only writer of them), `MemoryIndex` (Qdrant), `ManualMemoryStore` and the manual.txt format |
+| `llm/` | What memory's LLM jobs share: the JSON call and its timeout, validation of fact drafts from model output, prompt fragments |
+| `consolidation/` | Candidate facts → operations on a slot: `MemoryConsolidationService`, operation parsing |
+| `review/` | Due facts → keep / retire / merge: `MemoryReviewService`, due rules and decision parsing |
+| `extraction/` | Chat → candidate facts, handed to consolidation: `MemoryExtractService`, the group_day task, the `memory_note` buffer |
+| `retrieval/` | Reads: `MemoryRetrievalService` (reply, `get_memory`, `search_memory`), scoring, slot rendering, `<memory_context>` formatting |
 
 ### Sources of truth
 
@@ -750,12 +764,12 @@ Long-term memory has two layers, each with one source of truth:
 
 | Layer | Source of truth | Written by | Reaches a reply |
 |---|---|---|---|
-| manual | `data/memory/{groupId}/{userId\|_global_}/manual.txt` | people (webui or an editor); never an LLM | in full, every reply, ahead of automatic facts; wins any conflict |
+| manual | `data/memory/{groupId}/{userId\|_global_}/manual.txt` (`ManualMemoryStore`) | people (webui or an editor); never an LLM | in full, every reply, ahead of automatic facts; wins any conflict |
 | auto | `memory_facts` rows (`MemoryFactStore`) | consolidation and review | always-include scopes in full, the rest by vector search |
 
 A manual file is `[scope]` headers followed by one fact per line. The unit is the line: splitting on punctuation cut names and versions such as `M.C.G.A.` or `Qwen3.5` into fragments.
 
-The Qdrant collection `memory_{groupId}` (`MemoryIndex`) is derived from the active `memory_facts` rows and never read as content. A point's id is its row's id (a UUID, which Qdrant keeps as is), so search hits and hit counts map straight back to rows. Manual memory is not indexed. Every write goes through `MemoryFactStore`, which updates the row and then the index; an index failure leaves the row in place and is repaired by `MemoryIndex.reconcile` (daily, `/memory_sync`, `bun run memory reindex`).
+The Qdrant collection `memory_{groupId}` (`MemoryIndex`) is derived from the active `memory_facts` rows and never read as content. A point's id is its row's id (a UUID, which Qdrant keeps as is), so search hits and hit counts map straight back to rows. Manual memory is not indexed. Every write goes through `MemoryFactStore`, which updates the row and then the index; an index failure leaves the row in place and is repaired by `MemoryFactStore.reindexGroup` (daily, `/memory_sync`, `bun run memory reindex`).
 
 ### Facts
 
@@ -773,7 +787,7 @@ Daily, `MemoryReviewService` looks for facts unconfirmed and unreviewed past the
 
 ### Reading
 
-`MemoryService.getMemoryForReply(groupId, userId, message)` returns the group's and the speaker's slot text: every manual fact, the automatic facts in `memory.filter.alwaysIncludeScopes` (default instruction and rule), and the automatic facts a vector search finds relevant to the message. A searched fact's final score is similarity × recency (transient facts decay from their last confirmation, stable ones do not) × a capped confirmation weight (`memory.scoring`); it must clear `memory.filter.minRelevanceScore`. Without RAG every automatic fact is included. `get_memory` returns a whole slot; `search_memory` searches the group.
+`MemoryRetrievalService.getMemoryForReply(groupId, userId, message)` returns the group's and the speaker's slot text: every manual fact, the automatic facts in `memory.filter.alwaysIncludeScopes` (default instruction and rule), and the automatic facts a vector search finds relevant to the message. A searched fact's final score is similarity × recency (transient facts decay from their last confirmation, stable ones do not) × a capped confirmation weight (`memory.scoring`); it must clear `memory.filter.minRelevanceScore`. Without RAG every automatic fact is included. `get_memory` returns a whole slot; `search_memory` searches the group.
 
 ### Offline maintenance
 

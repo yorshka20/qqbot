@@ -12,9 +12,9 @@ import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { MemoryNoteBuffer } from '@/database/models/types';
 import { logger } from '@/utils/logger';
-import { MemoryConsolidationService } from './MemoryConsolidationService';
-import { GROUP_MEMORY_USER_ID } from './memoryConstants';
-import { MEMORY_JOB_TIMEOUT_MS, type MemoryLLMOptions } from './memoryLLM';
+import { MemoryConsolidationService } from '../consolidation/MemoryConsolidationService';
+import { MEMORY_JOB_TIMEOUT_MS, type MemoryLLMOptions } from '../llm/memoryLLM';
+import { GROUP_MEMORY_USER_ID } from '../model/constants';
 
 /**
  * Extract output shape from prompts/memory/extract.txt:
