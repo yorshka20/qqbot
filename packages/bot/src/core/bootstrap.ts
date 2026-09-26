@@ -117,7 +117,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   const ragConfig = config.getRAGConfig();
   if (ragConfig?.enabled) {
     logger.info(
-      `[Bootstrap] RAG enabled | ollama=${ragConfig.ollama?.url} model=${ragConfig.ollama?.model} qdrant=${ragConfig.qdrant?.url}`,
+      `[Bootstrap] RAG enabled | embedding=${ragConfig.embedding.url} model=${ragConfig.embedding.model} qdrant=${ragConfig.qdrant.url}`,
     );
   }
 

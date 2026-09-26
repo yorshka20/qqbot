@@ -1,15 +1,15 @@
-// RAG service - vector retrieval via Ollama embed + Qdrant
+// RAG service - vector retrieval via an OpenAI-compatible embeddings endpoint + Qdrant
 
 import type { RAGConfig } from '@/core/config/types/rag';
 import { logger } from '@/utils/logger';
-import { OllamaEmbedClient } from './OllamaEmbedClient';
+import { EmbeddingClient } from './EmbeddingClient';
 import { QdrantClient } from './QdrantClient';
 import type { RAGDocument, RAGSearchMultiOptions, RAGSearchOptions, RAGSearchResult } from './types';
 
 const DEFAULT_QUERY_PREFIX = 'Instruct: Retrieve relevant conversation history\nQuery: ';
 
 export class RAGService {
-  private ollamaEmbedClient: OllamaEmbedClient;
+  private embeddingClient: EmbeddingClient;
   private qdrantClient: QdrantClient;
   private config: RAGConfig;
   /** Collection names already ensured; ensure at most once per collection on first use. */
@@ -17,13 +17,18 @@ export class RAGService {
 
   constructor(config: RAGConfig) {
     this.config = config;
-    this.ollamaEmbedClient = new OllamaEmbedClient(config.ollama);
+    this.embeddingClient = new EmbeddingClient(config.embedding);
     this.qdrantClient = new QdrantClient(config.qdrant);
     logger.info('[RAGService] Initialized');
   }
 
   isEnabled(): boolean {
     return this.config.enabled === true;
+  }
+
+  /** The model every vector written from now on comes from; points carry it as `embedModel`. */
+  get embeddingModel(): string {
+    return this.embeddingClient.model;
   }
 
   /** Ensure collection exists once per collection name; used internally only. */
@@ -43,7 +48,7 @@ export class RAGService {
     if (documents.length === 0) return;
 
     const contents = documents.map((d) => d.content);
-    const vectors = await this.ollamaEmbedClient.embed(contents);
+    const vectors = await this.embeddingClient.embed(contents);
 
     await this.ensureCollectionOnce(collection);
 
@@ -53,6 +58,7 @@ export class RAGService {
       payload: {
         ...doc.payload,
         content: doc.content,
+        embedModel: this.embeddingClient.model,
       },
     }));
 
@@ -60,9 +66,8 @@ export class RAGService {
   }
 
   async vectorSearch(collection: string, query: string, options?: RAGSearchOptions): Promise<RAGSearchResult[]> {
-    const prefix = this.config.queryInstructionPrefix ?? DEFAULT_QUERY_PREFIX;
-    const queryWithPrefix = prefix + query;
-    const [vector] = await this.ollamaEmbedClient.embed(queryWithPrefix);
+    const prefix = options?.queryPrefix ?? this.config.queryInstructionPrefix ?? DEFAULT_QUERY_PREFIX;
+    const [vector] = await this.embeddingClient.embed([prefix + query]);
 
     if (!vector || vector.length === 0) return [];
 

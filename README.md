@@ -122,7 +122,7 @@ Run these from `docker/`, after the variables for that profile are set in `.env`
 # SearXNG. Bot config: mcp.searxng.url = http://localhost:8080
 docker compose -f docker-compose.optional.yml --profile search up -d
 
-# Qdrant. Also needs an embedding endpoint (rag.ollama in the bot config).
+# Qdrant. Also needs an embeddings API (rag.embedding in the bot config: SiliconFlow or any OpenAI-compatible endpoint).
 docker compose -f docker-compose.optional.yml --profile rag up -d
 
 # WeChat ingest (WeChatPadPro + MySQL + Redis).
@@ -240,7 +240,7 @@ bun run debug         # mock messages, no live protocol
 - **Plugin did not load.** `plugins.list[].name` matches the class `name`, and `enabled` is true.
 - **Smoke-test fails.** The stack is usually a missing DI token or a circular import. Don't continue until it exits 0.
 - **Card render is empty.** `puppeteer-core` needs a Chromium it can find; set the executable path in config if it is not on `PATH`.
-- **Search or RAG does nothing.** Start the matching profile from `docker-compose.optional.yml` (`search` or `rag`). `mcp` / `rag` in config must point at those ports. RAG also needs the embedding endpoint in `rag.ollama`.
+- **Search or RAG does nothing.** Start the matching profile from `docker-compose.optional.yml` (`search` or `rag`). `mcp` / `rag` in config must point at those ports. RAG also needs the embeddings API in `rag.embedding` (url, apiKey, model).
 
 ## Documentation
 

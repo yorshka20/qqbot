@@ -1,9 +1,13 @@
-// RAG configuration types (Ollama embed + Qdrant)
+// RAG configuration types (OpenAI-compatible embeddings + Qdrant)
 
-export interface OllamaEmbedConfig {
+/** An OpenAI-compatible embeddings endpoint (SiliconFlow). `url` is the base, without `/embeddings`. */
+export interface EmbeddingConfig {
   url: string;
+  apiKey: string;
   model: string;
   timeout?: number;
+  /** Texts per request. Default 32. */
+  batchSize?: number;
 }
 
 export interface QdrantConfig {
@@ -14,7 +18,7 @@ export interface QdrantConfig {
 
 export interface RAGConfig {
   enabled: boolean;
-  ollama: OllamaEmbedConfig;
+  embedding: EmbeddingConfig;
   qdrant: QdrantConfig;
   queryInstructionPrefix?: string;
   defaultVectorSize?: number;

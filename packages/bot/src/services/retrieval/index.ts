@@ -8,7 +8,7 @@ export type {
 } from './fetch';
 export { extractEntriesFromChunks, extractUrlsFromChunks } from './fetch';
 export { RetrievalService } from './RetrievalService';
-export { OllamaEmbedClient } from './rag/OllamaEmbedClient';
+export { EmbeddingClient } from './rag/EmbeddingClient';
 export { QdrantClient } from './rag/QdrantClient';
 export { RAGService } from './rag/RAGService';
 export type { RAGDocument, RAGSearchMultiOptions, RAGSearchOptions, RAGSearchResult } from './rag/types';

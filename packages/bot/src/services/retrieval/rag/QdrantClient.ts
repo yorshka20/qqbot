@@ -305,7 +305,7 @@ export class QdrantClient {
   async deleteByIds(collection: string, ids: Array<string | number>): Promise<void> {
     if (ids.length === 0) return;
     await this.httpClient.post(`/collections/${collection}/points/delete`, {
-      points: ids,
+      points: ids.map(toQdrantPointId),
     });
     logger.debug(`[QdrantClient] Deleted ${ids.length} points by ID from ${collection}`);
   }

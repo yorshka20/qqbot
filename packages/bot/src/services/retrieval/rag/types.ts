@@ -10,6 +10,11 @@ export interface RAGSearchOptions {
   limit?: number;
   minScore?: number;
   filter?: Record<string, unknown>;
+  /**
+   * Qwen3-Embedding instruction prepended to the query (documents carry none).
+   * Default: `rag.queryInstructionPrefix`, which is written for conversation history.
+   */
+  queryPrefix?: string;
 }
 
 /** Options for multi-query vector search (merge/dedupe inside RAG). */

@@ -10,7 +10,7 @@ import 'reflect-metadata';
 
 import { loadConfigAuto } from '@/core/config/loadConfigDir';
 import { chunkText } from '@/services/retrieval/rag/chunkText';
-import { OllamaEmbedClient } from '@/services/retrieval/rag/OllamaEmbedClient';
+import { EmbeddingClient } from '@/services/retrieval/rag/EmbeddingClient';
 import { QdrantClient } from '@/services/retrieval/rag/QdrantClient';
 
 // ── Parse CLI args ──
@@ -36,7 +36,7 @@ const config = loadConfig();
 const ragConfig = (config as { rag?: Record<string, unknown> }).rag as
   | {
       enabled?: boolean;
-      ollama: { url: string; model: string; timeout?: number };
+      embedding: { url: string; apiKey: string; model: string; timeout?: number };
       qdrant: { url: string; apiKey?: string; timeout?: number };
       defaultVectorSize?: number;
       defaultDistance?: string;
@@ -59,7 +59,7 @@ const targetCollection = wechatPluginConfig?.rag?.chunksCollection ?? 'wechat_ar
 // ── Init clients ──
 
 const qdrant = new QdrantClient(ragConfig.qdrant);
-const ollama = new OllamaEmbedClient(ragConfig.ollama);
+const embeddingClient = new EmbeddingClient(ragConfig.embedding);
 const vectorSize = ragConfig.defaultVectorSize ?? 2560;
 const distance = ragConfig.defaultDistance ?? 'Cosine';
 
@@ -107,7 +107,7 @@ async function migrate() {
       if (!dryRun) {
         // Embed all chunks in one batch
         const texts = chunks.map((c) => c.text);
-        const vectors = await ollama.embed(texts);
+        const vectors = await embeddingClient.embed(texts);
 
         const points = chunks.map((chunk, i) => ({
           id: chunks.length === 1 ? articleId : `${articleId}_chunk_${chunk.index}`,
@@ -118,6 +118,7 @@ async function migrate() {
             chunkIndex: chunk.index,
             totalChunks: chunks.length,
             content: chunk.text,
+            embedModel: embeddingClient.model,
           },
         }));
 

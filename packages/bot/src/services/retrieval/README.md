@@ -84,11 +84,11 @@ Search is configured under `mcp` in `BotConfig`:
 | `upsertDocuments(collection, documents)` | Embed documents and upsert to Qdrant (collection is ensured once on first use) |
 | `vectorSearch(collection, query, options?)` | Embed query, search, return results above `minScore` (collection is ensured once on first use) |
 
-### How to enable (Ollama + Qdrant)
+### How to enable (SiliconFlow embeddings + Qdrant)
 
-1. **Ollama**: Run Ollama and pull an embedding model, e.g. `ollama pull qwen3-embedding:4b`. Default API is `http://localhost:11434`.
+1. **Embeddings**: Any OpenAI-compatible `POST {url}/embeddings` endpoint. The project uses SiliconFlow `Qwen/Qwen3-Embedding-4B` (2560-dim); get an API key at cloud.siliconflow.cn.
 2. **Qdrant**: Run Qdrant (e.g. Docker: `docker run -p 6333:6333 qdrant/qdrant`). Default API is `http://localhost:6333`.
-3. **Config**: In `config.jsonc` set `rag.enabled: true`, and set `rag.ollama.url` / `rag.ollama.model` and `rag.qdrant.url` to match your setup. `defaultVectorSize` must match the model (e.g. 2560 for qwen3-embedding:4b).
+3. **Config**: In `config.jsonc` set `rag.enabled: true`, and set `rag.embedding` (url, apiKey, model) and `rag.qdrant.url` to match your setup. `defaultVectorSize` must match the model (2560 for Qwen3-Embedding-4B). Vectors from different providers are not interchangeable even for the "same" model; after changing `rag.embedding`, run `bun run rag:reembed` (every point records its model as `embedModel`).
 4. **Usage**: No extra code — when RAG is enabled, every message is persisted to Qdrant at COMPLETE stage, and before each reply the service runs a vector search and injects the retrieved context into the prompt.
 
 ### Configuration
@@ -99,10 +99,11 @@ RAG is configured under `rag` in `BotConfig`:
 {
   "rag": {
     "enabled": true,
-    "ollama": {
-      "url": "http://localhost:11434",
-      "model": "qwen3-embedding:4b",
-      "timeout": 30000
+    "embedding": {
+      "url": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+      "model": "Qwen/Qwen3-Embedding-4B",
+      "timeout": 60000
     },
     "qdrant": {
       "url": "http://localhost:6333",

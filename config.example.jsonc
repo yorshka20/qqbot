@@ -1073,14 +1073,18 @@
     }
   },
   // RAG configuration (optional) - vector retrieval for conversation history
-  // When enabled: messages are embedded via Ollama and stored in Qdrant; reply stage queries by vector for context.
-  // Prerequisites: Ollama running with an embedding model (e.g. ollama pull qwen3-embedding:4b), Qdrant running (e.g. docker run -p 6333:6333 qdrant/qdrant).
+  // When enabled: messages are embedded through an OpenAI-compatible embeddings API and stored in Qdrant;
+  // reply stage queries by vector for context. Prerequisites: an embeddings API key and Qdrant running
+  // (e.g. docker run -p 6333:6333 qdrant/qdrant).
+  // Switching embedding provider or model makes existing vectors incompatible: run `bun run rag:reembed`.
   "rag": {
     "enabled": false,
-    "ollama": {
-      "url": "http://localhost:11434",
-      "model": "qwen3-embedding:4b",
-      "timeout": 30000
+    "embedding": {
+      "url": "https://api.siliconflow.cn/v1", // base URL; the client appends /embeddings
+      "apiKey": "", // SiliconFlow key (sk-...)
+      "model": "Qwen/Qwen3-Embedding-4B", // 2560-dim, matches defaultVectorSize
+      "timeout": 60000,
+      "batchSize": 32 // texts per request
     },
     "qdrant": {
       "url": "http://localhost:6333",
