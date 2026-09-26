@@ -1,15 +1,13 @@
-// Search memory task executor - semantic search over bot-extracted memory facts
-// Uses RAG (vector search) when available, falls back to keyword matching
+// Search memory task executor - search stored memory facts across the group
+// (vector search over automatic facts, substring match over manual ones)
 
 import { inject, injectable } from 'tsyringe';
-import { GROUP_MEMORY_USER_ID, MemoryService } from '@/memory/MemoryService';
-import { logger } from '@/utils/logger';
+import { MemoryService } from '@/memory/MemoryService';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 
 const DEFAULT_LIMIT = 8;
-const DEFAULT_MIN_SCORE = 0.6;
 
 @Tool({
   name: 'search_memory',
@@ -70,86 +68,11 @@ export class SearchMemoryToolExecutor extends BaseToolExecutor {
         ? Math.max(1, Math.floor(call.parameters.limit))
         : DEFAULT_LIMIT;
 
-    // Prefer RAG semantic search when available
-    if (this.memoryService.isRAGEnabled()) {
-      return this.executeWithRAG(groupId, query, userId, includeGroupMemory, limit);
+    const result = await this.memoryService.searchMemory(groupId, query, { userId, includeGroupMemory, limit });
+    const method = this.memoryService.isSearchEnabled() ? 'vector' : 'keyword';
+    if (result.count === 0) {
+      return this.success('未找到相关记忆', { groupId, query, method, totalFound: 0 });
     }
-
-    // Fallback to keyword search
-    logger.debug('[SearchMemoryToolExecutor] RAG not available, falling back to keyword search');
-    return this.executeWithKeyword(groupId, query, userId, includeGroupMemory, limit);
-  }
-
-  private async executeWithRAG(
-    groupId: string,
-    query: string,
-    userId: string | undefined,
-    _includeGroupMemory: boolean,
-    limit: number,
-  ): Promise<ToolResult> {
-    const result = await this.memoryService.getFilteredMemoryForReplyAsync(groupId, userId, {
-      userMessage: query,
-      alwaysIncludeScopes: [], // Don't force-include anything — pure relevance search
-      minRelevanceScore: DEFAULT_MIN_SCORE,
-      count: limit,
-    });
-
-    const parts: string[] = [];
-    if (result.groupMemoryText) {
-      parts.push(`群记忆:\n${result.groupMemoryText}`);
-    }
-    if (result.userMemoryText) {
-      parts.push(`用户记忆:\n${result.userMemoryText}`);
-    }
-
-    if (parts.length === 0) {
-      return this.success('未找到相关记忆', { groupId, query, method: 'rag', results: [] });
-    }
-
-    const formatted = parts.join('\n\n');
-    const totalFound = result.stats.groupIncluded + result.stats.userIncluded;
-
-    return this.success(formatted, {
-      groupId,
-      query,
-      method: 'rag',
-      totalFound,
-      stats: result.stats,
-    });
-  }
-
-  private executeWithKeyword(
-    groupId: string,
-    query: string,
-    userId: string | undefined,
-    includeGroupMemory: boolean,
-    limit: number,
-  ): ToolResult {
-    const results = this.memoryService.searchMemories(groupId, query, {
-      userId,
-      includeGroupMemory,
-      limit,
-    });
-
-    if (results.length === 0) {
-      return this.success('未找到相关记忆', { groupId, query, method: 'keyword', results: [] });
-    }
-
-    const formatted = results
-      .map((result, index) => {
-        const label = result.isGroupMemory ? '群记忆' : `用户 ${result.userId}`;
-        return `${index + 1}. ${label}\n${result.snippet}`;
-      })
-      .join('\n\n');
-
-    return this.success(formatted, {
-      groupId,
-      query,
-      method: 'keyword',
-      results: results.map((result) => ({
-        ...result,
-        userId: result.userId === GROUP_MEMORY_USER_ID ? 'group' : result.userId,
-      })),
-    });
+    return this.success(result.text, { groupId, query, method, totalFound: result.count });
   }
 }

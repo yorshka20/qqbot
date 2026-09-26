@@ -18,8 +18,6 @@ import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import { type SystemContext, SystemRegistry } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
-import { MemoryRAGService } from '@/memory';
-import { MemoryService } from '@/memory/MemoryService';
 import { MessageUtils } from '@/message/MessageUtils';
 import { PersonaInitializer } from '@/persona';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
@@ -78,12 +76,7 @@ export class ConversationInitializer {
     const databaseManager = container.resolve(DatabaseManager);
     await databaseManager.initialize(config.getDatabaseConfig());
 
-    // Auto-migrate legacy single-file memory format to new directory structure
-    const memoryService = container.resolve(MemoryService);
-    await memoryService.migrateLegacyFiles();
-
     await ConversationInitializer.registerSqliteStores(databaseManager);
-    ConversationInitializer.attachMemoryRag(config, memoryService);
     ConversationInitializer.registerAIHealthChecks();
 
     // Agenda framework: AgendaService + AgentLoop + InternalEventBus.
@@ -133,23 +126,6 @@ export class ConversationInitializer {
    */
   private static async registerSqliteStores(databaseManager: DatabaseManager): Promise<void> {
     const container = getContainer();
-    // Memory fact metadata service (quality tracking for memory facts via SQLite)
-    try {
-      const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
-      const adapter = databaseManager.getAdapter();
-      if (adapter instanceof SQLiteAdapter) {
-        const rawDb = adapter.getRawDb();
-        if (rawDb) {
-          const { MemoryFactMetaService } = await import('@/memory/MemoryFactMetaService');
-          const memoryFactMetaService = new MemoryFactMetaService(rawDb);
-          container.registerInstance(DITokens.MEMORY_FACT_META_SERVICE, memoryFactMetaService);
-          logger.info('[ConversationInitializer] MemoryFactMetaService registered');
-        }
-      }
-    } catch (err) {
-      logger.debug('[ConversationInitializer] MemoryFactMetaService not available (non-SQLite or init error):', err);
-    }
-
     // EpigeneticsStore — Mind Phase 2 relationship + epigenetics persistence (SQLite only).
     try {
       const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
@@ -188,33 +164,6 @@ export class ConversationInitializer {
       logger.info(
         `[ConversationInitializer] SessionMemoStore registered (persistence=${sessionMemoRawDb ? 'sqlite' : 'memory'})`,
       );
-    }
-  }
-
-  /** Semantic memory filtering over the RAG backend, when RAG is configured. */
-  private static attachMemoryRag(config: Config, memoryService: MemoryService): void {
-    const container = getContainer();
-    // Configure Memory RAG if RAG is enabled - enables semantic search for memory filtering
-    const ragService = container.resolve(RetrievalService).getRAGService();
-    if (ragService) {
-      const memoryRAGService = new MemoryRAGService(ragService);
-      // Wire up MemoryFactMetaService for incremental diff indexing
-      try {
-        const factMetaService = container.resolve<import('@/memory/MemoryFactMetaService').MemoryFactMetaService>(
-          DITokens.MEMORY_FACT_META_SERVICE,
-        );
-        memoryRAGService.setFactMetaService(factMetaService);
-        memoryService.setFactMetaService(factMetaService);
-      } catch {
-        logger.debug('[ConversationInitializer] MemoryFactMetaService not available, using legacy RAG indexing');
-      }
-      memoryService.setRAGService(memoryRAGService);
-      // Apply quality scoring config if present
-      const scoringConfig = config.getMemoryConfig().qualityScoring;
-      if (scoringConfig) {
-        memoryService.setScoringConfig(scoringConfig);
-      }
-      logger.info('[ConversationInitializer] Memory RAG enabled for semantic memory filtering');
     }
   }
 

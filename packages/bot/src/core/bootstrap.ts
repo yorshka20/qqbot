@@ -22,7 +22,7 @@ import { ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInte
 import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import { AdminAlertService } from '@/core/alert/AdminAlertService';
 import { Bot } from '@/core/Bot';
-import type { ProtocolConfig } from '@/core/config';
+import type { Config, ProtocolConfig } from '@/core/config';
 import type { Connection } from '@/core/connection';
 import { WebSocketConnection } from '@/core/connection';
 import { getContainer } from '@/core/DIContainer';
@@ -75,6 +75,19 @@ export interface BootstrapResult {
 }
 
 /**
+ * DI wiring and prompts: the part of startup every entry point shares, including offline
+ * tools that must not start the agenda, the static server or plugins (`bun run memory`).
+ * Services are built on first resolve; none of this opens a connection.
+ */
+export function bootstrapCore(config: Config): APIClient {
+  const apiConfig = config.getAPIConfig();
+  const apiClient = new APIClient(apiConfig.strategy, apiConfig.preferredProtocol);
+  registerProviders(config, apiClient);
+  PromptInitializer.initialize(config);
+  return apiClient;
+}
+
+/**
  * Bootstrap the application: initialize all services, DI registrations, and plugins.
  *
  * Covers every initialization step that does NOT require live network I/O:
@@ -102,14 +115,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
     );
   }
 
-  const apiConfig = config.getAPIConfig();
-  const apiClient = new APIClient(apiConfig.strategy, apiConfig.preferredProtocol);
-
-  // ── Wiring: a provider for every core service; each is built on first resolve ──
-  registerProviders(config, apiClient);
-
-  // ── Prompt system ──
-  PromptInitializer.initialize(config);
+  const apiClient = bootstrapCore(config);
 
   // ── Health + Retrieval ──
   const healthCheckManager = container.resolve(HealthCheckManager);

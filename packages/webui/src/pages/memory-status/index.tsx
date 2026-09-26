@@ -1,31 +1,26 @@
 /**
  * Memory browser.
- * Groups and users are separate pages and load only that layer.
- * A group's own memory is one special user in the user list.
- * Scope folding happens only after opening that one user.
+ * Groups and slots are separate pages and load only that layer.
+ * A group's own memory is one special slot in the slot list.
+ * A slot shows its manual.txt and its automatic facts, which can be corrected or deleted.
  */
 
-import {
-  ArrowLeft,
-  Brain,
-  ChevronRight,
-  Database,
-  Eye,
-  Library,
-  RefreshCw,
-  Shield,
-  UserRound,
-  Zap,
-} from 'lucide-react';
+import { Archive, ArrowLeft, Brain, ChevronRight, Library, RefreshCw, Shield, UserRound, Zap } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { getMemoryGroupDetail, getMemoryGroups, getMemoryStats, getMemoryUserFacts } from '../../api';
+import { getMemoryGroupDetail, getMemoryGroups, getMemorySlot, getMemoryStats } from '../../api';
 import { StatCard } from '../../components/StatCard';
-import type { MemoryGlobalStats, MemoryGroupDetail, MemoryGroupStats, MemoryUserFactDetail } from '../../types';
+import type {
+  MemoryFactCounts,
+  MemoryGlobalStats,
+  MemoryGroupDetail,
+  MemoryGroupStats,
+  MemorySlotDetail,
+} from '../../types';
 import { HighlightText } from './components/HighlightText';
 import { ManualMemoryPanel } from './components/ManualMemoryPanel';
-import { MemoryDocumentView } from './components/MemoryDocumentView';
+import { MemoryFactList } from './components/MemoryFactList';
 import { MemoryToolbar } from './components/MemoryToolbar';
-import type { MemorySourceFilter, MemoryStatusFilter } from './utils';
+import { filterFacts, type MemoryLayerFilter, type MemoryStatusFilter } from './utils';
 
 type View =
   | { type: 'overview' }
@@ -37,13 +32,13 @@ export function MemoryStatusPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState<MemoryStatusFilter>('all');
-  const [source, setSource] = useState<MemorySourceFilter>('all');
+  const [status, setStatus] = useState<MemoryStatusFilter>('active');
+  const [layer, setLayer] = useState<MemoryLayerFilter>('all');
 
   const [globalStats, setGlobalStats] = useState<MemoryGlobalStats | null>(null);
   const [groups, setGroups] = useState<MemoryGroupStats[]>([]);
   const [groupDetail, setGroupDetail] = useState<MemoryGroupDetail | null>(null);
-  const [userFacts, setUserFacts] = useState<MemoryUserFactDetail | null>(null);
+  const [slot, setSlot] = useState<MemorySlotDetail | null>(null);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -75,7 +70,7 @@ export function MemoryStatusPage() {
     setLoading(true);
     setError(null);
     try {
-      setUserFacts(await getMemoryUserFacts(groupId, userId));
+      setSlot(await getMemorySlot(groupId, userId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     } finally {
@@ -86,17 +81,17 @@ export function MemoryStatusPage() {
   useEffect(() => {
     if (view.type === 'overview') {
       setGroupDetail(null);
-      setUserFacts(null);
+      setSlot(null);
       loadOverview();
       return;
     }
     if (view.type === 'group') {
       setGroupDetail(null);
-      setUserFacts(null);
+      setSlot(null);
       loadGroup(view.groupId);
       return;
     }
-    setUserFacts(null);
+    setSlot(null);
     loadUser(view.groupId, view.userId);
   }, [view, loadOverview, loadGroup, loadUser]);
 
@@ -113,7 +108,7 @@ export function MemoryStatusPage() {
   const needle = query.trim().toLowerCase();
   const visibleGroups = useMemo(() => {
     return groups.filter((group) => {
-      if (!matchesCounts(group, status, source)) {
+      if (!matchesCounts(group, status, layer)) {
         return false;
       }
       if (!needle) {
@@ -121,13 +116,13 @@ export function MemoryStatusPage() {
       }
       return group.groupId.toLowerCase().includes(needle) || (group.groupName?.toLowerCase().includes(needle) ?? false);
     });
-  }, [groups, needle, status, source]);
+  }, [groups, needle, status, layer]);
 
   const visibleUsers = useMemo(() => {
-    const users = groupDetail?.users ?? [];
+    const users = groupDetail?.slots ?? [];
     return users
       .filter((user) => {
-        if (!matchesCounts(user, status, source)) {
+        if (!matchesCounts({ ...user, manualSlots: user.hasManualText ? 1 : 0 }, status, layer)) {
           return false;
         }
         if (!needle) {
@@ -146,9 +141,11 @@ export function MemoryStatusPage() {
         }
         return (a.nickname ?? a.userId).localeCompare(b.nickname ?? b.userId, 'zh-CN');
       });
-  }, [groupDetail, needle, status, source]);
+  }, [groupDetail, needle, status, layer]);
 
-  const title = heading(view, groupDetail, userFacts);
+  const visibleFacts = useMemo(() => filterFacts(slot?.facts ?? [], query, status), [slot, query, status]);
+
+  const title = heading(view, groupDetail, slot);
 
   return (
     <div className="flex-1 overflow-auto p-6">
@@ -187,8 +184,8 @@ export function MemoryStatusPage() {
           onQueryChange={setQuery}
           status={status}
           onStatusChange={setStatus}
-          source={source}
-          onSourceChange={setSource}
+          layer={layer}
+          onLayerChange={setLayer}
         />
 
         {error && (
@@ -198,13 +195,7 @@ export function MemoryStatusPage() {
         )}
 
         {view.type === 'overview' && globalStats && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <StatCard
-              icon={<Database className="w-5 h-5 text-purple-500" />}
-              label="全部"
-              value={globalStats.totalFacts}
-              color="bg-purple-100 dark:bg-purple-900/30"
-            />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
               icon={<Zap className="w-5 h-5 text-emerald-500" />}
               label="有效"
@@ -212,22 +203,22 @@ export function MemoryStatusPage() {
               color="bg-emerald-100 dark:bg-emerald-900/30"
             />
             <StatCard
-              icon={<Eye className="w-5 h-5 text-amber-500" />}
-              label="过期"
-              value={globalStats.staleFacts}
+              icon={<Brain className="w-5 h-5 text-zinc-500" />}
+              label="已取代"
+              value={globalStats.supersededFacts}
+              color="bg-zinc-100 dark:bg-zinc-700"
+            />
+            <StatCard
+              icon={<Archive className="w-5 h-5 text-amber-500" />}
+              label="已淘汰"
+              value={globalStats.retiredFacts}
               color="bg-amber-100 dark:bg-amber-900/30"
             />
             <StatCard
               icon={<Shield className="w-5 h-5 text-blue-500" />}
-              label="手动"
-              value={globalStats.manualFacts}
+              label="手动记忆"
+              value={globalStats.manualSlots}
               color="bg-blue-100 dark:bg-blue-900/30"
-            />
-            <StatCard
-              icon={<Brain className="w-5 h-5 text-zinc-500" />}
-              label="自动"
-              value={globalStats.autoFacts}
-              color="bg-zinc-100 dark:bg-zinc-700"
             />
           </div>
         )}
@@ -257,7 +248,7 @@ export function MemoryStatusPage() {
                     )}
                   </div>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    {group.userCount} 项 · {group.totalFacts} 条 · {group.activeFacts} 有效
+                    {group.slotCount} 项 · {group.activeFacts} 条有效 · {group.manualSlots} 份手动
                   </p>
                 </div>
                 <ChevronRight className="w-4 h-4 shrink-0 text-zinc-400" />
@@ -300,7 +291,7 @@ export function MemoryStatusPage() {
                     )}
                   </div>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    {user.totalFacts} 条 · {user.activeFacts} 有效 · {user.manualFacts} 手动
+                    {user.activeFacts} 条有效{user.hasManualText ? ' · 有手动记忆' : ''}
                   </p>
                 </div>
                 <ChevronRight className="w-4 h-4 shrink-0 text-zinc-400" />
@@ -309,23 +300,30 @@ export function MemoryStatusPage() {
           </LayerList>
         )}
 
-        {view.type === 'user' && userFacts && (
+        {view.type === 'user' && slot && (
           <div className="space-y-4">
-            {source !== 'llm_extract' && (
+            {layer !== 'auto' && (
               <ManualMemoryPanel
                 key={`${view.groupId}:${view.userId}`}
                 groupId={view.groupId}
                 userId={view.userId}
-                text={userFacts.manualText}
+                text={slot.manualText}
                 onSaved={() => loadUser(view.groupId, view.userId)}
               />
             )}
-            {source !== 'manual' && (
+            {layer !== 'manual' && (
               <section className="bg-white dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden">
-                <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-700">
+                <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-700 flex items-baseline gap-2">
                   <h2 className="text-sm font-medium">自动记忆</h2>
+                  <span className="text-xs text-zinc-400">
+                    {visibleFacts.length} / {slot.facts.length} 条
+                  </span>
                 </div>
-                <MemoryDocumentView text={userFacts.autoText ?? ''} query={query} />
+                <MemoryFactList
+                  facts={visibleFacts}
+                  query={query}
+                  onChanged={() => loadUser(view.groupId, view.userId)}
+                />
               </section>
             )}
           </div>
@@ -362,14 +360,14 @@ function LayerList({ empty, children }: { empty: string | null; children: ReactN
   );
 }
 
-function heading(view: View, group: MemoryGroupDetail | null, user: MemoryUserFactDetail | null): string {
+function heading(view: View, group: MemoryGroupDetail | null, user: MemorySlotDetail | null): string {
   if (view.type === 'overview') {
     return '记忆';
   }
   if (view.type === 'group') {
     return group?.groupName ?? view.groupId;
   }
-  const known = group?.users.find((row) => row.userId === view.userId);
+  const known = group?.slots.find((row) => row.userId === view.userId);
   if (user?.isGroupMemory || known?.isGroupMemory) {
     return '本群记忆';
   }
@@ -377,21 +375,19 @@ function heading(view: View, group: MemoryGroupDetail | null, user: MemoryUserFa
 }
 
 function matchesCounts(
-  row: { activeFacts: number; staleFacts: number; manualFacts: number; autoFacts: number; hasManualText?: boolean },
+  row: MemoryFactCounts & { manualSlots: number },
   status: MemoryStatusFilter,
-  source: MemorySourceFilter,
+  layer: MemoryLayerFilter,
 ): boolean {
-  if (status === 'active' && row.activeFacts === 0) {
-    return false;
+  if (layer === 'manual') {
+    return row.manualSlots > 0;
   }
-  if (status === 'stale' && row.staleFacts === 0) {
-    return false;
-  }
-  if (source === 'manual' && row.manualFacts === 0 && !row.hasManualText) {
-    return false;
-  }
-  if (source === 'llm_extract' && row.autoFacts === 0) {
-    return false;
-  }
-  return true;
+  const counts: Record<Exclude<MemoryStatusFilter, 'all'>, number> = {
+    active: row.activeFacts,
+    superseded: row.supersededFacts,
+    retired: row.retiredFacts,
+  };
+  const total = row.activeFacts + row.supersededFacts + row.retiredFacts;
+  const matching = status === 'all' ? total : counts[status];
+  return matching > 0 || (layer === 'all' && row.manualSlots > 0);
 }

@@ -93,11 +93,6 @@ export const DITokens = {
     required: false,
     gatedBy: 'SQLite adapter (skipped on MongoDB)',
   }),
-  /** Optional — SQLite adapter only. */
-  MEMORY_FACT_META_SERVICE: defineToken('MemoryFactMetaService', {
-    required: false,
-    gatedBy: 'SQLite adapter (skipped on MongoDB)',
-  }),
 
   // ── Optional: avatar / live integrations (config-gated) ──
   /** Optional — only registered when `avatar.enabled` and avatar init succeeds. */

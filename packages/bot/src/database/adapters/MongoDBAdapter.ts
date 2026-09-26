@@ -12,6 +12,7 @@ import type {
   ConversationConfig,
   DatabaseModel,
   MemoryExtractUserCursor,
+  MemoryFact,
   MemoryNoteBuffer,
   Message,
   ModelAccessor,
@@ -23,6 +24,14 @@ import type {
 /**
  * MongoDB model accessor implementation
  */
+/**
+ * An undefined criteria field means "no condition", as in the SQLite accessor. The driver
+ * would otherwise serialize it as null and match only documents missing the field.
+ */
+function definedCriteria(criteria: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(criteria).filter(([, value]) => value !== undefined));
+}
+
 class MongoModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
   constructor(private collection: Collection) {}
 
@@ -75,7 +84,7 @@ class MongoModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
     criteria: Partial<T>,
     options?: { limit?: number; orderBy?: string; order?: 'asc' | 'desc' },
   ): Promise<T[]> {
-    let cursor = this.collection.find(criteria);
+    let cursor = this.collection.find(definedCriteria(criteria));
     if (options?.orderBy) {
       const dir = options.order === 'desc' ? -1 : 1;
       cursor = cursor.sort({ [options.orderBy]: dir });
@@ -88,7 +97,7 @@ class MongoModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
   }
 
   async findOne(criteria: Partial<T>): Promise<T | null> {
-    const doc = await this.collection.findOne(criteria);
+    const doc = await this.collection.findOne(definedCriteria(criteria));
     if (!doc) {
       return null;
     }
@@ -116,8 +125,7 @@ class MongoModelAccessor<T extends BaseModel> implements ModelAccessor<T> {
   }
 
   async count(criteria?: Partial<T>): Promise<number> {
-    const filter = criteria || {};
-    return await this.collection.countDocuments(filter);
+    return await this.collection.countDocuments(definedCriteria(criteria ?? {}));
   }
 
   private deserialize(doc: Record<string, unknown>): T {
@@ -281,6 +289,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
         this.db.collection('memory_extract_user_cursors'),
       ),
       memoryNotesBuffer: new MongoModelAccessor<MemoryNoteBuffer>(this.db.collection('memory_notes_buffer')),
+      memoryFacts: new MongoModelAccessor<MemoryFact>(this.db.collection('memory_facts')),
       agendaItems: new MongoModelAccessor<AgendaItem>(this.db.collection('agenda_items')),
       bilibiliDanmaku: new MongoModelAccessor<BilibiliDanmakuRecord>(this.db.collection('bilibili_danmaku')),
       userPortraitScore: new MongoModelAccessor<UserPortraitScore>(this.db.collection('user_portrait_score')),

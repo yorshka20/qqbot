@@ -3,7 +3,6 @@
 import { inject, singleton } from 'tsyringe';
 import type { AuditEventStore } from '@/conversation/audit/AuditEventStore';
 import type { SessionMemoStore } from '@/conversation/memo/SessionMemoStore';
-import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { formatMemoryMarkdown } from '@/memory/formatMemoryMarkdown';
@@ -19,7 +18,6 @@ import type { ReplyStage } from '../types';
 
 const RAG_LIMIT = 5;
 const RAG_MIN_SCORE = 0.7;
-const ALWAYS_SCOPE = ['instruction', 'rule'];
 
 /**
  * Pipeline stage 4: context enrichment.
@@ -35,7 +33,6 @@ export class ContextEnrichmentStage implements ReplyStage {
     @inject(MemoryService) private memoryService: MemoryService,
     @inject(RetrievalService) private retrievalService: RetrievalService,
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
-    @inject(DITokens.CONFIG) private config: Config,
     // No-op when `vkbContextEngine.enabled` is false.
     @inject(VKBContextEngine) private readonly vkbContextEngine: VKBContextEngine,
     @inject(DITokens.AUDIT_EVENT_STORE) private readonly auditEventStore: AuditEventStore,
@@ -126,42 +123,17 @@ export class ContextEnrichmentStage implements ReplyStage {
   }
 
   private async getMemoryVarsAsync(context: HookContext): Promise<{ groupMemoryText: string; userMemoryText: string }> {
-    if (!this.memoryService) {
-      return { groupMemoryText: '', userMemoryText: '' };
-    }
     const sessionType = context.metadata.get('sessionType');
     const sessionId = context.metadata.get('sessionId');
     if (sessionType !== 'group' || !sessionId.startsWith('group:')) {
       return { groupMemoryText: '', userMemoryText: '' };
     }
     const groupId = sessionId.replace(/^group:/, '');
-    const userId = context.message?.userId?.toString() ?? '';
-    const userMessage = context.message?.message ?? '';
-
-    const memoryConfig = this.config.getMemoryConfig();
-    const filterConfig = memoryConfig.filter;
-
-    if (filterConfig?.enabled === false) {
-      return this.memoryService.getMemoryTextForReply(groupId, userId);
-    }
-
-    const result = await this.memoryService.getFilteredMemoryForReplyAsync(groupId, userId, {
-      userMessage,
-      alwaysIncludeScopes: filterConfig?.alwaysIncludeScopes ?? ALWAYS_SCOPE,
-      minRelevanceScore: filterConfig?.minRelevanceScore ?? RAG_MIN_SCORE,
-      count: RAG_LIMIT,
-    });
-
-    return {
-      groupMemoryText: result.groupMemoryText,
-      userMemoryText: result.userMemoryText,
-    };
+    const userId = context.message?.userId?.toString();
+    return this.memoryService.getMemoryForReply(groupId, userId || undefined, context.message?.message ?? '');
   }
 
   private async getMemoryContextTextAsync(context: HookContext): Promise<string> {
-    if (!this.memoryService) {
-      return '';
-    }
     const { groupMemoryText, userMemoryText } = await this.getMemoryVarsAsync(context);
 
     // The main pipeline only ever has one active speaker per turn, so the

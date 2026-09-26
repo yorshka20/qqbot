@@ -14,8 +14,7 @@ import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
-import { MemoryExtractService } from '@/memory/MemoryExtractService';
-import { MemoryService } from '@/memory/MemoryService';
+import { MemoryConsolidationService } from '@/memory/MemoryConsolidationService';
 import { QdrantClient } from '@/services/retrieval';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import type { RAGDocument } from '@/services/retrieval/rag/types';
@@ -72,8 +71,7 @@ export class MemoryTriggerPlugin extends PluginBase {
   /** Group IDs currently running cold start (avoid concurrent duplicate run for same group). */
   private pendingColdStartGroupIds = new Set<string>();
 
-  private memoryService!: MemoryService;
-  private memoryExtractService!: MemoryExtractService;
+  private consolidationService!: MemoryConsolidationService;
   private config!: Config;
 
   private messageAPI!: MessageAPI;
@@ -83,8 +81,7 @@ export class MemoryTriggerPlugin extends PluginBase {
   async onInit(): Promise<void> {
     this.enabled = true;
     const container = getContainer();
-    this.memoryService = container.resolve(MemoryService);
-    this.memoryExtractService = container.resolve(MemoryExtractService);
+    this.consolidationService = container.resolve(MemoryConsolidationService);
     this.config = container.resolve<Config>(DITokens.CONFIG);
     this.messageAPI = container.resolve(MessageAPI);
     this.conversationHistoryService = container.resolve<ConversationHistoryService>(ConversationHistoryService);
@@ -333,20 +330,14 @@ export class MemoryTriggerPlugin extends PluginBase {
     return provider;
   }
 
-  private mergeAndUpsertUserMemory(groupId: string, userId: string, content: string): Promise<void> {
-    const existing = this.memoryService.getUserMemoryTextByLayer(groupId, userId, 'auto');
-    return this.memoryExtractService
-      .mergeWithExisting(existing, content, 'user', { provider: this.getExtractProvider() })
-      .then((merged) => {
-        if (merged) {
-          return this.memoryService.upsertMemory(groupId, userId, false, merged, 'auto', 'llm_extract');
-        }
-      })
+  private consolidateUserMemory(groupId: string, userId: string, content: string): Promise<void> {
+    return this.consolidationService
+      .consolidateSlot(groupId, userId, [content], { provider: this.getExtractProvider() })
       .then(() => {
-        logger.debug(`[MemoryTriggerPlugin] Merged and updated user memory for group=${groupId} user=${userId}`);
+        logger.debug(`[MemoryTriggerPlugin] Consolidated user memory for group=${groupId} user=${userId}`);
       })
       .catch((err) => {
-        logger.warn('[MemoryTriggerPlugin] merge/upsert failed:', err);
+        logger.warn('[MemoryTriggerPlugin] consolidation failed:', err);
       });
   }
 
@@ -357,7 +348,7 @@ export class MemoryTriggerPlugin extends PluginBase {
     applicableSources: ['qq-private', 'qq-group', 'discord'],
   })
   onMessagePreprocess(context: HookContext): boolean {
-    if (!this.enabled || this.groupIds.size === 0 || !this.memoryService) {
+    if (!this.enabled || this.groupIds.size === 0) {
       return true;
     }
     // Whitelist is highest constraint: never respond in non-whitelist groups
@@ -389,7 +380,7 @@ export class MemoryTriggerPlugin extends PluginBase {
       `[MemoryTriggerPlugin] Trigger matched for group=${groupId} user=${userId}, content="${content.slice(0, 50)}..."`,
     );
     // Quick merge trigger content into user memory and notify
-    this.mergeAndUpsertUserMemory(groupId, userId, content)
+    this.consolidateUserMemory(groupId, userId, content)
       .then(() => {
         return this.messageAPI.sendFromContext(`用户 ${userId} 的记忆已更新。`, sendContext, 10000);
       })

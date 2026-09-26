@@ -122,6 +122,31 @@ export interface MemoryExtractUserCursor extends BaseModel {
 }
 
 /**
+ * One automatically extracted memory fact. The row is the source of truth for automatic memory
+ * and its id is the fact's Qdrant point id; hand-written memory lives in manual.txt, not here.
+ * A fact leaves `active` without being deleted: `superseded` when newer information replaced or
+ * contradicted it (`supersededBy` names the replacement when there is one), `retired` when a
+ * review judged it temporary or no longer relevant. Times are epoch milliseconds.
+ */
+export interface MemoryFact extends BaseModel {
+  groupId: string;
+  /** GROUP_MEMORY_USER_ID for the group's own memory. */
+  userId: string;
+  scope: string;
+  content: string;
+  durability: 'stable' | 'transient';
+  status: 'active' | 'superseded' | 'retired';
+  statusReason?: string;
+  supersededBy?: string;
+  firstSeen: number;
+  lastConfirmedAt: number;
+  confirmCount: number;
+  hitCount: number;
+  lastHitAt?: number;
+  reviewedAt?: number;
+}
+
+/**
  * Buffered memory note staged by the `memory_note` tool. The bot persists explicit user
  * rules/requirements here instead of writing memory directly; the memory consolidation pass
  * drains pending notes and folds them into a single merge, then deletes them. This makes the
@@ -283,6 +308,7 @@ export interface DatabaseModel {
   proactiveThreads: ModelAccessor<ProactiveThreadRecord>;
   memoryExtractUserCursors: ModelAccessor<MemoryExtractUserCursor>;
   memoryNotesBuffer: ModelAccessor<MemoryNoteBuffer>;
+  memoryFacts: ModelAccessor<MemoryFact>;
   agendaItems: ModelAccessor<AgendaItem>;
   bilibiliDanmaku: ModelAccessor<BilibiliDanmakuRecord>;
   userPortraitScore: ModelAccessor<UserPortraitScore>;

@@ -1,5 +1,5 @@
-// Memory Extract Service - extract from messages, merge with existing via analyze, then upsert
-// Supports hierarchical scopes: [core_scope:subtag] format
+// Memory Extract Service - extract candidate facts from chat, hand them to consolidation.
+// Also stages `memory_note` notes and drains them into the next consolidation.
 
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
@@ -7,21 +7,14 @@ import { LLMService } from '@/ai/services/LLMService';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import type { Config } from '@/core/config';
-import { GROUP_CORE_SCOPES, type ParsedScope, USER_CORE_SCOPES } from '@/core/config/types/memory';
+import { GROUP_CORE_SCOPES, USER_CORE_SCOPES } from '@/core/config/types/memory';
 import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { MemoryNoteBuffer } from '@/database/models/types';
-import { MemoryService } from '@/memory/MemoryService';
 import { logger } from '@/utils/logger';
-import { GROUP_MEMORY_USER_ID } from './MemoryService';
-
-/**
- * Extract and merge are background jobs whose prompts carry a day of raw group
- * messages or a whole memory slot, and ask a reasoning model for a document-sized
- * answer. LLMService's 120s default hard-timeout aborts them mid-generation and the
- * whole run is lost; nothing waits on these, so a longer budget costs nothing.
- */
-export const MEMORY_JOB_TIMEOUT_MS = 300_000;
+import { MemoryConsolidationService } from './MemoryConsolidationService';
+import { GROUP_MEMORY_USER_ID } from './memoryConstants';
+import { MEMORY_JOB_TIMEOUT_MS, type MemoryLLMOptions } from './memoryLLM';
 
 /**
  * Extract output shape from prompts/memory/extract.txt:
@@ -32,17 +25,6 @@ export const MEMORY_JOB_TIMEOUT_MS = 300_000;
 export interface ExtractResult {
   groupFacts?: string[];
   userFacts?: Array<{ userId: string; facts: string[] }>;
-}
-
-export interface MemoryExtractServiceOptions {
-  /** LLM provider name (required — must be resolved from config by caller). */
-  provider: string;
-  /**
-   * Model override. Extraction wants a provider's cheap base model, not whatever
-   * the chat pipeline is configured with — same reasoning as the subagent presets.
-   * Omitted means the provider's configured default.
-   */
-  model?: string;
 }
 
 @singleton()
@@ -63,7 +45,7 @@ export class MemoryExtractService {
   constructor(
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     @inject(LLMService) private llmService: LLMService,
-    @inject(MemoryService) private memoryService: MemoryService,
+    @inject(MemoryConsolidationService) private consolidationService: MemoryConsolidationService,
     @inject(DatabaseManager) private databaseManager: DatabaseManager,
     @inject(DITokens.CONFIG) private config: Config,
   ) {}
@@ -147,7 +129,7 @@ export class MemoryExtractService {
       return;
     }
     try {
-      await this.consolidateSlots(groupId, drained.groupNotes, drained.userNotes, { provider });
+      await this.consolidationService.consolidate(groupId, drained.groupNotes, drained.userNotes, { provider });
       await this.deletePendingNotes(drained.ids);
       logger.info(`[MemoryExtractService] flushed ${drained.ids.length} memory notes | group=${groupId}`);
     } catch (err) {
@@ -207,37 +189,6 @@ export class MemoryExtractService {
     }
   }
 
-  /**
-   * Merge facts into the group-global slot and each user slot (auto layer), one mergeWithExisting per slot.
-   * Shared by note flush and the periodic extract path so notes and extracted facts collapse together.
-   */
-  private async consolidateSlots(
-    groupId: string,
-    groupFacts: string[],
-    userFacts: Map<string, string[]>,
-    options: MemoryExtractServiceOptions,
-  ): Promise<void> {
-    if (groupFacts.length > 0) {
-      const existing = this.memoryService.getGroupMemoryTextByLayer(groupId, 'auto');
-      const merged = await this.mergeWithExisting(existing, groupFacts.join('\n'), 'global', options);
-      if (merged) {
-        await this.memoryService.upsertMemory(groupId, GROUP_MEMORY_USER_ID, true, merged, 'auto', 'llm_extract');
-      }
-      logger.info(`[MemoryExtractService] memory updated | group=${groupId} target=GROUP_GLOBAL |\n${merged}`);
-    }
-    for (const [userId, facts] of userFacts) {
-      if (!userId || facts.length === 0) {
-        continue;
-      }
-      const existing = this.memoryService.getUserMemoryTextByLayer(groupId, userId, 'auto');
-      const merged = await this.mergeWithExisting(existing, facts.join('\n'), 'user', options);
-      if (merged) {
-        await this.memoryService.upsertMemory(groupId, userId, false, merged, 'auto', 'llm_extract');
-      }
-      logger.info(`[MemoryExtractService] memory updated | group=${groupId} user=${userId} |\n${merged}`);
-    }
-  }
-
   // ============================================================================
   // Scope template variable helpers
   // ============================================================================
@@ -262,14 +213,6 @@ export class MemoryExtractService {
     return this.promptManager.render('memory.scopes_group');
   }
 
-  /** Format existing scopes for AI reference */
-  private formatExistingScopes(scopes: ParsedScope[]): string {
-    if (scopes.length === 0) {
-      return '(无已有 scope)';
-    }
-    return scopes.map((s) => s.full).join(', ');
-  }
-
   /** Get common scope variables for template rendering */
   private getScopeTemplateVars(): Record<string, string> {
     return {
@@ -280,120 +223,29 @@ export class MemoryExtractService {
     };
   }
 
-  /** Get available scopes section for analyze template based on memory type */
-  private getAvailableScopesSection(memoryType: 'user' | 'global'): string {
-    if (memoryType === 'user') {
-      return `**user 记忆可用**：${this.getUserCoreScopesStr()}
-⚠️ user 记忆中不能包含 \`rule\`。若新信息涉及群规或 bot 行为规则，直接丢弃。`;
-    }
-    return `**global 记忆可用**：${this.getGroupCoreScopesStr()}
-\`rule\` 只能存在于 global 记忆中，记录 bot 的群级行为设定、群公告等。`;
-  }
-
   /**
-   * Normalize merged memory so that each bullet line contains at most one fact.
-   * Splits lines like " - A；B；C" into " - A\n - B\n - C" so output is one fact per line even if LLM merged multiple facts.
-   */
-  private normalizeOneFactPerLine(text: string): string {
-    const lines = text.split(/\r?\n/);
-    const out: string[] = [];
-    for (const line of lines) {
-      const bulletMatch = line.match(/^(\s*-\s+)(.*)$/);
-      if (!bulletMatch) {
-        out.push(line);
-        continue;
-      }
-      const prefix = bulletMatch[1];
-      const content = bulletMatch[2];
-      // Split by full-width or half-width semicolon (fact-level separator)
-      const parts = content
-        .split(/[；;]/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (parts.length <= 1) {
-        out.push(line);
-        continue;
-      }
-      for (const part of parts) {
-        out.push(prefix + part);
-      }
-    }
-    return out.join('\n');
-  }
-
-  /**
-   * Merge new facts with existing memory using memory.analyze template.
-   * Returns the merged memory text (one line per item); empty string if analyze returns nothing.
-   * Post-processes LLM output to ensure one fact per bullet line (splits by ；;).
-   */
-  async mergeWithExisting(
-    existingMemory: string,
-    newFacts: string,
-    memoryType: 'user' | 'global',
-    options: MemoryExtractServiceOptions,
-  ): Promise<string> {
-    if (!newFacts.trim()) {
-      return existingMemory.trim();
-    }
-    const provider = options.provider;
-    const baseSystemPrompt = this.promptManager.renderBasePrompt();
-
-    // Get existing scopes for AI reference (to encourage scope reuse)
-    const existingScopes = this.memoryService.extractAllScopes(existingMemory);
-    const existingScopesStr = this.formatExistingScopes(existingScopes);
-
-    const prompt = this.promptManager.render('memory.analyze', {
-      existingMemory: existingMemory || '(无)',
-      newFacts: newFacts.trim(),
-      adminUserId: this.promptManager.adminUserId,
-      memoryType,
-      existingScopes: existingScopesStr,
-      availableScopesSection: this.getAvailableScopesSection(memoryType),
-      ...this.getScopeTemplateVars(),
-    });
-
-    try {
-      const res = await this.llmService.generate(
-        prompt,
-        {
-          temperature: 0.4,
-          maxTokens: TOKEN_BUDGET.document,
-          model: options.model,
-          systemPrompt: baseSystemPrompt,
-          timeout: MEMORY_JOB_TIMEOUT_MS,
-        },
-        provider,
-      );
-      let merged = (res.text ?? '').trim();
-      merged = this.normalizeOneFactPerLine(merged);
-      return merged;
-    } catch (err) {
-      logger.error('[MemoryExtractService] LLM analyze failed:', err);
-      return existingMemory.trim();
-    }
-  }
-
-  /**
-   * Extract from messages and upsert only the given user's memory (no group memory).
+   * Extract from messages and consolidate only the given user's memory (no group memory).
    * Queued: runs after previous extract job completes (single-threaded).
    */
-  async extractAndUpsertUserOnly(
+  async extractAndConsolidateUser(
     groupId: string,
     userId: string,
     recentMessagesText: string,
-    options: MemoryExtractServiceOptions,
+    options: MemoryLLMOptions,
   ): Promise<void> {
     const prev = this.extractQueue;
-    this.extractQueue = prev.then(() => this.runExtractAndUpsertUserOnly(groupId, userId, recentMessagesText, options));
+    this.extractQueue = prev.then(() =>
+      this.runExtractAndConsolidateUser(groupId, userId, recentMessagesText, options),
+    );
     return this.extractQueue;
   }
 
-  /** Internal: one extract+merge+upsert job for a single user (run under queue). */
-  private async runExtractAndUpsertUserOnly(
+  /** Internal: one extract + consolidate job for a single user (run under queue). */
+  private async runExtractAndConsolidateUser(
     groupId: string,
     userId: string,
     recentMessagesText: string,
-    options: MemoryExtractServiceOptions,
+    options: MemoryLLMOptions,
   ): Promise<void> {
     const provider = options.provider;
     const inputText = recentMessagesText || '(no messages)';
@@ -425,7 +277,7 @@ export class MemoryExtractService {
         provider,
       );
       response = (res.text ?? '').trim();
-      logger.debug('[MemoryExtractService] runExtractAndUpsertUserOnly result:', { response });
+      logger.debug('[MemoryExtractService] runExtractAndConsolidateUser result:', { response });
     } catch (err) {
       logger.error('[MemoryExtractService] LLM extract failed (userOnly):', err);
       return;
@@ -442,36 +294,21 @@ export class MemoryExtractService {
       return;
     }
 
-    try {
-      const newFactsText = userFacts
-        .flatMap((u) => u.facts)
-        .filter(Boolean)
-        .join('\n');
-      if (!newFactsText.trim()) {
-        return;
-      }
-      const existing = this.memoryService.getUserMemoryTextByLayer(groupId, userId, 'auto');
-      const merged = await this.mergeWithExisting(existing, newFactsText, 'user', options);
-      if (merged) {
-        await this.memoryService.upsertMemory(groupId, userId, false, merged, 'auto', 'llm_extract');
-      }
-      logger.info(`[MemoryExtractService] memory updated | group=${groupId} user=${userId} |\n${merged}`);
-    } catch (err) {
-      logger.error('[MemoryExtractService] merge/upsert failed (userOnly):', err);
-    }
+    await this.consolidationService.consolidateSlot(
+      groupId,
+      userId,
+      userFacts.flatMap((u) => u.facts),
+      options,
+    );
   }
 
   /**
-   * Extract from recent messages (memory.extract), then for each slot merge with existing (memory.analyze) and upsert.
+   * Extract from recent messages (memory.extract), then consolidate each slot.
    * Queued: runs after previous extract job completes (single-threaded).
    */
-  async extractAndUpsert(
-    groupId: string,
-    recentMessagesText: string,
-    options: MemoryExtractServiceOptions,
-  ): Promise<void> {
+  async extractAndConsolidate(groupId: string, recentMessagesText: string, options: MemoryLLMOptions): Promise<void> {
     const prev = this.extractQueue;
-    this.extractQueue = prev.then(() => this.runExtractAndUpsert(groupId, recentMessagesText, options));
+    this.extractQueue = prev.then(() => this.runExtractAndConsolidate(groupId, recentMessagesText, options));
     return this.extractQueue;
   }
 
@@ -488,21 +325,17 @@ export class MemoryExtractService {
    * another context) into group and user memory, together with any buffered notes.
    * Queued like every other extract job.
    */
-  async consolidateExtractOutput(
-    groupId: string,
-    extractOutput: string,
-    options: MemoryExtractServiceOptions,
-  ): Promise<void> {
+  async consolidateExtractOutput(groupId: string, extractOutput: string, options: MemoryLLMOptions): Promise<void> {
     const prev = this.extractQueue;
     this.extractQueue = prev.then(() => this.applyExtractOutput(groupId, extractOutput, options));
     return this.extractQueue;
   }
 
-  /** Internal: one extract+merge+upsert job for a group (run under queue). */
-  private async runExtractAndUpsert(
+  /** Internal: one extract + consolidate job for a group (run under queue). */
+  private async runExtractAndConsolidate(
     groupId: string,
     recentMessagesText: string,
-    options: MemoryExtractServiceOptions,
+    options: MemoryLLMOptions,
   ): Promise<void> {
     const provider = options.provider;
     const prompt = this.promptManager.render('memory.extract', {
@@ -534,12 +367,8 @@ export class MemoryExtractService {
     await this.applyExtractOutput(groupId, response, options);
   }
 
-  /** Parse an extract output, fold in buffered notes, then merge and upsert each slot. */
-  private async applyExtractOutput(
-    groupId: string,
-    response: string,
-    options: MemoryExtractServiceOptions,
-  ): Promise<void> {
+  /** Parse an extract output, fold in buffered notes, then consolidate each slot. */
+  private async applyExtractOutput(groupId: string, response: string, options: MemoryLLMOptions): Promise<void> {
     // Even when extraction yields nothing, still drain buffered notes for this group so they consolidate.
     const parsed = this.parseExtractOutput(response);
 
@@ -574,7 +403,7 @@ export class MemoryExtractService {
     );
 
     try {
-      await this.consolidateSlots(groupId, groupFacts, userFacts, options);
+      await this.consolidationService.consolidate(groupId, groupFacts, userFacts, options);
       if (drained) {
         await this.deletePendingNotes(drained.ids);
       }

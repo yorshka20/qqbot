@@ -14,6 +14,7 @@ import type {
   ConversationConfig,
   DatabaseModel,
   MemoryExtractUserCursor,
+  MemoryFact,
   MemoryNoteBuffer,
   Message,
   ModelAccessor,
@@ -474,20 +475,22 @@ export class SQLiteAdapter implements DatabaseAdapter {
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`,
-      `CREATE TABLE IF NOT EXISTS memory_fact_meta (
+      `CREATE TABLE IF NOT EXISTS memory_facts (
         id TEXT PRIMARY KEY,
-        factHash TEXT NOT NULL UNIQUE,
         groupId TEXT NOT NULL,
         userId TEXT NOT NULL,
         scope TEXT NOT NULL,
-        source TEXT NOT NULL CHECK(source IN ('manual', 'llm_extract')),
-        normalizedContent TEXT NOT NULL DEFAULT '',
+        content TEXT NOT NULL,
+        durability TEXT NOT NULL CHECK(durability IN ('stable', 'transient')),
+        status TEXT NOT NULL CHECK(status IN ('active', 'superseded', 'retired')),
+        statusReason TEXT,
+        supersededBy TEXT,
         firstSeen INTEGER NOT NULL,
-        lastReinforced INTEGER NOT NULL,
-        reinforceCount INTEGER NOT NULL DEFAULT 1,
-        hitCount INTEGER NOT NULL DEFAULT 0,
-        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'stale')),
-        staleSince INTEGER,
+        lastConfirmedAt INTEGER NOT NULL,
+        confirmCount INTEGER NOT NULL,
+        hitCount INTEGER NOT NULL,
+        lastHitAt INTEGER,
+        reviewedAt INTEGER,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`,
@@ -695,20 +698,6 @@ export class SQLiteAdapter implements DatabaseAdapter {
       logger.warn(`[SQLiteAdapter] Failed to renumber agenda_items ids: ${error}`);
     }
 
-    // Add normalizedContent column to memory_fact_meta if it doesn't exist (migration)
-    try {
-      const metaInfo = this.db.query(`PRAGMA table_info(memory_fact_meta)`).all() as Array<{ name: string }>;
-      if (Array.isArray(metaInfo)) {
-        const cols = new Set(metaInfo.map((c) => c.name));
-        if (!cols.has('normalizedContent')) {
-          this.db.run(`ALTER TABLE memory_fact_meta ADD COLUMN normalizedContent TEXT NOT NULL DEFAULT ''`);
-          logger.info('[SQLiteAdapter] Added normalizedContent column to memory_fact_meta');
-        }
-      }
-    } catch (error) {
-      logger.warn(`[SQLiteAdapter] Failed to add normalizedContent column: ${error}`);
-    }
-
     // Create indexes AFTER ensuring messageSeq column exists
     // CREATE INDEX IF NOT EXISTS is safe - won't fail if index already exists
     const indexStatements = [
@@ -724,10 +713,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_agenda_items_enabled ON agenda_items(enabled)`,
       `CREATE INDEX IF NOT EXISTS idx_agenda_items_triggerType ON agenda_items(triggerType)`,
       `CREATE INDEX IF NOT EXISTS idx_agenda_items_eventType ON agenda_items(eventType)`,
-      `CREATE INDEX IF NOT EXISTS idx_memory_fact_meta_group_user ON memory_fact_meta(groupId, userId)`,
-      `CREATE INDEX IF NOT EXISTS idx_memory_fact_meta_status ON memory_fact_meta(status)`,
-      `CREATE INDEX IF NOT EXISTS idx_memory_fact_meta_fact_hash ON memory_fact_meta(factHash)`,
-      `CREATE INDEX IF NOT EXISTS idx_memory_fact_meta_source ON memory_fact_meta(source)`,
+      `CREATE INDEX IF NOT EXISTS idx_memory_facts_slot ON memory_facts(groupId, userId, status)`,
       `CREATE INDEX IF NOT EXISTS idx_messages_createdAt ON messages(createdAt)`,
       `CREATE INDEX IF NOT EXISTS idx_messages_conversationId_createdAt ON messages(conversationId, createdAt)`,
       `CREATE INDEX IF NOT EXISTS idx_bilibili_danmaku_room_received ON bilibili_danmaku(roomId, receivedAt)`,
@@ -785,7 +771,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
 
   /**
    * Get the raw bun:sqlite Database instance for direct SQL access.
-   * Used by MemoryFactMetaService which needs batch operations beyond ModelAccessor.
+   * For stores that need batch operations beyond ModelAccessor.
    */
   getRawDb(): Database | null {
     return this.db;
@@ -806,6 +792,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
         'memory_extract_user_cursors',
       ),
       memoryNotesBuffer: new SQLiteModelAccessor<MemoryNoteBuffer>(this.db, 'memory_notes_buffer'),
+      memoryFacts: new SQLiteModelAccessor<MemoryFact>(this.db, 'memory_facts'),
       agendaItems: new SQLiteModelAccessor<AgendaItem>(this.db, 'agenda_items', ['enabled']),
       bilibiliDanmaku: new SQLiteModelAccessor<BilibiliDanmakuRecord>(this.db, 'bilibili_danmaku', [
         'mentionsStreamer',

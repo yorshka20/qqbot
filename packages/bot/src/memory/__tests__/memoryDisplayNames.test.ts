@@ -1,8 +1,8 @@
 import { Database } from 'bun:sqlite';
 import { describe, expect, it } from 'bun:test';
-import { MemoryFactMetaService, memorySubjectKey } from '../MemoryFactMetaService';
+import { MemoryDisplayNames, memorySubjectKey } from '../memoryDisplayNames';
 
-function createService(): { service: MemoryFactMetaService; db: Database } {
+function createService(): { service: MemoryDisplayNames; db: Database } {
   const db = new Database(':memory:');
   db.run(`CREATE TABLE messages (
     id TEXT PRIMARY KEY,
@@ -11,7 +11,7 @@ function createService(): { service: MemoryFactMetaService; db: Database } {
     metadata TEXT,
     createdAt TEXT
   )`);
-  return { service: new MemoryFactMetaService(db), db };
+  return { service: new MemoryDisplayNames(db), db };
 }
 
 function insertMessage(

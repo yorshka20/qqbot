@@ -739,55 +739,47 @@ The bot maintains three distinct memory stores that divide responsibility by wri
 | Piece | Writer | Scope | Lifetime | Purpose |
 |---|---|---|---|---|
 | `AuditEventStore` (audit log) | Bot auto-hooks (`onMessageComplete` for reply/silence, `onToolExecuted` for tool calls) | Per-session | ~45min in-mem, time-pruned only (no item cap) | Factual "what I just did" ledger — reply / silence / tool actions |
-| `MemoryService` / `memory_note` tool | LLM (extract pipeline + explicit tool) | Per group / per user | Long-term (file-backed under `memoryDir`) | Who the user IS / their preferences / group rules |
+| `MemoryService` / `memory_note` tool | People (manual.txt) and LLM (extraction + explicit tool) | Per group / per user | Long-term (manual files + `memory_facts` rows) | Who the user IS / their preferences / group rules |
 | `SessionMemoStore` / `session_memo` tool | LLM (via tool at reply stage) | Per-session | TTL or pinned; persisted to SQLite when available, in-memory otherwise | What the bot chose to remember for the next few turns/sessions (positions, temporary agreements, upcoming events) |
 
 These three pieces are rendered into the final user message in this order: `<memory_context>` → `<rag_context>` → `<glossary>` → persona state blocks → `<session_memo>` → `<recent_actions>` → `<current_query>`. The ordering places long-term context first so the model has stable background before reading volatile items, then self-chosen short-term notes directly above recent actions, and the current query last so it is closest to the generation boundary.
 
-### Overview
+### Sources of truth
 
-`MemoryService` provides file-based long-term memory for each user and group. Memories persist in `data/memory/` and are injected into LLM prompts during context enrichment.
+Long-term memory has two layers, each with one source of truth:
 
-### Storage Layout
+| Layer | Source of truth | Written by | Reaches a reply |
+|---|---|---|---|
+| manual | `data/memory/{groupId}/{userId\|_global_}/manual.txt` | people (webui or an editor); never an LLM | in full, every reply, ahead of automatic facts; wins any conflict |
+| auto | `memory_facts` rows (`MemoryFactStore`) | consolidation and review | always-include scopes in full, the rest by vector search |
 
-```
-data/memory/
-├── {groupId}/
-│   ├── _global_/         # Group-level memory
-│   │   └── auto.txt      # LLM-extracted group memory
-│   └── {userId}/         # Per-user memory within a group
-│       ├── manual.txt    # Human-authored memory
-│       └── auto.txt      # LLM-extracted memory
-```
+A manual file is `[scope]` headers followed by one fact per line. The unit is the line: splitting on punctuation cut names and versions such as `M.C.G.A.` or `Qwen3.5` into fragments.
 
-### Memory Layers
+The Qdrant collection `memory_{groupId}` (`MemoryIndex`) is derived from the active `memory_facts` rows and never read as content. A point's id is its row's id (a UUID, which Qdrant keeps as is), so search hits and hit counts map straight back to rows. Manual memory is not indexed. Every write goes through `MemoryFactStore`, which updates the row and then the index; an index failure leaves the row in place and is repaired by `MemoryIndex.reconcile` (daily, `/memory_sync`, `bun run memory reindex`).
 
-| Layer | Source | Description |
-|-------|--------|-------------|
-| `manual` | Human-authored | Written directly into memory files |
-| `auto` | LLM-extracted | Extracted by the bot from conversation history |
+### Facts
 
-### Hierarchical Scopes
+A fact has a `scope` (`core_scope` or `core_scope:subtag`; group memory: topic / rule / event / context, member memory: identity / preference / opinion / relationship / behavior / instruction), a `durability` (`stable` or `transient`) and a `status`. It leaves `active` without being deleted: `superseded` when newer information replaced or contradicted it (`supersededBy` names the replacement), `retired` when a review judged it temporary. Signals: `confirmCount` / `lastConfirmedAt` (a later extraction restated it), `hitCount` / `lastHitAt` (vector search put it into a reply), `reviewedAt`.
 
-Memory is organized into named scopes using a `[scope:subtag]` syntax:
+### Writing: consolidation
 
-```
-[preference:food]
-Likes spicy food
+Extraction produces candidate facts per slot. `MemoryConsolidationService.consolidateSlot` shows the model the slot's active facts numbered, its manual facts read-only and the candidates, and applies the operations it answers with: `add`, `confirm` (a restatement: bumps `confirmCount`), `update` (one or more facts replaced by a corrected or merged one) and `delete` (contradicted). Operations are validated against the numbered facts and the slot's allowed scopes; nothing rewrites the slot wholesale.
 
-[identity]
-Name: Alice
-```
+Every writer goes through it: the daily `memory` task of the `group_day` fan-out (yesterday's chat on the shared prefix, then consolidation on the memory plugin's own `extractProvider`), buffered `memory_note` notes, MemoryTrigger, `/memory_edit`, `/memory_deep`, avatar extraction and `bun run memory backfill`.
 
-Core scopes: `instruction`, `rule`, `preference`, `identity`, `fact`, and custom scopes.
+### Review
 
-### Extraction
+Daily, `MemoryReviewService` looks for facts unconfirmed and unreviewed past their durability's threshold (`memory.review`: transient 30 days, stable 180). The model sees the slot with those facts marked and decides per fact: keep (long-lived), retire (it only held at the time) or merge with a fact saying the same thing. Retiring changes the status; the row stays. The same daily job reconciles each group's index.
 
-Daily extraction is the `memory` task of the `group_day` fan-out: it reads yesterday's full chat log from the shared prefix, and `MemoryExtractService.consolidateExtractOutput` merges the facts (with any buffered `memory_note` entries) into the `auto` layer through `memory.analyze`, which runs on the memory plugin's own `extractProvider`. There is no idle-triggered extraction. Full-history and since-date backfills (MemoryTrigger / `/memory` commands) still build their own windows with `memory.extract`.
+### Reading
 
-### Optional RAG Support
+`MemoryService.getMemoryForReply(groupId, userId, message)` returns the group's and the speaker's slot text: every manual fact, the automatic facts in `memory.filter.alwaysIncludeScopes` (default instruction and rule), and the automatic facts a vector search finds relevant to the message. A searched fact's final score is similarity × recency (transient facts decay from their last confirmation, stable ones do not) × a capped confirmation weight (`memory.scoring`); it must clear `memory.filter.minRelevanceScore`. Without RAG every automatic fact is included. `get_memory` returns a whole slot; `search_memory` searches the group.
 
-When RAG is configured, `MemoryRAGService` uses Ollama embeddings + Qdrant vector search to perform semantic retrieval instead of keyword matching.
+### Offline maintenance
+
+`bun run memory <migrate|reindex|review|eval|backfill|stats>` (`src/cli/memory.ts`) runs the same services in a local batch. It builds only `bootstrapCore` and the database, never `startApp`, so a long run does not fire the agenda next to the live bot. `eval` prints a query's hits with similarity and final score, for tuning the threshold.
+
+The webui memory page shows each layer from its source: `manual.txt` (editable) and every fact with its signals, where a fact can be corrected or deleted.
 
 ## Fan-out
 

@@ -75,10 +75,10 @@ export class GetMemoryToolExecutor extends BaseToolExecutor {
     }
     const targetUserId = resolution.kind === 'resolved' ? resolution.userId : undefined;
 
-    const targetMemory = this.memoryService.getMemory(groupId, targetUserId);
+    const targetMemory = await this.memoryService.getMemory(groupId, targetUserId);
     const parts: string[] = [];
     if (includeGroupMemory && targetUserId) {
-      const groupMemory = this.memoryService.getMemory(groupId);
+      const groupMemory = await this.memoryService.getMemory(groupId);
       if (groupMemory.content) {
         parts.push(`群记忆:\n${groupMemory.content}`);
       }

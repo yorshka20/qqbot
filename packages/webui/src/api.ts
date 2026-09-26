@@ -40,9 +40,12 @@ import type {
   LanReportsResponse,
   LanStatusResponse,
   ListResponse,
-  MemoryBrowseResponse,
+  MemoryFactEntry,
+  MemoryFactPatch,
+  MemoryGlobalStats,
   MemoryGroupDetail,
-  MemoryUserFactDetail,
+  MemoryGroupStats,
+  MemorySlotDetail,
   MomentsListResponse,
   MomentsSearchResponse,
   MomentsStatsResponse,
@@ -461,69 +464,53 @@ function memoryApiBase(): string {
   return getMemoryApiBase();
 }
 
-export async function getMemoryBrowse(): Promise<MemoryBrowseResponse> {
-  const res = await fetch(`${memoryApiBase()}/browse`);
+async function memoryRequest<T>(path: string, init: RequestInit | undefined, what: string): Promise<T> {
+  const res = await fetch(`${memoryApiBase()}${path}`, init);
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error ?? `Get memory browse failed: ${res.status}`);
+    throw new Error(err.error ?? `${what} failed: ${res.status}`);
   }
-  return res.json() as Promise<MemoryBrowseResponse>;
+  return res.json() as Promise<T>;
 }
 
-export async function getMemoryStats(): Promise<{ stats: import('./types').MemoryGlobalStats }> {
-  const res = await fetch(`${memoryApiBase()}/stats`);
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error ?? `Get memory stats failed: ${res.status}`);
-  }
-  return res.json();
+export function getMemoryStats(): Promise<{ stats: MemoryGlobalStats }> {
+  return memoryRequest('/stats', undefined, 'Get memory stats');
 }
 
-export async function getMemoryGroups(): Promise<{ groups: import('./types').MemoryGroupStats[] }> {
-  const res = await fetch(`${memoryApiBase()}/groups`);
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error ?? `Get memory groups failed: ${res.status}`);
-  }
-  return res.json();
+export function getMemoryGroups(): Promise<{ groups: MemoryGroupStats[] }> {
+  return memoryRequest('/groups', undefined, 'Get memory groups');
 }
 
-export async function getMemoryGroupDetail(groupId: string): Promise<MemoryGroupDetail> {
-  const res = await fetch(`${memoryApiBase()}/group/${encodeURIComponent(groupId)}`);
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error ?? `Get memory group detail failed: ${res.status}`);
-  }
-  return res.json();
+export function getMemoryGroupDetail(groupId: string): Promise<MemoryGroupDetail> {
+  return memoryRequest(`/group/${encodeURIComponent(groupId)}`, undefined, 'Get memory group');
 }
 
-export async function getMemoryUserFacts(groupId: string, userId: string): Promise<MemoryUserFactDetail> {
-  const res = await fetch(`${memoryApiBase()}/group/${encodeURIComponent(groupId)}/user/${encodeURIComponent(userId)}`);
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error ?? `Get memory user facts failed: ${res.status}`);
-  }
-  return res.json();
-}
-
-export async function saveManualMemory(
-  groupId: string,
-  userId: string,
-  content: string,
-): Promise<{ indexed: boolean }> {
-  const res = await fetch(
-    `${memoryApiBase()}/group/${encodeURIComponent(groupId)}/user/${encodeURIComponent(userId)}/manual`,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
-    },
+export function getMemorySlot(groupId: string, userId: string): Promise<MemorySlotDetail> {
+  return memoryRequest(
+    `/group/${encodeURIComponent(groupId)}/user/${encodeURIComponent(userId)}`,
+    undefined,
+    'Get memory slot',
   );
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error ?? `Save manual memory failed: ${res.status}`);
-  }
-  return res.json() as Promise<{ indexed: boolean }>;
+}
+
+export function saveManualMemory(groupId: string, userId: string, content: string): Promise<{ saved: boolean }> {
+  return memoryRequest(
+    `/group/${encodeURIComponent(groupId)}/user/${encodeURIComponent(userId)}/manual`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) },
+    'Save manual memory',
+  );
+}
+
+export function updateMemoryFact(id: string, patch: MemoryFactPatch): Promise<{ fact: MemoryFactEntry }> {
+  return memoryRequest(
+    `/fact/${encodeURIComponent(id)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) },
+    'Update memory fact',
+  );
+}
+
+export function deleteMemoryFact(id: string): Promise<{ deleted: boolean }> {
+  return memoryRequest(`/fact/${encodeURIComponent(id)}`, { method: 'DELETE' }, 'Delete memory fact');
 }
 
 // ────────────────────────────────────────────────────────────────────────────

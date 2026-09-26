@@ -1,8 +1,8 @@
 // Memory Plugin - daily memory extraction as a group_day fan-out task, full-history backfills,
-// memory backups and stale-fact cleanup.
+// memory backups, and the daily review of due facts.
 
 import { existsSync } from 'node:fs';
-import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
@@ -11,15 +11,19 @@ import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { MemoryExtractUserCursor } from '@/database/models/types';
 import { GroupDayFanout } from '@/fanout/contexts/groupDay/GroupDayFanout';
+import { chunkLines } from '@/memory/chunkLines';
 import { GroupDayMemoryTask } from '@/memory/GroupDayMemoryTask';
 import { MemoryExtractService } from '@/memory/MemoryExtractService';
+import { MemoryFactStore } from '@/memory/MemoryFactStore';
+import { MemoryReviewService } from '@/memory/MemoryReviewService';
+import { MemoryService } from '@/memory/MemoryService';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 export interface MemoryPluginConfig {
-  /** LLM provider for backfill extracts and for merging extracted facts (e.g. "gemini", "deepseek"). Required. */
+  /** LLM provider for backfill extracts, consolidation and review (e.g. "gemini", "deepseek"). Required. */
   extractProvider: string;
   /** Model override for the extract provider (e.g. "gemini-3.1-flash-lite"). Default: the provider's configured model. */
   extractModel?: string;
@@ -29,7 +33,7 @@ export interface MemoryPluginConfig {
   fullHistoryProgressFile?: string;
   /** Backup interval in ms. Default 604800000 (7 days). Set to 0 to disable. */
   backupIntervalMs?: number;
-  /** Backup directory path (relative to cwd). Default "data/backups/memory". */
+  /** Backup directory path (relative to cwd). Default "data/backup/memory". */
   backupDir?: string;
 }
 
@@ -55,8 +59,8 @@ export class MemoryPlugin extends PluginBase {
 
   /** Backup interval timer. */
   private backupTimer: ReturnType<typeof setInterval> | null = null;
-  private cleanupStartupTimer: ReturnType<typeof setTimeout> | null = null;
-  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  private maintenanceStartupTimer: ReturnType<typeof setTimeout> | null = null;
+  private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
   private backupIntervalMs = DEFAULT_BACKUP_INTERVAL_MS;
   private backupDir = DEFAULT_BACKUP_DIR;
 
@@ -107,10 +111,10 @@ export class MemoryPlugin extends PluginBase {
       );
     }
 
-    // Daily memory fact cleanup (stale/zombie detection)
-    const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
-    this.cleanupStartupTimer = setTimeout(() => void this.runDailyCleanup(), 60 * 60 * 1000); // 1h after startup
-    this.cleanupTimer = setInterval(() => void this.runDailyCleanup(), CLEANUP_INTERVAL_MS);
+    // Daily review of due facts + index reconcile; first run 1h after startup
+    const MAINTENANCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+    this.maintenanceStartupTimer = setTimeout(() => void this.runDailyMaintenance(), 60 * 60 * 1000);
+    this.maintenanceTimer = setInterval(() => void this.runDailyMaintenance(), MAINTENANCE_INTERVAL_MS);
   }
 
   onStop(): void {
@@ -118,13 +122,13 @@ export class MemoryPlugin extends PluginBase {
       clearInterval(this.backupTimer);
       this.backupTimer = null;
     }
-    if (this.cleanupStartupTimer) {
-      clearTimeout(this.cleanupStartupTimer);
-      this.cleanupStartupTimer = null;
+    if (this.maintenanceStartupTimer) {
+      clearTimeout(this.maintenanceStartupTimer);
+      this.maintenanceStartupTimer = null;
     }
-    if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer);
-      this.cleanupTimer = null;
+    if (this.maintenanceTimer) {
+      clearInterval(this.maintenanceTimer);
+      this.maintenanceTimer = null;
     }
   }
 
@@ -147,37 +151,26 @@ export class MemoryPlugin extends PluginBase {
   }
 
   /**
-   * Daily cleanup: mark zombie facts as stale, hard-delete old stale facts.
+   * Daily maintenance, per group with memory: review the facts that are due (keep, retire or
+   * merge them), then bring the group's vector index back to its facts.
    */
-  private async runDailyCleanup(): Promise<void> {
+  private async runDailyMaintenance(): Promise<void> {
+    const container = getContainer();
+    const store = container.resolve(MemoryFactStore);
+    const review = container.resolve(MemoryReviewService);
+    const memory = container.resolve(MemoryService);
+    const options = { provider: this.extractProvider, model: this.extractModel };
     try {
-      const { MemoryFactMetaService } = await import('@/memory/MemoryFactMetaService');
-      let factMetaService: InstanceType<typeof MemoryFactMetaService>;
-      try {
-        factMetaService = getContainer().resolve(DITokens.MEMORY_FACT_META_SERVICE);
-      } catch {
-        return; // Not registered (non-SQLite)
-      }
-
-      // Rule 1: stale > 30 days → hard delete
-      const STALE_HARD_DELETE_MS = 30 * 24 * 60 * 60 * 1000;
-      const staleFacts = factMetaService.getStaleFacts(STALE_HARD_DELETE_MS);
-      if (staleFacts.length > 0) {
-        factMetaService.deleteMany(staleFacts.map((f) => f.factHash));
-        logger.info(`[MemoryPlugin] Cleanup: deleted ${staleFacts.length} stale facts (>30d)`);
-      }
-
-      // Rule 2: active but 180d no reinforce + hitCount=0 → demote to stale
-      const ZOMBIE_THRESHOLD_MS = 180 * 24 * 60 * 60 * 1000;
-      const zombieFacts = factMetaService.getZombieFacts(ZOMBIE_THRESHOLD_MS);
-      for (const fact of zombieFacts) {
-        factMetaService.markStale(fact.factHash);
-      }
-      if (zombieFacts.length > 0) {
-        logger.info(`[MemoryPlugin] Cleanup: demoted ${zombieFacts.length} zombie facts to stale`);
+      for (const groupId of await store.listGroupIds()) {
+        const reviewed = await review.reviewGroup(groupId, options);
+        const indexed = memory.isSearchEnabled() ? await memory.reconcileIndex(groupId) : { upserted: 0, removed: 0 };
+        logger.info(
+          `[MemoryPlugin] Daily maintenance group=${groupId} | review due=${reviewed.due} kept=${reviewed.kept} ` +
+            `retired=${reviewed.retired} merged=${reviewed.merged} | index upserted=${indexed.upserted} removed=${indexed.removed}`,
+        );
       }
     } catch (err) {
-      logger.warn('[MemoryPlugin] Daily cleanup failed:', err);
+      logger.warn('[MemoryPlugin] Daily maintenance failed:', err);
     }
   }
 
@@ -236,35 +229,10 @@ export class MemoryPlugin extends PluginBase {
     }
   }
 
-  /** Split text into chunks by line, each chunk <= maxLength (by character). */
-  private chunkTextByMaxLength(text: string, maxLength: number): string[] {
-    if (!text.trim()) {
-      return [];
-    }
-    const lines = text.split('\n');
-    const chunks: string[] = [];
-    let current: string[] = [];
-    let currentLen = 0;
-    for (const line of lines) {
-      const lineLen = line.length + 1;
-      if (currentLen + lineLen > maxLength && current.length > 0) {
-        chunks.push(current.join('\n'));
-        current = [];
-        currentLen = 0;
-      }
-      current.push(line);
-      currentLen += lineLen;
-    }
-    if (current.length > 0) {
-      chunks.push(current.join('\n'));
-    }
-    return chunks;
-  }
-
   /**
    * Run full-history extract for a single user (e.g. when user triggers via MemoryTrigger).
    * Loads all messages for that user in the group, chunks by fullHistoryMaxLength, and runs
-   * one extractAndUpsertUserOnly per chunk. Fire-and-forget; does not block.
+   * one extractAndConsolidateUser per chunk. Fire-and-forget; does not block.
    * Skips if this groupId:userId was already processed (recorded in full-history progress file),
    * or if a full-history run for this user is already queued/running (in-memory guard to avoid duplicate work).
    */
@@ -323,7 +291,7 @@ export class MemoryPlugin extends PluginBase {
       return;
     }
     const text = this.conversationHistoryService.formatAsText(entries);
-    const chunks = this.chunkTextByMaxLength(text, this.fullHistoryMaxLength);
+    const chunks = chunkLines(text, this.fullHistoryMaxLength);
     logger.info(
       `[MemoryPlugin] runFullHistoryExtractForUser: processing groupId=${groupId} userId=${userId} messages=${entries.length} chunks=${chunks.length}`,
     );
@@ -333,7 +301,7 @@ export class MemoryPlugin extends PluginBase {
         logger.info(
           `[MemoryPlugin] runFullHistoryExtractForUser chunk ${i + 1}/${chunks.length} groupId=${groupId} userId=${userId}`,
         );
-        await this.memoryExtractService.extractAndUpsertUserOnly(groupId, userId, chunks[i], opts);
+        await this.memoryExtractService.extractAndConsolidateUser(groupId, userId, chunks[i], opts);
       }
       const latestEntry = entries[entries.length - 1];
       const lastProcessedAt = latestEntry?.createdAt
@@ -354,7 +322,7 @@ export class MemoryPlugin extends PluginBase {
   }
 
   /**
-   * Run full-history extract for group memory (extractAndUpsert handles both group + user facts).
+   * Run full-history extract for group memory (extractAndConsolidate handles both group + user facts).
    * Chunks the full conversation history and runs extract on each chunk.
    * Fire-and-forget; onComplete callback is called when done.
    */
@@ -387,14 +355,14 @@ export class MemoryPlugin extends PluginBase {
       return;
     }
     const text = this.conversationHistoryService.formatAsText(filtered);
-    const chunks = this.chunkTextByMaxLength(text, this.fullHistoryMaxLength);
+    const chunks = chunkLines(text, this.fullHistoryMaxLength);
     logger.info(
       `[MemoryPlugin] runFullHistoryExtractForGroup: processing groupId=${groupId} messages=${filtered.length} chunks=${chunks.length}`,
     );
     const opts = { provider: this.extractProvider, model: this.extractModel };
     for (let i = 0; i < chunks.length; i++) {
       logger.info(`[MemoryPlugin] runFullHistoryExtractForGroup chunk ${i + 1}/${chunks.length} groupId=${groupId}`);
-      await this.memoryExtractService.extractAndUpsert(groupId, chunks[i], opts);
+      await this.memoryExtractService.extractAndConsolidate(groupId, chunks[i], opts);
     }
     logger.info(`[MemoryPlugin] Full history group extract completed for groupId=${groupId} chunks=${chunks.length}`);
   }
@@ -435,7 +403,7 @@ export class MemoryPlugin extends PluginBase {
       return;
     }
     const text = this.conversationHistoryService.formatAsText(userEntries);
-    const chunks = this.chunkTextByMaxLength(text, this.fullHistoryMaxLength);
+    const chunks = chunkLines(text, this.fullHistoryMaxLength);
     logger.info(
       `[MemoryPlugin] runExtractForUserSince: processing groupId=${groupId} userId=${userId} messages=${userEntries.length} chunks=${chunks.length}`,
     );
@@ -444,7 +412,7 @@ export class MemoryPlugin extends PluginBase {
       logger.info(
         `[MemoryPlugin] runExtractForUserSince chunk ${i + 1}/${chunks.length} groupId=${groupId} userId=${userId}`,
       );
-      await this.memoryExtractService.extractAndUpsertUserOnly(groupId, userId, chunks[i], opts);
+      await this.memoryExtractService.extractAndConsolidateUser(groupId, userId, chunks[i], opts);
     }
     logger.info(
       `[MemoryPlugin] runExtractForUserSince completed groupId=${groupId} userId=${userId} chunks=${chunks.length}`,
@@ -484,51 +452,59 @@ export class MemoryPlugin extends PluginBase {
       return;
     }
     const text = this.conversationHistoryService.formatAsText(filtered);
-    const chunks = this.chunkTextByMaxLength(text, this.fullHistoryMaxLength);
+    const chunks = chunkLines(text, this.fullHistoryMaxLength);
     logger.info(
       `[MemoryPlugin] runExtractForGroupSince: processing groupId=${groupId} messages=${filtered.length} chunks=${chunks.length}`,
     );
     const opts = { provider: this.extractProvider, model: this.extractModel };
     for (let i = 0; i < chunks.length; i++) {
       logger.info(`[MemoryPlugin] runExtractForGroupSince chunk ${i + 1}/${chunks.length} groupId=${groupId}`);
-      await this.memoryExtractService.extractAndUpsert(groupId, chunks[i], opts);
+      await this.memoryExtractService.extractAndConsolidate(groupId, chunks[i], opts);
     }
     logger.info(`[MemoryPlugin] runExtractForGroupSince completed groupId=${groupId} chunks=${chunks.length}`);
   }
 
   /**
-   * Backup all memory files into a compressed snapshot.
-   * Archives data/memory/ → data/backup/memory/memory-YYYY-MM-DD.tar.gz (one per day, source kept).
+   * Daily-named snapshot of both memory sources: data/memory/ (manual files) as
+   * memory-YYYY-MM-DD.tar.gz, and every `memory_facts` row as memory-facts-YYYY-MM-DD.json.
    */
   private async backupMemoryFiles(): Promise<void> {
-    const srcDir = join(getRepoRoot(), MEMORY_DIR);
-    if (!existsSync(srcDir)) {
-      logger.debug('[MemoryPlugin] No memory directory to backup');
-      return;
-    }
     const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     const destDir = join(getRepoRoot(), this.backupDir);
-    const archivePath = join(destDir, `memory-${date}.tar.gz`);
-    if (existsSync(archivePath)) {
-      logger.debug(`[MemoryPlugin] Memory backup already exists: memory-${date}.tar.gz`);
-      return;
-    }
     try {
       await mkdir(destDir, { recursive: true });
-      // tar from the parent dir so the archive holds `memory/...` rather than absolute paths.
-      const proc = Bun.spawn(['tar', '-czf', archivePath, basename(srcDir)], {
-        cwd: dirname(srcDir),
-        stdout: 'ignore',
-        stderr: 'pipe',
-      });
-      const exitCode = await proc.exited;
-      if (exitCode !== 0) {
-        const stderr = await new Response(proc.stderr).text();
-        throw new Error(`tar failed (exit ${exitCode}): ${stderr}`);
-      }
-      logger.info(`[MemoryPlugin] Memory backup completed → ${archivePath}`);
+      await this.archiveManualFiles(join(destDir, `memory-${date}.tar.gz`));
+      await this.exportFacts(join(destDir, `memory-facts-${date}.json`));
     } catch (err) {
       logger.error('[MemoryPlugin] Memory backup failed:', err);
     }
+  }
+
+  private async archiveManualFiles(archivePath: string): Promise<void> {
+    const srcDir = join(getRepoRoot(), MEMORY_DIR);
+    if (!existsSync(srcDir) || existsSync(archivePath)) {
+      return;
+    }
+    // tar from the parent dir so the archive holds `memory/...` rather than absolute paths.
+    const proc = Bun.spawn(['tar', '-czf', archivePath, basename(srcDir)], {
+      cwd: dirname(srcDir),
+      stdout: 'ignore',
+      stderr: 'pipe',
+    });
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text();
+      throw new Error(`tar failed (exit ${exitCode}): ${stderr}`);
+    }
+    logger.info(`[MemoryPlugin] Manual memory backup → ${archivePath}`);
+  }
+
+  private async exportFacts(exportPath: string): Promise<void> {
+    if (existsSync(exportPath)) {
+      return;
+    }
+    const facts = await getContainer().resolve(MemoryFactStore).listAll();
+    await writeFile(exportPath, JSON.stringify(facts, null, 2), 'utf-8');
+    logger.info(`[MemoryPlugin] Memory facts backup (${facts.length} rows) → ${exportPath}`);
   }
 }

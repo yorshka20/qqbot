@@ -1,17 +1,14 @@
 // Memory extraction as a group_day task: the extract runs on the shared day prefix,
-// then the merge into stored memory goes through MemoryExtractService like any extract.
+// then consolidation into stored memory goes through MemoryExtractService like any extract.
 //
-// Only the extract call shares the prefix. The merge (memory.analyze) reads stored memory
-// and the new facts, not the chat, so it keeps memory's own provider and model.
+// Only the extract call shares the prefix. Consolidation (memory.consolidate) reads stored
+// memory and the new facts, not the chat, so it keeps memory's own provider and model.
 
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
 import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
-import {
-  MEMORY_JOB_TIMEOUT_MS,
-  type MemoryExtractService,
-  type MemoryExtractServiceOptions,
-} from './MemoryExtractService';
+import type { MemoryExtractService } from './MemoryExtractService';
+import { MEMORY_JOB_TIMEOUT_MS, type MemoryLLMOptions } from './memoryLLM';
 
 export class GroupDayMemoryTask implements FanoutTask<GroupDayContext, null> {
   static readonly NAME = 'memory';
@@ -21,7 +18,7 @@ export class GroupDayMemoryTask implements FanoutTask<GroupDayContext, null> {
 
   constructor(
     private readonly extractService: MemoryExtractService,
-    private readonly mergeOptions: MemoryExtractServiceOptions,
+    private readonly mergeOptions: MemoryLLMOptions,
   ) {}
 
   parseParams(): null {

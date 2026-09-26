@@ -162,6 +162,27 @@
     // LLM recognizes when users address it by name (in addition to @QQ). Optional.
     "nickname": ""
   },
+  // Long-term memory. Manual memory: {dir}/{groupId}/{userId|_global_}/manual.txt, one fact per
+  // line under [scope] headers, injected in full on every reply. Automatic memory: the
+  // memory_facts table, indexed in Qdrant (memory_{groupId}) when rag is enabled.
+  "memory": {
+    "dir": "data/memory",
+    "filter": {
+      "alwaysIncludeScopes": ["instruction", "rule"], // core scopes injected in full on every reply
+      "minRelevanceScore": 0.55, // final score a searched fact must reach (tune with `bun run memory eval`)
+      "count": 6 // searched facts per reply, group and speaker together
+    },
+    "scoring": {
+      "transientHalfLifeDays": 30, // transient facts lose half their weight per this many days unconfirmed
+      "decayFloor": 0.5,
+      "confirmBoostPerConfirm": 0.03, // weight per confirmation beyond the first
+      "confirmBoostCap": 1.3
+    },
+    "review": {
+      "transientAfterDays": 30, // unconfirmed this long → the daily review keeps, retires or merges it
+      "stableAfterDays": 180
+    }
+  },
   // Static file server configuration (optional)
   "staticServer": {
     "port": 8888,
@@ -403,23 +424,13 @@
         "config": {
           // Daily extraction is the `memory` task of the group_day fan-out: add it to the group's
           // `action fanout` item in data/agenda/schedule.md. It runs on ai.taskProviders.groupDay.
-          // The provider below drives full-history backfills and the merge of extracted facts.
+          // The provider below drives backfills, consolidation of extracted facts, and the daily review.
+          // Retrieval, scoring and review thresholds live in the top-level "memory" section.
           "extractProvider": "gemini",
           "extractModel": "gemini-3.1-flash-lite", // Optional; defaults to the provider's configured model
-          // Periodic memory backup (copies data/memory/ → data/backup/memory/YYYY-MM-DD/)
-          "backupIntervalMs": 604800000, // 7 days (default). Set to 0 to disable.
-          // "backupDir": "data/backup/memory", // Override backup directory (default)
-          // Context-aware memory filtering - only inject relevant memory into AI prompts
-          "filter": {
-            "enabled": true, // Enable semantic filtering (default: true)
-            "maxLength": 2000, // Max total chars for filtered memory (default: 2000)
-            // Scopes always included regardless of relevance (supports core_scope or core_scope:subtag)
-            "alwaysIncludeScopes": [
-              "instruction",
-              "rule"
-            ],
-            "minRelevanceScore": 0.1 // Minimum relevance score 0-1 (default: 0.1)
-          }
+          // Periodic backup: data/memory/ (manual files) as a tar.gz plus every memory_facts row as JSON
+          "backupIntervalMs": 604800000 // 7 days (default). Set to 0 to disable.
+          // "backupDir": "data/backup/memory" // Override backup directory (default)
         }
       },
       // Memory Trigger Plugin - on trigger phrase (e.g. bot name), merge user input into user memory (async)

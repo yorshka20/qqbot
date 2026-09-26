@@ -1,16 +1,17 @@
 import { Search } from 'lucide-react';
-import type { MemorySourceFilter, MemoryStatusFilter } from '../utils';
+import type { MemoryLayerFilter, MemoryStatusFilter } from '../utils';
 
 const STATUS_OPTIONS: Array<{ value: MemoryStatusFilter; label: string }> = [
   { value: 'all', label: '全部' },
   { value: 'active', label: '有效' },
-  { value: 'stale', label: '过期' },
+  { value: 'superseded', label: '已取代' },
+  { value: 'retired', label: '已淘汰' },
 ];
 
-const SOURCE_OPTIONS: Array<{ value: MemorySourceFilter; label: string }> = [
+const LAYER_OPTIONS: Array<{ value: MemoryLayerFilter; label: string }> = [
   { value: 'all', label: '全部来源' },
   { value: 'manual', label: '手动' },
-  { value: 'llm_extract', label: '自动' },
+  { value: 'auto', label: '自动' },
 ];
 
 export function MemoryToolbar({
@@ -18,15 +19,15 @@ export function MemoryToolbar({
   onQueryChange,
   status,
   onStatusChange,
-  source,
-  onSourceChange,
+  layer,
+  onLayerChange,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
   status: MemoryStatusFilter;
   onStatusChange: (value: MemoryStatusFilter) => void;
-  source: MemorySourceFilter;
-  onSourceChange: (value: MemorySourceFilter) => void;
+  layer: MemoryLayerFilter;
+  onLayerChange: (value: MemoryLayerFilter) => void;
 }) {
   return (
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -41,7 +42,7 @@ export function MemoryToolbar({
         />
       </label>
       <Segmented options={STATUS_OPTIONS} value={status} onChange={onStatusChange} label="按状态筛选" />
-      <Segmented options={SOURCE_OPTIONS} value={source} onChange={onSourceChange} label="按来源筛选" />
+      <Segmented options={LAYER_OPTIONS} value={layer} onChange={onLayerChange} label="按来源筛选" />
     </div>
   );
 }

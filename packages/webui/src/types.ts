@@ -669,79 +669,69 @@ export interface StatsDateListResponse {
 // Memory Status Types
 // ────────────────────────────────────────────────────────────────────────────
 
-export interface MemoryGlobalStats {
-  totalFacts: number;
+export interface MemoryFactCounts {
   activeFacts: number;
-  staleFacts: number;
-  manualFacts: number;
-  autoFacts: number;
+  supersededFacts: number;
+  retiredFacts: number;
 }
 
-export interface MemoryGroupStats {
+export interface MemoryGlobalStats extends MemoryFactCounts {
+  manualSlots: number;
+}
+
+export interface MemoryGroupStats extends MemoryFactCounts {
   groupId: string;
   groupName?: string;
-  totalFacts: number;
-  activeFacts: number;
-  staleFacts: number;
-  manualFacts: number;
-  autoFacts: number;
-  userCount: number;
+  slotCount: number;
+  manualSlots: number;
 }
 
-export interface MemoryGroupUserSummary {
+export interface MemorySlotSummary extends MemoryFactCounts {
   userId: string;
   nickname?: string;
   isGroupMemory: boolean;
-  hasManualText?: boolean;
-  totalFacts: number;
-  activeFacts: number;
-  staleFacts: number;
-  manualFacts: number;
-  autoFacts: number;
+  hasManualText: boolean;
 }
 
 export interface MemoryGroupDetail {
   groupId: string;
   groupName?: string;
-  totalFacts: number;
-  users: MemoryGroupUserSummary[];
+  slots: MemorySlotSummary[];
 }
+
+export type MemoryFactStatus = 'active' | 'superseded' | 'retired';
+export type MemoryFactDurability = 'stable' | 'transient';
 
 export interface MemoryFactEntry {
-  factHash: string;
+  id: string;
   scope: string;
-  source: string;
-  status: string;
   content: string;
-  reinforceCount: number;
-  hitCount: number;
+  durability: MemoryFactDurability;
+  status: MemoryFactStatus;
+  statusReason?: string;
+  supersededBy?: string;
   firstSeen: number;
-  lastReinforced: number;
-  staleSince?: number;
-  ageDays: number;
+  lastConfirmedAt: number;
+  confirmCount: number;
+  hitCount: number;
+  lastHitAt?: number;
+  reviewedAt?: number;
 }
 
-export interface MemoryUserFactDetail {
+export interface MemorySlotDetail {
   groupId: string;
   groupName?: string;
   userId: string;
   nickname?: string;
   isGroupMemory: boolean;
   manualText: string;
-  autoText: string;
-}
-
-export interface MemoryBrowseUser extends MemoryGroupUserSummary {
   facts: MemoryFactEntry[];
 }
 
-export interface MemoryBrowseGroup extends MemoryGroupStats {
-  users: MemoryBrowseUser[];
-}
-
-export interface MemoryBrowseResponse {
-  stats: MemoryGlobalStats;
-  groups: MemoryBrowseGroup[];
+export interface MemoryFactPatch {
+  content?: string;
+  scope?: string;
+  durability?: MemoryFactDurability;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

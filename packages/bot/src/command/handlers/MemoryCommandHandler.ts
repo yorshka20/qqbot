@@ -3,10 +3,9 @@
 import { inject, injectable } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
-import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { MemoryExtractService } from '@/memory/MemoryExtractService';
-import { MemoryService } from '@/memory/MemoryService';
+import { MemoryConsolidationService } from '@/memory/MemoryConsolidationService';
+import { GROUP_MEMORY_USER_ID } from '@/memory/memoryConstants';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { PermissionChecker } from '@/permission';
 import { PluginManager } from '@/plugins/PluginManager';
@@ -131,8 +130,7 @@ export class MemoryEditCommand implements CommandHandler {
 
   constructor(
     @inject(MessageAPI) private messageAPI: MessageAPI,
-    @inject(MemoryService) private memoryService: MemoryService,
-    @inject(MemoryExtractService) private memoryExtractService: MemoryExtractService,
+    @inject(MemoryConsolidationService) private consolidationService: MemoryConsolidationService,
     @inject(DITokens.CONFIG) private config: Config,
     @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
   ) {}
@@ -184,39 +182,16 @@ export class MemoryEditCommand implements CommandHandler {
       targetUserId = callerUserId;
     }
 
-    // Fire-and-forget: merge and notify
-    if (target === 'group') {
-      const existing = this.memoryService.getGroupMemoryTextByLayer(groupId, 'auto');
-      const provider = this.getExtractProvider();
-      this.memoryExtractService
-        .mergeWithExisting(existing, content, 'global', { provider })
-        .then(async (merged: string) => {
-          if (merged) {
-            await this.memoryService.upsertMemory(groupId, '_global_', true, merged, 'auto', 'llm_extract');
-          }
-          await this.messageAPI.sendFromContext('群组记忆订正完成。', context, 10000);
-        })
-        .catch((err: unknown) => {
-          logger.warn('[MemoryEditCommand] group memory edit failed:', err);
-          this.messageAPI.sendFromContext('群组记忆订正失败，请查看日志。', context, 10000).catch(() => {});
-        });
-    } else {
-      const existing = this.memoryService.getUserMemoryTextByLayer(groupId, targetUserId, 'auto');
-      const provider = this.getExtractProvider();
-      this.memoryExtractService
-        .mergeWithExisting(existing, content, 'user', { provider })
-        .then(async (merged: string) => {
-          if (merged) {
-            await this.memoryService.upsertMemory(groupId, targetUserId, false, merged, 'auto', 'llm_extract');
-          }
-          const label = targetUserId === callerUserId ? '你的' : `用户 ${targetUserId} 的`;
-          await this.messageAPI.sendFromContext(`${label}记忆订正完成。`, context, 10000);
-        })
-        .catch((err: unknown) => {
-          logger.warn('[MemoryEditCommand] user memory edit failed:', err);
-          this.messageAPI.sendFromContext('记忆订正失败，请查看日志。', context, 10000).catch(() => {});
-        });
-    }
+    // Fire-and-forget: consolidate and notify
+    const slotUserId = target === 'group' ? GROUP_MEMORY_USER_ID : targetUserId;
+    const doneLabel = target === 'group' ? '群组' : targetUserId === callerUserId ? '你的' : `用户 ${targetUserId} 的`;
+    this.consolidationService
+      .consolidateSlot(groupId, slotUserId, [content], { provider: this.getExtractProvider() })
+      .then(() => this.messageAPI.sendFromContext(`${doneLabel}记忆订正完成。`, context, 10000))
+      .catch((err: unknown) => {
+        logger.warn('[MemoryEditCommand] memory edit failed:', err);
+        this.messageAPI.sendFromContext('记忆订正失败，请查看日志。', context, 10000).catch(() => {});
+      });
 
     const targetLabel =
       target === 'group' ? '群组' : targetUserId === callerUserId ? '你的' : `用户 ${targetUserId} 的`;

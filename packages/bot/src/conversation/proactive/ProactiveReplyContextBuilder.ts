@@ -113,24 +113,18 @@ export class ProactiveReplyContextBuilder {
 
   /**
    * Group + optional user memory section (## 关于本群的记忆 / ## 关于当前发言用户的记忆).
-   * Uses RAG semantic search when available for context-aware memory filtering.
-   * @param userMessage - Optional user message for RAG relevance matching
+   * @param userMessage - Optional user message the searched facts must be relevant to
    */
   async getMemoryContext(groupId: string, userId?: string, userMessage?: string): Promise<string> {
     if (!this.deps.memoryService) {
       return '';
     }
 
-    let groupMemoryText: string;
-    let userMemoryText: string;
-
-    const result = await this.deps.memoryService.getFilteredMemoryForReplyAsync(groupId, userId, {
-      userMessage: userMessage ?? '',
-      alwaysIncludeScopes: ['instruction', 'rule'],
-      minRelevanceScore: 0.7,
-    });
-    groupMemoryText = result.groupMemoryText;
-    userMemoryText = result.userMemoryText;
+    const { groupMemoryText, userMemoryText } = await this.deps.memoryService.getMemoryForReply(
+      groupId,
+      userId,
+      userMessage ?? '',
+    );
 
     const parts: string[] = [];
     if (groupMemoryText) {

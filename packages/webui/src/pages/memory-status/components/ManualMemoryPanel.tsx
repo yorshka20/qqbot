@@ -35,10 +35,10 @@ export function ManualMemoryPanel({
     setError(null);
     setNotice(null);
     try {
-      const result = await saveManualMemory(groupId, userId, draft);
+      await saveManualMemory(groupId, userId, draft);
       setShown(draft);
       setEditing(false);
-      setNotice(result.indexed ? '已保存' : '已写入文件，索引未更新');
+      setNotice('已保存');
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败');
@@ -86,7 +86,9 @@ export function ManualMemoryPanel({
       {error && <p className="px-4 pt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
       {editing ? (
         <>
-          <p className="px-4 pt-3 text-xs text-zinc-400">写成 [context] 然后换行写内容，可以有多段。</p>
+          <p className="px-4 pt-3 text-xs text-zinc-400">
+            先写一行 [scope]（如 [instruction]），下面每行一条记忆；可以有多个 scope。每次回复都会带上全部手动记忆。
+          </p>
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}

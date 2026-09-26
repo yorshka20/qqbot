@@ -1,6 +1,6 @@
 // Live2DMemoryExtractionCoordinator — debounced memory extraction for Live2D
 // threads. Mirrors MemoryPlugin's flow (debounce per scope → read recent
-// entries → format → MemoryExtractService.extractAndUpsert) but sources its
+// entries → format → MemoryExtractService.extractAndConsolidate) but sources its
 // history from Live2DSessionService and its scope from the synthetic
 // Live2D groupId convention (`live2d:<source>[:<scope>]`).
 //
@@ -20,7 +20,7 @@
 //   - On fire: read thread entries via Live2DSessionService → filter out
 //     bot replies → enforce `minUserEntries` → format as text (same format
 //     ConversationHistoryService uses, so the extract LLM sees familiar
-//     input) → MemoryExtractService.extractAndUpsert (itself internally
+//     input) → MemoryExtractService.extractAndConsolidate (itself internally
 //     queued, so backpressure is handled).
 //
 // Failure modes are logged and swallowed: memory extraction is strictly
@@ -197,9 +197,9 @@ export class AvatarMemoryExtractionCoordinator {
     );
 
     try {
-      await this.extractService.extractAndUpsert(groupId, recentMessagesText, { provider });
+      await this.extractService.extractAndConsolidate(groupId, recentMessagesText, { provider });
     } catch (err) {
-      logger.warn(`[Live2DMemoryExtraction] extractAndUpsert failed (thread=${threadId} group=${groupId}):`, err);
+      logger.warn(`[Live2DMemoryExtraction] extractAndConsolidate failed (thread=${threadId} group=${groupId}):`, err);
     }
   }
 

@@ -16,7 +16,7 @@ import type {
 import type { Config } from '@/core/config';
 import type { HookManager } from '@/hooks/HookManager';
 import { MemoryExtractService } from '@/memory/MemoryExtractService';
-import type { MemoryService } from '@/memory/MemoryService';
+import type { MemoryConsolidationService } from '@/memory/MemoryConsolidationService';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { ComicTask } from '@/plugins/plugins/GroupReportPlugin/comicTask';
 import { KeywordMinesTask } from '@/plugins/plugins/GroupReportPlugin/keywordMines';
@@ -112,7 +112,7 @@ describe('group_day prefix', () => {
     const memorySuffix = new MemoryExtractService(
       promptManager,
       {} as LLMService,
-      {} as MemoryService,
+      {} as MemoryConsolidationService,
       {} as DatabaseManager,
       {} as Config,
     ).renderPrefixedExtractTask();

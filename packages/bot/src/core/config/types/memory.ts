@@ -39,33 +39,38 @@ export interface ParsedScope {
 }
 
 export interface MemoryFilterConfig {
-  /** Enable context-aware memory filtering (default: true) */
-  enabled?: boolean;
-  /** Scopes that are always included regardless of relevance (default: ['instruction', 'rule']) */
+  /** Core scopes whose facts every reply carries in full, regardless of the message. Default: instruction, rule. */
   alwaysIncludeScopes?: string[];
-  /** Minimum keyword match score (0-1) to include a section (default: 0.1) */
+  /** Minimum final score (similarity x recency x confirmation) for a searched fact. Default 0.55. */
   minRelevanceScore?: number;
+  /** Searched facts per reply, across the group and the speaker. Default 6. */
+  count?: number;
 }
 
-/** Quality scoring parameters for memory retrieval reranking */
-export interface MemoryQualityScoringConfig {
-  /** Boost multiplier for manual (human-authored) facts. Default: 1.2 */
-  manualBoost?: number;
-  /** Exponential decay half-life in days. Default: 120 */
-  decayHalfLifeDays?: number;
-  /** Minimum decay floor (never goes below this). Default: 0.3 */
+/** Reranking of searched facts. Manual memory is not searched: it is always injected in full. */
+export interface MemoryScoringConfig {
+  /** Half-life in days of a transient fact's weight, counted from its last confirmation. Default 30. Stable facts do not decay. */
+  transientHalfLifeDays?: number;
+  /** Floor of that decay. Default 0.5. */
   decayFloor?: number;
-  /** Score boost per reinforce count. Default: 0.02 */
-  frequencyBoostPerReinforce?: number;
-  /** Maximum frequency boost multiplier. Default: 1.3 */
-  frequencyBoostCap?: number;
+  /** Weight added per confirmation beyond the first. Default 0.03. */
+  confirmBoostPerConfirm?: number;
+  /** Cap of the confirmation weight. Default 1.3. */
+  confirmBoostCap?: number;
+}
+
+/** When an active fact is due for an LLM review that keeps, retires or merges it. */
+export interface MemoryReviewConfig {
+  /** A transient fact unconfirmed and unreviewed this many days is due. Default 30. */
+  transientAfterDays?: number;
+  /** A stable fact unconfirmed and unreviewed this many days is due. Default 180. */
+  stableAfterDays?: number;
 }
 
 export interface MemoryConfig {
-  /** Directory for memory files (relative to cwd). Group memory: {dir}/{groupId}/_global_.txt, user: {dir}/{groupId}/{userId}.txt */
+  /** Directory for manual memory files (relative to cwd): {dir}/{groupId}/{userId|_global_}/manual.txt */
   dir?: string;
-  /** Context-aware memory filtering options */
   filter?: MemoryFilterConfig;
-  /** Quality scoring parameters for retrieval reranking */
-  qualityScoring?: MemoryQualityScoringConfig;
+  scoring?: MemoryScoringConfig;
+  review?: MemoryReviewConfig;
 }

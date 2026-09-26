@@ -1,940 +1,374 @@
-// Memory Service - file-based persistence for group and user memories (like prompt templates)
-// Supports optional RAG-based semantic search for context-aware memory filtering
-// Supports hierarchical scopes: [core_scope:subtag] format (e.g., [preference:food])
+// Memory reads, and the hand-written layer.
+//
+// Two sources, one per layer:
+//   manual — data/memory/{groupId}/{userId|_global_}/manual.txt, written by people (webui or
+//            editor), never by an LLM. Injected in full on every reply; it wins any conflict.
+//   auto   — `memory_facts` rows (MemoryFactStore), written by consolidation and review.
+//            A reply carries the always-include scopes in full plus the facts a vector
+//            search finds relevant to the message.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { mkdir, rename, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { inject, singleton } from 'tsyringe';
 import type { Config } from '@/core/config';
-import { ALL_CORE_SCOPES, type MemoryQualityScoringConfig, type ParsedScope } from '@/core/config/types/memory';
+import type { MemoryFilterConfig, MemoryScoringConfig } from '@/core/config/types/memory';
 import { DITokens } from '@/core/DITokens';
+import type { MemoryFact } from '@/database/models/types';
 import { logger } from '@/utils/logger';
-import type { MemoryFactMetaService } from './MemoryFactMetaService';
-import type { MemoryRAGService } from './MemoryRAGService';
+import { MemoryFactStore } from './MemoryFactStore';
+import { MemoryIndex, type MemorySearchOwners } from './MemoryIndex';
+import { coreScopeOf, type ManualFact, parseManualFacts } from './manualMemory';
+import { GROUP_MEMORY_USER_ID } from './memoryConstants';
 
-/** User ID used for group-level memory slot (one file per group: _global_.txt). */
-export const GROUP_MEMORY_USER_ID = '_global_memory_';
+export { GROUP_MEMORY_USER_ID } from './memoryConstants';
 
-/** Default max length for content to avoid exceeding prompt limits. */
-const DEFAULT_MAX_CONTENT_LENGTH = 100_000;
-
-/** Default base directory for memory files (relative to cwd). Overridden by config. */
 const DEFAULT_MEMORY_DIR = 'data/memory';
-
-/** Filename for group-level memory inside a group directory (legacy). */
-const GROUP_MEMORY_FILENAME = '_global_.txt';
-
-/** Directory name for group-level memory in new structure. */
 const GROUP_MEMORY_DIRNAME = '_global_';
+const MANUAL_FILENAME = 'manual.txt';
 
-/** Memory layer: 'manual' for human-authored, 'auto' for LLM-extracted */
-export type MemoryLayer = 'manual' | 'auto';
+const DEFAULT_FILTER: Required<MemoryFilterConfig> = {
+  alwaysIncludeScopes: ['instruction', 'rule'],
+  minRelevanceScore: 0.55,
+  count: 6,
+};
 
-/** Memory source for tracking */
-export type MemorySource = 'manual' | 'llm_extract';
+const DEFAULT_SCORING: Required<MemoryScoringConfig> = {
+  transientHalfLifeDays: 30,
+  decayFloor: 0.5,
+  confirmBoostPerConfirm: 0.03,
+  confirmBoostCap: 1.3,
+};
 
-export interface MemorySearchResult {
-  userId: string;
-  isGroupMemory: boolean;
-  snippet: string;
-  content: string;
-}
+/** Order core scopes are rendered in; any other scope follows alphabetically. */
+const SCOPE_ORDER = [
+  'identity',
+  'preference',
+  'opinion',
+  'relationship',
+  'behavior',
+  'instruction',
+  'topic',
+  'rule',
+  'event',
+  'context',
+];
 
-/** Parsed memory section with scope and content */
-export interface MemorySection {
-  /** Full scope string (e.g., 'preference:food' or 'identity') */
-  scope: string;
-  /** Parsed hierarchical scope info */
-  parsedScope: ParsedScope;
-  /** The content of this section */
-  content: string;
-}
+const DAY_MS = 86_400_000;
 
-/** Options for context-aware memory filtering */
-export interface MemoryFilterOptions {
-  /** User message or query for relevance matching */
-  userMessage: string;
-  /** Scopes that are always included regardless of relevance (default: ['instruction', 'rule']) */
-  alwaysIncludeScopes?: string[];
-  /** Minimum keyword match score (0-1) to include a section (default: 0.1) */
-  minRelevanceScore?: number;
-  /** memory item counts */
-  count?: number;
-}
-
-/** Result of context-aware memory filtering */
-export interface FilteredMemoryResult {
+export interface ReplyMemory {
   groupMemoryText: string;
   userMemoryText: string;
-  /** Number of sections included vs total */
-  stats: {
-    groupIncluded: number;
-    groupTotal: number;
-    userIncluded: number;
-    userTotal: number;
-  };
+}
+
+export interface MemorySearchResult {
+  text: string;
+  count: number;
+}
+
+export interface ManualSlot {
+  groupId: string;
+  userId: string;
 }
 
 /**
- * File-backed memory: one directory per groupId, group memory in _global_.txt, user memory in {userId}.txt.
- * No in-memory cache so manual edits to files are visible on next read.
- * Supports optional RAG-based semantic search when MemoryRAGService is configured.
+ * Relevance of a searched fact: similarity, weighted by how recently a transient fact was last
+ * confirmed and by how often it has been confirmed. Stable facts do not decay.
  */
-/** Default quality scoring parameters (conservative Direction A values) */
-const DEFAULT_SCORING: Required<MemoryQualityScoringConfig> = {
-  manualBoost: 1.2,
-  decayHalfLifeDays: 120,
-  decayFloor: 0.3,
-  frequencyBoostPerReinforce: 0.02,
-  frequencyBoostCap: 1.3,
-};
+export function scoreFact(
+  similarity: number,
+  fact: Pick<MemoryFact, 'durability' | 'lastConfirmedAt' | 'confirmCount'>,
+  scoring: Required<MemoryScoringConfig>,
+  now: number,
+): number {
+  const ageDays = Math.max(0, (now - fact.lastConfirmedAt) / DAY_MS);
+  const recency =
+    fact.durability === 'transient' ? Math.max(scoring.decayFloor, 2 ** (-ageDays / scoring.transientHalfLifeDays)) : 1;
+  const confirmation = Math.min(
+    scoring.confirmBoostCap,
+    1 + Math.max(0, fact.confirmCount - 1) * scoring.confirmBoostPerConfirm,
+  );
+  return similarity * recency * confirmation;
+}
+
+/** One slot as the LLM reads it: manual facts first (they win conflicts), then automatic ones, by scope. */
+export function renderSlot(manual: ManualFact[], auto: Array<Pick<MemoryFact, 'scope' | 'content'>>): string {
+  const autoText = renderByScope(auto);
+  if (manual.length === 0) {
+    return autoText;
+  }
+  const parts = [`【人工维护，与其他条目冲突时以此为准】\n${renderByScope(manual)}`];
+  if (autoText) {
+    parts.push(`【自动整理】\n${autoText}`);
+  }
+  return parts.join('\n\n');
+}
+
+function renderByScope(facts: Array<{ scope: string; content: string }>): string {
+  const byScope = new Map<string, string[]>();
+  for (const fact of facts) {
+    const list = byScope.get(fact.scope);
+    if (list) {
+      list.push(fact.content);
+    } else {
+      byScope.set(fact.scope, [fact.content]);
+    }
+  }
+  return [...byScope.entries()]
+    .sort(([a], [b]) => compareScopes(a, b))
+    .map(([scope, contents]) => `[${scope}]\n${contents.map((c) => `- ${c}`).join('\n')}`)
+    .join('\n\n');
+}
+
+function compareScopes(a: string, b: string): number {
+  const rank = (scope: string) => {
+    const index = SCOPE_ORDER.indexOf(coreScopeOf(scope));
+    return index === -1 ? SCOPE_ORDER.length : index;
+  };
+  return rank(a) - rank(b) || a.localeCompare(b);
+}
 
 @singleton()
 export class MemoryService {
   private readonly basePath: string;
-  private readonly maxContentLength: number;
-  private ragService: MemoryRAGService | null = null;
-  private factMetaService: MemoryFactMetaService | null = null;
-  private scoringConfig: Required<MemoryQualityScoringConfig> = DEFAULT_SCORING;
+  private readonly filter: Required<MemoryFilterConfig>;
+  private readonly scoring: Required<MemoryScoringConfig>;
 
-  constructor(@inject(DITokens.CONFIG) config: Config) {
-    const memoryDir = config.getMemoryConfig().dir ?? DEFAULT_MEMORY_DIR;
-    this.basePath = join(process.cwd(), memoryDir);
-    this.maxContentLength = DEFAULT_MAX_CONTENT_LENGTH;
+  constructor(
+    @inject(DITokens.CONFIG) config: Config,
+    @inject(MemoryFactStore) private readonly store: MemoryFactStore,
+    @inject(MemoryIndex) private readonly index: MemoryIndex,
+  ) {
+    const memoryConfig = config.getMemoryConfig();
+    this.basePath = resolve(process.cwd(), memoryConfig.dir ?? DEFAULT_MEMORY_DIR);
+    this.filter = { ...DEFAULT_FILTER, ...memoryConfig.filter };
+    this.scoring = { ...DEFAULT_SCORING, ...memoryConfig.scoring };
   }
 
-  /**
-   * Set the RAG service for semantic memory search.
-   * Should be called during initialization when RAG is enabled.
-   */
-  setRAGService(ragService: MemoryRAGService): void {
-    this.ragService = ragService;
-    logger.info('[MemoryService] RAG service configured for semantic memory search');
+  isSearchEnabled(): boolean {
+    return this.index.isEnabled();
   }
 
-  /**
-   * Set the fact metadata service for hit count tracking.
-   */
-  setFactMetaService(factMetaService: MemoryFactMetaService): void {
-    this.factMetaService = factMetaService;
+  getScoring(): Required<MemoryScoringConfig> {
+    return this.scoring;
   }
 
-  /**
-   * Set quality scoring config (overrides defaults).
-   */
-  setScoringConfig(config: MemoryQualityScoringConfig): void {
-    this.scoringConfig = { ...DEFAULT_SCORING, ...config };
+  // ── Manual layer ──
+
+  private manualPath(groupId: string, userId: string): string {
+    const dirName = userId === GROUP_MEMORY_USER_ID ? GROUP_MEMORY_DIRNAME : sanitizePathSegment(userId);
+    return join(this.basePath, sanitizePathSegment(groupId), dirName, MANUAL_FILENAME);
   }
 
-  /**
-   * Check if RAG-based semantic search is available
-   */
-  isRAGEnabled(): boolean {
-    return this.ragService?.isEnabled() ?? false;
-  }
-
-  /**
-   * Resolve file path for a memory slot in the new directory structure.
-   * Structure: {basePath}/{groupId}/{dirName}/{layer}.txt
-   * where dirName is '_global_' for group memory or userId for user memory.
-   */
-  private getMemoryPath(groupId: string, userId: string, layer: MemoryLayer): string {
-    const safeGroupId = this.sanitizePathSegment(groupId);
-    const dirName = userId === GROUP_MEMORY_USER_ID ? GROUP_MEMORY_DIRNAME : this.sanitizePathSegment(userId);
-    return join(this.basePath, safeGroupId, dirName, `${layer}.txt`);
-  }
-
-  /**
-   * Legacy file path for migration detection.
-   * Old structure: {basePath}/{groupId}/_global_.txt or {basePath}/{groupId}/{userId}.txt
-   */
-  private getLegacyFilePath(groupId: string, userId: string): string {
-    const safeGroupId = this.sanitizePathSegment(groupId);
-    const filename =
-      userId === GROUP_MEMORY_USER_ID ? GROUP_MEMORY_FILENAME : `${this.sanitizePathSegment(userId)}.txt`;
-    return join(this.basePath, safeGroupId, filename);
-  }
-
-  /** Allow only alphanumeric and underscore; replace other chars with _. */
-  private sanitizePathSegment(segment: string): string {
-    return segment.replace(/[^a-zA-Z0-9_]/g, '_');
-  }
-
-  /**
-   * Read a file, returning empty string on ENOENT.
-   * Falls back to legacy path if new path does not exist (migration compat).
-   */
-  private readFileOrEmpty(path: string, legacyPath?: string): string {
+  getManualText(groupId: string, userId: string): string {
     try {
-      return readFileSync(path, 'utf-8') ?? '';
-    } catch (err: unknown) {
-      const code = err && typeof err === 'object' && 'code' in err ? (err as NodeJS.ErrnoException).code : '';
-      if (code === 'ENOENT') {
-        // Try legacy path if provided (pre-migration compat)
-        if (legacyPath) {
-          try {
-            return readFileSync(legacyPath, 'utf-8') ?? '';
-          } catch {
-            return '';
-          }
-        }
-        return '';
+      return readFileSync(this.manualPath(groupId, userId), 'utf-8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        logger.warn('[MemoryService] manual memory read failed:', err);
       }
-      logger.warn('[MemoryService] read failed:', path, err);
       return '';
     }
   }
 
-  /**
-   * Combine manual (human-authored) and auto (LLM-extracted) layer texts.
-   * Manual text comes first for higher priority.
-   */
-  private combineLayerTexts(manualText: string, autoText: string): string {
-    const parts: string[] = [];
-    if (manualText.trim()) parts.push(manualText.trim());
-    if (autoText.trim()) parts.push(autoText.trim());
-    return parts.join('\n\n');
+  getManualFacts(groupId: string, userId: string): ManualFact[] {
+    return parseManualFacts(this.getManualText(groupId, userId));
   }
 
-  /**
-   * Get group-level memory text for a group (merged manual + auto layers).
-   * Falls back to legacy single-file format if new structure doesn't exist.
-   */
-  getGroupMemoryText(groupId: string): string {
-    const manualText = this.readFileOrEmpty(this.getMemoryPath(groupId, GROUP_MEMORY_USER_ID, 'manual'));
-    const autoText = this.readFileOrEmpty(
-      this.getMemoryPath(groupId, GROUP_MEMORY_USER_ID, 'auto'),
-      this.getLegacyFilePath(groupId, GROUP_MEMORY_USER_ID),
-    );
-    return this.combineLayerTexts(manualText, autoText);
+  async saveManualMemory(groupId: string, userId: string, content: string): Promise<void> {
+    const path = this.manualPath(groupId, userId);
+    await mkdir(dirname(path), { recursive: true });
+    const trimmed = content.trim();
+    await writeFile(path, trimmed ? `${trimmed}\n` : '', 'utf-8');
   }
 
-  /**
-   * Get group memory text for a specific layer only.
-   * Used by RAG indexing and extract service.
-   */
-  getGroupMemoryTextByLayer(groupId: string, layer: MemoryLayer): string {
-    if (layer === 'auto') {
-      return this.readFileOrEmpty(
-        this.getMemoryPath(groupId, GROUP_MEMORY_USER_ID, 'auto'),
-        this.getLegacyFilePath(groupId, GROUP_MEMORY_USER_ID),
-      );
-    }
-    return this.readFileOrEmpty(this.getMemoryPath(groupId, GROUP_MEMORY_USER_ID, 'manual'));
-  }
-
-  /**
-   * Get user-in-group memory text (merged manual + auto layers).
-   * Falls back to legacy single-file format if new structure doesn't exist.
-   */
-  getUserMemoryText(groupId: string, userId: string): string {
-    const manualText = this.readFileOrEmpty(this.getMemoryPath(groupId, userId, 'manual'));
-    const autoText = this.readFileOrEmpty(
-      this.getMemoryPath(groupId, userId, 'auto'),
-      this.getLegacyFilePath(groupId, userId),
-    );
-    return this.combineLayerTexts(manualText, autoText);
-  }
-
-  /**
-   * Get user memory text for a specific layer only.
-   * Used by RAG indexing and extract service.
-   */
-  getUserMemoryTextByLayer(groupId: string, userId: string, layer: MemoryLayer): string {
-    if (layer === 'auto') {
-      return this.readFileOrEmpty(this.getMemoryPath(groupId, userId, 'auto'), this.getLegacyFilePath(groupId, userId));
-    }
-    return this.readFileOrEmpty(this.getMemoryPath(groupId, userId, 'manual'));
-  }
-
-  /**
-   * Get both group and user memory texts for reply injection.
-   * Group memory is always returned; user memory only when userId is provided.
-   */
-  getMemoryTextForReply(groupId: string, userId?: string): { groupMemoryText: string; userMemoryText: string } {
-    const groupMemoryText = this.getGroupMemoryText(groupId);
-    const userMemoryText = userId ? this.getUserMemoryText(groupId, userId) : '';
-    return { groupMemoryText, userMemoryText };
-  }
-
-  /**
-   * Get one memory slot directly. When userId is omitted, returns group memory.
-   */
-  getMemory(groupId: string, userId?: string): { userId: string; isGroupMemory: boolean; content: string } {
-    const targetUserId = userId?.trim() ? userId.trim() : GROUP_MEMORY_USER_ID;
-    const isGroupMemory = targetUserId === GROUP_MEMORY_USER_ID;
-    const content = isGroupMemory ? this.getGroupMemoryText(groupId) : this.getUserMemoryText(groupId, targetUserId);
-    return {
-      userId: targetUserId,
-      isGroupMemory,
-      content,
-    };
-  }
-
-  /**
-   * Cheap existence check for a user's memory slot. Used as a pre-filter by
-   * the Live2D pipeline before fanning out `getFilteredMemoryForReplyAsync`
-   * calls to every distinct sender in a danmaku batch — most viewers have no
-   * memory on disk and would otherwise cost a Qdrant round-trip that returns
-   * nothing.
-   *
-   * Both the new directory structure (`{groupId}/{userId}/{manual,auto}.txt`)
-   * and the legacy flat layout (`{groupId}/{userId}.txt`) count as existing.
-   * A directory with only empty `manual.txt`/`auto.txt` also counts — we
-   * don't open the files here to keep this O(stat).
-   */
-  hasUserMemory(groupId: string, userId: string): boolean {
-    if (!userId) return false;
-    const safeGroupId = this.sanitizePathSegment(groupId);
-    const safeUserId = this.sanitizePathSegment(userId);
-    const userDir = join(this.basePath, safeGroupId, safeUserId);
-    if (existsSync(userDir)) return true;
-    const legacyFile = join(this.basePath, safeGroupId, `${safeUserId}.txt`);
-    return existsSync(legacyFile);
-  }
-
-  /**
-   * Search memories within one group. By default searches both group memory and all user memories.
-   */
-  searchMemories(
-    groupId: string,
-    query: string,
-    options?: {
-      userId?: string;
-      includeGroupMemory?: boolean;
-      limit?: number;
-    },
-  ): MemorySearchResult[] {
-    const trimmedQuery = query.trim().toLowerCase();
-    if (!trimmedQuery) {
-      return [];
-    }
-
-    const safeGroupId = this.sanitizePathSegment(groupId);
-    const groupDir = join(this.basePath, safeGroupId);
-    if (!existsSync(groupDir)) {
-      return [];
-    }
-
-    const includeGroupMemory = options?.includeGroupMemory !== false;
-    const specificUserId = options?.userId?.trim();
-    const limit = Math.max(1, options?.limit ?? 10);
-    const results: MemorySearchResult[] = [];
-
-    const candidateUserIds = specificUserId ? [specificUserId] : this.listUserIdsInGroup(groupDir);
-
-    if (includeGroupMemory) {
-      const groupContent = this.getGroupMemoryText(groupId);
-      const snippet = this.extractSnippet(groupContent, trimmedQuery);
-      if (snippet) {
-        results.push({
-          userId: GROUP_MEMORY_USER_ID,
-          isGroupMemory: true,
-          snippet,
-          content: groupContent,
-        });
-      }
-    }
-
-    for (const userId of candidateUserIds) {
-      const content = this.getUserMemoryText(groupId, userId);
-      const snippet = this.extractSnippet(content, trimmedQuery);
-      if (!snippet) {
-        continue;
-      }
-      results.push({
-        userId,
-        isGroupMemory: false,
-        snippet,
-        content,
-      });
-      if (results.length >= limit) {
-        break;
-      }
-    }
-
-    return results.slice(0, limit);
-  }
-
-  /**
-   * Truncate content to max length.
-   * todo: use llm to summarize.
-   */
-  private truncate(content: string): string {
-    if (content.length <= this.maxContentLength) {
-      return content;
-    }
-    return content.slice(0, this.maxContentLength);
-  }
-
-  private extractSnippet(content: string, queryLower: string): string | null {
-    if (!content) {
-      return null;
-    }
-    const lower = content.toLowerCase();
-    const index = lower.indexOf(queryLower);
-    if (index === -1) {
-      return null;
-    }
-    const start = Math.max(0, index - 60);
-    const end = Math.min(content.length, index + queryLower.length + 120);
-    return content.slice(start, end).trim();
-  }
-
-  /**
-   * Upsert one memory slot by (groupId, userId). Writes to file; creates directory if needed.
-   * Use GROUP_MEMORY_USER_ID for group-level memory.
-   * Empty content is written as an empty file so the slot exists and can be edited manually.
-   * If RAG is enabled, also indexes the memory sections for semantic search.
-   */
-  async upsertMemory(
-    groupId: string,
-    userId: string,
-    _isGlobalMemory: boolean,
-    content: string,
-    layer: MemoryLayer = 'auto',
-    source: MemorySource = 'llm_extract',
-    options?: { index?: 'background' | 'await' },
-  ): Promise<{ indexed: boolean }> {
-    const trimmed = this.truncate(content.trim());
-
-    const path = this.getMemoryPath(groupId, userId, layer);
-    try {
-      await mkdir(dirname(path), { recursive: true });
-      await writeFile(path, trimmed, 'utf-8');
-
-      // Index to RAG if enabled. Callers in the reply path must not wait on it;
-      // the webui save does, so the fact list matches the file just written.
-      if (this.ragService?.isEnabled()) {
-        const sections = this.parseMemorySections(trimmed);
-        const pending = this.ragService.indexMemorySections(groupId, userId, sections, source);
-        if (options?.index === 'await') {
-          try {
-            await pending;
-            return { indexed: true };
-          } catch (err) {
-            logger.warn(
-              '[MemoryService] RAG indexing failed after write:',
-              err instanceof Error ? err.message : err,
-            );
-            return { indexed: false };
-          }
-        }
-        pending.catch((err) => {
-          logger.warn('[MemoryService] RAG indexing failed (non-blocking):', err instanceof Error ? err.message : err);
-        });
-        return { indexed: false };
-      }
-      return { indexed: false };
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown');
-      logger.error('[MemoryService] upsertMemory failed:', path, err);
-      throw err;
-    }
-  }
-
-  /**
-   * Replace one slot's manual.txt and wait for its fact index.
-   * userId omitted or GROUP_MEMORY_USER_ID writes the group's manual file.
-   */
-  async saveManualMemory(groupId: string, userId: string, content: string): Promise<{ indexed: boolean }> {
-    const targetUserId = userId.trim() ? userId.trim() : GROUP_MEMORY_USER_ID;
-    return this.upsertMemory(groupId, targetUserId, targetUserId === GROUP_MEMORY_USER_ID, content, 'manual', 'manual', {
-      index: 'await',
-    });
-  }
-
-  /**
-   * Non-empty manual.txt documents on disk. Group memory uses GROUP_MEMORY_USER_ID.
-   * These files are the manual source of truth; fact rows exist only after indexing.
-   */
-  listManualDocuments(): Array<{ groupId: string; userId: string; content: string }> {
+  /** Every slot whose manual.txt has content. */
+  listManualSlots(): ManualSlot[] {
     if (!existsSync(this.basePath)) {
       return [];
     }
-    const docs: Array<{ groupId: string; userId: string; content: string }> = [];
-    const entries = readdirSync(this.basePath, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {
+    const slots: ManualSlot[] = [];
+    for (const groupEntry of readdirSync(this.basePath, { withFileTypes: true })) {
+      if (!groupEntry.isDirectory()) {
         continue;
       }
-      const groupId = entry.name;
-      const groupManual = this.getGroupMemoryTextByLayer(groupId, 'manual').trim();
-      if (groupManual) {
-        docs.push({ groupId, userId: GROUP_MEMORY_USER_ID, content: groupManual });
-      }
-      const groupDir = join(this.basePath, groupId);
-      for (const userId of this.listUserIdsInGroup(groupDir)) {
-        const text = this.getUserMemoryTextByLayer(groupId, userId, 'manual').trim();
-        if (text) {
-          docs.push({ groupId, userId, content: text });
+      const groupId = groupEntry.name;
+      for (const slotEntry of readdirSync(join(this.basePath, groupId), { withFileTypes: true })) {
+        if (!slotEntry.isDirectory()) {
+          continue;
+        }
+        const userId = slotEntry.name === GROUP_MEMORY_DIRNAME ? GROUP_MEMORY_USER_ID : slotEntry.name;
+        if (this.getManualText(groupId, userId).trim()) {
+          slots.push({ groupId, userId });
         }
       }
     }
-    return docs;
+    return slots;
   }
 
-  // ============================================================================
-  // Hierarchical scope parsing
-  // ============================================================================
+  // ── Reads ──
 
   /**
-   * Parse a scope string into hierarchical components.
-   * Supports formats: 'core_scope' or 'core_scope:subtag'
-   * Examples: 'identity' -> { core: 'identity', full: 'identity' }
-   *           'preference:food' -> { core: 'preference', subtag: 'food', full: 'preference:food' }
+   * Memory for one reply: every manual fact of the group and the speaker, their automatic facts
+   * in the always-include scopes, and the other automatic facts relevant to `query`.
    */
-  parseScope(scopeStr: string): ParsedScope {
-    const normalized = scopeStr.trim().toLowerCase();
-    const colonIndex = normalized.indexOf(':');
+  async getMemoryForReply(groupId: string, userId: string | undefined, query: string): Promise<ReplyMemory> {
+    const groupAuto = await this.store.listSlot(groupId, GROUP_MEMORY_USER_ID, 'active');
+    const userAuto = userId ? await this.store.listSlot(groupId, userId, 'active') : [];
+    const always = (fact: MemoryFact) =>
+      this.filter.alwaysIncludeScopes.includes(fact.scope) ||
+      this.filter.alwaysIncludeScopes.includes(coreScopeOf(fact.scope));
 
-    if (colonIndex === -1) {
-      return { core: normalized, full: normalized };
-    }
-
-    const core = normalized.slice(0, colonIndex);
-    const subtag = normalized.slice(colonIndex + 1);
-    return { core, subtag: subtag || undefined, full: normalized };
-  }
-
-  /**
-   * Check if a scope's core part is a known core scope.
-   * Useful for validation during extraction.
-   */
-  isValidCoreScope(scope: string | ParsedScope): boolean {
-    const core = typeof scope === 'string' ? this.parseScope(scope).core : scope.core;
-    return ALL_CORE_SCOPES.includes(core as (typeof ALL_CORE_SCOPES)[number]);
-  }
-
-  /**
-   * Extract all unique scopes from memory text.
-   * Returns both full scopes and their parsed components.
-   * Useful for providing existing scopes to AI during memory merge.
-   */
-  extractAllScopes(memoryText: string): ParsedScope[] {
-    const sections = this.parseMemorySections(memoryText);
-    const seen = new Set<string>();
-    const scopes: ParsedScope[] = [];
-
-    for (const section of sections) {
-      if (!seen.has(section.parsedScope.full)) {
-        seen.add(section.parsedScope.full);
-        scopes.push(section.parsedScope);
-      }
-    }
-
-    return scopes;
-  }
-
-  /**
-   * Get all existing scopes for a group (both group and user memory).
-   * Used to provide scope vocabulary to AI during memory extraction/merge.
-   */
-  getAllExistingScopes(groupId: string, userId?: string): { groupScopes: ParsedScope[]; userScopes: ParsedScope[] } {
-    const groupMemory = this.getGroupMemoryText(groupId);
-    const groupScopes = this.extractAllScopes(groupMemory);
-
-    let userScopes: ParsedScope[] = [];
-    if (userId) {
-      const userMemory = this.getUserMemoryText(groupId, userId);
-      userScopes = this.extractAllScopes(userMemory);
-    }
-
-    return { groupScopes, userScopes };
-  }
-
-  // ============================================================================
-  // Context-aware memory filtering
-  // ============================================================================
-
-  /**
-   * Parse memory content into sections by [scope] tags.
-   * Memory format: [scope]\ncontent\n\n[scope2]\ncontent2...
-   * Supports hierarchical scopes: [core:subtag]
-   */
-  parseMemorySections(memoryText: string): MemorySection[] {
-    if (!memoryText.trim()) {
-      return [];
-    }
-
-    const sections: MemorySection[] = [];
-    // Match [scope] or [scope:subtag] followed by content until next [scope] or end
-    const sectionRegex = /\[([^\]]+)\]\s*\n([\s\S]*?)(?=\n\[|\s*$)/g;
-    const matches = memoryText.matchAll(sectionRegex);
-
-    for (const match of matches) {
-      const scopeStr = match[1].trim();
-      const content = match[2].trim();
-      if (content) {
-        const parsedScope = this.parseScope(scopeStr);
-        sections.push({ scope: parsedScope.full, parsedScope, content });
-      }
-    }
-
-    return sections;
-  }
-
-  /**
-   * Get context-aware filtered memory for reply injection.
-   * Uses RAG semantic search when available, falls back to keyword matching.
-   *
-   * @param groupId - Group ID
-   * @param userId - Optional user ID for user-specific memory
-   * @param options - Filter options including user message for relevance matching
-   * @returns Filtered memory text for both group and user
-   */
-  /**
-   * Get context-aware filtered memory for reply injection.
-   * Uses RAG semantic search when available, falls back to returning all memory.
-   */
-  async getFilteredMemoryForReplyAsync(
-    groupId: string,
-    userId: string | undefined,
-    options: MemoryFilterOptions,
-  ): Promise<FilteredMemoryResult> {
-    // If RAG is available, use semantic search for quality-scored retrieval
-    if (this.ragService?.isEnabled() && options.userMessage.trim()) {
-      try {
-        const ragResult = await this.getFilteredMemoryWithRAG(groupId, userId, options);
-        logger.debug(
-          `[MemoryService] RAG filtered memory: group ${ragResult.stats.groupIncluded}/${ragResult.stats.groupTotal}, ` +
-            `user ${ragResult.stats.userIncluded}/${ragResult.stats.userTotal}`,
-        );
-        return ragResult;
-      } catch (err) {
-        logger.warn('[MemoryService] RAG search failed, falling back to text concatenation:', err);
-      }
-    }
-
-    // Non-RAG fallback: concatenate manual + auto text directly (manual first for higher priority)
-    return this.getFilteredMemoryFallback(groupId, userId);
-  }
-
-  /**
-   * RAG-based memory filtering using semantic search.
-   * ALL memory is fetched from RAG - markdown files are NOT read at runtime.
-   * Always-include scopes are fetched via payload filter (scroll), other scopes via vector search.
-   */
-  private async getFilteredMemoryWithRAG(
-    groupId: string,
-    userId: string | undefined,
-    options: MemoryFilterOptions,
-  ): Promise<FilteredMemoryResult> {
-    if (!this.ragService) {
-      throw new Error('RAG service not configured');
-    }
-
-    const alwaysIncludeScopes = options.alwaysIncludeScopes ?? ['instruction', 'rule'];
-    const minScore = options.minRelevanceScore ?? 0.7;
-
-    // Fetch always-include scopes from RAG via payload filter (no vector search)
-    const alwaysIncludeResults = await this.ragService.getFactsByCoreScopes(groupId, alwaysIncludeScopes, {
-      userId,
-      includeGroupMemory: true,
-    });
-
-    // Format always-include results
-    const { groupMemoryText: alwaysGroupText, userMemoryText: alwaysUserText } =
-      this.ragService.formatResultsAsMemoryText(alwaysIncludeResults);
-
-    // Search for semantically relevant facts (fine-grained vector search)
-    // Fetch extra results to allow quality scoring to filter/rerank
-    const searchResults = await this.ragService.searchRelevantFacts(groupId, options.userMessage, {
-      userId,
-      includeGroupMemory: true,
-      limit: (options.count ?? 10) * 2,
-      minScore: Math.max(0.5, minScore - 0.15), // Lower threshold, let scoring decide
-    });
-
-    // Filter out facts from always-include scopes (already fetched above)
-    let relevantResults = searchResults.filter((r) => {
-      const parsedScope = this.parseScope(r.fact.scope);
-      return !alwaysIncludeScopes.includes(r.fact.scope) && !alwaysIncludeScopes.includes(parsedScope.core);
-    });
-
-    // Apply quality scoring if metadata service is available
-    if (this.factMetaService && relevantResults.length > 0) {
-      const metaMap = this.factMetaService.getFactMetaByHashes(
-        relevantResults.map((r) => r.pointId).filter((id): id is string => !!id),
-      );
-
-      relevantResults = relevantResults
-        .map((r) => {
-          const meta = r.pointId ? metaMap.get(r.pointId) : undefined;
-          const finalScore = this.computeFinalScore(r.score, meta);
-          return { ...r, score: finalScore };
-        })
-        .filter((r) => r.score >= minScore)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, options.count ?? 10);
-    }
-
-    // Format vector search results
-    const { groupMemoryText: ragGroupText, userMemoryText: ragUserText } =
-      this.ragService.formatResultsAsMemoryText(relevantResults);
-
-    // Combine always-include with RAG results
-    const groupParts: string[] = [];
-    const userParts: string[] = [];
-
-    if (alwaysGroupText) {
-      groupParts.push(alwaysGroupText);
-    }
-    if (alwaysUserText) {
-      userParts.push(alwaysUserText);
-    }
-    if (ragGroupText) {
-      groupParts.push(ragGroupText);
-    }
-    if (ragUserText) {
-      userParts.push(ragUserText);
-    }
-
-    const groupMemoryText = groupParts.join('\n\n');
-    const userMemoryText = userParts.join('\n\n');
-
-    // Count included facts for stats
-    const alwaysGroupCount = alwaysIncludeResults.filter((r) => r.isGroupMemory).length;
-    const alwaysUserCount = alwaysIncludeResults.filter((r) => !r.isGroupMemory).length;
-    const relevantGroupCount = relevantResults.filter((r) => r.isGroupMemory).length;
-    const relevantUserCount = relevantResults.filter((r) => !r.isGroupMemory).length;
-
-    // Async hit count tracking (fire-and-forget, don't block reply)
-    if (this.factMetaService) {
-      const allResults = [...alwaysIncludeResults, ...relevantResults];
-      const factHashes = allResults.map((r) => r.pointId).filter((id): id is string => !!id);
-      if (factHashes.length > 0) {
-        Promise.resolve()
-          .then(() => this.factMetaService?.incrementHitCount(factHashes))
-          .catch(() => {});
-      }
-    }
+    const searched = await this.searchRelevant(groupId, userId, query, [...groupAuto, ...userAuto]);
+    const pick = (slotFacts: MemoryFact[]) => slotFacts.filter((fact) => always(fact) || searched.has(fact.id));
 
     return {
-      groupMemoryText,
-      userMemoryText,
-      stats: {
-        groupIncluded: alwaysGroupCount + relevantGroupCount,
-        groupTotal: alwaysGroupCount + relevantGroupCount, // Total from RAG perspective
-        userIncluded: alwaysUserCount + relevantUserCount,
-        userTotal: alwaysUserCount + relevantUserCount,
-      },
-    };
-  }
-
-  // ============================================================================
-  // Quality scoring
-  // ============================================================================
-
-  /**
-   * Compute quality-adjusted final score for a memory fact.
-   * - Manual facts: boosted by manualBoost (no decay)
-   * - Auto facts: exponential time decay + frequency boost from reinforce count
-   */
-  private computeFinalScore(ragScore: number, meta?: import('./MemoryFactMetaService').FactMeta): number {
-    if (!meta) return ragScore;
-    const cfg = this.scoringConfig;
-
-    // Manual fact: boost, no decay
-    if (meta.source === 'manual') {
-      return ragScore * cfg.manualBoost;
-    }
-
-    // Auto fact: exponential decay + frequency boost
-    const ageDays = (Date.now() - meta.lastReinforced) / 86_400_000;
-    // Exponential decay: e^(-age * ln2 / halfLife), floors at decayFloor
-    const decay = Math.max(cfg.decayFloor, Math.exp((-ageDays * Math.LN2) / cfg.decayHalfLifeDays));
-    // Frequency boost: more reinforcements = more reliable, capped
-    const frequency = Math.min(cfg.frequencyBoostCap, 1 + meta.reinforceCount * cfg.frequencyBoostPerReinforce);
-
-    return ragScore * decay * frequency;
-  }
-
-  // ============================================================================
-  // RAG sync
-  // ============================================================================
-
-  /**
-   * Non-RAG fallback: read manual + auto layers directly and concatenate.
-   * Manual content comes first (marked as authoritative). No quality scoring or decay.
-   */
-  private getFilteredMemoryFallback(groupId: string, userId: string | undefined): FilteredMemoryResult {
-    const manualGroup = this.getGroupMemoryTextByLayer(groupId, 'manual').trim();
-    const autoGroup = this.getGroupMemoryTextByLayer(groupId, 'auto').trim();
-    const groupParts: string[] = [];
-    if (manualGroup) groupParts.push(`【权威信息】\n${manualGroup}`);
-    if (autoGroup) groupParts.push(autoGroup);
-
-    const userParts: string[] = [];
-    if (userId) {
-      const manualUser = this.getUserMemoryTextByLayer(groupId, userId, 'manual').trim();
-      const autoUser = this.getUserMemoryTextByLayer(groupId, userId, 'auto').trim();
-      if (manualUser) userParts.push(`【权威信息】\n${manualUser}`);
-      if (autoUser) userParts.push(autoUser);
-    }
-
-    const groupMemoryText = groupParts.join('\n\n');
-    const userMemoryText = userParts.join('\n\n');
-    const groupSections = this.parseMemorySections(groupMemoryText);
-    const userSections = this.parseMemorySections(userMemoryText);
-
-    return {
-      groupMemoryText,
-      userMemoryText,
-      stats: {
-        groupIncluded: groupSections.length,
-        groupTotal: groupSections.length,
-        userIncluded: userSections.length,
-        userTotal: userSections.length,
-      },
+      groupMemoryText: renderSlot(this.getManualFacts(groupId, GROUP_MEMORY_USER_ID), pick(groupAuto)),
+      userMemoryText: userId ? renderSlot(this.getManualFacts(groupId, userId), pick(userAuto)) : '',
     };
   }
 
   /**
-   * Re-sync local markdown memory files for a group to Qdrant.
-   * Deletes old RAG data per-user/group slot before re-indexing.
-   *
-   * @param groupId - Group ID
-   * @param target - 'all' syncs everything, 'group' syncs only group memory, 'user' syncs a specific user
-   * @param userId - Required when target is 'user'
+   * Ids of the non-always-include facts relevant to `query`. Without a vector index every
+   * fact counts as relevant, so the reply carries the whole slot.
    */
-  async syncMemoryToRAG(
+  private async searchRelevant(
     groupId: string,
-    target: 'all' | 'group' | 'user' = 'all',
+    userId: string | undefined,
+    query: string,
+    candidates: MemoryFact[],
+  ): Promise<Set<string>> {
+    if (!this.index.isEnabled()) {
+      return new Set(candidates.map((fact) => fact.id));
+    }
+    if (!query.trim() || candidates.length === 0) {
+      return new Set();
+    }
+    const owners: MemorySearchOwners = userId ? { userId, includeGroup: true } : 'group';
+    const ranked = await this.rank(groupId, query, owners, this.filter.count, this.coreAlwaysScopes(), candidates);
+    const ids = ranked.map((r) => r.fact.id);
+    this.store.recordHits(ids, Date.now()).catch((err) => {
+      logger.warn('[MemoryService] hit count write failed:', err);
+    });
+    return new Set(ids);
+  }
+
+  private coreAlwaysScopes(): string[] {
+    return this.filter.alwaysIncludeScopes.filter((scope) => !scope.includes(':'));
+  }
+
+  private async rank(
+    groupId: string,
+    query: string,
+    owners: MemorySearchOwners,
+    count: number,
+    excludeCoreScopes: string[],
+    candidates: MemoryFact[],
+  ): Promise<Array<{ fact: MemoryFact; score: number }>> {
+    const byId = new Map(candidates.map((fact) => [fact.id, fact]));
+    const hits = await this.index.search(groupId, query, {
+      owners,
+      excludeCoreScopes,
+      limit: count * 3,
+      minScore: this.filter.minRelevanceScore / this.scoring.confirmBoostCap,
+    });
+    const now = Date.now();
+    return hits
+      .flatMap((hit) => {
+        const fact = byId.get(hit.id);
+        return fact ? [{ fact, score: scoreFact(hit.score, fact, this.scoring, now) }] : [];
+      })
+      .filter((r) => r.score >= this.filter.minRelevanceScore)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, count);
+  }
+
+  /** A whole slot as text: every manual fact and every active automatic fact. */
+  async getMemory(
+    groupId: string,
     userId?: string,
-    force: boolean = false,
-  ): Promise<{ groupSynced: boolean; usersSynced: string[]; totalFacts: number }> {
-    if (!this.ragService?.isEnabled()) {
-      throw new Error('RAG service is not available');
-    }
-
-    const safeGroupId = this.sanitizePathSegment(groupId);
-    const groupDir = join(this.basePath, safeGroupId);
-    let totalFacts = 0;
-    let groupSynced = false;
-    const usersSynced: string[] = [];
-
-    // Sync only manual layer — auto layer is managed by MemoryExtractService.
-    // Per design: "以 manual.txt 为准做增量 reconcile, 不触碰 auto 的 SQLite 元数据"
-    if (target === 'all' || target === 'group') {
-      const manualSections = this.parseMemorySections(this.getGroupMemoryTextByLayer(groupId, 'manual'));
-      if (manualSections.length > 0) {
-        await this.ragService.indexMemorySections(groupId, GROUP_MEMORY_USER_ID, manualSections, 'manual', force);
-      }
-      groupSynced = manualSections.length > 0;
-      totalFacts += manualSections.length;
-    }
-
-    // Sync user manual layers only
-    if (target === 'all' || target === 'user') {
-      const targetUserIds =
-        target === 'user' && userId ? [userId] : existsSync(groupDir) ? this.listUserIdsInGroup(groupDir) : [];
-
-      for (const uid of targetUserIds) {
-        const manualSections = this.parseMemorySections(this.getUserMemoryTextByLayer(groupId, uid, 'manual'));
-        if (manualSections.length > 0) {
-          await this.ragService.indexMemorySections(groupId, uid, manualSections, 'manual', force);
-        }
-        const sectionCount = manualSections.length;
-        if (sectionCount > 0) {
-          usersSynced.push(uid);
-          totalFacts += sectionCount;
-        }
-      }
-    }
-
-    logger.info(
-      `[MemoryService] RAG sync completed for group ${groupId} (target=${target}, force=${force}): ` +
-        `group=${groupSynced ? 'synced' : 'skipped/empty'}, ` +
-        `users=${usersSynced.length}, totalFacts=${totalFacts}`,
-    );
-
-    return { groupSynced, usersSynced, totalFacts };
+  ): Promise<{ userId: string; isGroupMemory: boolean; content: string }> {
+    const slotUserId = userId?.trim() ? userId.trim() : GROUP_MEMORY_USER_ID;
+    const auto = await this.store.listSlot(groupId, slotUserId, 'active');
+    return {
+      userId: slotUserId,
+      isGroupMemory: slotUserId === GROUP_MEMORY_USER_ID,
+      content: renderSlot(this.getManualFacts(groupId, slotUserId), auto),
+    };
   }
-
-  // ============================================================================
-  // Directory helpers
-  // ============================================================================
 
   /**
-   * List user IDs in a group directory.
-   * New structure: subdirectories (excluding _global_) are user IDs.
-   * Legacy: .txt files (excluding _global_.txt) are user IDs.
+   * Facts about `query` across the group: automatic facts by vector search (or substring match
+   * without an index), manual facts by substring match.
    */
-  private listUserIdsInGroup(groupDir: string): string[] {
-    const entries = readdirSync(groupDir, { withFileTypes: true });
-    const userIds = new Set<string>();
+  async searchMemory(
+    groupId: string,
+    query: string,
+    options: { userId?: string; includeGroupMemory: boolean; limit: number },
+  ): Promise<MemorySearchResult> {
+    const needle = query.trim().toLowerCase();
+    if (!needle) {
+      return { text: '', count: 0 };
+    }
+    const owns = (slotUserId: string) =>
+      slotUserId === GROUP_MEMORY_USER_ID
+        ? options.includeGroupMemory
+        : !options.userId || slotUserId === options.userId;
+    const active = (await this.store.listGroup(groupId, 'active')).filter((fact) => owns(fact.userId));
 
-    // New structure: subdirectories
-    for (const entry of entries) {
-      if (entry.isDirectory() && entry.name !== GROUP_MEMORY_DIRNAME) {
-        userIds.add(entry.name);
-      }
+    let autoFacts: MemoryFact[];
+    if (this.index.isEnabled()) {
+      const owners: MemorySearchOwners = options.userId
+        ? { userId: options.userId, includeGroup: options.includeGroupMemory }
+        : options.includeGroupMemory
+          ? 'everyone'
+          : 'members';
+      autoFacts = (await this.rank(groupId, query, owners, options.limit, [], active)).map((r) => r.fact);
+    } else {
+      autoFacts = active.filter((fact) => fact.content.toLowerCase().includes(needle)).slice(0, options.limit);
     }
 
-    // Legacy: .txt files (for groups not yet migrated)
-    for (const entry of entries) {
-      if (entry.isFile() && entry.name.endsWith('.txt') && entry.name !== GROUP_MEMORY_FILENAME) {
-        userIds.add(entry.name.replace(/\.txt$/, ''));
+    const bySlot = new Map<string, Array<{ scope: string; content: string }>>();
+    const add = (slotUserId: string, fact: { scope: string; content: string }) => {
+      const list = bySlot.get(slotUserId);
+      if (list) {
+        list.push(fact);
+      } else {
+        bySlot.set(slotUserId, [fact]);
       }
-    }
-
-    return Array.from(userIds);
-  }
-
-  // ============================================================================
-  // Legacy migration
-  // ============================================================================
-
-  /**
-   * Migrate legacy single-file memory format to new directory structure.
-   * Old: data/memory/{groupId}/_global_.txt, data/memory/{groupId}/{userId}.txt
-   * New: data/memory/{groupId}/_global_/auto.txt, data/memory/{groupId}/{userId}/auto.txt
-   *      + empty manual.txt files created alongside
-   *
-   * Safe to call multiple times — only migrates files that still exist in old format.
-   * Should be called once during initialization.
-   */
-  async migrateLegacyFiles(): Promise<void> {
-    if (!existsSync(this.basePath)) return;
-
-    const groupDirs = readdirSync(this.basePath, { withFileTypes: true }).filter((e) => e.isDirectory());
-    let migratedCount = 0;
-
-    for (const groupEntry of groupDirs) {
-      const groupDir = join(this.basePath, groupEntry.name);
-      const entries = readdirSync(groupDir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        if (!entry.isFile() || !entry.name.endsWith('.txt')) continue;
-
-        const oldPath = join(groupDir, entry.name);
-        const baseName = entry.name.replace(/\.txt$/, '');
-
-        // Determine target directory name
-        const targetDirName = entry.name === GROUP_MEMORY_FILENAME ? GROUP_MEMORY_DIRNAME : baseName;
-        const targetDir = join(groupDir, targetDirName);
-
-        // Skip if target directory already exists (already migrated or new-format)
-        if (existsSync(targetDir)) continue;
-
-        try {
-          await mkdir(targetDir, { recursive: true });
-          // Move old file → auto.txt (all old content was LLM-extracted)
-          await rename(oldPath, join(targetDir, 'auto.txt'));
-          // Create empty manual.txt
-          await writeFile(join(targetDir, 'manual.txt'), '', 'utf-8');
-          migratedCount++;
-          logger.info(`[MemoryService] Migrated legacy file: ${entry.name} → ${targetDirName}/auto.txt`);
-        } catch (err) {
-          logger.warn(`[MemoryService] Failed to migrate ${oldPath}:`, err);
+    };
+    let count = 0;
+    for (const slot of this.listManualSlots()) {
+      if (slot.groupId !== groupId || !owns(slot.userId)) {
+        continue;
+      }
+      for (const fact of this.getManualFacts(groupId, slot.userId)) {
+        if (fact.content.toLowerCase().includes(needle)) {
+          add(slot.userId, { scope: fact.scope, content: `${fact.content}（人工维护）` });
+          count++;
         }
       }
     }
-
-    if (migratedCount > 0) {
-      logger.info(`[MemoryService] Legacy migration completed: ${migratedCount} files migrated`);
+    for (const fact of autoFacts) {
+      add(fact.userId, fact);
+      count++;
     }
+    const text = [...bySlot.entries()]
+      .map(([slotUserId, facts]) => {
+        const label = slotUserId === GROUP_MEMORY_USER_ID ? '群记忆' : `用户 ${slotUserId} 的记忆`;
+        return `${label}:\n${renderByScope(facts)}`;
+      })
+      .join('\n\n');
+    return { text, count };
   }
+
+  /** Bring a group's vector index back to its active facts. */
+  async reconcileIndex(groupId: string): Promise<{ upserted: number; removed: number }> {
+    return this.index.reconcile(groupId, await this.store.listGroup(groupId, 'active'));
+  }
+}
+
+/** Allow only alphanumeric and underscore; replace other chars with _. */
+function sanitizePathSegment(segment: string): string {
+  return segment.replace(/[^a-zA-Z0-9_]/g, '_');
 }

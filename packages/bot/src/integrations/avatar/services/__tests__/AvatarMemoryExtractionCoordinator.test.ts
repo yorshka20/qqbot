@@ -5,7 +5,7 @@
 //   - `enabled=false` makes `schedule()` a no-op (no timer, no work)
 //   - `enabled=true` schedules; subsequent `schedule()` resets the timer
 //   - On fire, the coordinator reads entries, filters bot replies out for
-//     the minimum check, and calls MemoryExtractService.extractAndUpsert
+//     the minimum check, and calls MemoryExtractService.extractAndConsolidate
 //     with the thread's groupId
 //   - Below `minUserEntries`, the fire is a no-op (no LLM call)
 //   - `runNow()` bypasses the debounce and runs immediately (useful for
@@ -58,7 +58,7 @@ interface CoordinatorEnv {
     getHistoryEntries: ReturnType<typeof mock>;
   };
   extractService: {
-    extractAndUpsert: ReturnType<typeof mock>;
+    extractAndConsolidate: ReturnType<typeof mock>;
   };
 }
 
@@ -112,7 +112,7 @@ function setup(opts: SetupOptions = {}): CoordinatorEnv {
   };
 
   const extractService = {
-    extractAndUpsert: mock(async () => undefined),
+    extractAndConsolidate: mock(async () => undefined),
   };
 
   const coordinator = new AvatarMemoryExtractionCoordinator(
@@ -134,7 +134,7 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     // Give any stray debounce a chance to fire even at max debounceMs.
     await sleep(80);
-    expect(env.extractService.extractAndUpsert).not.toHaveBeenCalled();
+    expect(env.extractService.extractAndConsolidate).not.toHaveBeenCalled();
     expect(env.fakeSession.getGroupId).not.toHaveBeenCalled();
   });
 
@@ -144,10 +144,10 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     env.fakeSession.getGroupId = mock(() => undefined);
     env.coordinator.schedule('thread-missing', DEFAULT_SOURCE);
     await sleep(80);
-    expect(env.extractService.extractAndUpsert).not.toHaveBeenCalled();
+    expect(env.extractService.extractAndConsolidate).not.toHaveBeenCalled();
   });
 
-  test('fires extractAndUpsert after debounce with the thread groupId', async () => {
+  test('fires extractAndConsolidate after debounce with the thread groupId', async () => {
     const env = setup({
       enabled: true,
       debounceMs: 20,
@@ -160,8 +160,8 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     });
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     await sleep(80);
-    expect(env.extractService.extractAndUpsert).toHaveBeenCalledTimes(1);
-    const [groupId, text, options] = env.extractService.extractAndUpsert.mock.calls[0];
+    expect(env.extractService.extractAndConsolidate).toHaveBeenCalledTimes(1);
+    const [groupId, text, options] = env.extractService.extractAndConsolidate.mock.calls[0];
     expect(groupId).toBe('live2d:bilibili-live:room-6940826');
     expect(typeof text).toBe('string');
     expect(text.length).toBeGreaterThan(0);
@@ -179,7 +179,7 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     env.coordinator.schedule('thread-avatar', 'avatar-cmd');
     env.coordinator.schedule('thread-livemode', 'livemode-private-batch');
     await sleep(80);
-    expect(env.extractService.extractAndUpsert).not.toHaveBeenCalled();
+    expect(env.extractService.extractAndConsolidate).not.toHaveBeenCalled();
     // getGroupId should not even be reached — allowlist check is first.
     expect(env.fakeSession.getGroupId).not.toHaveBeenCalled();
   });
@@ -195,8 +195,8 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     });
     env.coordinator.schedule('thread-1', 'avatar-cmd');
     await sleep(80);
-    expect(env.extractService.extractAndUpsert).toHaveBeenCalledTimes(1);
-    const [groupId] = env.extractService.extractAndUpsert.mock.calls[0];
+    expect(env.extractService.extractAndConsolidate).toHaveBeenCalledTimes(1);
+    const [groupId] = env.extractService.extractAndConsolidate.mock.calls[0];
     expect(groupId).toBe('live2d:avatar-cmd:global');
   });
 
@@ -209,7 +209,7 @@ describe('AvatarMemoryExtractionCoordinator', () => {
       // Default allowlist does NOT include avatar-cmd.
     });
     await env.coordinator.runNow('thread-1', 'avatar-cmd');
-    expect(env.extractService.extractAndUpsert).not.toHaveBeenCalled();
+    expect(env.extractService.extractAndConsolidate).not.toHaveBeenCalled();
   });
 
   test('collapses bursts: repeat schedule() within debounce runs extract once', async () => {
@@ -225,7 +225,7 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     await sleep(10);
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     await sleep(80);
-    expect(env.extractService.extractAndUpsert).toHaveBeenCalledTimes(1);
+    expect(env.extractService.extractAndConsolidate).toHaveBeenCalledTimes(1);
   });
 
   test('skips fire when below minUserEntries (ignoring bot replies)', async () => {
@@ -242,7 +242,7 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     await sleep(80);
     // Only 2 non-bot entries; minUserEntries=3 → no extract.
-    expect(env.extractService.extractAndUpsert).not.toHaveBeenCalled();
+    expect(env.extractService.extractAndConsolidate).not.toHaveBeenCalled();
   });
 
   test('caps feed length at maxEntries (keeps the tail)', async () => {
@@ -265,8 +265,8 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     });
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     await sleep(80);
-    expect(env.extractService.extractAndUpsert).toHaveBeenCalledTimes(1);
-    const [, text] = env.extractService.extractAndUpsert.mock.calls[0];
+    expect(env.extractService.extractAndConsolidate).toHaveBeenCalledTimes(1);
+    const [, text] = env.extractService.extractAndConsolidate.mock.calls[0];
     // Kept tail only — earliest entries must NOT appear.
     expect(text).not.toContain('msg-0');
     expect(text).not.toContain('msg-5');
@@ -282,7 +282,7 @@ describe('AvatarMemoryExtractionCoordinator', () => {
       entries: [makeEntry({ content: 'hi', isBotReply: false, userId: 'u-1' })],
     });
     await env.coordinator.runNow('thread-1', DEFAULT_SOURCE);
-    expect(env.extractService.extractAndUpsert).toHaveBeenCalledTimes(1);
+    expect(env.extractService.extractAndConsolidate).toHaveBeenCalledTimes(1);
   });
 
   test('cancel() removes a pending timer', async () => {
@@ -295,7 +295,7 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     env.coordinator.cancel('thread-1');
     await sleep(80);
-    expect(env.extractService.extractAndUpsert).not.toHaveBeenCalled();
+    expect(env.extractService.extractAndConsolidate).not.toHaveBeenCalled();
   });
 
   test('provider override on avatar.memoryExtraction takes precedence', async () => {
@@ -311,7 +311,7 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     });
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     await sleep(80);
-    const [, , options] = env.extractService.extractAndUpsert.mock.calls[0];
+    const [, , options] = env.extractService.extractAndConsolidate.mock.calls[0];
     expect(options.provider).toBe('groq-extract');
   });
 
@@ -327,7 +327,7 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     });
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     await sleep(80);
-    const [, , options] = env.extractService.extractAndUpsert.mock.calls[0];
+    const [, , options] = env.extractService.extractAndConsolidate.mock.calls[0];
     expect(options.provider).toBe('doubao');
   });
 
@@ -342,7 +342,7 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     });
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     await sleep(80);
-    const [, , options] = env.extractService.extractAndUpsert.mock.calls[0];
+    const [, , options] = env.extractService.extractAndConsolidate.mock.calls[0];
     expect(options.provider).toBe('openai');
   });
 });
