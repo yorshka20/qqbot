@@ -41,7 +41,7 @@ export interface ParsedScope {
 export interface MemoryFilterConfig {
   /** Core scopes whose facts every reply carries in full, regardless of the message. Default: instruction, rule. */
   alwaysIncludeScopes?: string[];
-  /** Minimum final score (similarity x recency x confirmation) for a searched fact. Default 0.55. */
+  /** Minimum final score (similarity x recency x confirmation) for a searched fact. Default 0.47. */
   minRelevanceScore?: number;
   /** Searched facts per reply, across the group and the speaker. Default 6. */
   count?: number;

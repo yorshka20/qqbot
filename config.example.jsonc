@@ -169,7 +169,7 @@
     "dir": "data/memory",
     "filter": {
       "alwaysIncludeScopes": ["instruction", "rule"], // core scopes injected in full on every reply
-      "minRelevanceScore": 0.55, // final score a searched fact must reach (tune with `bun run memory eval`)
+      "minRelevanceScore": 0.47, // final score a searched fact must reach (tune with `bun run memory eval`)
       "count": 6 // searched facts per reply, group and speaker together
     },
     "scoring": {

@@ -29,7 +29,7 @@ const MANUAL_FILENAME = 'manual.txt';
 
 const DEFAULT_FILTER: Required<MemoryFilterConfig> = {
   alwaysIncludeScopes: ['instruction', 'rule'],
-  minRelevanceScore: 0.55,
+  minRelevanceScore: 0.47,
   count: 6,
 };
 
