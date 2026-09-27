@@ -93,7 +93,41 @@ function normalizeProviderName(className: string): string {
   return className.replace(/Provider$/, '').toLowerCase();
 }
 
-function parseLogFiles(logsDir: string, date: string): DailyStats {
+interface ProviderAccumulator {
+  provider: string;
+  attempts: number;
+  completions: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  promptChars: number;
+  responseChars: number;
+}
+
+function emptyProvider(provider: string): ProviderAccumulator {
+  return {
+    provider,
+    attempts: 0,
+    completions: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    promptChars: 0,
+    responseChars: 0,
+  };
+}
+
+/**
+ * Attempt logs (`[XProvider] Generating`) and completion logs (`[LLMService] usage`)
+ * are both incomplete: a failed attempt never reaches usage, and a provider may never
+ * emit the attempt line. Counting either signal alone drops real calls; adding them
+ * double-counts calls that emit both. The call count is the larger of the two.
+ */
+function callCountOf(row: { attempts: number; completions: number }): number {
+  return Math.max(row.attempts, row.completions);
+}
+
+export function parseLogFiles(logsDir: string, date: string): DailyStats {
   const dateDir = join(logsDir, date);
 
   const stats: DailyStats = {
@@ -129,8 +163,22 @@ function parseLogFiles(logsDir: string, date: string): DailyStats {
     .sort();
   stats.logFileCount = files.length;
 
-  const providerMap = new Map<string, ProviderStats>();
+  const providerMap = new Map<string, ProviderAccumulator>();
+  const hourlySignals: Array<Map<string, { attempts: number; completions: number }>> = Array.from(
+    { length: 24 },
+    () => new Map(),
+  );
   const groupMap = new Map<string, GroupActivity>();
+
+  const bumpHour = (hour: number, provider: string, kind: 'attempts' | 'completions') => {
+    const bucket = hourlySignals[hour];
+    let row = bucket.get(provider);
+    if (!row) {
+      row = { attempts: 0, completions: 0 };
+      bucket.set(provider, row);
+    }
+    row[kind]++;
+  };
 
   for (const file of files) {
     const filePath = join(dateDir, file);
@@ -191,52 +239,37 @@ function parseLogFiles(logsDir: string, date: string): DailyStats {
         continue;
       }
 
-      // LLM provider calls (from provider "Generating with model" logs)
+      // Provider attempt logs. A failed call stops here and never reaches the usage line.
       const provMatch = PROVIDER_GENERATING_RE.exec(body);
       if (provMatch) {
         const providerName = normalizeProviderName(provMatch[1]);
-        stats.summary.totalLLMCalls++;
-        stats.hourlyActivity[hour].llmCalls++;
-        if (!providerMap.has(providerName)) {
-          providerMap.set(providerName, {
-            provider: providerName,
-            callCount: 0,
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0,
-            promptChars: 0,
-            responseChars: 0,
-          });
+        let entry = providerMap.get(providerName);
+        if (!entry) {
+          entry = emptyProvider(providerName);
+          providerMap.set(providerName, entry);
         }
-        const entry = providerMap.get(providerName);
-        if (entry) entry.callCount++;
+        entry.attempts++;
+        bumpHour(hour, providerName, 'attempts');
         continue;
       }
 
-      // LLM usage stats (from LLMService structured log)
+      // Completed calls. This is the only record for providers that do not emit an attempt line.
       const usageMatch = LLM_USAGE_RE.exec(body);
       if (usageMatch) {
         const [, provider, pt, ct, tt, pc, rc] = usageMatch;
         const provName = provider.toLowerCase();
-        if (!providerMap.has(provName)) {
-          providerMap.set(provName, {
-            provider: provName,
-            callCount: 0,
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0,
-            promptChars: 0,
-            responseChars: 0,
-          });
+        let ps = providerMap.get(provName);
+        if (!ps) {
+          ps = emptyProvider(provName);
+          providerMap.set(provName, ps);
         }
-        const ps = providerMap.get(provName);
-        if (ps) {
-          ps.promptTokens += Number(pt);
-          ps.completionTokens += Number(ct);
-          ps.totalTokens += Number(tt);
-          ps.promptChars += Number(pc);
-          ps.responseChars += Number(rc);
-        }
+        ps.completions++;
+        ps.promptTokens += Number(pt);
+        ps.completionTokens += Number(ct);
+        ps.totalTokens += Number(tt);
+        ps.promptChars += Number(pc);
+        ps.responseChars += Number(rc);
+        bumpHour(hour, provName, 'completions');
         stats.summary.totalTokensUsed += Number(tt);
         stats.summary.totalPromptChars += Number(pc);
         stats.summary.totalResponseChars += Number(rc);
@@ -244,8 +277,25 @@ function parseLogFiles(logsDir: string, date: string): DailyStats {
     }
   }
 
-  // Sort providers by call count
-  stats.providerStats = [...providerMap.values()].sort((a, b) => b.callCount - a.callCount);
+  stats.providerStats = [...providerMap.values()]
+    .map((p) => ({
+      provider: p.provider,
+      callCount: callCountOf(p),
+      promptTokens: p.promptTokens,
+      completionTokens: p.completionTokens,
+      totalTokens: p.totalTokens,
+      promptChars: p.promptChars,
+      responseChars: p.responseChars,
+    }))
+    .sort((a, b) => b.callCount - a.callCount);
+  stats.summary.totalLLMCalls = stats.providerStats.reduce((sum, p) => sum + p.callCount, 0);
+  for (let h = 0; h < 24; h++) {
+    let calls = 0;
+    for (const row of hourlySignals[h].values()) {
+      calls += callCountOf(row);
+    }
+    stats.hourlyActivity[h].llmCalls = calls;
+  }
 
   // Sort groups by message count, take top 20
   stats.topGroups = [...groupMap.values()].sort((a, b) => b.messageCount - a.messageCount).slice(0, 20);

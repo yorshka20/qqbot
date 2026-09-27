@@ -4,8 +4,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FileState, GoogleGenAI } from '@google/genai';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
-import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
 import { getContainer } from '@/core/DIContainer';
+import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { AIProvider } from '../base/AIProvider';
@@ -679,6 +679,8 @@ export class GeminiProvider
       throw new Error('GeminiProvider: llm not configured');
     }
     const model = options?.model ?? this.config.llm.model;
+    // [STATS] tag: daily stats counts this line as a provider call — do not remove.
+    logger.info(`[STATS] [GeminiProvider] Generating with model: ${model}`);
     const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
     const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens;
     const nativeWebSearch = options?.nativeWebSearch ?? this.config.llm.nativeWebSearch ?? false;
@@ -772,6 +774,8 @@ export class GeminiProvider
     if (!model) {
       throw new Error('GeminiProvider: vision not configured (set vision or llm with model)');
     }
+    // [STATS] tag: daily stats counts this line as a provider call — do not remove.
+    logger.info(`[STATS] [GeminiProvider] Generating with vision, model: ${model}`);
     const imageParts = await this.visionImagesToInlineParts(images);
     const contentsParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
     if (options?.systemPrompt) {
