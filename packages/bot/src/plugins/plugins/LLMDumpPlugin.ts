@@ -286,8 +286,8 @@ export class LLMDumpPlugin extends PluginBase {
   }
 
   /**
-   * Peel the labels PromptMessageAssembler writes in front of a history turn —
-   * `[M/DD HH:mm]`, then `[speaker:…]` on user turns — off the message body.
+   * Peel the labels PromptMessageAssembler writes in front of a user history turn —
+   * `[M/DD HH:mm]`, then `[speaker:…]` — off the message body.
    * A leading bracket that is neither (a message opening with `[Image:…]`,
    * `[Reply:…]`) is left in the body.
    */

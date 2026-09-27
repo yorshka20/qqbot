@@ -182,7 +182,7 @@ describe('PromptMessageAssembler', () => {
 
     const botTurn = messages.find((m) => m.role === 'assistant');
     // The assistant turn's text demonstrates the output shape, so it holds the reply alone.
-    expect(botTurn?.content).toBe('[1/01 09:00] 在的');
+    expect(botTurn?.content).toBe('在的');
     expect(botTurn?.reasoning_content).toBe('甲是在打招呼，轻松回应即可。');
     // A user entry never carries reasoning, whatever its fields hold.
     const userTurn = messages.find((m) => m.role === 'user' && String(m.content).includes('在吗'));
@@ -219,11 +219,9 @@ describe('PromptMessageAssembler', () => {
     const botTurn = messages.find((m) => m.role === 'assistant');
 
     expect(userTurn?.content).toBe('[1/01 09:00] [speaker:Alice:1001] hello');
-    // The bot's turn is timestamped too — how long ago it spoke decides whether the
-    // topic is still live — but a speaker tag here would read as a third participant
-    // and, in a 1:1 chat, contradict the private-chat rule that consecutive user
-    // messages are the same person.
-    expect(botTurn?.content).toBe('[1/01 09:00] hi there');
+    // Any label on the bot's own turn is read as part of its output format and copied
+    // into the next reply; a speaker tag would also read as a third participant.
+    expect(botTurn?.content).toBe('hi there');
     expect(String(botTurn?.content)).not.toContain('[speaker:');
   });
 
@@ -255,7 +253,7 @@ describe('PromptMessageAssembler', () => {
     });
 
     expect(messages[historyMessageIndices[0]].content).toBe('[1/01 09:00] [speaker:测试用户甲:1001] 在吗');
-    expect(messages[historyMessageIndices[1]].content).toBe('[1/01 09:00] 在的');
+    expect(messages[historyMessageIndices[1]].content).toBe('在的');
   });
 });
 
@@ -263,11 +261,11 @@ describe('foldReasoningIntoContent', () => {
   it('folds a history assistant turn reasoning ahead of its text and clears the field', () => {
     const folded = foldReasoningIntoContent([
       { role: 'user', content: '[1/01 09:00] [speaker:测试用户甲:1001] 在吗' },
-      { role: 'assistant', content: '[1/01 09:00] 在的', reasoning_content: '甲是在打招呼，轻松回应即可。' },
+      { role: 'assistant', content: '在的', reasoning_content: '甲是在打招呼，轻松回应即可。' },
     ]);
 
     expect(folded[0]).toEqual({ role: 'user', content: '[1/01 09:00] [speaker:测试用户甲:1001] 在吗' });
-    expect(folded[1].content).toBe('<thought>\n甲是在打招呼，轻松回应即可。\n</thought>\n[1/01 09:00] 在的');
+    expect(folded[1].content).toBe('<thought>\n甲是在打招呼，轻松回应即可。\n</thought>\n在的');
     expect(folded[1].reasoning_content).toBeUndefined();
   });
 
@@ -281,7 +279,7 @@ describe('foldReasoningIntoContent', () => {
       {
         role: 'assistant',
         content: [
-          { type: 'text', text: '[1/01 09:00] 看图说话' },
+          { type: 'text', text: '看图说话' },
           { type: 'image_url', image_url: { url: 'data:image/png;base64,x' } },
         ],
         reasoning_content: '这张图是截图。',
@@ -290,7 +288,7 @@ describe('foldReasoningIntoContent', () => {
 
     expect(folded[0].content).toEqual([
       { type: 'text', text: '<thought>\n这张图是截图。\n</thought>' },
-      { type: 'text', text: '[1/01 09:00] 看图说话' },
+      { type: 'text', text: '看图说话' },
       { type: 'image_url', image_url: { url: 'data:image/png;base64,x' } },
     ]);
   });

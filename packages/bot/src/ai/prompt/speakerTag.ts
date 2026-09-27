@@ -49,22 +49,23 @@ function stripStructuralChars(value: string): string {
 }
 
 /**
- * Build the leading label for a conversation history entry: `[M/DD HH:mm]` then,
- * for user turns only, the speaker tag.
+ * Build the leading label for a conversation history entry: `[M/DD HH:mm] [speaker:…]`
+ * on user turns, nothing on the bot's own turns.
  *
- * The timestamp goes on every turn, the bot's included. Whether a line is minutes
- * or hours old decides whether a topic is still live, and the retrieved
- * `<rag_context>` fragments carry their own timestamps — untimed history would read
- * as less grounded than material pulled from days ago.
+ * Whether a line is minutes or hours old decides whether a topic is still live, and the
+ * retrieved `<rag_context>` fragments carry their own timestamps — untimed history would
+ * read as less grounded than material pulled from days ago.
  *
- * Only user turns get a speaker tag. The tag exists to tell several humans apart in
- * a group; the bot's own turn is already marked by `role: 'assistant'`, so tagging it
- * adds nothing — and misleads: models read the bot's own nick/uid as another
- * participant ("说话人从 X 变成了 Y，QQ 号不同"), which in a 1:1 chat contradicts the
- * private-chat rule that consecutive user messages are all the same person.
+ * The bot's turns stay bare because an assistant message is read as a demonstration of
+ * output format: a label there is copied into the next reply as if it were part of what
+ * the bot says. Its timing is still recoverable — a reply sits between the user turns
+ * around it, and `<recent_actions>` stamps each of its actions. A speaker tag would also
+ * mislead on its own: models read the bot's nick/uid as another participant ("说话人从 X
+ * 变成了 Y，QQ 号不同"), which in a 1:1 chat contradicts the private-chat rule that
+ * consecutive user messages are all the same person.
  *
  * Shared by the plain-text assembler and the vision branch, which builds
- * `ContentPart[]` directly; they previously carried separate copies of this rule.
+ * `ContentPart[]` directly.
  */
 export function buildHistoryEntryPrefix(entry: {
   isBotReply?: boolean;
@@ -72,10 +73,9 @@ export function buildHistoryEntryPrefix(entry: {
   nickname?: string;
   createdAt?: Date;
 }): string {
-  const time = entry.createdAt ? `[${formatTimeCompact(entry.createdAt)}]` : '';
   if (entry.isBotReply) {
-    return time;
+    return '';
   }
   const speaker = buildSpeakerTag(String(entry.userId ?? ''), entry.nickname);
-  return time ? `${time} ${speaker}` : speaker;
+  return entry.createdAt ? `[${formatTimeCompact(entry.createdAt)}] ${speaker}` : speaker;
 }
