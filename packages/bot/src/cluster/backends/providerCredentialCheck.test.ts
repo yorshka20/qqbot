@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { interpretClaudeAuthStatus } from './providerCredentialCheck';
+import { interpretClaudeAuthStatus, interpretCodexLoginStatus } from './providerCredentialCheck';
 
 describe('interpretClaudeAuthStatus', () => {
   test('a logged-in subscription is usable and does not leak the account email', () => {
@@ -41,5 +41,32 @@ describe('interpretClaudeAuthStatus', () => {
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('claude auth status failed (exit 1)');
     expect(result.reason).not.toContain('secret');
+  });
+});
+
+describe('interpretCodexLoginStatus', () => {
+  test('a ChatGPT login is usable', () => {
+    const result = interpretCodexLoginStatus('Logged in using ChatGPT\n', 0);
+    expect(result.ok).toBe(true);
+    expect(result.credentialSource).toBe('codex login status: ChatGPT');
+  });
+
+  test('an API-key login is rejected without echoing the masked key', () => {
+    const result = interpretCodexLoginStatus('Logged in using an API key - sk-proj-***abcd\n', 0);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('codex logout');
+    expect(JSON.stringify(result)).not.toContain('abcd');
+  });
+
+  test('logged out points at codex login', () => {
+    const result = interpretCodexLoginStatus('Not logged in\n', 1);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('codex login');
+  });
+
+  test('unrecognised output fails closed', () => {
+    const result = interpretCodexLoginStatus('Error loading configuration', 1);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('codex login status failed (exit 1)');
   });
 });

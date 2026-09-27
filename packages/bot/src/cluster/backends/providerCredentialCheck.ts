@@ -10,8 +10,12 @@
  *
  * Which endpoint each provider answers on is load-bearing and differs between
  * providers that otherwise share a wire format; see each exported helper.
+ *
+ * CLIs that authenticate from their own login store (claude, codex) are asked
+ * through their local status subcommand instead, which never reaches a model.
  */
 
+import { spawn } from 'bun';
 import type { CredentialProbeResult } from '../types';
 
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -43,47 +47,6 @@ async function getModelMetadata(
     return { ok: true, body };
   } catch (err) {
     return { ok: false, reason: `request failed: ${err instanceof Error ? err.message : String(err)}` };
-  }
-}
-
-/**
- * OpenAI's Responses API — the endpoint `codex` actually drives.
- *
- * Passing the model listing does not imply access here: OpenAI project keys
- * can be scoped per endpoint, so a key may read model metadata and still be
- * refused for inference. Authorization therefore has to be probed where it
- * will be used. Sending a body that is deliberately missing `input` keeps that
- * free — the request is rejected during parameter validation, before any
- * inference is billed — so only an outright auth rejection (401/403) or a
- * provider-side failure means the credential is unusable. Any other 4xx is
- * the validation error we asked for, which proves authorization succeeded.
- */
-export async function checkOpenAiResponsesAccess(input: {
-  baseUrl: string;
-  model?: string;
-  apiKey: string;
-  credentialSource: string;
-  timeoutMs: number;
-}): Promise<CredentialProbeResult> {
-  const endpoint = `${input.baseUrl.replace(/\/$/, '')}/responses`;
-  const fields = { credentialSource: input.credentialSource, endpoint, model: input.model };
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${input.apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify(input.model ? { model: input.model } : {}),
-      signal: AbortSignal.timeout(input.timeoutMs),
-    });
-    if (response.status === 401 || response.status === 403 || response.status >= 500) {
-      return { ok: false, ...fields, reason: describeFailure(response.status, await response.text()) };
-    }
-    return { ok: true, ...fields };
-  } catch (err) {
-    return {
-      ok: false,
-      ...fields,
-      reason: `request failed: ${err instanceof Error ? err.message : String(err)}`,
-    };
   }
 }
 
@@ -228,4 +191,69 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     return value as Record<string, unknown>;
   }
   return null;
+}
+
+/**
+ * Run a CLI's local auth-status subcommand and hand its output to `interpret`.
+ * Both streams are drained concurrently: `codex login status` reports on
+ * stderr, `claude auth status` on stdout.
+ */
+export async function runCliAuthStatus(input: {
+  cmd: string[];
+  env: Record<string, string | undefined>;
+  timeoutMs: number;
+  credentialSource: string;
+  interpret: (output: { stdout: string; stderr: string }, exitCode: number) => CredentialProbeResult;
+}): Promise<CredentialProbeResult> {
+  const label = input.cmd.slice(0, 3).join(' ');
+  try {
+    const proc = spawn({ cmd: input.cmd, env: input.env, stdout: 'pipe', stderr: 'pipe' });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const exited = await Promise.race([
+      proc.exited,
+      new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), input.timeoutMs);
+      }),
+    ]);
+    if (timer) {
+      clearTimeout(timer);
+    }
+    if (exited === 'timeout') {
+      proc.kill();
+      return { ok: false, credentialSource: input.credentialSource, reason: `${label} timed out` };
+    }
+    const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+    return input.interpret({ stdout, stderr }, exited);
+  } catch (err) {
+    return {
+      ok: false,
+      credentialSource: input.credentialSource,
+      reason: `${label} failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
+/**
+ * `codex login status`. Only a ChatGPT login is accepted: an API-key login is
+ * reported as a failure even though codex could run with it. The output is
+ * never echoed, because the API-key form includes a partially masked key.
+ */
+export function interpretCodexLoginStatus(output: string, exitCode: number | null): CredentialProbeResult {
+  const credentialSource = 'codex login status';
+  if (/Logged in using ChatGPT/i.test(output)) {
+    return { ok: true, credentialSource: `${credentialSource}: ChatGPT` };
+  }
+  if (/Logged in using an API key/i.test(output)) {
+    return {
+      ok: false,
+      credentialSource: `${credentialSource}: API key`,
+      reason:
+        'codex is logged in with an API key, which is not allowed — run `codex logout`, then `codex login` with ChatGPT',
+    };
+  }
+  if (/Not logged in/i.test(output)) {
+    return { ok: false, credentialSource, reason: 'codex is not logged in — run `codex login` with ChatGPT' };
+  }
+  const exit = exitCode === null ? 'unknown' : String(exitCode);
+  return { ok: false, credentialSource, reason: `codex login status failed (exit ${exit})` };
 }

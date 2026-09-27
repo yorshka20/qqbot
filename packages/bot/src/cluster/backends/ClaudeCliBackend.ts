@@ -20,7 +20,7 @@ import type {
   WorkerBackend,
   WorkerSpawnConfig,
 } from '../types';
-import { checkAnthropicCredential, interpretClaudeAuthStatus } from './providerCredentialCheck';
+import { checkAnthropicCredential, interpretClaudeAuthStatus, runCliAuthStatus } from './providerCredentialCheck';
 
 const ANTHROPIC_DEFAULT_BASE_URL = 'https://api.anthropic.com';
 
@@ -103,7 +103,13 @@ export class ClaudeCliBackend implements WorkerBackend {
       });
     }
 
-    return runClaudeAuthStatus(config.command, config.env, config.timeoutMs);
+    return runCliAuthStatus({
+      cmd: [config.command, 'auth', 'status', '--json'],
+      env: config.env,
+      timeoutMs: config.timeoutMs,
+      credentialSource: 'claude auth status',
+      interpret: ({ stdout }, exitCode) => interpretClaudeAuthStatus(stdout, exitCode),
+    });
   }
 
   /**
@@ -182,43 +188,5 @@ export class ClaudeCliBackend implements WorkerBackend {
 
     const finalMessage = resultText ?? lastAssistantText ?? raw;
     return { finalMessage, rawEvents: events };
-  }
-}
-
-async function runClaudeAuthStatus(
-  command: string,
-  env: Record<string, string>,
-  timeoutMs: number,
-): Promise<CredentialProbeResult> {
-  const credentialSource = 'claude auth status';
-  try {
-    const proc = spawn({
-      cmd: [command, 'auth', 'status', '--json'],
-      env,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const exited = await Promise.race([
-      proc.exited,
-      new Promise<'timeout'>((resolve) => {
-        timer = setTimeout(() => resolve('timeout'), timeoutMs);
-      }),
-    ]);
-    if (timer) {
-      clearTimeout(timer);
-    }
-    if (exited === 'timeout') {
-      proc.kill();
-      return { ok: false, credentialSource, reason: 'claude auth status timed out' };
-    }
-    const stdout = await new Response(proc.stdout).text();
-    return interpretClaudeAuthStatus(stdout, exited);
-  } catch (err) {
-    return {
-      ok: false,
-      credentialSource,
-      reason: `claude auth status failed: ${err instanceof Error ? err.message : String(err)}`,
-    };
   }
 }

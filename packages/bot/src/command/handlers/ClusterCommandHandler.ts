@@ -210,9 +210,6 @@ export class ClusterCommand implements CommandHandler {
       } else {
         lines.push(`  ✗ ${r.templateName} (${r.type}): ${(r.reason ?? 'unknown').slice(0, 160)}`);
       }
-      for (const warning of r.warnings ?? []) {
-        lines.push(`    ! ${warning}`);
-      }
     }
     return textResult(lines.join('\n'));
   }

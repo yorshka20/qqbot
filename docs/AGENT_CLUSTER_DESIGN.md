@@ -605,7 +605,7 @@ cluster:
 | `claude-cli` | `ANTHROPIC_API_KEY` | 模板不写 `env` 时从 `process.env` 继承；也可走 CLI 自身的登录态 |
 | `minimax-cli` | `ANTHROPIC_API_KEY` | backend 另行注入 MiniMax 的 `ANTHROPIC_BASE_URL` |
 | `deepseek-cli` | `ANTHROPIC_AUTH_TOKEN` | **不是** `_API_KEY`，见 `DeepseekBackend.ts` |
-| `codex-cli` | `OPENAI_API_KEY` | 见下方 auth.json 优先级陷阱 |
+| `codex-cli` | 无（只用 ChatGPT 登录） | `codex login` 的 ChatGPT 登录态；`CODEX_API_KEY` / `OPENAI_API_KEY` 在 spawn 时被剔除，模板 `env` 不要写 OpenAI key |
 | `gemini-cli` | `GEMINI_API_KEY` | 或 `GOOGLE_API_KEY` + project |
 
 `config.d/ai.jsonc` 里 `ai.providers.*` 的 key 与 cluster 模板的 key 是**两套独立配置**，
@@ -625,17 +625,11 @@ worker 在 spawn 后**几秒内**退出、且 stdout 为空或只有一行报错
    `curl -s -o /dev/null -w '%{http_code}' https://api.anthropic.com/v1/models -H "x-api-key: $K" -H "anthropic-version: 2023-06-01"`；
    Gemini 用 `https://generativelanguage.googleapis.com/v1beta/models?key=$K`；
    OpenAI 用 `https://api.openai.com/v1/models`。
-3. **codex 的 `~/.codex/auth.json` 覆盖环境变量** — 该文件存在且 `auth_mode` 为
-   `"apikey"` 时，codex CLI 用的是文件里的 `OPENAI_API_KEY`，**完全忽略**模板 env 传进去的
-   值。此时模板里的 key 再正确也会 401，且报错回显的 key 尾号与模板里的对不上——这是
-   判定该陷阱的可靠信号。修复方式是 `codex login` 重新认证，或直接改写该文件。
-   注意它同时是用户交互式 `codex` 的凭证，改动会影响手动使用。
-
-> OpenAI 侧还有一个干扰项：`/v1/models` 返回 200 不代表 key 可用于 codex，因为 codex 走的是
-> `/v1/responses`，而 project key 的权限可以按端点细分。验证 codex 凭证要同时打
-> `/v1/responses`——发一个**故意缺 `input` 的请求体**，请求在参数校验阶段就被拒（返回 400
-> `missing_required_parameter`），不会进入推理、不产生费用；只有 401/403 才代表凭据本身不可用。
-> `WorkerProbe` 已按这个方式同时覆盖两个端点，见 5.4。
+3. **codex 不是 ChatGPT 登录** — codex worker 只允许 ChatGPT 登录。`codex login status`
+   输出 `Logged in using an API key` 或 `Not logged in` 时，凭据检查直接判失败，修复方式是
+   `codex logout` 后 `codex login` 选 ChatGPT。注意 `codex exec` 会让环境变量 `CODEX_API_KEY`
+   **压过** ChatGPT 登录（`OPENAI_API_KEY` 则不会），所以 backend 在 spawn 时把这两个变量都剔除，
+   保证 worker 不会意外按 key 计费。该登录同时是用户交互式 `codex` 的凭证。
 
 ### 5.4 Worker 健康检查（Worker health check）
 
@@ -660,7 +654,7 @@ CLI 自己的本地子命令，不进模型，用来回答订阅登录是否还�
 
 | backend | 端点 | 凭据来源 |
 |---|---|---|
-| `codex-cli` | `GET /v1/models/<model>`（模型权限）+ `POST /v1/responses`（端点授权，见上方 note） | `<CODEX_HOME>/auth.json` 中 `auth_mode=apikey` 时**优先于** `OPENAI_API_KEY` |
+| `codex-cli` | `codex login status`（本地子命令，不进模型，输出在 stderr）。只有 `Logged in using ChatGPT` 通过，API key 登录判失败 | `<CODEX_HOME>/auth.json` 的 ChatGPT 登录态 |
 | `claude-cli` | 有 key 时 `GET {ANTHROPIC_BASE_URL}/v1/models`；订阅登录时跑 `claude auth status --json`（本地子命令，不进模型）。`loggedIn: true` 即可用 | `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`，都没有则 `claude auth login` 的登录态 |
 | `minimax-cli` | 复用 claude-cli 的检查，base URL 换成 MiniMax 的 `/anthropic` façade（该 façade 实现了 `/v1/models`） | `ANTHROPIC_API_KEY` |
 | `deepseek-cli` | `GET https://api.deepseek.com/models`——**原生端点**，因为 DeepSeek 的 `/anthropic` façade 对 `/v1/models` 返回 404 | `ANTHROPIC_AUTH_TOKEN` |
@@ -670,10 +664,8 @@ CLI 自己的本地子命令，不进模型，用来回答订阅登录是否还�
 模型清单的那几家只判定鉴权，因为清单里是带日期的完整 id，而模板通常 pin 的是别名，拿不到
 清单里不等于不可用。
 
-`verifyCredentials` 返回的 `credentialSource` 只报**凭据来源**（如 `~/.codex/auth.json`、
-`env.OPENAI_API_KEY`），不含凭据本身。当模板 env 里的 key 与 CLI 实际采用的凭据不一致时
-（codex 的 auth.json 陷阱，见上一节第 3 条），检查照常通过但附带 `warnings`——这正是那个陷阱
-唯一能被自动发现的时机。
+`verifyCredentials` 返回的 `credentialSource` 只报**凭据来源**（如 `codex login status: ChatGPT`、
+`env.ANTHROPIC_API_KEY`），不含凭据本身；CLI 状态输出里带的账号或脱敏 key 也不会被回显。
 
 配置项 `cluster.healthCheck`：
 

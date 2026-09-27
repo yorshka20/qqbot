@@ -34,7 +34,6 @@ export interface WorkerProbeResult {
   credentialSource?: string;
   endpoint?: string;
   model?: string;
-  warnings?: string[];
 }
 
 /** The environment a worker of this template would be spawned with. */
@@ -138,11 +137,6 @@ export async function probeWorkerTemplates(
   );
 
   results.push(...probed);
-
-  const warningLines = results.flatMap((r) => (r.warnings ?? []).map((w) => `  ! ${r.templateName}: ${w}`));
-  if (warningLines.length > 0) {
-    logger.warn(`[WorkerProbe] credential warnings:\n${warningLines.join('\n')}`);
-  }
 
   const failed = results.filter((r) => !r.ok);
   if (failed.length > 0) {

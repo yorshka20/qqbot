@@ -414,7 +414,7 @@ export interface CredentialProbeResult {
   ok: boolean;
   /**
    * The credential the CLI would actually authenticate with, identified by
-   * origin rather than value (e.g. `~/.codex/auth.json`, `env.OPENAI_API_KEY`).
+   * origin rather than value (e.g. `codex login status: ChatGPT`, `env.ANTHROPIC_API_KEY`).
    * A CLI that resolves credentials from its own config outranking the
    * environment makes this the difference between a useful result and a
    * misleading one.
@@ -425,8 +425,6 @@ export interface CredentialProbeResult {
   /** Set only by providers whose API answers per-model, confirming entitlement. */
   model?: string;
   reason?: string;
-  /** Non-fatal findings, e.g. a template key the CLI would silently ignore. */
-  warnings?: string[];
 }
 
 export interface WorkerBackend {
