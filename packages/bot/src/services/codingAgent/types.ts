@@ -19,10 +19,11 @@ export interface ProjectContext {
 }
 
 /**
- * `dev` / `new-project` work inside a project tree. `research` answers a question
- * from chat in its own throwaway workspace, outside any repository.
+ * `dev` / `new-project` work inside a project tree. `workspace` does anything
+ * asked from chat — research, building a page, a script, a document — in its
+ * own throwaway directory outside any repository, and delivers to the chat.
  */
-export type AgentTaskType = 'dev' | 'new-project' | 'research';
+export type AgentTaskType = 'dev' | 'new-project' | 'workspace';
 
 /** The CLIs a task can be executed by. The prompt and requirements are the same for all of them. */
 export const AGENT_EXECUTOR_NAMES = ['claude', 'codex'] as const;

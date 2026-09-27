@@ -39,7 +39,7 @@ function task(requestedBy: AgentTask['requestedBy']): AgentTask {
     createdAt: new Date(),
     status: 'running',
     requestedBy,
-    taskType: 'research',
+    taskType: 'workspace',
   };
 }
 

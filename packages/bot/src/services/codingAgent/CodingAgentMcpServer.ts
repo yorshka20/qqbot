@@ -299,10 +299,11 @@ export class CodingAgentMcpServer {
       'bot_notify_task',
       {
         description:
-          'Report progress on the task you are running; the bot relays each report with a message to the ' +
-          "requester's chat immediately. Call it with status=started once you understand the task and with " +
-          'status=progress at meaningful milestones. Your final answer is your last output and is delivered on ' +
-          'exit, so status=completed is not needed. The task ID is taken from your MCP connection — you do not pass it.',
+          'Report progress to the requester; each call with a message becomes a chat message. Use it only for ' +
+          'substance — an intermediate finding, a problem that changes the outcome, a change of plan — and not ' +
+          'at all for tasks that finish within a few minutes. No narration ("starting", "working on X"). Your ' +
+          'final answer is your last output and is delivered on exit, so status=completed is not needed. The ' +
+          'task ID is taken from your MCP connection — you do not pass it.',
         inputSchema: {
           status: z.enum(['started', 'progress', 'completed', 'failed']).describe('Lifecycle state being reported.'),
           message: z.string().optional().describe('Short human-readable status line for the requester.'),
@@ -420,7 +421,7 @@ export class CodingAgentMcpServer {
         description:
           'Run a bot maintenance command. `restart` pulls code, updates dependencies and restarts the bot ' +
           '(this will kill your own task — call it last). `reload-plugins` reloads all plugins in place. ' +
-          '`status` returns current runtime state. Not available to research tasks.',
+          '`status` returns current runtime state. Not available to workspace tasks.',
         inputSchema: {
           command: z.enum(['restart', 'reload-plugins', 'status']).describe('Which maintenance command to run.'),
           args: z.array(z.string()).optional().describe('Extra arguments for the command.'),

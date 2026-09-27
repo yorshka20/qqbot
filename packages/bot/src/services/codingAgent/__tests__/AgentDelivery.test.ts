@@ -95,6 +95,8 @@ describe('AgentDelivery', () => {
         name: 'report.zip',
       },
     ]);
+    // The upload itself posts the file; a follow-up file segment is rejected by Milky.
+    expect(recorded.sent).toHaveLength(0);
     expect(recorded.history[0].content).toBe('[文件] report.zip (1 KB)');
   });
 

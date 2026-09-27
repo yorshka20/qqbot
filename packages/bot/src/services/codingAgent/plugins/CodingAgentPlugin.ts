@@ -32,8 +32,8 @@ function runOptionsUsage(cmd: AgentExecutorName): string {
 }
 
 function usage(cmd: AgentExecutorName): string {
-  return `/${cmd} <prompt> - 触发开发任务（默认项目）
-/${cmd} @<alias> <prompt> - 在指定项目中执行任务
+  return `/${cmd} <任务> - 在独立工作区执行（调研、做网页/脚本/文档等），结果和文件发回聊天
+/${cmd} @<项目> <任务> - 在已注册项目里开发（改代码、提交）
 /${cmd} --model <模型> --effort <强度> <prompt> - 指定模型与推理强度
 /${cmd} models - 查看可用模型与强度
 /${cmd} new <path> [--type bun|node|python|rust] <prompt> - 创建新项目
@@ -178,27 +178,25 @@ export class CodingAgentPlugin extends PluginBase {
       return reply(true, `使用方法:\n${usage(executor)}`);
     }
 
-    const registry = service.getProjectRegistry();
+    // Only an explicit @project puts the agent inside a repository; anything
+    // else runs in a throwaway workspace and delivers to the chat.
     let workingDirectory: string | undefined;
     let projectContext: ProjectContext | undefined;
-
-    if (registry) {
-      const project = registry.resolve(projectIdentifier);
-      if (projectIdentifier && !project) {
+    if (projectIdentifier) {
+      const project = service.getProjectRegistry()?.resolve(projectIdentifier);
+      if (!project) {
         return reply(false, `未找到项目: ${projectIdentifier}\n使用 /${executor} projects 查看已注册项目`, {
           error: 'Project not found',
         });
       }
-      if (project) {
-        workingDirectory = project.path;
-        projectContext = {
-          alias: project.alias,
-          type: project.type,
-          description: project.description,
-          hasClaudeMd: project.hasClaudeMd,
-          promptTemplateKey: project.promptTemplateKey,
-        };
-      }
+      workingDirectory = project.path;
+      projectContext = {
+        alias: project.alias,
+        type: project.type,
+        description: project.description,
+        hasClaudeMd: project.hasClaudeMd,
+        promptTemplateKey: project.promptTemplateKey,
+      };
     }
 
     const agentName = service.getExecutor(executor).displayName;
@@ -206,11 +204,11 @@ export class CodingAgentPlugin extends PluginBase {
       const task = await service.triggerTask(prompt, this.requesterOf(context), workingDirectory, {
         executor,
         run: options,
-        taskType: 'dev',
+        taskType: projectContext ? 'dev' : 'workspace',
         projectContext,
       });
 
-      const projectInfo = projectContext ? ` (项目: ${projectContext.alias})` : '';
+      const projectInfo = projectContext ? ` (项目: ${projectContext.alias})` : ' (独立工作区)';
       const queueMsg =
         task.queuePosition > 0 ? `\n队列位置: 第${task.queuePosition}位（前方有任务在执行，将自动排队等待）` : '';
       return reply(

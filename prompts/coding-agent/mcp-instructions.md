@@ -6,12 +6,14 @@ This MCP server is your channel back to them, plus a few bot-side helpers.
 
 ## Reporting back
 
-- `bot_notify_task` — progress reports. Call it with `status=started` once you
-  understand the task and with `status=progress` at real milestones; each call
-  with a `message` is relayed to the requester's chat as it happens. Your final
-  answer is whatever you output last — it is delivered when your process exits,
-  so do not repeat it with `status=completed`. The task ID comes from your
-  connection, so you cannot report against the wrong task.
+- `bot_notify_task` — progress reports. Every call with a `message` becomes a
+  chat message, so use it only when there is something the requester needs to
+  know: an intermediate finding, a problem that changes the outcome, a change of
+  plan. Skip it entirely for tasks that finish within a few minutes, and never
+  send narration like "starting", "working on X", "sending the file now". Your
+  final answer is whatever you output last — it is delivered when your process
+  exits, so do not repeat it with `status=completed`. The task ID comes from
+  your connection, so you cannot report against the wrong task.
 - `bot_send_message` — send a chat message to the requester, in the chat they
   asked from. Use it when they should see something before the task ends: an
   ambiguity you had to resolve, a destructive change you are about to make.
@@ -21,8 +23,10 @@ This MCP server is your channel back to them, plus a few bot-side helpers.
   conclusions, markdown) as a card image and send it to the requester. Better
   than a long text for anything with structure, and not limited in length.
 - `bot_send_file` — upload a file from your task workspace to the requester.
-  Only files inside the workspace can be sent; zip a directory first. Only
-  research tasks can send files.
+  Only files inside the workspace can be sent; zip a directory first. A
+  successful call means the file arrived — never send the same content again
+  in another format. Only
+  workspace tasks (the ones not bound to a project) can send files.
 
 Everything you send goes to the person who requested the task; you cannot
 choose another recipient.
@@ -34,4 +38,4 @@ Prefer `bot_notify_task` for progress, and the `bot_send_*` tools for content.
 - `bot_info` — connected protocols, uptime, task queue depth.
 - `bot_command` — `reload-plugins` / `status` / `restart`. `restart` will kill
   your own process, so only call it as the very last action of a task that
-  explicitly asked for it. Research tasks cannot use it.
+  explicitly asked for it. Workspace tasks cannot use it.

@@ -30,10 +30,10 @@ type TaskProgressCallback = (task: AgentTask, update: TaskProgressUpdate) => voi
 const MAX_ERROR_CHARS = 2000;
 
 /**
- * Research tasks run one at a time: each has its own workspace so they cannot
+ * Workspace tasks run one at a time: each has its own directory so they cannot
  * collide on files, but every one of them spends the same subscription quota.
  */
-const RESEARCH_QUEUE_KEY = 'research';
+const WORKSPACE_QUEUE_KEY = 'workspace';
 
 const DEFAULT_IDLE_TIMEOUT = '15m';
 const DEFAULT_TIMEOUT = '3h';
@@ -153,8 +153,8 @@ export class CodingAgentTaskManager {
 
     // Determine template key
     let templateKey: string;
-    if (task.taskType === 'research') {
-      templateKey = 'coding-agent.task.research';
+    if (task.taskType === 'workspace') {
+      templateKey = 'coding-agent.task.workspace';
     } else if (ctx?.promptTemplateKey) {
       templateKey = ctx.promptTemplateKey;
     } else if (task.taskType === 'new-project') {
@@ -233,7 +233,7 @@ export class CodingAgentTaskManager {
   ): AgentTask {
     const id = randomUUID();
     const taskDirectory =
-      options.taskType === 'research' ? this.createWorkspace(id) : workingDirectory || this.config.workingDirectory;
+      options.taskType === 'workspace' ? this.createWorkspace(id) : workingDirectory || this.config.workingDirectory;
     const task: AgentTask = {
       id,
       executor: options.executor,
@@ -268,8 +268,8 @@ export class CodingAgentTaskManager {
    * them, because they would otherwise edit the same working tree at once.
    */
   private getProjectKey(task: AgentTask): string {
-    if (task.taskType === 'research') {
-      return RESEARCH_QUEUE_KEY;
+    if (task.taskType === 'workspace') {
+      return WORKSPACE_QUEUE_KEY;
     }
     return task.workingDirectory || this.config.workingDirectory || process.cwd();
   }

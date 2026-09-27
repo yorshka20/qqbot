@@ -110,12 +110,12 @@ export class CodingAgentService {
     });
 
     // Handle command execution requests from the agent CLI.
-    // Research tasks come from chat, where their instructions can be steered by
+    // Workspace tasks come from chat, where their instructions can be steered by
     // anyone who can talk to the bot or by the pages they read, so they cannot
     // restart or reconfigure the bot.
     this.mcpServer.setExecuteCommandHandler(async (taskId, params) => {
       const task = this.taskManager.getTask(taskId);
-      if (!task || task.taskType === 'research') {
+      if (!task || task.taskType === 'workspace') {
         return { success: false, error: 'bot_command is not available to this task' };
       }
       return await this.executeCommand(params);
@@ -281,7 +281,7 @@ export class CodingAgentService {
   }
 
   /**
-   * Files may only leave the machine from a research task's own workspace: a
+   * Files may only leave the machine from a workspace task's own directory: a
    * dev task's working directory is a repository, which can hold secrets.
    */
   private async sendFile(
@@ -290,8 +290,11 @@ export class CodingAgentService {
     path: string,
     fileName: string | undefined,
   ): Promise<DeliveryResult> {
-    if (task.taskType !== 'research' || !task.workingDirectory) {
-      return { success: false, error: '只有调研任务可以发送文件' };
+    if (task.taskType !== 'workspace' || !task.workingDirectory) {
+      return {
+        success: false,
+        error: '开发任务在项目仓库里运行，不能往聊天发文件；不带 @项目 的任务在独立工作区运行，可以发文件',
+      };
     }
     return delivery.sendFile(task.requestedBy, isAbsolute(path) ? path : join(task.workingDirectory, path), {
       root: task.workingDirectory,

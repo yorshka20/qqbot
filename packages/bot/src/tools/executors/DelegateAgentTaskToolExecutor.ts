@@ -1,4 +1,5 @@
-// Hands a long, multi-step investigation to a local coding-agent CLI (claude / codex).
+// Hands a long, multi-step task — an investigation or something to build — to a
+// local coding-agent CLI (claude / codex).
 // The reply ends right away; the agent's progress and final report arrive in this
 // conversation later through CodingAgentService.
 
@@ -20,12 +21,13 @@ function isExecutorName(value: unknown): value is AgentExecutorName {
 @Tool({
   name: 'delegate_agent_task',
   description:
-    '把一个需要长时间、多步骤完成的调研任务交给本地 agent（claude / codex）异步执行。agent 能联网搜索、抓取网页、写脚本跑实验、交叉验证多个来源，耗时几分钟到几十分钟。调用后立即返回；agent 的进度和最终汇报会自动发到当前会话，不需要你等待或转述。',
+    '把一个需要长时间、多步骤完成的任务交给本地 agent（claude / codex）异步执行：深度调研，或做出一个东西（网页、脚本、文档、数据）。agent 在独立工作区里运行，能联网搜索、抓取网页、写代码并实际运行验证，产物可以作为文件发回，耗时几分钟到几十分钟。调用后立即返回；agent 的进度、汇报和文件会自动发到当前会话，不需要你等待或转述。',
   whenToUse:
-    '只用于 research 工具做不了的深度任务：需要多来源综合对比、需要跑代码或实验验证、需要产出一份完整报告。简单查询、单个网页、几句话能答的问题用 research 或直接回答。调用后用一句话告诉对方已经安排、大概要多久，然后结束本次回复，不要自己去回答这个调研问题。',
+    '只用于你自己和 research 工具做不了的重任务：需要多来源综合对比的调研、需要跑代码或实验验证、需要产出完整报告或文件（网页、脚本、文档等）。简单查询、单个网页、几句话能答的问题用 research 或直接回答。调用后用一句话告诉对方已经安排、大概要多久，然后结束本次回复，不要自己去完成这个任务。',
   examples: [
     '深入对比三个开源向量数据库的性能、许可证和社区活跃度，给出选型建议',
     '调研某个库最近半年的重大变更，跑一下示例代码确认新 API 的用法',
+    '做一个展示周末活动建议的单页网页，打包发过来',
   ],
   executor: 'delegate_agent_task',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true } },
@@ -63,7 +65,7 @@ export class DelegateAgentTaskToolExecutor extends BaseToolExecutor {
   async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     const task = typeof call.parameters?.task === 'string' ? call.parameters.task.trim() : '';
     if (!task) {
-      return this.error('task 不能为空，需要写明完整的调研任务', 'missing task');
+      return this.error('task 不能为空，需要写明完整的任务', 'missing task');
     }
     const executorParam = call.parameters?.executor;
     if (executorParam !== undefined && !isExecutorName(executorParam)) {
@@ -90,12 +92,12 @@ export class DelegateAgentTaskToolExecutor extends BaseToolExecutor {
           messageId: context.messageId,
         },
         undefined,
-        { executor: executorParam, run: { model, effort }, taskType: 'research' },
+        { executor: executorParam, run: { model, effort }, taskType: 'workspace' },
       );
       const agentName = service.getExecutor(created.executor).displayName;
-      const queued = created.queuePosition > 0 ? `，前面还有 ${created.queuePosition} 个调研任务在排队` : '';
+      const queued = created.queuePosition > 0 ? `，前面还有 ${created.queuePosition} 个任务在排队` : '';
       return this.success(
-        `已交给 ${agentName}（任务 ${created.id.slice(0, 8)}，模型 ${created.model}${queued}）。进度和最终汇报会自动发到当前会话，你不需要等待，也不要自己回答这个调研问题；用一句话告诉对方已经安排、大概需要几分钟到几十分钟即可。`,
+        `已交给 ${agentName}（任务 ${created.id.slice(0, 8)}，模型 ${created.model}${queued}）。进度和最终汇报会自动发到当前会话，你不需要等待，也不要自己去完成这个任务；用一句话告诉对方已经安排、大概需要几分钟到几十分钟即可。`,
         { taskId: created.id, executor: created.executor, queuePosition: created.queuePosition },
       );
     } catch (error) {

@@ -85,8 +85,11 @@ export class AgentDelivery {
   }
 
   /**
-   * Upload a file and post it. `root` bounds which files may leave the machine:
-   * the path is resolved through symlinks and must stay inside it.
+   * Send a file. The upload is the send: Milky's upload_group_file /
+   * upload_private_file post the file to the chat themselves, and Milky rejects
+   * an outgoing `file` segment, so nothing follows the upload. `root` bounds
+   * which files may leave the machine: the path is resolved through symlinks
+   * and must stay inside it.
    */
   async sendFile(
     target: DeliveryTarget,
@@ -100,14 +103,13 @@ export class AgentDelivery {
     const fileName = options.fileName || basename(checked.path);
     return this.deliver(target, 'coding_agent_file', async (protocol, chatId) => {
       const fileUri = `base64://${(await readFile(checked.path)).toString('base64')}`;
-      const fileId =
-        target.type === 'group'
-          ? await this.deps.fileAPI.uploadGroupFile(chatId, fileUri, fileName, protocol, FILE_UPLOAD_TIMEOUT_MS)
-          : await this.deps.fileAPI.uploadPrivateFile(chatId, fileUri, fileName, protocol, FILE_UPLOAD_TIMEOUT_MS);
-      const segments = new MessageBuilder().file({ file_id: fileId, file_name: fileName }).build();
-      const messageSeq = await this.sendSegments(target, chatId, segments, protocol);
+      if (target.type === 'group') {
+        await this.deps.fileAPI.uploadGroupFile(chatId, fileUri, fileName, protocol, FILE_UPLOAD_TIMEOUT_MS);
+      } else {
+        await this.deps.fileAPI.uploadPrivateFile(chatId, fileUri, fileName, protocol, FILE_UPLOAD_TIMEOUT_MS);
+      }
       const sizeKb = Math.ceil(checked.size / 1024);
-      return { messageSeq, messageId: messageSeq, history: `[文件] ${fileName} (${sizeKb} KB)` };
+      return { history: `[文件] ${fileName} (${sizeKb} KB)` };
     });
   }
 

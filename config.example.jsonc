@@ -1146,10 +1146,10 @@
     "idleTimeout": "15m",
     // Kill a task that runs longer than this in total (default: '3h')
     "timeout": "3h",
-    // Parent of the per-task workspaces research tasks run in (default: <os tmpdir>/qqbot-agent-workspaces).
+    // Parent of the per-task directories workspace tasks run in (default: <os tmpdir>/qqbot-agent-workspaces).
     // Must be outside any repository: both CLIs load CLAUDE.md / AGENTS.md from parent directories.
     // "workspaceRoot": "/tmp/qqbot-agent-workspaces",
-    // Largest file a research task may send to chat with bot_send_file, in MB (default: 30)
+    // Largest file a workspace task may send to chat with bot_send_file, in MB (default: 30)
     "maxFileMB": 30,
     // Working directory for tasks that do not resolve to a registered project
     "workingDirectory": "./",
