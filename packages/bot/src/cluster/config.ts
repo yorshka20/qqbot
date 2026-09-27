@@ -3,6 +3,7 @@
  */
 
 import { hostname } from 'node:os';
+import { parseDuration } from '@/utils/duration';
 
 export interface ClusterConfig {
   enabled: boolean;
@@ -171,28 +172,6 @@ function defaultArgsForType(type: WorkerBackendType): string[] {
       return ['--print', '--dangerously-skip-permissions', '--output-format', 'text'];
     default:
       return ['--print', '--dangerously-skip-permissions', '--output-format', 'text'];
-  }
-}
-
-/**
- * Parse duration string to milliseconds.
- * Supports: "30s", "5m", "1h", "600s"
- */
-export function parseDuration(raw: string): number {
-  const match = raw.match(/^(\d+)(ms|s|m|h)$/);
-  if (!match) return parseInt(raw, 10) || 30000;
-  const value = parseInt(match[1], 10);
-  switch (match[2]) {
-    case 'ms':
-      return value;
-    case 's':
-      return value * 1000;
-    case 'm':
-      return value * 60_000;
-    case 'h':
-      return value * 3_600_000;
-    default:
-      return value;
   }
 }
 

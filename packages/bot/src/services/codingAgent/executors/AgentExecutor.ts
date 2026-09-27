@@ -18,11 +18,20 @@ export interface AgentInvocation {
   cleanup(): Promise<void>;
 }
 
+/** A model the executor can run, with the reasoning efforts it accepts. */
+export interface ExecutorModel {
+  id: string;
+  efforts: readonly string[];
+}
+
 /**
  * One coding-agent CLI. Everything about a task except how its CLI is launched
  * — queueing, prompt, MCP callbacks, result delivery — is shared across
  * executors, so an executor only translates a task into a process invocation.
- * The CLI must print its final answer, and nothing else, to stdout.
+ *
+ * The CLI must keep writing to stdout or stderr while it works (the idle
+ * watchdog treats a silent process as stalled), and `finalMessage` must be
+ * able to recover the agent's final answer from everything it wrote to stdout.
  */
 export interface AgentExecutor {
   readonly name: AgentExecutorName;
@@ -30,5 +39,11 @@ export interface AgentExecutor {
   readonly displayName: string;
   /** Commit trailer the task prompt asks the agent to add. */
   readonly coAuthorTrailer: string;
+  readonly defaultModel: string;
+  /** Unset means the CLI's own default effort. */
+  readonly defaultEffort?: string;
+  /** Models a task may select with `--model`, each with the efforts `--effort` may select. */
+  listModels(): Promise<ExecutorModel[]>;
   buildInvocation(input: AgentInvocationInput): Promise<AgentInvocation>;
+  finalMessage(stdout: string): string;
 }

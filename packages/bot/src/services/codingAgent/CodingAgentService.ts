@@ -10,15 +10,18 @@
 import { spawn } from 'bun';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { CodingAgentConfig, ProtocolName } from '@/core/config';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { logger } from '@/utils/logger';
 import { CodingAgentMcpServer } from './CodingAgentMcpServer';
-import { CodingAgentTaskManager } from './CodingAgentTaskManager';
+import { CodingAgentTaskManager, type TaskProgressUpdate } from './CodingAgentTaskManager';
 import { type AgentExecutor, createAgentExecutors } from './executors';
 import type { ProjectRegistry } from './ProjectRegistry';
+import { resolveRunOptions } from './runOptions';
 import type {
   AgentExecutorName,
+  AgentRunOptions,
   AgentTask,
   AgentTaskType,
   ExecuteCommandParams,
@@ -30,6 +33,8 @@ import type {
 export interface TriggerTaskOptions {
   /** Defaults to `codingAgent.defaultExecutor`. */
   executor?: AgentExecutorName;
+  /** Model / effort overrides; invalid values reject the task with `AgentRunOptionsError`. */
+  run?: AgentRunOptions;
   taskType?: AgentTaskType;
   projectContext?: ProjectContext;
   /** When true, the global handleTaskUpdate callback skips sending result messages */
@@ -43,6 +48,7 @@ export class CodingAgentService {
   private defaultExecutor: AgentExecutorName;
   private taskManager: CodingAgentTaskManager;
   private messageAPI: MessageAPI | null = null;
+  private historyService: ConversationHistoryService | null = null;
   private botStartTime: number;
   private connectedProtocols: ProtocolName[] = [];
   private selfId: string | null = null;
@@ -86,6 +92,16 @@ export class CodingAgentService {
       this.handleTaskUpdate(task);
     });
 
+    // Relay the agent's started / progress reports to the requester
+    this.taskManager.setTaskProgressCallback((task, update) => {
+      this.handleTaskProgress(task, update);
+    });
+
+    // Any MCP request from a task's CLI keeps its idle watchdog fed
+    this.mcpServer.setTaskActivityHandler((taskId) => {
+      this.taskManager.touch(taskId);
+    });
+
     // Handle command execution requests from the agent CLI
     this.mcpServer.setExecuteCommandHandler(async (params) => {
       return await this.executeCommand(params);
@@ -97,6 +113,13 @@ export class CodingAgentService {
    */
   setMessageAPI(messageAPI: MessageAPI): void {
     this.messageAPI = messageAPI;
+  }
+
+  /**
+   * Set the history service every delivered message is persisted through
+   */
+  setHistoryService(historyService: ConversationHistoryService): void {
+    this.historyService = historyService;
   }
 
   /**
@@ -156,9 +179,15 @@ export class CodingAgentService {
     workingDirectory?: string,
     options?: TriggerTaskOptions,
   ): Promise<AgentTask & { queuePosition: number }> {
+    const executor = options?.executor || this.defaultExecutor;
+    const { model, effort } = await resolveRunOptions(this.executors[executor], options?.run ?? {});
     const task = this.taskManager.createTask(prompt, requestedBy, workingDirectory, {
-      ...options,
-      executor: options?.executor || this.defaultExecutor,
+      executor,
+      model,
+      effort,
+      taskType: options?.taskType,
+      projectContext: options?.projectContext,
+      suppressDefaultNotification: options?.suppressDefaultNotification,
     });
 
     // Enqueue task — starts immediately if no task is running for this project,
@@ -227,6 +256,7 @@ export class CodingAgentService {
           protocol,
           { botUserId },
         );
+        await this.persistSentMessage(params, protocol, botUserId, result?.message_seq);
         const messageId = result?.message_id ?? result?.message_seq;
         return { success: true, messageId: messageId?.toString() };
       }
@@ -238,12 +268,51 @@ export class CodingAgentService {
           : this.messageAPI.sendGroupMessage.bind(this.messageAPI, targetId);
 
       const messageId = await sendFn(params.content, protocol);
+      await this.persistSentMessage(params, protocol, botUserId, messageId);
       return { success: true, messageId: messageId?.toString() };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('[CodingAgentService] Send message error:', error);
       return { success: false, error: errorMessage };
     }
+  }
+
+  /**
+   * Persist a delivered message into the target session's history. These sends
+   * bypass the reply pipeline, so without this the chat LLM would never see
+   * what an agent reported and could not discuss it on the next turn.
+   */
+  private async persistSentMessage(
+    params: SendMessageParams,
+    protocol: ProtocolName,
+    botUserId: number,
+    messageSeq: number | undefined,
+  ): Promise<void> {
+    if (!this.historyService) {
+      return;
+    }
+    await this.historyService.appendBotMessageToSession(
+      { sessionType: params.target.type === 'group' ? 'group' : 'user', targetId: params.target.id },
+      params.content,
+      protocol,
+      { botUserId, messageSeq, viaTool: 'coding_agent' },
+    );
+  }
+
+  /**
+   * Relay an agent's started / progress report to the requester as it happens
+   */
+  private async handleTaskProgress(task: AgentTask, update: TaskProgressUpdate): Promise<void> {
+    if (task.suppressDefaultNotification) {
+      return;
+    }
+    const agentName = this.executors[task.executor].displayName;
+    const label = update.status === 'started' ? '开始' : '进度';
+    const percent = update.progress !== undefined ? ` [${update.progress}%]` : '';
+    await this.sendMessage({
+      target: { type: task.requestedBy.type, id: task.requestedBy.id },
+      content: `${agentName} ${label} (${task.id.slice(0, 8)})${percent}：${update.message}`,
+    });
   }
 
   /**

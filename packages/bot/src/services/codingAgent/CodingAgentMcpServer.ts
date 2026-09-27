@@ -44,6 +44,7 @@ type SendMessageHandler = (
 ) => Promise<{ success: boolean; messageId?: string; error?: string }>;
 type GetBotInfoHandler = () => BotInfo;
 type ExecuteCommandHandler = (params: ExecuteCommandParams) => Promise<ExecuteCommandResult>;
+type TaskActivityHandler = (taskId: string) => void;
 
 /** Shape of the `extra` parameter we care about — narrowed from the SDK type. */
 interface ToolExtra {
@@ -101,6 +102,7 @@ export class CodingAgentMcpServer {
   private onSendMessage: SendMessageHandler | null = null;
   private onGetBotInfo: GetBotInfoHandler | null = null;
   private onExecuteCommand: ExecuteCommandHandler | null = null;
+  private onTaskActivity: TaskActivityHandler | null = null;
 
   constructor(private readonly config: CodingAgentConfig) {
     this.instructions = loadMcpInstructions();
@@ -120,6 +122,11 @@ export class CodingAgentMcpServer {
 
   setExecuteCommandHandler(handler: ExecuteCommandHandler): void {
     this.onExecuteCommand = handler;
+  }
+
+  /** Called for every MCP request that carries an `X-Task-Id` — the task is alive. */
+  setTaskActivityHandler(handler: TaskActivityHandler): void {
+    this.onTaskActivity = handler;
   }
 
   async start(): Promise<string> {
@@ -172,6 +179,10 @@ export class CodingAgentMcpServer {
     }
 
     if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
+      const taskId = req.headers.get('x-task-id');
+      if (taskId) {
+        this.onTaskActivity?.(taskId);
+      }
       try {
         const sessionId = req.headers.get('mcp-session-id');
         const existing = sessionId ? this.sessions.get(sessionId) : undefined;
@@ -228,9 +239,10 @@ export class CodingAgentMcpServer {
       'bot_notify_task',
       {
         description:
-          'Report progress on the task you are running back to the bot, which relays it to the user who ' +
-          'requested it. Call this when you start, at meaningful milestones, and on completion or failure. ' +
-          'The task ID is taken from your MCP connection — you do not pass it.',
+          'Report progress on the task you are running; the bot relays each report with a message to the ' +
+          "requester's chat immediately. Call it with status=started once you understand the task and with " +
+          'status=progress at meaningful milestones. Your final answer is your last output and is delivered on ' +
+          'exit, so status=completed is not needed. The task ID is taken from your MCP connection — you do not pass it.',
         inputSchema: {
           status: z.enum(['started', 'progress', 'completed', 'failed']).describe('Lifecycle state being reported.'),
           message: z.string().optional().describe('Short human-readable status line for the requester.'),

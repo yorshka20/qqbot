@@ -45,6 +45,11 @@ export interface AgentExecutorConfig {
   cliPath?: string;
   // Model passed to the CLI (default: 'claude-opus-5' for claude, 'gpt-6-sol' for codex)
   model?: string;
+  // Reasoning effort when a task does not set one (default: the CLI's own default)
+  effort?: string;
+  // Extra models `--model` may select. Only read for claude, whose CLI has no model
+  // catalog; codex models come from `codex debug models`.
+  models?: string[];
 }
 
 export interface CodingAgentConfig {
@@ -59,6 +64,10 @@ export interface CodingAgentConfig {
   };
   // Working directory for tasks that do not resolve to a registered project
   workingDirectory?: string;
+  // Kill a task whose CLI shows no activity (output or MCP call) for this long (default: '15m')
+  idleTimeout?: string;
+  // Kill a task that runs longer than this in total (default: '3h')
+  timeout?: string;
   // Max concurrent tasks (default: 1)
   maxConcurrentTasks?: number;
   // Project registry for multi-project support

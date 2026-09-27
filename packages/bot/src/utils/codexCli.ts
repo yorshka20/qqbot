@@ -33,3 +33,34 @@ export function codexMcpServerArgs(name: string, url: string, headers: Record<st
     `mcp_servers.${name}.http_headers={${headerTable}}`,
   ];
 }
+
+interface CodexCatalogModel {
+  slug: string;
+  visibility?: string;
+  supported_reasoning_levels?: Array<{ effort: string }>;
+}
+
+/**
+ * The models this codex install offers, from `codex debug models` (a local
+ * catalog read, no model call). Hidden entries are internal and left out.
+ */
+export async function listCodexModels(cliPath: string): Promise<Array<{ id: string; efforts: string[] }>> {
+  const proc = Bun.spawn({
+    cmd: [cliPath, 'debug', 'models'],
+    env: withoutCodexApiKeys(process.env),
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(`codex debug models failed (exit ${exitCode}): ${stderr.trim().slice(0, 200)}`);
+  }
+  const catalog = JSON.parse(stdout) as { models: CodexCatalogModel[] };
+  return catalog.models
+    .filter((m) => m.visibility === 'list')
+    .map((m) => ({ id: m.slug, efforts: (m.supported_reasoning_levels ?? []).map((l) => l.effort) }));
+}

@@ -1124,16 +1124,28 @@
         // CLI path (default: 'claude')
         "cliPath": "claude",
         // Passed to --model (default: 'claude-opus-5'). Alias ('opus') or full id.
-        "model": "claude-opus-5"
+        "model": "claude-opus-5",
+        // Default reasoning effort (low / medium / high / max; default: CLI default)
+        // "effort": "high",
+        // Extra models `/claude --model` may select, beyond the default and the
+        // CLI aliases haiku / opus / sonnet (the claude CLI has no model catalog)
+        "models": ["claude-sonnet-5"]
       },
       "codex": {
         // CLI path (default: 'codex'). Authenticates with the ChatGPT login
         // from `codex login` only — API-key env vars are stripped at spawn.
         "cliPath": "codex",
-        // Passed to --model (default: 'gpt-6-sol')
+        // Passed to --model (default: 'gpt-6-sol'). `/codex --model` may pick
+        // any model in `codex debug models`; `/codex models` lists them.
         "model": "gpt-6-sol"
+        // Default reasoning effort (default: model_reasoning_effort in ~/.codex/config.toml)
+        // "effort": "high"
       }
     },
+    // Kill a task whose CLI shows no activity (output or MCP call) for this long (default: '15m')
+    "idleTimeout": "15m",
+    // Kill a task that runs longer than this in total (default: '3h')
+    "timeout": "3h",
     // Working directory for tasks that do not resolve to a registered project
     "workingDirectory": "./",
     // Max concurrent tasks (default: 1)

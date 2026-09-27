@@ -33,9 +33,18 @@ export type AgentTaskType = 'dev' | 'new-project';
 export const AGENT_EXECUTOR_NAMES = ['claude', 'codex'] as const;
 export type AgentExecutorName = (typeof AGENT_EXECUTOR_NAMES)[number];
 
+/** Per-task overrides of the executor's model and reasoning effort, validated against its catalog. */
+export interface AgentRunOptions {
+  model?: string;
+  effort?: string;
+}
+
 export interface AgentTask {
   id: string;
   executor: AgentExecutorName;
+  model: string;
+  /** Unset means the CLI's own default effort. */
+  effort?: string;
   prompt: string;
   workingDirectory?: string;
   createdAt: Date;

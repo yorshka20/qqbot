@@ -857,7 +857,12 @@ Schema introspection travels through the same read-only runner (`SELECT`s over `
 | `executors/` | `ClaudeExecutor` / `CodexExecutor` — translate a task into a CLI invocation, including how that CLI is pointed at the MCP server with `X-Task-Id` |
 | `CodingAgentMcpServer` | `bot_*` tools the running CLI calls back (see MCP Surfaces) |
 
-Adding an executor means adding its name to `AGENT_EXECUTOR_NAMES` and an `AgentExecutor` implementation; the command, queue and prompt come with it. An executor's CLI must print only its final answer to stdout. Codex authenticates with the ChatGPT login only: `CODEX_API_KEY` / `OPENAI_API_KEY` are removed from its environment (`utils/codexCli.ts`), and its MCP server is registered per process with `-c mcp_servers.…` overrides rather than in `~/.codex/config.toml`.
+Adding an executor means adding its name to `AGENT_EXECUTOR_NAMES` and an `AgentExecutor` implementation; the command, queue and prompt come with it. An executor supplies its model catalog (`listModels`: codex reads `codex debug models`; claude, which has no catalog, offers its CLI aliases plus `executors.claude.models`) and recovers the final answer from stdout (`finalMessage`; claude runs in `stream-json` so it is never silent).
+
+- **Run options** — `/codex --model <id> --effort <level> …` (also `-m` / `-e` / `--model=`). Explicit options are checked against the catalog before the task is created; a typo or an effort the model does not support is refused with the valid values. `/codex models` lists them.
+- **Progress** — the agent's `bot_notify_task` `started` / `progress` reports are relayed to the requester's chat as they arrive. A `completed` / `failed` report does not change the task: the process exit is the only thing that finalizes it. The shared `prompts/coding-agent/progress-protocol.md` tells every task template when to report.
+- **Watchdog** — any stdout/stderr output or MCP request carrying the task's `X-Task-Id` counts as activity. A task silent for `idleTimeout` (default 15m) or running past `timeout` (default 3h) is killed (SIGTERM, then SIGKILL) and reported as failed with the reason. Unlike the cluster there is no nudge step: the CLIs have no inbound channel to receive one.
+- **History** — every message the service sends (progress, results, `bot_send_message`) is written to the session history, so the chat LLM sees what an agent reported. Codex authenticates with the ChatGPT login only: `CODEX_API_KEY` / `OPENAI_API_KEY` are removed from its environment (`utils/codexCli.ts`), and its MCP server is registered per process with `-c mcp_servers.…` overrides rather than in `~/.codex/config.toml`.
 
 ## Cluster System
 

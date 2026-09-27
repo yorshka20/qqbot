@@ -16,12 +16,26 @@ import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
 import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
 import { type ParsedAgentCommand, parseAgentCommand } from '@/services/codingAgent/parseAgentCommand';
-import { AGENT_EXECUTOR_NAMES, type AgentExecutorName, type ProjectContext } from '@/services/codingAgent/types';
+import { AgentRunOptionsError } from '@/services/codingAgent/runOptions';
+import {
+  AGENT_EXECUTOR_NAMES,
+  type AgentExecutorName,
+  type AgentRunOptions,
+  type AgentTask,
+  type ProjectContext,
+} from '@/services/codingAgent/types';
 import { logger } from '@/utils/logger';
+
+function runOptionsUsage(cmd: AgentExecutorName): string {
+  return `/${cmd} [--model <模型>] [--effort <强度>] [@<alias>] <prompt>
+  参数写在最前面，也可写成 -m / -e 或 --model=<模型>；/${cmd} models 查看可用模型与强度`;
+}
 
 function usage(cmd: AgentExecutorName): string {
   return `/${cmd} <prompt> - 触发开发任务（默认项目）
 /${cmd} @<alias> <prompt> - 在指定项目中执行任务
+/${cmd} --model <模型> --effort <强度> <prompt> - 指定模型与推理强度
+/${cmd} models - 查看可用模型与强度
 /${cmd} new <path> [--type bun|node|python|rust] <prompt> - 创建新项目
 /${cmd} projects - 列出已注册项目
 /${cmd} projects add <alias> <path> - 注册新项目
@@ -33,6 +47,16 @@ function usage(cmd: AgentExecutorName): string {
 
 function reply(success: boolean, text: string, extra: Partial<CommandResult> = {}): CommandResult {
   return { success, segments: new MessageBuilder().text(text).build(), ...extra };
+}
+
+function describeRun(task: AgentTask): string {
+  return task.effort ? `${task.model}, 强度 ${task.effort}` : `${task.model}, 默认强度`;
+}
+
+function runOptionsRejected(executor: AgentExecutorName, error: AgentRunOptionsError): CommandResult {
+  return reply(false, `任务未执行：${error.message}\n\n用法：\n${runOptionsUsage(executor)}`, {
+    error: error.message,
+  });
 }
 
 @RegisterPlugin({
@@ -98,6 +122,14 @@ export class CodingAgentPlugin extends PluginBase {
     const parsed = parseAgentCommand(args);
 
     switch (parsed.type) {
+      case 'invalid':
+        return reply(false, `参数错误：${parsed.error}\n\n用法：\n${runOptionsUsage(executor)}`, {
+          error: parsed.error,
+        });
+
+      case 'models':
+        return this.handleModels(service, executor);
+
       case 'status':
         return this.handleStatus(service, parsed.args || []);
 
@@ -114,7 +146,14 @@ export class CodingAgentPlugin extends PluginBase {
         return this.handleNewProject(service, executor, parsed, context);
 
       case 'task':
-        return this.handleTrigger(service, executor, parsed.prompt || '', context, parsed.projectIdentifier);
+        return this.handleTrigger(
+          service,
+          executor,
+          parsed.prompt || '',
+          parsed.options ?? {},
+          context,
+          parsed.projectIdentifier,
+        );
     }
   }
 
@@ -130,6 +169,7 @@ export class CodingAgentPlugin extends PluginBase {
     service: CodingAgentService,
     executor: AgentExecutorName,
     prompt: string,
+    options: AgentRunOptions,
     context: CommandContext,
     projectIdentifier?: string,
   ): Promise<CommandResult> {
@@ -164,6 +204,7 @@ export class CodingAgentPlugin extends PluginBase {
     try {
       const task = await service.triggerTask(prompt, this.requesterOf(context), workingDirectory, {
         executor,
+        run: options,
         taskType: 'dev',
         projectContext,
       });
@@ -175,12 +216,16 @@ export class CodingAgentPlugin extends PluginBase {
         true,
         `${agentName} 任务已创建${projectInfo}\n` +
           `任务ID: ${task.id.slice(0, 8)}\n` +
+          `模型: ${describeRun(task)}\n` +
           `状态: ${task.queuePosition > 0 ? '排队中' : task.status}${queueMsg}\n` +
           `提示: ${prompt.slice(0, 100)}${prompt.length > 100 ? '...' : ''}\n\n` +
           `任务完成后会自动通知您结果。`,
         { sentAsForward: true },
       );
     } catch (error) {
+      if (error instanceof AgentRunOptionsError) {
+        return runOptionsRejected(executor, error);
+      }
       const errorMsg = error instanceof Error ? error.message : String(error);
       logger.error('[CodingAgentPlugin] Failed to trigger task:', error);
       return reply(false, `创建任务失败: ${errorMsg}`, { error: errorMsg, sentAsForward: true });
@@ -278,6 +323,7 @@ export class CodingAgentPlugin extends PluginBase {
     try {
       const task = await service.triggerTask(parsed.prompt, this.requesterOf(context), resolvedPath, {
         executor,
+        run: parsed.options ?? {},
         taskType: 'new-project',
         projectContext: {
           alias: resolvedPath.split('/').pop() || 'new-project',
@@ -290,12 +336,16 @@ export class CodingAgentPlugin extends PluginBase {
         true,
         `新项目创建任务已启动 (${service.getExecutor(executor).displayName})\n` +
           `任务ID: ${task.id.slice(0, 8)}\n` +
+          `模型: ${describeRun(task)}\n` +
           `路径: ${resolvedPath}\n` +
           `类型: ${projectType}\n` +
           `任务完成后会自动通知您结果。`,
         { sentAsForward: true },
       );
     } catch (error) {
+      if (error instanceof AgentRunOptionsError) {
+        return runOptionsRejected(executor, error);
+      }
       const errorMsg = error instanceof Error ? error.message : String(error);
       logger.error('[CodingAgentPlugin] Failed to create new project task:', error);
       return reply(false, `创建新项目任务失败: ${errorMsg}`, { error: errorMsg, sentAsForward: true });
@@ -312,7 +362,7 @@ export class CodingAgentPlugin extends PluginBase {
       }
 
       let statusText = `任务 ${task.id.slice(0, 8)}\n`;
-      statusText += `执行者: ${service.getExecutor(task.executor).displayName}\n`;
+      statusText += `执行者: ${service.getExecutor(task.executor).displayName} (${describeRun(task)})\n`;
       statusText += `状态: ${task.status}\n`;
       statusText += `创建时间: ${task.createdAt.toLocaleString()}\n`;
       statusText += `提示: ${task.prompt.slice(0, 100)}${task.prompt.length > 100 ? '...' : ''}`;
@@ -362,6 +412,27 @@ export class CodingAgentPlugin extends PluginBase {
       error: 'Cannot cancel task',
       sentAsForward: true,
     });
+  }
+
+  private async handleModels(service: CodingAgentService, executor: AgentExecutorName): Promise<CommandResult> {
+    const agent = service.getExecutor(executor);
+    let models: Awaited<ReturnType<typeof agent.listModels>>;
+    try {
+      models = await agent.listModels();
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      return reply(false, `获取 ${agent.displayName} 模型列表失败：${errorMsg}`, { error: errorMsg });
+    }
+    const lines = models.map((m) => {
+      const tag = m.id === agent.defaultModel ? '（默认）' : '';
+      return `  ${m.id}${tag}: ${m.efforts.join(' / ')}`;
+    });
+    const defaultEffort = agent.defaultEffort ? agent.defaultEffort : 'CLI 默认';
+    return reply(
+      true,
+      `${agent.displayName} 可用模型与强度（默认强度：${defaultEffort}）\n${lines.join('\n')}\n\n用法：\n${runOptionsUsage(executor)}`,
+      { sentAsForward: true },
+    );
   }
 
   private handleInfo(service: CodingAgentService): CommandResult {

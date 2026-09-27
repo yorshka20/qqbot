@@ -6,6 +6,7 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config, ProtocolName } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -48,6 +49,7 @@ export class CodingAgentInitializer {
     }
 
     service.setMessageAPI(messageAPI);
+    service.setHistoryService(getContainer().resolve(ConversationHistoryService));
 
     // Set PromptManager from DI container
     try {

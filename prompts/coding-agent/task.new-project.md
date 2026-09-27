@@ -87,6 +87,10 @@ git commit -m "feat: init project
 
 ---
 
+{{progressProtocol}}
+
+---
+
 # Reference
 
 `bot_send_message` 的收件人：`targetType={{targetType}}` `targetId={{targetId}}`。
