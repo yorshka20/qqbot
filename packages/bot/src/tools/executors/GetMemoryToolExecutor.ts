@@ -22,6 +22,7 @@ import { resolveSender, SENDER_PARAM_DESCRIPTIONS } from './senderResolution';
     reply: { sources: ['qq-group', 'discord', 'avatar-cmd'] },
     subagent: true,
     reflection: true,
+    agent: true,
   },
   parameters: {
     userId: {

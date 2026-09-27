@@ -695,6 +695,7 @@ export class SearchExecutor implements ToolExecutor {
 | `reply` | Main reply generation loop |
 | `subagent` | Sub-agent spawned by the bot |
 | `internal` | Internal system use only |
+| `agent` | A local coding agent (claude / codex CLI) over the coding-agent MCP server, run in the requesting conversation's scope. Only tools that need no reply turn; `adminOnly` tools never qualify |
 
 ### ToolManager
 
@@ -862,7 +863,11 @@ Adding an executor means adding its name to `AGENT_EXECUTOR_NAMES` and an `Agent
 - **Run options** — `/codex --model <id> --effort <level> …` (also `-m` / `-e` / `--model=`). Explicit options are checked against the catalog before the task is created; a typo or an effort the model does not support is refused with the valid values. `/codex models` lists them.
 - **Progress** — the agent's `bot_notify_task` `started` / `progress` reports are relayed to the requester's chat as they arrive. A `completed` / `failed` report does not change the task: the process exit is the only thing that finalizes it. The shared `prompts/coding-agent/progress-protocol.md` tells every task template when to report.
 - **Watchdog** — any stdout/stderr output or MCP request carrying the task's `X-Task-Id` counts as activity. A task silent for `idleTimeout` (default 15m) or running past `timeout` (default 3h) is killed (SIGTERM, then SIGKILL) and reported as failed with the reason. Unlike the cluster there is no nudge step: the CLIs have no inbound channel to receive one.
-- **History** — every message the service sends (progress, results, `bot_send_message`) is written to the session history, so the chat LLM sees what an agent reported. Codex authenticates with the ChatGPT login only: `CODEX_API_KEY` / `OPENAI_API_KEY` are removed from its environment (`utils/codexCli.ts`), and its MCP server is registered per process with `-c mcp_servers.…` overrides rather than in `~/.codex/config.toml`.
+- **History** — every message the service sends (progress, results, the agent's messages, cards and files) goes through `AgentDelivery` and is written to the session history, so the chat LLM sees what an agent reported.
+- **Research tasks** — `taskType: 'research'` answers a question from chat instead of changing a project. Each runs in its own workspace under `workspaceRoot` (default `<tmpdir>/qqbot-agent-workspaces`, deliberately outside any repository because both CLIs load `CLAUDE.md` / `AGENTS.md` from parent directories), uses `prompts/coding-agent/task.research.md`, and all research tasks share one serial queue because they spend the same subscription quota. codex gets `-c web_search="live"`; `codex exec` has no web search otherwise.
+- **Delegation from chat** — the `delegate_agent_task` reply tool (`adminOnly`) lets the chat LLM hand a research task to an agent and end its turn; the report arrives later in the same conversation. Opening it to non-admins needs an isolated execution environment first: the agent runs as the operator's account and can read the whole disk, including every credential.
+- **What the agent can send** — `bot_send_message`, `bot_send_card` (a card deck rendered like `send_card`) and `bot_send_file` (research tasks only; the path is resolved through symlinks and must stay in the task workspace; `maxFileMB`, default 30) always go to the task's requester — the agent cannot choose a recipient. `bot_command` (restart / reload) is refused to research tasks.
+- **Bot tools** — `AgentToolBridge` offers every `agent`-scoped tool (chat history, memory, RAG) over MCP and runs it through `ToolManager.execute` with a synthetic hook context for the requester's conversation (`hooks/syntheticHookContext.ts`, shared with the subagent `ToolRunner`), so an agent only sees the requesting chat's data. Codex authenticates with the ChatGPT login only: `CODEX_API_KEY` / `OPENAI_API_KEY` are removed from its environment (`utils/codexCli.ts`), and its MCP server is registered per process with `-c mcp_servers.…` overrides rather than in `~/.codex/config.toml`.
 
 ## Cluster System
 

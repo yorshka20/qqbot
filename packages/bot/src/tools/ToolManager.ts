@@ -181,6 +181,10 @@ export class ToolManager {
         return isAdmin || !adminOnly;
       }
       if (scope === 'internal') return vis.internal === true;
+      if (scope === 'agent') {
+        const adminOnly = typeof vis.reply === 'object' && vis.reply.adminOnly === true;
+        return vis.agent === true && !adminOnly;
+      }
       if (scope === 'reflection') return vis.reflection === true;
       return false;
     });
@@ -201,9 +205,7 @@ export class ToolManager {
       const view = ToolManager.describeForModel(spec);
       const parameters = { ...(spec.parameters ?? {}), ...(view?.parameterOverrides ?? {}) };
       const whenToUse = view?.whenToUse ?? spec.whenToUse;
-      const description = view?.descriptionSuffix
-        ? `${spec.description}\n${view.descriptionSuffix}`
-        : spec.description;
+      const description = view?.descriptionSuffix ? `${spec.description}\n${view.descriptionSuffix}` : spec.description;
 
       type ItemSchema = NonNullable<NonNullable<ToolSpec['parameters']>[string]['items']>;
       const properties: Record<string, { type: string; description?: string; enum?: string[]; items?: ItemSchema }> =

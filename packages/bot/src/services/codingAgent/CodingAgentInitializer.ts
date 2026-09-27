@@ -4,7 +4,10 @@
  * Handles initialization and lifecycle management of the coding-agent service.
  */
 
+import { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { APIClient } from '@/api/APIClient';
+import { FileAPI } from '@/api/methods/FileAPI';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config, ProtocolName } from '@/core/config';
@@ -12,6 +15,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 import { logger } from '@/utils/logger';
+import { AgentToolBridge } from './AgentToolBridge';
 import { CodingAgentService } from './CodingAgentService';
 
 let serviceInstance: CodingAgentService | null = null;
@@ -48,8 +52,14 @@ export class CodingAgentInitializer {
       return;
     }
 
-    service.setMessageAPI(messageAPI);
-    service.setHistoryService(getContainer().resolve(ConversationHistoryService));
+    const container = getContainer();
+    service.attachDelivery({
+      messageAPI,
+      fileAPI: new FileAPI(container.resolve<APIClient>(DITokens.API_CLIENT)),
+      historyService: container.resolve(ConversationHistoryService),
+      cardRenderer: container.resolve(CardRenderingHelper),
+    });
+    service.attachBotTools(container.resolve(AgentToolBridge));
 
     // Set PromptManager from DI container
     try {

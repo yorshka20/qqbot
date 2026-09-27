@@ -80,7 +80,7 @@ function parseTimeInput(input: string): Date | null {
   description:
     '获取当前群指定时间段内的聊天记录。一次调用即返回该时间窗口内的全部消息（按时间正序），条数由 limit 控制（默认 200，最多 1000），超出部分用 offset 翻页——不需要把一个时间段拆成多次小窗口调用。',
   executor: 'fetch_history_by_time',
-  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] }, subagent: true },
+  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] }, subagent: true, agent: true },
   parameters: {
     startTime: {
       type: 'string',

@@ -4,6 +4,9 @@
  * delegated to its executor.
  */
 
+import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { type Subprocess, spawn } from 'bun';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { CodingAgentConfig } from '@/core/config';
@@ -25,6 +28,12 @@ type TaskProgressCallback = (task: AgentTask, update: TaskProgressUpdate) => voi
 
 /** `codex exec` writes its whole transcript to stderr, so only the tail says why it failed. */
 const MAX_ERROR_CHARS = 2000;
+
+/**
+ * Research tasks run one at a time: each has its own workspace so they cannot
+ * collide on files, but every one of them spends the same subscription quota.
+ */
+const RESEARCH_QUEUE_KEY = 'research';
 
 const DEFAULT_IDLE_TIMEOUT = '15m';
 const DEFAULT_TIMEOUT = '3h';
@@ -102,6 +111,7 @@ export class CodingAgentTaskManager {
   private readonly idleTimeoutMs: number;
   private readonly timeoutMs: number;
   private readonly watchdogIntervalMs: number;
+  private readonly workspaceRoot: string;
 
   // Per-project queue: projectKey → ordered list of pending task IDs
   private projectQueues = new Map<string, string[]>();
@@ -118,6 +128,7 @@ export class CodingAgentTaskManager {
     this.idleTimeoutMs = parseDuration(config.idleTimeout || DEFAULT_IDLE_TIMEOUT);
     this.timeoutMs = parseDuration(config.timeout || DEFAULT_TIMEOUT);
     this.watchdogIntervalMs = Math.min(MAX_WATCHDOG_INTERVAL_MS, this.idleTimeoutMs / 2, this.timeoutMs / 2);
+    this.workspaceRoot = config.workspaceRoot || join(tmpdir(), 'qqbot-agent-workspaces');
   }
 
   /**
@@ -142,7 +153,9 @@ export class CodingAgentTaskManager {
 
     // Determine template key
     let templateKey: string;
-    if (ctx?.promptTemplateKey) {
+    if (task.taskType === 'research') {
+      templateKey = 'coding-agent.task.research';
+    } else if (ctx?.promptTemplateKey) {
       templateKey = ctx.promptTemplateKey;
     } else if (task.taskType === 'new-project') {
       templateKey = 'coding-agent.task.new-project';
@@ -170,8 +183,6 @@ export class CodingAgentTaskManager {
       coAuthorTrailer: executor.coAuthorTrailer,
       userPrompt: task.prompt,
       workingDirectory: task.workingDirectory || process.cwd(),
-      targetType: task.requestedBy.type,
-      targetId: task.requestedBy.id,
       projectDescription: ctx?.description || '未知项目',
       projectType,
       hasClaudeMd: ctx?.hasClaudeMd ? 'true' : '',
@@ -220,13 +231,16 @@ export class CodingAgentTaskManager {
     workingDirectory: string | undefined,
     options: CreateTaskOptions,
   ): AgentTask {
+    const id = randomUUID();
+    const taskDirectory =
+      options.taskType === 'research' ? this.createWorkspace(id) : workingDirectory || this.config.workingDirectory;
     const task: AgentTask = {
-      id: randomUUID(),
+      id,
       executor: options.executor,
       model: options.model,
       effort: options.effort,
       prompt,
-      workingDirectory: workingDirectory || this.config.workingDirectory,
+      workingDirectory: taskDirectory,
       createdAt: new Date(),
       status: 'pending',
       requestedBy,
@@ -242,12 +256,21 @@ export class CodingAgentTaskManager {
     return task;
   }
 
+  private createWorkspace(taskId: string): string {
+    const workspace = join(this.workspaceRoot, taskId);
+    mkdirSync(workspace, { recursive: true });
+    return workspace;
+  }
+
   /**
    * Get project key from a task's working directory.
    * Tasks with the same project key are serialized, whichever executor runs
    * them, because they would otherwise edit the same working tree at once.
    */
   private getProjectKey(task: AgentTask): string {
+    if (task.taskType === 'research') {
+      return RESEARCH_QUEUE_KEY;
+    }
     return task.workingDirectory || this.config.workingDirectory || process.cwd();
   }
 

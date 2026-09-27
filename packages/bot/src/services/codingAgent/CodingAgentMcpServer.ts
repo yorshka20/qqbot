@@ -32,19 +32,59 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import type { ToolDefinition } from '@/ai/types';
 import type { CodingAgentConfig } from '@/core/config';
+import { CARD_DECK_DESCRIPTION } from '@/services/card/cardTypes';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
 import { getRepoRoot } from '@/utils/repoRoot';
-import type { BotInfo, ExecuteCommandParams, ExecuteCommandResult, SendMessageParams, TaskNotification } from './types';
+import type { BotInfo, ExecuteCommandParams, ExecuteCommandResult, TaskNotification } from './types';
 
 type TaskNotificationHandler = (notification: TaskNotification) => void;
-type SendMessageHandler = (
-  params: SendMessageParams,
-) => Promise<{ success: boolean; messageId?: string; error?: string }>;
+type DeliveryResult = { success: boolean; messageId?: string; error?: string };
+type SendMessageHandler = (taskId: string, content: string) => Promise<DeliveryResult>;
+type SendCardHandler = (taskId: string, cards: unknown[]) => Promise<DeliveryResult>;
+type SendFileHandler = (taskId: string, path: string, fileName: string | undefined) => Promise<DeliveryResult>;
 type GetBotInfoHandler = () => BotInfo;
-type ExecuteCommandHandler = (params: ExecuteCommandParams) => Promise<ExecuteCommandResult>;
+type ExecuteCommandHandler = (taskId: string, params: ExecuteCommandParams) => Promise<ExecuteCommandResult>;
 type TaskActivityHandler = (taskId: string) => void;
+
+/** Bot tools offered to agents (see AgentToolBridge); the list is read once per MCP session. */
+export interface BotToolProvider {
+  list(): ToolDefinition[];
+  call(taskId: string, name: string, parameters: Record<string, unknown>): Promise<{ success: boolean; reply: string }>;
+}
+
+/**
+ * Tool definitions carry JSON Schema; the MCP SDK takes a Zod shape. Bot tool
+ * parameters only use flat types, so array items and object fields are left
+ * for the tool's own validation.
+ */
+export function toZodShape(parameters: ToolDefinition['parameters']): Record<string, z.ZodTypeAny> {
+  const required = new Set(parameters.required ?? []);
+  const shape: Record<string, z.ZodTypeAny> = {};
+  for (const [name, property] of Object.entries(parameters.properties)) {
+    let schema: z.ZodTypeAny;
+    if (property.enum && property.enum.length > 0) {
+      schema = z.enum(property.enum as [string, ...string[]]);
+    } else if (property.type === 'number' || property.type === 'integer') {
+      schema = z.number();
+    } else if (property.type === 'boolean') {
+      schema = z.boolean();
+    } else if (property.type === 'array') {
+      schema = z.array(z.unknown());
+    } else if (property.type === 'object') {
+      schema = z.record(z.string(), z.unknown());
+    } else {
+      schema = z.string();
+    }
+    if (property.description) {
+      schema = schema.describe(property.description);
+    }
+    shape[name] = required.has(name) ? schema : schema.optional();
+  }
+  return shape;
+}
 
 /** Shape of the `extra` parameter we care about — narrowed from the SDK type. */
 interface ToolExtra {
@@ -100,9 +140,12 @@ export class CodingAgentMcpServer {
 
   private onTaskNotification: TaskNotificationHandler | null = null;
   private onSendMessage: SendMessageHandler | null = null;
+  private onSendCard: SendCardHandler | null = null;
+  private onSendFile: SendFileHandler | null = null;
   private onGetBotInfo: GetBotInfoHandler | null = null;
   private onExecuteCommand: ExecuteCommandHandler | null = null;
   private onTaskActivity: TaskActivityHandler | null = null;
+  private botTools: BotToolProvider | null = null;
 
   constructor(private readonly config: CodingAgentConfig) {
     this.instructions = loadMcpInstructions();
@@ -116,12 +159,24 @@ export class CodingAgentMcpServer {
     this.onSendMessage = handler;
   }
 
+  setSendCardHandler(handler: SendCardHandler): void {
+    this.onSendCard = handler;
+  }
+
+  setSendFileHandler(handler: SendFileHandler): void {
+    this.onSendFile = handler;
+  }
+
   setBotInfoHandler(handler: GetBotInfoHandler): void {
     this.onGetBotInfo = handler;
   }
 
   setExecuteCommandHandler(handler: ExecuteCommandHandler): void {
     this.onExecuteCommand = handler;
+  }
+
+  setBotToolProvider(provider: BotToolProvider): void {
+    this.botTools = provider;
   }
 
   /** Called for every MCP request that carries an `X-Task-Id` — the task is alive. */
@@ -136,6 +191,11 @@ export class CodingAgentMcpServer {
     this.httpServer = Bun.serve({
       port,
       hostname: host,
+      // MCP clients keep keep-alive connections open between tool calls, and
+      // an agent can go minutes between calls. Bun's default 10s idleTimeout
+      // then logs a "timed out a request" warning for every such gap; 255s is
+      // Bun's maximum.
+      idleTimeout: 255,
       fetch: (req) => this.handleRequest(req),
     });
 
@@ -271,24 +331,69 @@ export class CodingAgentMcpServer {
       'bot_send_message',
       {
         description:
-          'Send a chat message through the bot to a user or group. Use this to talk to the person who ' +
-          'requested the task — anything you print to stdout is only visible in the final task result.',
+          'Send a chat message to the person who requested the task, in the chat they asked from. Use it for ' +
+          'anything they should see before the task ends; your final output is delivered on its own.',
         inputSchema: {
-          targetType: z.enum(['user', 'group']).describe('Whether to message a user directly or a group.'),
-          targetId: z.string().describe('The user ID or group ID to send to.'),
-          content: z.string().describe('Message text to send.'),
-          replyTo: z.string().optional().describe('ID of a message to reply to, if threading a reply.'),
+          content: z.string().describe('Message text to send. Plain text — QQ does not render Markdown.'),
         },
       },
-      async (args) => {
+      async (args, extra) => {
+        const taskId = this.extractTaskId(extra);
+        if (!taskId) {
+          return this.errorResult('Missing X-Task-Id header. Your MCP client config must set headers["X-Task-Id"].');
+        }
         if (!this.onSendMessage) {
           return this.errorResult('No send message handler registered');
         }
-        const result = await this.onSendMessage({
-          target: { type: args.targetType as 'user' | 'group', id: String(args.targetId) },
-          content: String(args.content),
-          ...(args.replyTo ? { replyTo: String(args.replyTo) } : {}),
-        });
+        const result = await this.onSendMessage(taskId, String(args.content));
+        return result.success ? this.jsonResult(result) : this.errorResult(result.error ?? 'send failed');
+      },
+    );
+
+    register(
+      'bot_send_card',
+      {
+        description:
+          'Render structured content (lists, steps, comparisons, key conclusions, markdown) as a card image and ' +
+          'send it to the requester. Use it for a long or structured report instead of a wall of text.',
+        inputSchema: {
+          cards: z.array(z.record(z.string(), z.unknown())).describe(CARD_DECK_DESCRIPTION),
+        },
+      },
+      async (args, extra) => {
+        const taskId = this.extractTaskId(extra);
+        if (!taskId) {
+          return this.errorResult('Missing X-Task-Id header. Your MCP client config must set headers["X-Task-Id"].');
+        }
+        if (!this.onSendCard) {
+          return this.errorResult('No send card handler registered');
+        }
+        const result = await this.onSendCard(taskId, args.cards as unknown[]);
+        return result.success ? this.jsonResult(result) : this.errorResult(result.error ?? 'send failed');
+      },
+    );
+
+    register(
+      'bot_send_file',
+      {
+        description:
+          'Upload a file from your task workspace and send it to the requester. Only files inside the workspace ' +
+          'can be sent; pack a directory into an archive (e.g. `zip -r out.zip dir`) first.',
+        inputSchema: {
+          path: z.string().describe('File path, absolute or relative to your workspace.'),
+          fileName: z.string().optional().describe('Name to show in chat. Defaults to the file name.'),
+        },
+      },
+      async (args, extra) => {
+        const taskId = this.extractTaskId(extra);
+        if (!taskId) {
+          return this.errorResult('Missing X-Task-Id header. Your MCP client config must set headers["X-Task-Id"].');
+        }
+        if (!this.onSendFile) {
+          return this.errorResult('No send file handler registered');
+        }
+        const fileName = typeof args.fileName === 'string' ? args.fileName : undefined;
+        const result = await this.onSendFile(taskId, String(args.path), fileName);
         return result.success ? this.jsonResult(result) : this.errorResult(result.error ?? 'send failed');
       },
     );
@@ -315,20 +420,42 @@ export class CodingAgentMcpServer {
         description:
           'Run a bot maintenance command. `restart` pulls code, updates dependencies and restarts the bot ' +
           '(this will kill your own task — call it last). `reload-plugins` reloads all plugins in place. ' +
-          '`status` returns current runtime state.',
+          '`status` returns current runtime state. Not available to research tasks.',
         inputSchema: {
           command: z.enum(['restart', 'reload-plugins', 'status']).describe('Which maintenance command to run.'),
           args: z.array(z.string()).optional().describe('Extra arguments for the command.'),
         },
       },
-      async (args) => {
+      async (args, extra) => {
+        const taskId = this.extractTaskId(extra);
+        if (!taskId) {
+          return this.errorResult('Missing X-Task-Id header. Your MCP client config must set headers["X-Task-Id"].');
+        }
         if (!this.onExecuteCommand) {
           return this.errorResult('No command handler registered');
         }
-        const result = await this.onExecuteCommand(args as unknown as ExecuteCommandParams);
+        const result = await this.onExecuteCommand(taskId, args as unknown as ExecuteCommandParams);
         return result.success ? this.jsonResult(result) : this.errorResult(result.error ?? 'command failed');
       },
     );
+
+    for (const tool of this.botTools?.list() ?? []) {
+      register(
+        tool.name,
+        { description: tool.description, inputSchema: toZodShape(tool.parameters) },
+        async (args, extra) => {
+          const taskId = this.extractTaskId(extra);
+          if (!taskId) {
+            return this.errorResult('Missing X-Task-Id header. Your MCP client config must set headers["X-Task-Id"].');
+          }
+          if (!this.botTools) {
+            return this.errorResult('No bot tool provider registered');
+          }
+          const result = await this.botTools.call(taskId, tool.name, args);
+          return result.success ? this.textResult(result.reply) : this.errorResult(result.reply);
+        },
+      );
+    }
   }
 
   // ── Helpers ──
@@ -339,6 +466,10 @@ export class CodingAgentMcpServer {
     if (typeof raw === 'string' && raw.trim()) return raw.trim();
     if (Array.isArray(raw) && typeof raw[0] === 'string' && raw[0].trim()) return raw[0].trim();
     return null;
+  }
+
+  private textResult(text: string): CallToolResult {
+    return { content: [{ type: 'text', text }] };
   }
 
   private jsonResult(payload: unknown): CallToolResult {

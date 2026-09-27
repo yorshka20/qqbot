@@ -3,11 +3,10 @@
 import { inject, singleton } from 'tsyringe';
 import type { FunctionCall } from '@/ai/types';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
-import { deriveSourceFromEvent } from '@/conversation/sources';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { HookManager } from '@/hooks/HookManager';
-import { createDefaultHookMetadata } from '@/hooks/metadata';
+import { buildSyntheticHookContext } from '@/hooks/syntheticHookContext';
 import type { HookContext } from '@/hooks/types';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
@@ -71,48 +70,21 @@ export class ToolRunner implements IToolRunner {
   }
 
   private buildSyntheticHookContext(session: SubAgentSession): HookContext {
-    const userId = Number(session.context.userId);
-    const groupId = Number(session.context.groupId);
-    const messageType = session.context.messageType ?? 'private';
-    const isGroup = groupId !== 0;
-    const metadata = createDefaultHookMetadata({
-      sessionId: isGroup ? `group:${groupId}` : `user:${userId}`,
-      sessionType: isGroup ? 'group' : 'user',
-      userId,
-      groupId,
-      conversationId: session.context.conversationId ?? '',
-    });
-
-    const messageText = this.buildSyntheticMessageText(session);
-    const syntheticMessage: NormalizedMessageEvent = {
+    return buildSyntheticHookContext({
       id: session.id,
-      type: 'message',
       timestamp: session.startedAt?.getTime() ?? session.createdAt.getTime(),
       protocol: (session.context.protocol as NormalizedMessageEvent['protocol']) ?? 'milky',
-      userId,
-      groupId,
-      messageType,
-      message: messageText,
+      userId: Number(session.context.userId),
+      groupId: Number(session.context.groupId),
+      messageType: session.context.messageType ?? 'private',
       messageId: this.parseMessageId(session.context.messageId),
-      segments: [],
-    };
-
-    return {
-      message: syntheticMessage,
-      context: {
-        userMessage: messageText,
-        history: [],
-        userId,
-        groupId,
-        messageType,
-        metadata: new Map<string, unknown>([
-          ['subAgentSessionId', session.id],
-          ['subAgentType', session.type],
-        ]),
-      },
-      metadata,
-      source: deriveSourceFromEvent(syntheticMessage),
-    };
+      conversationId: session.context.conversationId,
+      messageText: this.buildSyntheticMessageText(session),
+      contextMetadata: new Map<string, unknown>([
+        ['subAgentSessionId', session.id],
+        ['subAgentType', session.type],
+      ]),
+    });
   }
 
   private buildSyntheticMessageText(session: SubAgentSession): string {

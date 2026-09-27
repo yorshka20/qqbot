@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PromptManager } from '@/ai/prompt/PromptManager';
 import type { CodingAgentConfig } from '@/core/config';
 import { CodingAgentTaskManager, type TaskProgressUpdate } from '../CodingAgentTaskManager';
 import type { AgentExecutor } from '../executors';
+import type { AgentInvocationInput } from '../executors/AgentExecutor';
 import type { AgentTask } from '../types';
 
 /** Runs the task's prompt as a shell script, so each test controls the process's output and lifetime. */
@@ -126,5 +128,65 @@ describe('CodingAgentTaskManager lifecycle', () => {
       { status: 'started', message: '理解了任务', progress: undefined },
       { status: 'progress', message: '完成一半', progress: 50 },
     ]);
+  });
+});
+
+describe('CodingAgentTaskManager research tasks', () => {
+  function recordingManager(workspaceRoot: string) {
+    const invocations: AgentInvocationInput[] = [];
+    const executor: AgentExecutor = {
+      ...shellExecutor(),
+      async buildInvocation(input) {
+        invocations.push(input);
+        return { cmd: ['sh', '-c', 'sleep 0.3; echo DONE'], env: { ...process.env }, cleanup: async () => {} };
+      },
+    };
+    const manager = new CodingAgentTaskManager(
+      { enabled: true, port: 0, idleTimeout: '30s', workspaceRoot },
+      { claude: executor, codex: executor },
+      'http://127.0.0.1:0/mcp',
+    );
+    manager.setPromptManager(new PromptManager());
+    return { manager, invocations };
+  }
+
+  function research(manager: CodingAgentTaskManager, prompt: string) {
+    const task = manager.createTask(prompt, { type: 'group', id: '10000001' }, '/should/be/ignored', {
+      executor: 'codex',
+      model: 'sh',
+      taskType: 'research',
+    });
+    return { task, queue: manager.enqueueTask(task.id) };
+  }
+
+  test('each research task gets its own workspace under the workspace root', () => {
+    const root = mkdtempSync(join(tmpdir(), 'coding-agent-ws-'));
+    const { manager } = recordingManager(root);
+    const a = research(manager, '调研甲').task;
+    const b = research(manager, '调研乙').task;
+    expect(a.workingDirectory).toBe(join(root, a.id));
+    expect(b.workingDirectory).toBe(join(root, b.id));
+    expect(existsSync(join(root, a.id))).toBe(true);
+  });
+
+  test('research tasks share one serial queue', async () => {
+    const { manager } = recordingManager(mkdtempSync(join(tmpdir(), 'coding-agent-ws-')));
+    const first = research(manager, '调研甲');
+    const second = research(manager, '调研乙');
+    expect(first.queue.queuePosition).toBe(0);
+    expect(second.queue.queuePosition).toBe(1);
+    await manager.awaitTaskCompletion(second.task.id);
+  });
+
+  test('the prompt comes from the research template with the progress protocol filled in', async () => {
+    const { manager, invocations } = recordingManager(mkdtempSync(join(tmpdir(), 'coding-agent-ws-')));
+    const { task } = research(manager, '对比甲乙两个方案');
+    await manager.awaitTaskCompletion(task.id);
+    const prompt = invocations[0].prompt;
+    expect(prompt).toContain('# 调研任务');
+    expect(prompt).toContain('对比甲乙两个方案');
+    expect(prompt).toContain(task.workingDirectory ?? '');
+    expect(prompt).toContain('bot_notify_task');
+    expect(prompt).not.toContain('{{');
   });
 });

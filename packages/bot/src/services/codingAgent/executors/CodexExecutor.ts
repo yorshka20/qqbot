@@ -39,6 +39,9 @@ export class CodexExecutor implements AgentExecutor {
         '--model',
         task.model,
         ...(task.effort ? ['-c', `model_reasoning_effort=${JSON.stringify(task.effort)}`] : []),
+        // `codex exec` has no web search unless enabled; claude's WebSearch is on by default.
+        '-c',
+        'web_search="live"',
         ...codexMcpServerArgs('qqbot', mcpUrl, { 'X-Task-Id': task.id }),
         '-',
       ],

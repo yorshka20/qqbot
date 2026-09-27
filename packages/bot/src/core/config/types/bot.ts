@@ -64,6 +64,11 @@ export interface CodingAgentConfig {
   };
   // Working directory for tasks that do not resolve to a registered project
   workingDirectory?: string;
+  // Parent of the per-task workspaces research tasks run in (default: <os tmpdir>/qqbot-agent-workspaces).
+  // Must be outside any repository: both CLIs load CLAUDE.md / AGENTS.md from parent directories.
+  workspaceRoot?: string;
+  // Largest file a research task may send to chat with bot_send_file, in MB (default: 30)
+  maxFileMB?: number;
   // Kill a task whose CLI shows no activity (output or MCP call) for this long (default: '15m')
   idleTimeout?: string;
   // Kill a task that runs longer than this in total (default: '3h')

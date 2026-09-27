@@ -59,7 +59,7 @@ This is a production-ready QQ bot framework built with TypeScript and Bun. It co
 
 - **Dependency Injection**: Uses `tsyringe` for DI throughout the codebase
 - **Protocol Abstraction**: Unified API across different protocols with automatic routing
-- **Tool System**: LLM-callable tools (search, memory, fetch_page, etc.) with visibility scopes (`reply`/`subagent`/`internal`). Defined via `@Tool()` decorator in `packages/bot/src/tools/executors/`
+- **Tool System**: LLM-callable tools (search, memory, fetch_page, etc.) with visibility scopes (`reply`/`subagent`/`internal`/`agent`). Defined via `@Tool()` decorator in `packages/bot/src/tools/executors/`
 - **Command System**: Prefix-based commands with owner/admin/user permission levels
 - **Memory System**: Per-user and per-group long-term memory with LLM extraction
 - **Plugin System**: Extends functionality via `PluginBase` class and hook registration

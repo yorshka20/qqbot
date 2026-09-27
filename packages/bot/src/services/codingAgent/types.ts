@@ -10,15 +10,6 @@ export interface TaskNotification {
   metadata?: Record<string, unknown>;
 }
 
-export interface SendMessageParams {
-  target: {
-    type: 'user' | 'group';
-    id: string;
-  };
-  content: string;
-  replyTo?: string; // Message ID to reply to
-}
-
 export interface ProjectContext {
   alias: string;
   type: 'bun' | 'node' | 'python' | 'rust' | 'generic';
@@ -27,7 +18,11 @@ export interface ProjectContext {
   promptTemplateKey?: string;
 }
 
-export type AgentTaskType = 'dev' | 'new-project';
+/**
+ * `dev` / `new-project` work inside a project tree. `research` answers a question
+ * from chat in its own throwaway workspace, outside any repository.
+ */
+export type AgentTaskType = 'dev' | 'new-project' | 'research';
 
 /** The CLIs a task can be executed by. The prompt and requirements are the same for all of them. */
 export const AGENT_EXECUTOR_NAMES = ['claude', 'codex'] as const;
@@ -52,6 +47,8 @@ export interface AgentTask {
   requestedBy: {
     type: 'user' | 'group';
     id: string;
+    /** The person who asked; absent for tasks an agenda item started. */
+    userId?: string;
     messageId?: string;
   };
   result?: string;

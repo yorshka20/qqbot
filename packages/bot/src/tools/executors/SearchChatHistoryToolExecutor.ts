@@ -25,7 +25,11 @@ const MAX_RESULTS = 50;
   description:
     '取当前会话的聊天记录原文。可以按 keyword（正文里出现过的字面词）筛，按 userId / nickname（谁发的）筛，或者两者同时用来查“某人说过关于某事的什么”。至少给一个筛选条件。返回时间、发言人和正文。',
   executor: 'search_chat_history',
-  visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] }, reflection: true },
+  visibility: {
+    reply: { sources: ['qq-private', 'qq-group', 'discord', 'avatar-cmd'] },
+    reflection: true,
+    agent: true,
+  },
   parameters: {
     keyword: {
       type: 'string',

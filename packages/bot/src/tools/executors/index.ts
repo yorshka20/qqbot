@@ -10,6 +10,7 @@ export { AnalyzeVideoToolExecutor } from './AnalyzeVideoToolExecutor';
 export { BaseToolExecutor } from './BaseToolExecutor';
 export { CardFormatToolExecutor } from './CardFormatToolExecutor';
 export { DeduplicateFilesToolExecutor } from './DeduplicateFilesToolExecutor';
+export { DelegateAgentTaskToolExecutor } from './DelegateAgentTaskToolExecutor';
 export { EndTurnToolExecutor } from './EndTurnToolExecutor';
 export { ExecuteCommandToolExecutor } from './ExecuteCommandToolExecutor';
 export { ExecuteCodeToolExecutor } from './executeCode';

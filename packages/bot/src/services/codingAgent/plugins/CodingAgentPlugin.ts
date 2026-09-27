@@ -161,6 +161,7 @@ export class CodingAgentPlugin extends PluginBase {
     return {
       type: context.messageType === 'group' ? ('group' as const) : ('user' as const),
       id: context.messageType === 'group' ? String(context.groupId) : String(context.userId),
+      userId: String(context.userId),
       messageId: context.originalMessage?.messageId != null ? String(context.originalMessage.messageId) : undefined,
     };
   }

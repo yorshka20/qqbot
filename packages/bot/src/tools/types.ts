@@ -11,7 +11,7 @@ import type { HookContext } from '@/hooks/types';
  * - 'internal': never exposed to LLM — only callable programmatically
  * - 'reflection': reserved for future use
  */
-export type ToolScope = 'reply' | 'subagent' | 'internal' | 'reflection';
+export type ToolScope = 'reply' | 'subagent' | 'internal' | 'reflection' | 'agent';
 
 /**
  * Fine-grained reply-scope visibility config.
@@ -36,6 +36,13 @@ export interface ToolVisibility {
   subagent?: boolean;
   internal?: boolean;
   reflection?: boolean; // reserved; not consumed yet
+  /**
+   * Callable by a local coding agent (claude / codex CLI) over the coding-agent
+   * MCP server, scoped to the conversation that requested the task. Only for
+   * tools that run without a reply turn (no `hookContext` reads) and never for
+   * `adminOnly` ones.
+   */
+  agent?: boolean;
 }
 
 /**

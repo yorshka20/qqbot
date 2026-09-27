@@ -7,13 +7,14 @@
  * - Sending task results back to users
  */
 
+import { isAbsolute, join } from 'node:path';
 import { spawn } from 'bun';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { CodingAgentConfig, ProtocolName } from '@/core/config';
-import { MessageBuilder } from '@/message/MessageBuilder';
+import { parseCardDeck } from '@/services/card/cardTypes';
 import { logger } from '@/utils/logger';
+import { AgentDelivery, type AgentDeliveryDeps, type DeliveryResult } from './AgentDelivery';
+import type { AgentToolBridge } from './AgentToolBridge';
 import { CodingAgentMcpServer } from './CodingAgentMcpServer';
 import { CodingAgentTaskManager, type TaskProgressUpdate } from './CodingAgentTaskManager';
 import { type AgentExecutor, createAgentExecutors } from './executors';
@@ -27,8 +28,9 @@ import type {
   ExecuteCommandParams,
   ExecuteCommandResult,
   ProjectContext,
-  SendMessageParams,
 } from './types';
+
+const DEFAULT_MAX_FILE_MB = 30;
 
 export interface TriggerTaskOptions {
   /** Defaults to `codingAgent.defaultExecutor`. */
@@ -47,8 +49,7 @@ export class CodingAgentService {
   private executors: Record<AgentExecutorName, AgentExecutor>;
   private defaultExecutor: AgentExecutorName;
   private taskManager: CodingAgentTaskManager;
-  private messageAPI: MessageAPI | null = null;
-  private historyService: ConversationHistoryService | null = null;
+  private delivery: AgentDelivery | null = null;
   private botStartTime: number;
   private connectedProtocols: ProtocolName[] = [];
   private selfId: string | null = null;
@@ -71,10 +72,16 @@ export class CodingAgentService {
       this.taskManager.handleTaskNotification(notification);
     });
 
-    // Handle send message requests from the agent CLI
-    this.mcpServer.setSendMessageHandler(async (params) => {
-      return await this.sendMessage(params);
-    });
+    // The agent's own messages, cards and files, always to the task's requester
+    this.mcpServer.setSendMessageHandler((taskId, content) =>
+      this.withTask(taskId, (task, delivery) => delivery.sendText(task.requestedBy, content)),
+    );
+    this.mcpServer.setSendCardHandler((taskId, cards) =>
+      this.withTask(taskId, (task, delivery) => this.sendCards(task, delivery, cards)),
+    );
+    this.mcpServer.setSendFileHandler((taskId, path, fileName) =>
+      this.withTask(taskId, (task, delivery) => this.sendFile(task, delivery, path, fileName)),
+    );
 
     // Handle bot info requests
     this.mcpServer.setBotInfoHandler(() => ({
@@ -102,24 +109,44 @@ export class CodingAgentService {
       this.taskManager.touch(taskId);
     });
 
-    // Handle command execution requests from the agent CLI
-    this.mcpServer.setExecuteCommandHandler(async (params) => {
+    // Handle command execution requests from the agent CLI.
+    // Research tasks come from chat, where their instructions can be steered by
+    // anyone who can talk to the bot or by the pages they read, so they cannot
+    // restart or reconfigure the bot.
+    this.mcpServer.setExecuteCommandHandler(async (taskId, params) => {
+      const task = this.taskManager.getTask(taskId);
+      if (!task || task.taskType === 'research') {
+        return { success: false, error: 'bot_command is not available to this task' };
+      }
       return await this.executeCommand(params);
     });
   }
 
   /**
-   * Set MessageAPI for sending messages
+   * Offer the bot's `agent`-scoped tools to running tasks, called with the task's requester as context.
    */
-  setMessageAPI(messageAPI: MessageAPI): void {
-    this.messageAPI = messageAPI;
+  attachBotTools(bridge: AgentToolBridge): void {
+    this.mcpServer.setBotToolProvider({
+      list: () => bridge.listTools(),
+      call: async (taskId, name, parameters) => {
+        const task = this.taskManager.getTask(taskId);
+        const protocol = this.connectedProtocols[0];
+        if (!task || !protocol) {
+          return { success: false, reply: !task ? `Unknown task ${taskId}` : 'Bot is not connected yet' };
+        }
+        return bridge.call(task, protocol, name, parameters);
+      },
+    });
   }
 
   /**
-   * Set the history service every delivered message is persisted through
+   * Attach what the service needs to deliver to chats; available once the bot is connected.
    */
-  setHistoryService(historyService: ConversationHistoryService): void {
-    this.historyService = historyService;
+  attachDelivery(deps: AgentDeliveryDeps): void {
+    this.delivery = new AgentDelivery(deps, () => ({
+      protocol: this.connectedProtocols[0],
+      selfId: this.selfId ? Number(this.selfId) : 0,
+    }));
   }
 
   /**
@@ -223,80 +250,54 @@ export class CodingAgentService {
     return this.taskManager.cancelTask(taskId);
   }
 
-  /**
-   * Send message via MessageAPI
-   */
-  private async sendMessage(
-    params: SendMessageParams & { forwardAs?: string },
-  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    if (!this.messageAPI) {
-      return { success: false, error: 'MessageAPI not initialized' };
+  private async withTask(
+    taskId: string,
+    send: (task: AgentTask, delivery: AgentDelivery) => Promise<DeliveryResult>,
+  ): Promise<DeliveryResult> {
+    const task = this.taskManager.getTask(taskId);
+    if (!task) {
+      return { success: false, error: `Unknown task ${taskId}` };
     }
-
-    // Get first available protocol
-    const protocol = this.connectedProtocols[0];
-    if (!protocol) {
-      return { success: false, error: 'No protocol available' };
+    if (!this.delivery) {
+      return { success: false, error: 'Bot is not connected yet' };
     }
+    return send(task, this.delivery);
+  }
 
-    const targetId = Number(params.target.id);
-    if (Number.isNaN(targetId)) {
-      return { success: false, error: `Invalid target id: ${params.target.id}` };
-    }
-
+  private async sendCards(task: AgentTask, delivery: AgentDelivery, cards: unknown[]): Promise<DeliveryResult> {
+    let deck: ReturnType<typeof parseCardDeck>;
     try {
-      const segments = new MessageBuilder().text(params.content).build();
-      const botUserId = this.selfId ? Number(this.selfId) : 0;
-
-      // Send as forward message to avoid flooding the chat with long text
-      if (params.forwardAs && protocol === 'milky' && botUserId > 0) {
-        const result = await this.messageAPI.sendForwardMessage(
-          { type: params.target.type, id: targetId },
-          [{ segments, senderName: params.forwardAs }],
-          protocol,
-          { botUserId },
-        );
-        await this.persistSentMessage(params, protocol, botUserId, result?.message_seq);
-        const messageId = result?.message_id ?? result?.message_seq;
-        return { success: true, messageId: messageId?.toString() };
-      }
-
-      // Regular message send
-      const sendFn =
-        params.target.type === 'user'
-          ? this.messageAPI.sendPrivateMessage.bind(this.messageAPI, targetId)
-          : this.messageAPI.sendGroupMessage.bind(this.messageAPI, targetId);
-
-      const messageId = await sendFn(params.content, protocol);
-      await this.persistSentMessage(params, protocol, botUserId, messageId);
-      return { success: true, messageId: messageId?.toString() };
+      deck = parseCardDeck(JSON.stringify(cards));
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('[CodingAgentService] Send message error:', error);
-      return { success: false, error: errorMessage };
+      return {
+        success: false,
+        error: `卡片 schema 校验失败：${error instanceof Error ? error.message : String(error)}`,
+      };
     }
+    return delivery.sendCards(task.requestedBy, deck, {
+      agentName: this.executors[task.executor].displayName,
+      model: task.model,
+    });
   }
 
   /**
-   * Persist a delivered message into the target session's history. These sends
-   * bypass the reply pipeline, so without this the chat LLM would never see
-   * what an agent reported and could not discuss it on the next turn.
+   * Files may only leave the machine from a research task's own workspace: a
+   * dev task's working directory is a repository, which can hold secrets.
    */
-  private async persistSentMessage(
-    params: SendMessageParams,
-    protocol: ProtocolName,
-    botUserId: number,
-    messageSeq: number | undefined,
-  ): Promise<void> {
-    if (!this.historyService) {
-      return;
+  private async sendFile(
+    task: AgentTask,
+    delivery: AgentDelivery,
+    path: string,
+    fileName: string | undefined,
+  ): Promise<DeliveryResult> {
+    if (task.taskType !== 'research' || !task.workingDirectory) {
+      return { success: false, error: '只有调研任务可以发送文件' };
     }
-    await this.historyService.appendBotMessageToSession(
-      { sessionType: params.target.type === 'group' ? 'group' : 'user', targetId: params.target.id },
-      params.content,
-      protocol,
-      { botUserId, messageSeq, viaTool: 'coding_agent' },
-    );
+    return delivery.sendFile(task.requestedBy, isAbsolute(path) ? path : join(task.workingDirectory, path), {
+      root: task.workingDirectory,
+      maxBytes: (this.config.maxFileMB ?? DEFAULT_MAX_FILE_MB) * 1024 * 1024,
+      fileName,
+    });
   }
 
   /**
@@ -306,13 +307,16 @@ export class CodingAgentService {
     if (task.suppressDefaultNotification) {
       return;
     }
+    if (!this.delivery) {
+      return;
+    }
     const agentName = this.executors[task.executor].displayName;
     const label = update.status === 'started' ? '开始' : '进度';
     const percent = update.progress !== undefined ? ` [${update.progress}%]` : '';
-    await this.sendMessage({
-      target: { type: task.requestedBy.type, id: task.requestedBy.id },
-      content: `${agentName} ${label} (${task.id.slice(0, 8)})${percent}：${update.message}`,
-    });
+    await this.delivery.sendText(
+      task.requestedBy,
+      `${agentName} ${label} (${task.id.slice(0, 8)})${percent}：${update.message}`,
+    );
   }
 
   /**
@@ -345,15 +349,11 @@ export class CodingAgentService {
       content = `${content.slice(0, maxLength - 20)}\n...(内容已截断)`;
     }
 
-    await this.sendMessage({
-      target: {
-        type: requestedBy.type,
-        id: requestedBy.id,
-      },
-      content,
-      replyTo: requestedBy.messageId,
-      forwardAs: agentName,
-    });
+    if (!this.delivery) {
+      logger.warn(`[CodingAgentService] Task ${task.id} finished before the bot connected; result not delivered`);
+      return;
+    }
+    await this.delivery.sendText(requestedBy, content, agentName);
   }
 
   /**
