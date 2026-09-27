@@ -5,8 +5,8 @@
 import { injectable } from 'tsyringe';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
-import type { ProjectContext } from '@/services/claudeCode/types';
+import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
+import type { ProjectContext } from '@/services/codingAgent/types';
 import { logger } from '@/utils/logger';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
@@ -41,16 +41,16 @@ export class RepeatingTodoWorkerHandler implements ActionHandler {
     const repeat = params.repeat ?? 5;
     const intervalMinutes = params.intervalMinutes ?? 30;
 
-    let claudeCodeService: ClaudeCodeService;
+    let codingAgentService: CodingAgentService;
     try {
       // container-lookup: optional-service Claude Code exists only when configured
-      claudeCodeService = getContainer().resolve<ClaudeCodeService>(DITokens.CLAUDE_CODE_SERVICE);
+      codingAgentService = getContainer().resolve<CodingAgentService>(DITokens.CODING_AGENT_SERVICE);
     } catch {
-      logger.error(`${TAG} ClaudeCodeService not available`);
+      logger.error(`${TAG} CodingAgentService not available`);
       return '❌ repeating_todo_worker: Claude Code 服务未启用';
     }
 
-    const registry = claudeCodeService.getProjectRegistry();
+    const registry = codingAgentService.getProjectRegistry();
     if (!registry) {
       return '❌ repeating_todo_worker: 项目注册表未配置';
     }
@@ -74,7 +74,7 @@ export class RepeatingTodoWorkerHandler implements ActionHandler {
       type: project.type,
       description: project.description,
       hasClaudeMd: project.hasClaudeMd,
-      promptTemplateKey: 'claude-code.task.todo-worker',
+      promptTemplateKey: 'coding-agent.task.todo-worker',
     };
 
     // Schedule all rounds at fixed intervals (T=0, T=interval, T=2*interval, ...)
@@ -88,7 +88,7 @@ export class RepeatingTodoWorkerHandler implements ActionHandler {
         round,
         repeat,
         delayMs,
-        claudeCodeService,
+        codingAgentService,
         projectContext,
         projectPath: project.path,
         projectAlias: project.alias,
@@ -125,26 +125,26 @@ export class RepeatingTodoWorkerHandler implements ActionHandler {
     round: number;
     repeat: number;
     delayMs: number;
-    claudeCodeService: ClaudeCodeService;
+    codingAgentService: CodingAgentService;
     projectContext: ProjectContext;
     projectPath: string;
     projectAlias: string;
     prompt: string;
     target: { type: 'group' | 'user'; id: string };
   }): Promise<RoundResult> {
-    const { round, repeat, delayMs, claudeCodeService, projectContext, projectPath, prompt, target } = opts;
+    const { round, repeat, delayMs, codingAgentService, projectContext, projectPath, prompt, target } = opts;
 
     return new Promise<RoundResult>((resolve) => {
       setTimeout(async () => {
         logger.info(`${TAG} Triggering round ${round}/${repeat} for project "${opts.projectAlias}"`);
         try {
-          const task = await claudeCodeService.triggerTask(prompt, target, projectPath, {
+          const task = await codingAgentService.triggerTask(prompt, target, projectPath, {
             taskType: 'dev',
             projectContext,
           });
 
           logger.info(`${TAG} Round ${round}/${repeat}: task ${task.id} created, waiting for completion...`);
-          const completedTask = await claudeCodeService.awaitTaskCompletion(task.id);
+          const completedTask = await codingAgentService.awaitTaskCompletion(task.id);
           const status = (completedTask.status as 'completed' | 'failed') ?? 'failed';
 
           logger.info(`${TAG} Round ${round}/${repeat}: ${status}`);

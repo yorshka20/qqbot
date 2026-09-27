@@ -23,10 +23,11 @@ This document describes the architecture of the QQ Bot framework, a production-r
 15. [Memory System](#memory-system)
 16. [Fan-out](#fan-out)
 17. [Database Layer](#database-layer)
-18. [Cluster System](#cluster-system)
-19. [MCP Surfaces](#mcp-surfaces)
-20. [Error Handling](#error-handling)
-21. [Development Workflow](#development-workflow)
+18. [Coding Agent Service](#coding-agent-service)
+19. [Cluster System](#cluster-system)
+20. [MCP Surfaces](#mcp-surfaces)
+21. [Error Handling](#error-handling)
+22. [Development Workflow](#development-workflow)
 
 ## System Overview
 
@@ -151,7 +152,7 @@ The system is organized into the following layers:
 12. **Context Layer** (`src/context/`): HookContext building, conversation context management
 13. **Database Layer** (`src/database/`): SQLite and MongoDB adapters
 14. **Plugin Layer** (`src/plugins/`): Config-based plugin system
-15. **Services Layer** (`src/services/`): Claude Code, card rendering, retrieval (search/RAG/fetch), TTS, static server
+15. **Services Layer** (`src/services/`): coding agent (claude / codex), card rendering, retrieval (search/RAG/fetch), TTS, static server
 16. **Cluster Layer** (`src/cluster/`): Agent cluster for multi-worker coordination
 17. **Message Layer** (`src/message/`): Message construction, parsing, and caching
 18. **Agenda Layer** (`src/agenda/`): Scheduled and event/message-triggered task execution (`cron` / `once` / `onEvent` / `onMessage` triggers, with optional TTL + fire-budget lifecycle; the LLM can self-register ephemeral tasks via `schedule_task` / `watch_messages` tools)
@@ -200,14 +201,14 @@ Manages configuration loading and validation. Supports both single-file and spli
 `startApp(configPath, { connect })` in `src/core/app.ts` is the one entry point: production (`src/index.ts`, `connect: true`), the smoke test and cluster-e2e (`connect: false`) and the debug CLI (`connect: true` in real mode, `false` plus a mock protocol adapter in mock mode) all call it, so the module graph, the initialization order and the shutdown path are shared code. It runs two phases and returns one `shutdown()`:
 
 1. **`bootstrapApp()`** (`src/core/bootstrap.ts`) — everything that needs no external connection: config, API client, DI wiring, prompts, static server, the conversation system (database connect first), the event system, protocol adapter registration, plugin load and `onEnable`, then `DIContainer.verifyRequiredTokens()`.
-2. **connect** (only with `connect: true`) — bot sockets, avatar, bilibili live, LAN relay, search transports, Claude Code, cluster, then `pluginManager.startAll()` (plugin `onStart`).
+2. **connect** (only with `connect: true`) — bot sockets, avatar, bilibili live, LAN relay, search transports, coding agent, cluster, then `pluginManager.startAll()` (plugin `onStart`).
 
 `shutdown()` kills MCP children, stops plugins (`onStop`), the static server and every connected service, then closes the database.
 
 **Initialization sequence (bootstrap):**
 ```
 Config → APIClient → registerProviders (core/wiring.ts) → PromptInitializer →
-RetrievalService → StaticServer → ClaudeCodeInitializer → ConversationInitializer →
+RetrievalService → StaticServer → CodingAgentInitializer → ConversationInitializer →
 ClusterManager → EventInitializer → ProtocolAdapterInitializer →
 PluginInitializer.loadPlugins() → TTSManager + AvatarService (optional) →
 DIContainer.verifyRequiredTokens()
@@ -226,11 +227,11 @@ DIContainer.verifyRequiredTokens()
 **Constructor injection vs. `getContainer().resolve()` at run time.** The rule: an object that the container builds, and whose dependencies already exist when it is built, receives every dependency through its constructor. It never calls `getContainer().resolve()` for them — not in the constructor, not in a method. Only these cases look dependencies up from the container at run time, and each is correct as it stands:
 
 1. **Plugins.** `PluginManager` instantiates plugins itself (`new PluginClass(metadata)`) so they can be loaded, enabled and disabled at run time; they are deliberately kept out of the DI container. A plugin resolves what it needs in `onInit` / `onEnable`. Do not convert plugins to constructor injection.
-2. **The composition root and startup steps.** `core/bootstrap.ts`, `core/app.ts`, `core/wiring.ts`, the `*Initializer` classes (Conversation, Agenda, Persona, ClaudeCode, Prompt), wiring functions such as `wireClusterEscalation`, and the `cli/` scripts. Assembling objects is their job. An object a startup step constructs by hand (e.g. `AgendaService`) gets its dependencies from that step's arguments, not from the container.
+2. **The composition root and startup steps.** `core/bootstrap.ts`, `core/app.ts`, `core/wiring.ts`, the `*Initializer` classes (Conversation, Agenda, Persona, CodingAgent, Prompt), wiring functions such as `wireClusterEscalation`, and the `cli/` scripts. Assembling objects is their job. An object a startup step constructs by hand (e.g. `AgendaService`) gets its dependencies from that step's arguments, not from the container.
 3. **Registries that resolve their members by class.** `ToolManager` (executors, built lazily), `CommandManager` (handlers), `FanoutManager` (fan-outs), `AgendaInitializer` (framework action handlers). The member set is dynamic, and the container is the factory for its members.
 4. **Objects the container does not build.** `AIProvider` subclasses (created by `ProviderFactory` from config) and static-server backends (created by the server's backend registry, and disabled per LAN-relay role like plugins).
 5. **Run-time lookups of plugin state from core code.** `resolve(PluginManager).getPluginAs('reaction' | 'whitelist')` in `ReactToolExecutor`, `ProactiveConversationService`, `ProactiveReplyGenerationService`, `AgendaService` and `utils/whitelistCapabilities`. `PluginManager` exists only after the event system registers `EVENT_ROUTER`, later than these services, and what they read is plugin state, which belongs to the plugin side.
-6. **Services that may be absent by configuration.** Config-gated startup products such as `CLAUDE_CODE_SERVICE`, `CLUSTER_MANAGER` and `BILIBILI_LIVE_BRIDGE`, looked up at the point of use with `isRegistered` first (agenda todo / ticket handlers, `Live2DCommandHandler`).
+6. **Services that may be absent by configuration.** Config-gated startup products such as `CODING_AGENT_SERVICE`, `CLUSTER_MANAGER` and `BILIBILI_LIVE_BRIDGE`, looked up at the point of use with `isRegistered` first (agenda todo / ticket handlers, `Live2DCommandHandler`).
 
 Anything outside these six takes its dependencies in the constructor. When a new dependency seems awkward to inject, the fix is to let DI build the object (as `AIService`'s stages and sub-services now are), not to resolve it from the container.
 
@@ -845,6 +846,19 @@ Three properties define the design:
 
 Schema introspection travels through the same read-only runner (`SELECT`s over `sqlite_master` / `pragma_table_info`), so there is no second, more-privileged path into the database.
 
+## Coding Agent Service
+
+`src/services/codingAgent/` runs one-off development tasks requested from chat (`/claude …`, `/codex …`) and by agenda todo workers. The two commands are the same command: one `CodingAgentPlugin` registers a command per executor, and both share the subcommands, the project registry, the task prompt templates (`prompts/coding-agent/`), the per-project serial queue, the MCP callback server and result delivery. They differ only in which CLI executes the task.
+
+| Component | Responsibility |
+|-----------|---------------|
+| `CodingAgentService` | Entry point: trigger / cancel / status, delivers results to the requester |
+| `CodingAgentTaskManager` | Task records, per-project queue (serial per working tree, across executors), prompt rendering, process lifecycle |
+| `executors/` | `ClaudeExecutor` / `CodexExecutor` — translate a task into a CLI invocation, including how that CLI is pointed at the MCP server with `X-Task-Id` |
+| `CodingAgentMcpServer` | `bot_*` tools the running CLI calls back (see MCP Surfaces) |
+
+Adding an executor means adding its name to `AGENT_EXECUTOR_NAMES` and an `AgentExecutor` implementation; the command, queue and prompt come with it. An executor's CLI must print only its final answer to stdout. Codex authenticates with the ChatGPT login only: `CODEX_API_KEY` / `OPENAI_API_KEY` are removed from its environment (`utils/codexCli.ts`), and its MCP server is registered per process with `-c mcp_servers.…` overrides rather than in `~/.codex/config.toml`.
+
 ## Cluster System
 
 ### Overview
@@ -874,6 +888,8 @@ Workers are spawned as CLI subprocesses using one of:
 | `CodexCliBackend` | `codex` (OpenAI Codex CLI) |
 | `MinimaxBackend` | Minimax API |
 
+`codex-cli` workers use the ChatGPT login only; API-key variables are stripped at spawn and the credential check (`codex login status`) rejects an API-key login.
+
 ### Task Sources
 
 Tasks can be fed from:
@@ -892,7 +908,7 @@ The bot talks MCP on three surfaces — once as a client, twice as a server.
 |---|---|---|---|
 | `SearxngMcpClient` | Bot is the **client** | `src/services/retrieval/searxng/mcp/` | Spawns a stdio MCP server (`mcp-searxng`) and calls its `searxng_web_search` tool. This is not a general MCP client — it is one of SearXNG's two transports, the sibling of `SearXNGClient`'s direct HTTP. |
 | `HubMCPServer` | Bot is the **server** | `src/cluster/hub/` | Streamable-HTTP endpoint at `/mcp`, consumed by cluster workers' CLI MCP clients. Caller identity comes from an `X-Worker-Id` header. |
-| `ClaudeCodeMcpServer` | Bot is the **server** | `src/services/claudeCode/` | Streamable-HTTP endpoint at `/mcp` on its own port, consumed by the `claude` CLI that `ClaudeToolManager` spawns. Exposes only what the CLI cannot do for itself: `bot_notify_task` / `bot_send_message` (the channel back to the requester) and `bot_info` / `bot_command`. Caller identity comes from an `X-Task-Id` header. |
+| `CodingAgentMcpServer` | Bot is the **server** | `src/services/codingAgent/` | Streamable-HTTP endpoint at `/mcp` on its own port, consumed by the `claude` / `codex` CLI that `CodingAgentTaskManager` spawns through its executor. Exposes only what the CLI cannot do for itself: `bot_notify_task` / `bot_send_message` (the channel back to the requester) and `bot_info` / `bot_command`. Caller identity comes from an `X-Task-Id` header. |
 
 MCP earns its place only at process boundaries. Inside the bot's own reply
 pipeline the `@Tool()` registry is strictly better — same-process calls need no
@@ -1102,7 +1118,7 @@ qqbot/
 │   ├── message/         # MessageBuilder, MessageParser, MessageCache
 │   ├── plugins/         # Plugin system, PluginBase, built-in plugins
 │   ├── protocol/        # Protocol adapters (Milky, OneBot11, Satori, Discord)
-│   ├── services/        # ClaudeCode, card rendering, retrieval, TTS
+│   ├── services/        # coding agent, card rendering, retrieval, TTS
 │   ├── tools/           # Tool system with @Tool() decorator
 │   ├── utils/           # Logger, error handling, shared utilities
 │   └── index.ts         # Entry point

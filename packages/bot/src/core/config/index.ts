@@ -12,7 +12,7 @@ import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProvid
 import type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';
 import type {
   BotSelfConfig,
-  ClaudeCodeServiceConfig,
+  CodingAgentConfig,
   FileReadServiceConfig,
   ProjectRegistryConfig,
   StaticServerConfig,
@@ -58,7 +58,13 @@ export type {
   SessionProviderConfig,
 } from './types/ai';
 export type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';
-export type { BotSelfConfig, ClaudeCodeServiceConfig, ProjectRegistryConfig, StaticServerConfig } from './types/bot';
+export type {
+  AgentExecutorConfig,
+  BotSelfConfig,
+  CodingAgentConfig,
+  ProjectRegistryConfig,
+  StaticServerConfig,
+} from './types/bot';
 export type { LogLevel } from './types/const';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './types/database';
 export type { DocsPreviewConfig, DocsPreviewRootConfig } from './types/docsPreview';
@@ -114,7 +120,7 @@ export interface BotConfig {
   rag?: RAGConfig;
   staticServer?: StaticServerConfig;
   fileReadService?: FileReadServiceConfig;
-  claudeCodeService?: ClaudeCodeServiceConfig;
+  codingAgent?: CodingAgentConfig;
   videoKnowledge?: VideoKnowledgeConfig;
   vkbContextEngine?: VKBContextEngineConfig;
   projectRegistry?: ProjectRegistryConfig;
@@ -495,8 +501,8 @@ export class Config {
     return this.config.fileReadService;
   }
 
-  getClaudeCodeServiceConfig(): ClaudeCodeServiceConfig | undefined {
-    return this.config.claudeCodeService;
+  getCodingAgentConfig(): CodingAgentConfig | undefined {
+    return this.config.codingAgent;
   }
 
   getVideoKnowledgeConfig(): VideoKnowledgeConfig | undefined {

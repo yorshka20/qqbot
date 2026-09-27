@@ -66,7 +66,7 @@ the door than leave it half-open.
 If you are writing a plugin **inside this repository**, do **not** put it
 here. First-party plugins live under
 `packages/bot/src/plugins/plugins/` (or co-located under their owning
-service, e.g. `packages/bot/src/services/claudeCode/plugins/`). They are
+service, e.g. `packages/bot/src/services/codingAgent/plugins/`). They are
 discovered via the registry barrel
 (`packages/bot/src/plugins/index.ts`), not via filesystem scan.
 

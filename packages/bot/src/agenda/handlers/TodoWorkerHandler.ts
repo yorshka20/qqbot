@@ -1,12 +1,12 @@
 // TodoWorkerHandler - directly triggers Claude Code CLI to complete todo.md tasks
 // in a specified project. No LLM involved — resolves project from registry and
-// calls ClaudeCodeService.triggerTask() immediately.
+// calls CodingAgentService.triggerTask() immediately.
 
 import { injectable } from 'tsyringe';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
-import type { ProjectContext } from '@/services/claudeCode/types';
+import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
+import type { ProjectContext } from '@/services/codingAgent/types';
 import { logger } from '@/utils/logger';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
@@ -23,16 +23,16 @@ export class TodoWorkerHandler implements ActionHandler {
       return '❌ todo_worker: 缺少 project 参数';
     }
 
-    let claudeCodeService: ClaudeCodeService;
+    let codingAgentService: CodingAgentService;
     try {
       // container-lookup: optional-service Claude Code exists only when configured
-      claudeCodeService = getContainer().resolve<ClaudeCodeService>(DITokens.CLAUDE_CODE_SERVICE);
+      codingAgentService = getContainer().resolve<CodingAgentService>(DITokens.CODING_AGENT_SERVICE);
     } catch {
-      logger.error('[TodoWorkerHandler] ClaudeCodeService not available');
+      logger.error('[TodoWorkerHandler] CodingAgentService not available');
       return '❌ todo_worker: Claude Code 服务未启用';
     }
 
-    const registry = claudeCodeService.getProjectRegistry();
+    const registry = codingAgentService.getProjectRegistry();
     if (!registry) {
       return '❌ todo_worker: 项目注册表未配置';
     }
@@ -48,14 +48,14 @@ export class TodoWorkerHandler implements ActionHandler {
       type: project.type,
       description: project.description,
       hasClaudeMd: project.hasClaudeMd,
-      promptTemplateKey: 'claude-code.task.todo-worker',
+      promptTemplateKey: 'coding-agent.task.todo-worker',
     };
 
     const targetType = ctx.groupId ? 'group' : 'user';
     const targetId = ctx.groupId ?? ctx.userId ?? '';
 
     try {
-      const task = await claudeCodeService.triggerTask(
+      const task = await codingAgentService.triggerTask(
         `完成 ${project.alias} 项目 todo.md 中的待办任务`,
         { type: targetType, id: targetId },
         project.path,

@@ -4,7 +4,7 @@
 
 import { inject, injectable } from 'tsyringe';
 import { runClusterTicketsSyncWithRegistry } from '@/cluster/clusterTicketsGitSync';
-import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
 @injectable()

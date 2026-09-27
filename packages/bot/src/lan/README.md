@@ -8,7 +8,7 @@ WebSocket-based remote control for multi-machine bot deployments where IM
 │  Host instance (192.168.50.209)  │         │  Client instance (work laptop)   │
 │                                  │         │                                  │
 │  • Holds the live IM connection  │         │  • No IM connection              │
-│  • Bun.serve LAN WebSocket       │ ◄─────► │  • Runs cluster / claudeCode     │
+│  • Bun.serve LAN WebSocket       │ ◄─────► │  • Runs cluster / codingAgent    │
 │  • LanControlPlugin: /lan ...    │   WS    │  • Silent until dispatched       │
 │  • Persists internal_reports     │         │  • Auto-reconnect / fire-forget  │
 └──────────────────────────────────┘         └──────────────────────────────────┘
@@ -23,7 +23,7 @@ WebSocket-based remote control for multi-machine bot deployments where IM
 ## When to use this
 
 - **Single-login IM** but you want a *worker bot* on another machine that
-  can run long-running Agent Cluster / Claude Code tasks.
+  can run long-running Agent Cluster / coding-agent tasks.
 - The worker has its own DB, plugins, AI providers — it just doesn't have
   an IM connection.
 - You control the worker by dispatching commands from QQ/Discord through

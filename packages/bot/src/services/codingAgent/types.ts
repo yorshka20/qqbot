@@ -1,4 +1,4 @@
-// Types for the Claude Code service and its HTTP callback API
+// Types for the coding-agent service and its MCP callback API
 
 export interface TaskNotification {
   taskId: string;
@@ -27,10 +27,15 @@ export interface ProjectContext {
   promptTemplateKey?: string;
 }
 
-export type ClaudeTaskType = 'dev' | 'new-project';
+export type AgentTaskType = 'dev' | 'new-project';
 
-export interface ClaudeTask {
+/** The CLIs a task can be executed by. The prompt and requirements are the same for all of them. */
+export const AGENT_EXECUTOR_NAMES = ['claude', 'codex'] as const;
+export type AgentExecutorName = (typeof AGENT_EXECUTOR_NAMES)[number];
+
+export interface AgentTask {
   id: string;
+  executor: AgentExecutorName;
   prompt: string;
   workingDirectory?: string;
   createdAt: Date;
@@ -43,7 +48,7 @@ export interface ClaudeTask {
   result?: string;
   error?: string;
   /** Task type */
-  taskType?: ClaudeTaskType;
+  taskType?: AgentTaskType;
   /** Project context resolved from ProjectRegistry */
   projectContext?: ProjectContext;
   /** When true, the global handleTaskUpdate callback skips sending result messages */

@@ -7,7 +7,7 @@ import 'reflect-metadata';
 
 import { CLUSTER_TICKETS_REGISTRY_ALIAS, runClusterTicketsSyncWithRegistry } from '@/cluster/clusterTicketsGitSync';
 import { Config } from '@/core/config';
-import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 
 function getArg(name: string): string | undefined {
   const idx = process.argv.indexOf(`--${name}`);

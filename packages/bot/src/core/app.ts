@@ -11,7 +11,7 @@ import { MessageAPI } from '@/api/methods/MessageAPI';
 import { AvatarIdleTrigger } from '@/integrations/avatar/services/AvatarIdleTrigger';
 import { initLanRelay } from '@/lan';
 import { PluginManager } from '@/plugins/PluginManager';
-import { ClaudeCodeInitializer } from '@/services/claudeCode';
+import { CodingAgentInitializer } from '@/services/codingAgent';
 import { killAllMcpChildren } from '@/services/retrieval/searxng/mcp/childReaper';
 import { stopStaticServer } from '@/services/staticServer';
 import type { TTSManager } from '@/services/tts/TTSManager';
@@ -64,7 +64,7 @@ export async function startApp(configPath: string | undefined, options: StartApp
 async function connect(bootstrap: BootstrapResult, pluginManager: PluginManager): Promise<() => Promise<void>> {
   const {
     bot,
-    claudeCodeService,
+    codingAgentService,
     clusterManager,
     conversationComponents,
     eventRouter,
@@ -123,11 +123,11 @@ async function connect(bootstrap: BootstrapResult, pluginManager: PluginManager)
   await retrievalService.connectSearchTransports();
 
   // Start Claude Code service (non-fatal if port is in use)
-  if (claudeCodeService) {
+  if (codingAgentService) {
     try {
-      await ClaudeCodeInitializer.start(claudeCodeService, messageAPI);
+      await CodingAgentInitializer.start(codingAgentService, messageAPI);
       const protocols = config.getEnabledProtocols().map((p) => p.name);
-      ClaudeCodeInitializer.updateBotInfo(claudeCodeService, config.getConfig().bot.selfId, protocols);
+      CodingAgentInitializer.updateBotInfo(codingAgentService, config.getConfig().bot.selfId, protocols);
     } catch (error) {
       logger.warn('[App] Claude Code service failed to start (non-fatal):', error);
     }
@@ -164,7 +164,7 @@ async function connect(bootstrap: BootstrapResult, pluginManager: PluginManager)
       await clusterManager.stop();
     }
     await lanRelayHandle.stop();
-    await ClaudeCodeInitializer.stop(claudeCodeService);
+    await CodingAgentInitializer.stop(codingAgentService);
     await bot.stop();
   };
 }

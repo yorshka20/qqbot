@@ -47,21 +47,22 @@
 
 | 服务       | 位置                       | 职责                            |
 | ---------- | -------------------------- | ------------------------------- |
-| ClaudeCode | `src/services/claudeCode/` | Claude CLI 任务执行 + MCP Tools |
+| CodingAgent | `src/services/codingAgent/` | claude / codex CLI 任务执行 + MCP Tools |
 | WeChat     | `src/services/wechat/`     | 微信消息同步和处理              |
 | Zhihu      | `src/services/zhihu/`      | 知乎关注动态拉取 + 摘要推送     |
 | Retrieval  | `src/services/retrieval/`  | 搜索（含 SearXNG MCP transport）/ RAG / 网页抓取 |
 
-### ClaudeCode MCP Tools 架构
+### CodingAgent MCP Tools 架构
 
 ```
-ClaudeCodeService
-├── ClaudeCodeMcpServer    # MCP over Streamable HTTP (port 9876, /mcp)
+CodingAgentService
+├── CodingAgentMcpServer   # MCP over Streamable HTTP (port 9876, /mcp)
 │   ├── bot_notify_task    # 任务生命周期回报
 │   ├── bot_send_message   # 给请求者发消息
 │   ├── bot_info           # bot 运行状态
 │   └── bot_command        # restart / reload-plugins / status
-└── ClaudeToolManager      # 任务队列 + spawn claude CLI（含 --mcp-config 注入）
+├── CodingAgentTaskManager # 任务队列 + prompt 渲染 + 进程生命周期
+└── executors/             # ClaudeExecutor（--mcp-config）/ CodexExecutor（-c mcp_servers.*）
 ```
 
 ---
@@ -130,10 +131,10 @@ export class MyToolExecutor extends BaseToolExecutor {
 
 **注册方式:** 装饰器 + 在 `src/tools/executors/index.ts` 中 export（确保装饰器在 import 时执行）。
 
-#### ClaudeCode MCP Tools（独立体系）
+#### CodingAgent MCP Tools（独立体系）
 
-`src/services/claudeCode/ClaudeCodeMcpServer.ts` 里的 `bot_*` tools，给 spawn 出来的
-Claude Code CLI 用，走 MCP 协议而不是 `@Tool()` 装饰器。
+`src/services/codingAgent/CodingAgentMcpServer.ts` 里的 `bot_*` tools，给 spawn 出来的
+claude / codex CLI 用，走 MCP 协议而不是 `@Tool()` 装饰器。
 
 **要点**: 两套体系不要混淆。`@Tool()` 的 executor 服务 AI 对话流；MCP tools 服务外部
 CLI 进程。后者只暴露 CLI **自己做不到**的事（发 IM 消息、回报任务状态）—— 文件读写、
@@ -148,7 +149,7 @@ const botConfig = config.bot;
 const aiConfig = config.ai;
 
 // 特定服务配置
-const claudeConfig = config.getClaudeCodeServiceConfig();
+const agentConfig = config.getCodingAgentConfig();
 ```
 
 ---
@@ -163,7 +164,7 @@ const claudeConfig = config.getClaudeCodeServiceConfig();
 
 - 所有初始化逻辑集中在 `src/core/bootstrap.ts` 的 `bootstrapApp()` 函数中，`src/index.ts` 和 `src/cli/smoke-test.ts` 都调用它，禁止在其他地方复制初始化逻辑
 - DI token 常量（如 `WechatDITokens`）必须放在独立的 `tokens.ts` 文件中（零导入），executor 直接从 `tokens.ts` 导入，而非从 barrel 导入，以切断循环链
-- 使用 `Initializer` 模式（如 `ClaudeCodeInitializer`）
+- 使用 `Initializer` 模式（如 `CodingAgentInitializer`）
 - 对可选依赖使用 `@optional()` 装饰器
 - **使用 `bun run smoke-test` 验证**：typecheck 无法检测此类运行时错误
 

@@ -39,7 +39,7 @@ import type { ClusterManager } from '@/cluster/ClusterManager';
 import type { ClusterEventType, TaskRecord, WorkerRegistration } from '@/cluster/types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
+import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
 import { logger } from '@/utils/logger';
 import { errorResponse, jsonResponse } from './types';
 
@@ -193,7 +193,7 @@ export class ClusterAPIBackend {
       case '/projects': {
         try {
           const container = getContainer();
-          const claude = container.resolve<ClaudeCodeService>(DITokens.CLAUDE_CODE_SERVICE);
+          const claude = container.resolve<CodingAgentService>(DITokens.CODING_AGENT_SERVICE);
           const registry = claude.getProjectRegistry();
           if (!registry) {
             return errorResponse('ProjectRegistry not configured', 400);

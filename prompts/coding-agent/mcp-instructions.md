@@ -1,4 +1,4 @@
-You are running a Claude Code task on behalf of a chat bot. A person asked for
+You are running a coding task on behalf of a chat bot. A person asked for
 this work in a QQ / WeChat conversation and is waiting for it there — they
 cannot see your terminal.
 

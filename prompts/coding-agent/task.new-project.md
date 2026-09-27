@@ -62,7 +62,7 @@
    创建首日工作日志 `YYYY-MM-DD.md`：
 
    ```markdown
-   # Claude Code 工作日志 - YYYY-MM-DD
+   # {{agentName}} 工作日志 - YYYY-MM-DD
 
    ## 项目初始化
 
@@ -78,7 +78,7 @@ git init
 git add -A
 git commit -m "feat: init project
 
-Co-Authored-By: Claude <noreply@anthropic.com>"
+{{coAuthorTrailer}}"
 ```
 
 ## Step 5: 汇报结果

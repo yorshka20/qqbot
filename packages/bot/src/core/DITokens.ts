@@ -117,16 +117,16 @@ export const DITokens = {
     gatedBy: 'bilibili.live config block',
   }),
 
-  // ── Optional: cluster + claude-code integrations ──
+  // ── Optional: cluster + coding-agent integrations ──
   /** Optional — only registered when `cluster` config block is present. */
   CLUSTER_MANAGER: defineToken('ClusterManager', {
     required: false,
     gatedBy: 'cluster config block',
   }),
-  /** Optional — only registered when `claudeCode.enabled` is true. */
-  CLAUDE_CODE_SERVICE: defineToken('ClaudeCodeService', {
+  /** Optional — only registered when `codingAgent.enabled` is true. */
+  CODING_AGENT_SERVICE: defineToken('CodingAgentService', {
     required: false,
-    gatedBy: 'claudeCode.enabled config',
+    gatedBy: 'codingAgent.enabled config',
   }),
 
   // ── Admin alerting (required — registered unconditionally in bootstrap.ts) ──

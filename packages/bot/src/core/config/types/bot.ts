@@ -40,16 +40,24 @@ export interface ProjectRegistryConfig {
   }>;
 }
 
-export interface ClaudeCodeServiceConfig {
+export interface AgentExecutorConfig {
+  // CLI binary (default: the executor name, 'claude' / 'codex')
+  cliPath?: string;
+  // Model passed to the CLI (default: 'claude-opus-5' for claude, 'gpt-6-sol' for codex)
+  model?: string;
+}
+
+export interface CodingAgentConfig {
   enabled: boolean;
   port: number;
   host?: string;
-  // Claude Code CLI path (default: 'claude')
-  claudeCliPath?: string;
-  // Model passed to the CLI's --model flag (default: 'claude-opus-5').
-  // Accepts an alias ('opus') or a full model id ('claude-opus-5').
-  model?: string;
-  // Working directory for Claude Code tasks
+  // Executor used when a task does not name one (default: 'claude')
+  defaultExecutor?: 'claude' | 'codex';
+  executors?: {
+    claude?: AgentExecutorConfig;
+    codex?: AgentExecutorConfig;
+  };
+  // Working directory for tasks that do not resolve to a registered project
   workingDirectory?: string;
   // Max concurrent tasks (default: 1)
   maxConcurrentTasks?: number;

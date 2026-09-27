@@ -625,7 +625,7 @@ async function main() {
     const task = await cluster.submitTask(args.project, args.task, submitOptions);
     if (!task) {
       logger.error(
-        `[ClusterE2E] ✗ submitTask returned null — project alias "${args.project}" probably not registered in ClaudeCodeService.projectRegistry`,
+        `[ClusterE2E] ✗ submitTask returned null — project alias "${args.project}" probably not registered in the projectRegistry config`,
       );
       await cluster.stop();
       await teardown(app);

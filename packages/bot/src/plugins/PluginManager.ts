@@ -11,9 +11,9 @@
 //
 // Other plugin sources register themselves through their own initialization
 // paths so that PluginManager stays unaware of integrations / services / third-party:
-//   - Service-owned plugins (e.g. ClaudeCodePlugin under
-//     `services/claudeCode/plugins/`) — registered via the service module's
-//     own re-exports (`services/claudeCode/index.ts`), imported by
+//   - Service-owned plugins (e.g. CodingAgentPlugin under
+//     `services/codingAgent/plugins/`) — registered via the service module's
+//     own re-exports (`services/codingAgent/index.ts`), imported by
 //     bootstrap.
 //   - Integration-owned plugins (e.g. avatar plugins under
 //     `integrations/avatar/plugins/`) — registered by the integration's

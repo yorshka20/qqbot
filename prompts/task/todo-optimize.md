@@ -17,7 +17,7 @@
 - **插件系统** (`src/plugins/`): 基于 PluginBase 的扩展机制，钩子注册
 - **记忆系统** (`src/memory/`): 用户/群组长期记忆，LLM 提取与合并
 - **数据库** (`src/database/`): SQLite / MongoDB 持久化
-- **服务** (`src/services/`): ClaudeCode 集成、微信对接等外部服务
+- **服务** (`src/services/`): coding agent（claude / codex）集成、微信对接等外部服务
 
 ### 关键入口文件
 

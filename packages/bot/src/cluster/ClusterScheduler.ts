@@ -5,7 +5,7 @@
  */
 
 import type { Database } from 'bun:sqlite';
-import type { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import type { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
 import type { ClusterConfig } from './config';
@@ -801,7 +801,7 @@ export class ClusterScheduler {
     if (this.warnedMissingProjects.has(project)) return;
     this.warnedMissingProjects.add(project);
     logger.warn(
-      `[ClusterScheduler] Unknown project "${project}" — not registered in ClaudeCodeService.projectRegistry. ` +
+      `[ClusterScheduler] Unknown project "${project}" — not registered in the projectRegistry config. ` +
         `Tasks for this project will be skipped. Check cluster.jsonc projects keys against your project registry.`,
     );
   }
@@ -823,7 +823,7 @@ export class ClusterScheduler {
     if (missing.length > 0) {
       logger.error(
         `[ClusterScheduler] Project alias validation failed: ${missing.join(', ')}. ` +
-          `These cluster projects are NOT registered in ClaudeCodeService.projectRegistry — ` +
+          `These cluster projects are NOT registered in the projectRegistry config — ` +
           `tasks for them will be skipped until you fix the config.`,
       );
       // Pre-seed warnedMissingProjects so the runtime warn-once path doesn't

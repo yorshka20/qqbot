@@ -71,7 +71,7 @@
    git add <files>  # 不要 add .claude-learnings/ 和 .claude-workbook/
    git commit -m "type(scope): description
 
-   Co-Authored-By: Claude <noreply@anthropic.com>"
+   {{coAuthorTrailer}}"
    git push
    ```
 
@@ -131,7 +131,7 @@
 ```
 
 **更新规则**：
-- 当日文件（`YYYY-MM-DD.md`）已存在则在末尾追加（用 `---` 分隔），不存在则创建，标题为 `# Claude Code 工作日志 - YYYY-MM-DD`
+- 当日文件（`YYYY-MM-DD.md`）已存在则在末尾追加（用 `---` 分隔），不存在则创建，标题为 `# {{agentName}} 工作日志 - YYYY-MM-DD`
 - 记录：任务描述、实现方案、涉及文件、遇到的问题和解决方式
 - 每次更新日报后，必须同步更新 `index.md` 索引
 

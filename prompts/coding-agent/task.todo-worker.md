@@ -61,7 +61,7 @@
    git add <changed-files>
    git commit -m "type(scope): description
 
-   Co-Authored-By: Claude <noreply@anthropic.com>"
+   {{coAuthorTrailer}}"
    git push
    ```
 

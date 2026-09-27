@@ -40,9 +40,9 @@ import { BilibiliLiveBridge } from '@/services/bilibili/live/BilibiliLiveBridge'
 import { BilibiliLiveClient } from '@/services/bilibili/live/BilibiliLiveClient';
 import { DanmakuBuffer } from '@/services/bilibili/live/DanmakuBuffer';
 import { DanmakuStore } from '@/services/bilibili/live/DanmakuStore';
-import { ClaudeCodeInitializer } from '@/services/claudeCode';
-import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
-import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import { CodingAgentInitializer } from '@/services/codingAgent';
+import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
+import { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { initStaticServer } from '@/services/staticServer';
 import type { TTSManager } from '@/services/tts/TTSManager';
@@ -65,7 +65,7 @@ import '@/integrations/avatar/plugins';
 
 export interface BootstrapResult {
   bot: Bot;
-  claudeCodeService: ClaudeCodeService | null;
+  codingAgentService: CodingAgentService | null;
   clusterManager: ClusterManager | null;
   conversationComponents: ConversationComponents;
   eventRouter: EventRouter;
@@ -140,7 +140,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   }
 
   // ── Claude Code init (sync, no connections) ──
-  const claudeCodeService = ClaudeCodeInitializer.initialize(config);
+  const codingAgentService = CodingAgentInitializer.initialize(config);
 
   // ── Agent Cluster init (sync, no connections) ──
   let clusterManager: ClusterManager | null = null;
@@ -192,7 +192,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
         throw new Error('[Bootstrap] Agent Cluster requires SQLite — raw DB not available');
       }
       const projectRegistry =
-        container.resolve<InstanceType<typeof import('@/services/claudeCode/ProjectRegistry').ProjectRegistry>>(
+        container.resolve<InstanceType<typeof import('@/services/codingAgent/ProjectRegistry').ProjectRegistry>>(
           ProjectRegistry,
         );
       clusterManager = new ClusterManager(clusterConfig, rawDb, projectRegistry, ticketsDir);
@@ -353,7 +353,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
 
   return {
     bot,
-    claudeCodeService,
+    codingAgentService,
     clusterManager,
     conversationComponents,
     eventRouter,

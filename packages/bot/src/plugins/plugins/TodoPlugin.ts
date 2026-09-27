@@ -24,8 +24,8 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
-import type { ClaudeCodeService } from '@/services/claudeCode/ClaudeCodeService';
-import type { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
+import type { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 
@@ -54,10 +54,10 @@ export class TodoPlugin extends PluginBase {
     this.config = container.resolve<Config>(DITokens.CONFIG);
 
     try {
-      const claudeCodeService = container.resolve<ClaudeCodeService>(DITokens.CLAUDE_CODE_SERVICE);
-      this.registry = claudeCodeService.getProjectRegistry();
+      const codingAgentService = container.resolve<CodingAgentService>(DITokens.CODING_AGENT_SERVICE);
+      this.registry = codingAgentService.getProjectRegistry();
     } catch {
-      logger.warn('[TodoPlugin] ClaudeCodeService not available - project resolution disabled');
+      logger.warn('[TodoPlugin] CodingAgentService not available - project resolution disabled');
     }
   }
 

@@ -49,7 +49,7 @@ Commit message 格式：
 
 [optional body]
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+{{coAuthorTrailer}}
 ```
 
 ## Step 5: Wrap Up — 收尾

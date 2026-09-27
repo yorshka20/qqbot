@@ -6,7 +6,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'bun';
-import type { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import type { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 import { logger } from '@/utils/logger';
 
 /** Default ProjectRegistry alias for the centralized tickets repo */

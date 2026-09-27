@@ -6,7 +6,7 @@
  */
 
 import type { Database } from 'bun:sqlite';
-import type { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import type { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 import { logger } from '@/utils/logger';
 import { ClaudeCliBackend } from './backends/ClaudeCliBackend';
 import { CodexCliBackend } from './backends/CodexCliBackend';

@@ -2,7 +2,7 @@
  * Tickets storage configuration.
  *
  * Tickets are cross-repo work units: each ticket has a `project` frontmatter
- * field that points at a ClaudeCode project alias, and the cluster resolves
+ * field that points at a registered project alias, and the cluster resolves
  * that alias to the real repo path at dispatch time. Storing tickets inside
  * the qqbot repo forces every project's work items to be committed into
  * qqbot's git history, which is awkward when the ticket targets a different

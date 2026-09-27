@@ -1106,22 +1106,35 @@
     "defaultVectorSize": 2560,
     "defaultDistance": "Cosine"
   },
-  // Claude Code Service configuration (optional)
-  // Enables integration with Claude Code CLI for AI-powered task execution
-  // The service exposes an HTTP API that Claude Code can call to:
+  // Coding agent service (optional) — `/claude` and `/codex` development tasks.
+  // Both commands share the same task prompt, project registry and per-project
+  // queue; they differ only in which CLI executes the task. The service
+  // exposes an MCP endpoint the spawned CLI calls to:
   // - Notify the bot of task status
   // - Send messages via the bot
   // - Get bot status information
-  "claudeCodeService": {
+  "codingAgent": {
     "enabled": false,
     "port": 9090,
     "host": "127.0.0.1",
-    // Claude Code CLI path (default: 'claude')
-    "claudeCliPath": "claude",
-    // Model passed to the CLI's --model flag (default: 'claude-opus-5').
-    // Accepts an alias ('opus') or a full model id ('claude-opus-5').
-    "model": "claude-opus-5",
-    // Working directory for Claude Code tasks
+    // Executor for tasks that do not name one, e.g. agenda todo workers (default: 'claude')
+    "defaultExecutor": "claude",
+    "executors": {
+      "claude": {
+        // CLI path (default: 'claude')
+        "cliPath": "claude",
+        // Passed to --model (default: 'claude-opus-5'). Alias ('opus') or full id.
+        "model": "claude-opus-5"
+      },
+      "codex": {
+        // CLI path (default: 'codex'). Authenticates with the ChatGPT login
+        // from `codex login` only — API-key env vars are stripped at spawn.
+        "cliPath": "codex",
+        // Passed to --model (default: 'gpt-6-sol')
+        "model": "gpt-6-sol"
+      }
+    },
+    // Working directory for tasks that do not resolve to a registered project
     "workingDirectory": "./",
     // Max concurrent tasks (default: 1)
     "maxConcurrentTasks": 1,
@@ -1251,7 +1264,7 @@
     "maxUsageExamples": 5,
     "maxExampleLen": 80
   },
-  // Project registry — shared across ClaudeCode and Cluster workers.
+  // Project registry — shared across the coding agent service and Cluster workers.
   // Defines allowed project directories and pre-registered projects.
   "projectRegistry": {
     // Security whitelist: only allow projects under these directories

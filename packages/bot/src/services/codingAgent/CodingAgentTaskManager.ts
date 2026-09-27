@@ -1,40 +1,35 @@
 /**
- * Claude Task Manager
- *
- * Manages Claude Code CLI tasks triggered by the bot.
- * Handles task queue, execution, and result collection.
+ * Coding-agent task manager: task records, the per-project queue, prompt
+ * rendering and process lifecycle. Which CLI runs a task is the only thing
+ * delegated to its executor.
  */
 
-import { writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { type Subprocess, spawn } from 'bun';
+import { spawn } from 'bun';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { ClaudeCodeServiceConfig } from '@/core/config';
+import type { CodingAgentConfig } from '@/core/config';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
-import type { ClaudeTask, ClaudeTaskType, ProjectContext, TaskNotification } from './types';
+import type { AgentExecutor } from './executors';
+import type { AgentInvocation } from './executors/AgentExecutor';
+import type { AgentExecutorName, AgentTask, AgentTaskType, ProjectContext, TaskNotification } from './types';
 
-type TaskUpdateCallback = (task: ClaudeTask) => void;
+type TaskUpdateCallback = (task: AgentTask) => void;
 
-/**
- * Without `--model` the CLI falls back to whatever the local install last
- * used, so a bot task would silently run on a different model than the
- * operator expects. Pinned here and overridable via `claudeCodeService.model`.
- */
-const DEFAULT_CLAUDE_MODEL = 'claude-opus-5';
+/** `codex exec` writes its whole transcript to stderr, so only the tail says why it failed. */
+const MAX_ERROR_CHARS = 2000;
 
 export interface CreateTaskOptions {
-  taskType?: ClaudeTaskType;
+  executor: AgentExecutorName;
+  taskType?: AgentTaskType;
   projectContext?: ProjectContext;
   /** When true, the global handleTaskUpdate callback will skip sending result messages */
   suppressDefaultNotification?: boolean;
 }
 
-export class ClaudeToolManager {
-  private config: ClaudeCodeServiceConfig;
-  private tasks = new Map<string, ClaudeTask>();
-  private runningProcesses = new Map<string, Subprocess>();
+export class CodingAgentTaskManager {
+  private tasks = new Map<string, AgentTask>();
+  private runningProcesses = new Map<string, import('bun').Subprocess>();
+  private cancelledTasks = new Set<string>();
   private taskUpdateCallback: TaskUpdateCallback | null = null;
   private promptManager: PromptManager | null = null;
 
@@ -43,50 +38,29 @@ export class ClaudeToolManager {
   // Per-project running task: projectKey → currently running task ID
   private projectRunningTask = new Map<string, string>();
   // Per-task completion resolvers for awaitTaskCompletion()
-  private taskCompletionResolvers = new Map<string, (task: ClaudeTask) => void>();
+  private taskCompletionResolvers = new Map<string, (task: AgentTask) => void>();
 
-  constructor(config: ClaudeCodeServiceConfig) {
-    this.config = config;
-  }
+  constructor(
+    private readonly config: CodingAgentConfig,
+    private readonly executors: Record<AgentExecutorName, AgentExecutor>,
+    private readonly mcpUrl: string,
+  ) {}
 
   /**
    * Set PromptManager for template rendering
    */
   setPromptManager(promptManager: PromptManager): void {
     this.promptManager = promptManager;
-    logger.info('[ClaudeToolManager] PromptManager set');
-  }
-
-  /**
-   * Write the `--mcp-config` file pointing the task's CLI at the bot's MCP
-   * endpoint. `X-Task-Id` is sent on every request the CLI's MCP client makes,
-   * which is how `bot_notify_task` knows which task is reporting without
-   * trusting the model to pass an ID.
-   */
-  private async writeMcpConfig(taskId: string): Promise<string> {
-    const host = this.config.host || '127.0.0.1';
-    const mcpConfig = {
-      mcpServers: {
-        qqbot: {
-          type: 'http',
-          url: `http://${host}:${this.config.port}/mcp`,
-          headers: { 'X-Task-Id': taskId },
-        },
-      },
-    };
-
-    const configPath = join(tmpdir(), `claude-code-mcp-${taskId}.json`);
-    await writeFile(configPath, JSON.stringify(mcpConfig, null, 2));
-    return configPath;
+    logger.info('[CodingAgentTaskManager] PromptManager set');
   }
 
   /**
    * Process prompt template with variables using PromptManager.
    * Dynamically selects template based on task type and project context.
    */
-  private processPromptTemplate(task: ClaudeTask): string {
+  private processPromptTemplate(task: AgentTask): string {
     if (!this.promptManager) {
-      logger.warn('[ClaudeToolManager] PromptManager not set, using raw prompt');
+      logger.warn('[CodingAgentTaskManager] PromptManager not set, using raw prompt');
       return task.prompt;
     }
 
@@ -97,26 +71,29 @@ export class ClaudeToolManager {
     if (ctx?.promptTemplateKey) {
       templateKey = ctx.promptTemplateKey;
     } else if (task.taskType === 'new-project') {
-      templateKey = 'claude-code.task.new-project';
+      templateKey = 'coding-agent.task.new-project';
     } else if (ctx) {
       // Has project context → try project-specific template, then generic
-      const projectSpecificKey = `claude-code.task.${ctx.alias}`;
+      const projectSpecificKey = `coding-agent.task.${ctx.alias}`;
       templateKey = this.promptManager.getTemplate(projectSpecificKey)
         ? projectSpecificKey
-        : 'claude-code.task.generic';
+        : 'coding-agent.task.generic';
     } else {
       // No project context → use default qqbot template
-      templateKey = 'claude-code.task';
+      templateKey = 'coding-agent.task';
     }
 
-    // Final fallback to existing claude-code.task if chosen template doesn't exist
+    // Final fallback to existing coding-agent.task if chosen template doesn't exist
     if (!this.promptManager.getTemplate(templateKey)) {
-      templateKey = 'claude-code.task';
+      templateKey = 'coding-agent.task';
     }
 
     const projectType = ctx?.type || 'generic';
+    const executor = this.executors[task.executor];
     const variables: Record<string, string> = {
       taskId: task.id,
+      agentName: executor.displayName,
+      coAuthorTrailer: executor.coAuthorTrailer,
       userPrompt: task.prompt,
       workingDirectory: task.workingDirectory || process.cwd(),
       targetType: task.requestedBy.type,
@@ -130,7 +107,7 @@ export class ClaudeToolManager {
     try {
       return this.promptManager.render(templateKey, variables);
     } catch (error) {
-      logger.warn('[ClaudeToolManager] Failed to render template, using raw prompt:', error);
+      logger.warn('[CodingAgentTaskManager] Failed to render template, using raw prompt:', error);
       return task.prompt;
     }
   }
@@ -143,36 +120,40 @@ export class ClaudeToolManager {
   }
 
   /**
-   * Create a new Claude Code task
+   * Create a new coding-agent task
    */
   createTask(
     prompt: string,
-    requestedBy: ClaudeTask['requestedBy'],
-    workingDirectory?: string,
-    options?: CreateTaskOptions,
-  ): ClaudeTask {
-    const task: ClaudeTask = {
+    requestedBy: AgentTask['requestedBy'],
+    workingDirectory: string | undefined,
+    options: CreateTaskOptions,
+  ): AgentTask {
+    const task: AgentTask = {
       id: randomUUID(),
+      executor: options.executor,
       prompt,
       workingDirectory: workingDirectory || this.config.workingDirectory,
       createdAt: new Date(),
       status: 'pending',
       requestedBy,
-      taskType: options?.taskType || 'dev',
-      projectContext: options?.projectContext,
-      suppressDefaultNotification: options?.suppressDefaultNotification,
+      taskType: options.taskType || 'dev',
+      projectContext: options.projectContext,
+      suppressDefaultNotification: options.suppressDefaultNotification,
     };
 
     this.tasks.set(task.id, task);
-    logger.info(`[ClaudeToolManager] Task created: ${task.id} (type: ${task.taskType})`);
+    logger.info(
+      `[CodingAgentTaskManager] Task created: ${task.id} (executor: ${task.executor}, type: ${task.taskType})`,
+    );
     return task;
   }
 
   /**
    * Get project key from a task's working directory.
-   * Tasks with the same project key are serialized.
+   * Tasks with the same project key are serialized, whichever executor runs
+   * them, because they would otherwise edit the same working tree at once.
    */
-  private getProjectKey(task: ClaudeTask): string {
+  private getProjectKey(task: AgentTask): string {
     return task.workingDirectory || this.config.workingDirectory || process.cwd();
   }
 
@@ -225,7 +206,7 @@ export class ClaudeToolManager {
     if (!this.projectRunningTask.has(projectKey)) {
       this.projectRunningTask.set(projectKey, taskId);
       this.executeTask(taskId).catch((error) => {
-        logger.error(`[ClaudeToolManager] Task execution error:`, error);
+        logger.error(`[CodingAgentTaskManager] Task execution error:`, error);
       });
       return { started: true, queuePosition: 0 };
     }
@@ -238,7 +219,7 @@ export class ClaudeToolManager {
     }
     queue.push(taskId);
     const position = queue.length;
-    logger.info(`[ClaudeToolManager] Task ${taskId} queued for project ${projectKey} (position: ${position})`);
+    logger.info(`[CodingAgentTaskManager] Task ${taskId} queued for project ${projectKey} (position: ${position})`);
     return { started: false, queuePosition: position };
   }
 
@@ -265,15 +246,15 @@ export class ClaudeToolManager {
       return;
     }
 
-    logger.info(`[ClaudeToolManager] Starting next queued task ${nextTaskId} for project ${projectKey}`);
+    logger.info(`[CodingAgentTaskManager] Starting next queued task ${nextTaskId} for project ${projectKey}`);
     this.projectRunningTask.set(projectKey, nextTaskId);
     this.executeTask(nextTaskId).catch((error) => {
-      logger.error(`[ClaudeToolManager] Queued task execution error:`, error);
+      logger.error(`[CodingAgentTaskManager] Queued task execution error:`, error);
     });
   }
 
   /**
-   * Execute a Claude Code task.
+   * Execute a task with its executor.
    * Called internally by enqueueTask — do not call directly.
    */
   async executeTask(taskId: string): Promise<void> {
@@ -282,128 +263,75 @@ export class ClaudeToolManager {
       throw new Error(`Task ${taskId} not found`);
     }
 
-    const cliPath = this.config.claudeCliPath || 'claude';
-    const workDir = task.workingDirectory || process.cwd();
-
-    // Process prompt template with variables
-    const processedPrompt = this.processPromptTemplate(task);
-
-    const mcpConfigPath = await this.writeMcpConfig(taskId);
-
-    // Build Claude Code command
-    // Using --print flag to output result and exit
-    // Using --dangerously-skip-permissions to bypass permission prompts (bot can't interact)
-    //
-    // `--mcp-config=<path>` MUST use the single-arg `=` form: Claude CLI treats
-    // `--mcp-config` as a multi-value option that greedily slurps following
-    // positionals, so the two-arg form would swallow processedPrompt as a
-    // second config path and fail with "MCP config file not found: <prompt>".
-    const args = [
-      '--print', // Non-interactive mode, print result
-      '--dangerously-skip-permissions', // Skip permission prompts
-      `--mcp-config=${mcpConfigPath}`,
-      '--model',
-      this.config.model || DEFAULT_CLAUDE_MODEL,
-      '--output-format',
-      'text',
-      processedPrompt,
-    ];
-
-    logger.info(`[ClaudeToolManager] Executing task ${taskId}: ${cliPath} ${args.join(' ')}`);
-
+    const workingDirectory = task.workingDirectory || process.cwd();
     task.status = 'running';
     this.notifyTaskUpdate(task);
 
+    let invocation: AgentInvocation | undefined;
     try {
+      invocation = await this.executors[task.executor].buildInvocation({
+        task,
+        prompt: this.processPromptTemplate(task),
+        workingDirectory,
+        mcpUrl: this.mcpUrl,
+      });
+      logger.info(`[CodingAgentTaskManager] Executing task ${taskId} with ${task.executor}: ${invocation.cmd[0]}`);
+
       const proc = spawn({
-        cmd: [cliPath, ...args],
-        cwd: workDir,
-        env: {
-          ...process.env,
-          CLAUDE_TASK_ID: taskId,
-          CLAUDE_MCP_SERVER_URL: `http://${this.config.host || '127.0.0.1'}:${this.config.port}`,
-        },
+        cmd: invocation.cmd,
+        cwd: workingDirectory,
+        env: invocation.env,
+        stdin: invocation.stdin === undefined ? 'ignore' : new Blob([invocation.stdin]),
         stdout: 'pipe',
         stderr: 'pipe',
       });
 
       this.runningProcesses.set(taskId, proc);
 
-      // Collect output
-      const stdoutChunks: string[] = [];
-      const stderrChunks: string[] = [];
-
-      // Read stdout
-      if (proc.stdout) {
-        const reader = proc.stdout.getReader();
-        const decoder = new TextDecoder();
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            stdoutChunks.push(decoder.decode(value, { stream: true }));
-          }
-        } catch {
-          // Stream closed
-        }
-      }
-
-      // Read stderr
-      if (proc.stderr) {
-        const reader = proc.stderr.getReader();
-        const decoder = new TextDecoder();
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            stderrChunks.push(decoder.decode(value, { stream: true }));
-          }
-        } catch {
-          // Stream closed
-        }
-      }
-
-      const exitCode = await proc.exited;
+      // Both pipes are drained at once: a CLI that fills the stderr pipe
+      // buffer while stdout is still open blocks forever otherwise.
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
       this.runningProcesses.delete(taskId);
 
-      const stdout = stdoutChunks.join('');
-      const stderr = stderrChunks.join('');
-
-      if (exitCode === 0) {
+      if (this.cancelledTasks.delete(taskId)) {
+        task.status = 'failed';
+        task.error = 'Task cancelled';
+        logger.info(`[CodingAgentTaskManager] Running task ${taskId} cancelled`);
+      } else if (exitCode === 0) {
         task.status = 'completed';
         task.result = stdout || 'Task completed successfully';
-        logger.info(`[ClaudeToolManager] Task ${taskId} completed`);
+        logger.info(`[CodingAgentTaskManager] Task ${taskId} completed`);
       } else {
         task.status = 'failed';
-        task.error = stderr || `Process exited with code ${exitCode}`;
-        logger.error(`[ClaudeToolManager] Task ${taskId} failed: ${task.error}`);
+        task.error = stderr.trim().slice(-MAX_ERROR_CHARS) || `Process exited with code ${exitCode}`;
+        logger.error(`[CodingAgentTaskManager] Task ${taskId} failed: ${task.error}`);
       }
-
-      this.notifyTaskUpdate(task);
-
-      // Process next queued task for this project
-      const projectKey = this.getProjectKey(task);
-      this.processNextInQueue(projectKey);
     } catch (error) {
       this.runningProcesses.delete(taskId);
       task.status = 'failed';
       task.error = error instanceof Error ? error.message : String(error);
-      logger.error(`[ClaudeToolManager] Task ${taskId} error:`, error);
-      this.notifyTaskUpdate(task);
-
-      // Process next queued task for this project even on error
-      const projectKey = this.getProjectKey(task);
-      this.processNextInQueue(projectKey);
+      logger.error(`[CodingAgentTaskManager] Task ${taskId} error:`, error);
+    } finally {
+      await invocation?.cleanup().catch((error) => {
+        logger.warn(`[CodingAgentTaskManager] Cleanup for task ${taskId} failed:`, error);
+      });
     }
+
+    this.notifyTaskUpdate(task);
+    this.processNextInQueue(this.getProjectKey(task));
   }
 
   /**
-   * Handle task notification from Claude Code
+   * Handle task notification from the agent CLI
    */
   handleTaskNotification(notification: TaskNotification): void {
     const task = this.tasks.get(notification.taskId);
     if (!task) {
-      logger.warn(`[ClaudeToolManager] Received notification for unknown task: ${notification.taskId}`);
+      logger.warn(`[CodingAgentTaskManager] Received notification for unknown task: ${notification.taskId}`);
       return;
     }
 
@@ -416,7 +344,7 @@ export class ClaudeToolManager {
       case 'progress':
         // Keep running status, just log progress
         logger.debug(
-          `[ClaudeToolManager] Task ${task.id} progress: ${notification.progress}% - ${notification.message}`,
+          `[CodingAgentTaskManager] Task ${task.id} progress: ${notification.progress}% - ${notification.message}`,
         );
         this.notifyTaskUpdate(task);
         break;
@@ -437,14 +365,14 @@ export class ClaudeToolManager {
   /**
    * Get task by ID
    */
-  getTask(taskId: string): ClaudeTask | undefined {
+  getTask(taskId: string): AgentTask | undefined {
     return this.tasks.get(taskId);
   }
 
   /**
    * Get all tasks
    */
-  getAllTasks(): ClaudeTask[] {
+  getAllTasks(): AgentTask[] {
     return Array.from(this.tasks.values());
   }
 
@@ -457,20 +385,12 @@ export class ClaudeToolManager {
 
     const projectKey = this.getProjectKey(task);
 
-    // Check if it's a running task
+    // A running task is finalized by executeTask once its process exits, so
+    // the notification and queue advance happen exactly once.
     const proc = this.runningProcesses.get(taskId);
     if (proc) {
+      this.cancelledTasks.add(taskId);
       proc.kill();
-      this.runningProcesses.delete(taskId);
-
-      task.status = 'failed';
-      task.error = 'Task cancelled';
-      this.notifyTaskUpdate(task);
-
-      // Process next queued task for this project
-      this.processNextInQueue(projectKey);
-
-      logger.info(`[ClaudeToolManager] Running task ${taskId} cancelled`);
       return true;
     }
 
@@ -488,7 +408,7 @@ export class ClaudeToolManager {
         task.error = 'Task cancelled';
         this.notifyTaskUpdate(task);
 
-        logger.info(`[ClaudeToolManager] Queued task ${taskId} cancelled`);
+        logger.info(`[CodingAgentTaskManager] Queued task ${taskId} cancelled`);
         return true;
       }
     }
@@ -512,17 +432,17 @@ export class ClaudeToolManager {
    * Await a task's completion. Returns a promise that resolves when the task
    * transitions to 'completed' or 'failed' status.
    */
-  awaitTaskCompletion(taskId: string): Promise<ClaudeTask> {
+  awaitTaskCompletion(taskId: string): Promise<AgentTask> {
     const task = this.tasks.get(taskId);
     if (task && (task.status === 'completed' || task.status === 'failed')) {
       return Promise.resolve(task);
     }
-    return new Promise<ClaudeTask>((resolve) => {
+    return new Promise<AgentTask>((resolve) => {
       this.taskCompletionResolvers.set(taskId, resolve);
     });
   }
 
-  private notifyTaskUpdate(task: ClaudeTask): void {
+  private notifyTaskUpdate(task: AgentTask): void {
     if (this.taskUpdateCallback) {
       this.taskUpdateCallback(task);
     }

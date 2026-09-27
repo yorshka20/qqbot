@@ -9,7 +9,7 @@
 import { inject, injectable } from 'tsyringe';
 import { CLUSTER_TICKETS_REGISTRY_ALIAS, runClusterTicketsSyncWithRegistry } from '@/cluster/clusterTicketsGitSync';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { ProjectRegistry } from '@/services/claudeCode/ProjectRegistry';
+import { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

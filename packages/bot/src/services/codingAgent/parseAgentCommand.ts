@@ -1,20 +1,19 @@
 /**
- * Command parser for extended Claude Code commands.
- *
- * Supports:
- * - claude <prompt>                    → default project task
- * - claude @<alias> <prompt>           → task on specific project
- * - claude @/path/to/project <prompt>  → task on path-based project
- * - claude new <path> [--type X] <prompt> → create new project
- * - claude projects                    → list projects
- * - claude projects add <alias> <path> → register project
- * - claude projects remove <alias>     → unregister project
- * - claude status [taskId]             → task status
- * - claude cancel <taskId>             → cancel task
- * - claude info                        → service info
+ * Parser for the coding-agent commands. The grammar is the same for every
+ * executor command (`claude`, `codex`):
+ * - <cmd> <prompt>                    → default project task
+ * - <cmd> @<alias> <prompt>           → task on specific project
+ * - <cmd> @/path/to/project <prompt>  → task on path-based project
+ * - <cmd> new <path> [--type X] <prompt> → create new project
+ * - <cmd> projects                    → list projects
+ * - <cmd> projects add <alias> <path> → register project
+ * - <cmd> projects remove <alias>     → unregister project
+ * - <cmd> status [taskId]             → task status
+ * - <cmd> cancel <taskId>             → cancel task
+ * - <cmd> info                        → service info
  */
 
-export interface ParsedClaudeCommand {
+export interface ParsedAgentCommand {
   type: 'task' | 'new-project' | 'project-management' | 'status' | 'cancel' | 'info';
   /** @alias or @path resolved project identifier */
   projectIdentifier?: string;
@@ -29,11 +28,11 @@ export interface ParsedClaudeCommand {
 }
 
 /**
- * Parse a claude command string (args after the "claude" prefix).
+ * Parse an agent command's arguments.
  *
- * @param args - Array of command arguments (already split, without the "claude" prefix)
+ * @param args - Array of command arguments (already split, without the command name)
  */
-export function parseClaudeCommand(args: string[]): ParsedClaudeCommand {
+export function parseAgentCommand(args: string[]): ParsedAgentCommand {
   if (args.length === 0) {
     return { type: 'task', prompt: '' };
   }
@@ -79,7 +78,7 @@ export function parseClaudeCommand(args: string[]): ParsedClaudeCommand {
 /**
  * Parse "new <path> [--type X] <prompt>"
  */
-function parseNewProjectCommand(args: string[]): ParsedClaudeCommand {
+function parseNewProjectCommand(args: string[]): ParsedAgentCommand {
   if (args.length === 0) {
     return { type: 'new-project', prompt: '' };
   }
