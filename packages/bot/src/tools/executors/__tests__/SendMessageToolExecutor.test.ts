@@ -62,6 +62,16 @@ describe('send_message QQ faces', () => {
     expect(metadata.get('sendMessageCount')).toBe(1);
   });
 
+  it('accepts a fullwidth colon and persists the canonical marker', async () => {
+    const { executor, context, call, sent, history } = setup();
+
+    const result = await executor.execute(call('确实[表情：笑哭]'), context);
+
+    expect(result.success).toBe(true);
+    expect(sent).toEqual([[{ type: 'text', data: { text: '确实' } }, { type: 'face', data: { id: '182' } }]]);
+    expect(history).toEqual(['确实[表情:笑哭]']);
+  });
+
   it('drops unknown markers from delivery and history', async () => {
     const { executor, context, call, sent, history } = setup();
 

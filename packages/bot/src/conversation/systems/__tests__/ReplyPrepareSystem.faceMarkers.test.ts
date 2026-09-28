@@ -58,6 +58,16 @@ describe('ReplyPrepareSystem face markers', () => {
     ]);
   });
 
+  it('expands a marker with a fullwidth colon', async () => {
+    const ctx = makeContext([{ type: 'text', data: { text: '确实[表情：笑哭]' } }]);
+    await system.execute(ctx);
+    expect(ctx.reply?.segments).toEqual([
+      { type: 'text', data: { text: '确实' } },
+      { type: 'face', data: { id: '182' } },
+    ]);
+    expect(getReply(ctx)).toBe('确实[表情:笑哭]');
+  });
+
   it('keeps the face in the text that gets persisted as history', async () => {
     const ctx = makeContext([{ type: 'text', data: { text: '确实[表情:笑哭]' } }]);
     await system.execute(ctx);

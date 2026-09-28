@@ -628,9 +628,9 @@ delivery actions with non-overlapping semantics:
   after the card instead of being dropped.
 - **`send_message`** — immediate pre-notice before slow tool calls, capped per
   run (`agenda.llmLimits.maxSendsPerRun`, shared across provider-fallback
-  retries because the sends are real). It expands `[表情:名字]` with the same QQ
-  face parser as the main reply path, sends face segments, and persists the
-  delivered content in canonical text form via
+  retries because the sends are real). It expands `[表情:名字]` and
+  `[表情：名字]` with the same QQ face parser as the main reply path, sends face
+  segments, and persists the delivered content in canonical text form via
   `ConversationHistoryService.appendBotMessageToSession`.
 - **`send_card`** — renders a card image and queues it on the context
   (`cardSent`); history stores the deck as readable text (`cardDeckToHistoryText`),

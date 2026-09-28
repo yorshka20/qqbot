@@ -90,6 +90,10 @@ describe('expandFaceMarkers', () => {
     ]);
   });
 
+  it('accepts a fullwidth colon in a marker', () => {
+    expect(expandFaceMarkers('[表情：笑哭]').segments).toEqual([{ type: 'face', data: { id: '182' } }]);
+  });
+
   it('keeps adjacent markers as separate face segments', () => {
     const { segments } = expandFaceMarkers('[表情:笑哭][表情:头秃]');
     expect(segments).toEqual([
@@ -119,6 +123,7 @@ describe('expandFaceMarkers', () => {
 describe('stripFaceMarkers', () => {
   it('removes markers bound for a surface that cannot render them', () => {
     expect(stripFaceMarkers('# 标题[表情:笑哭]\n正文')).toBe('# 标题\n正文');
+    expect(stripFaceMarkers('# 标题[表情：笑哭]\n正文')).toBe('# 标题\n正文');
   });
 });
 

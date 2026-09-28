@@ -44,7 +44,7 @@ const idByEmojiChar = new Map<string, string>(EMOJI.map(([id, char]) => [char, i
 const charByEmojiId = new Map<string, string>(EMOJI.map(([id, char]) => [id, char]));
 
 /** Canonical text form of a face, e.g. `[表情:头秃]`. Unknown ids degrade to `[表情:#489]`. */
-const FACE_MARKER = /\[表情:([^\]\n]{1,12})\]/g;
+const FACE_MARKER = /\[表情[:：]([^\]\n]{1,12})\]/g;
 
 const UNKNOWN_ID_PREFIX = '#';
 
