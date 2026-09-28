@@ -1,9 +1,11 @@
 import { inject, injectable } from 'tsyringe';
+import { extractTextFromSegments } from '@/ai/utils/imageUtils';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
+import { expandFaceMarkers } from '@/message/qqFace';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -63,15 +65,24 @@ export class SendMessageToolExecutor extends BaseToolExecutor {
       );
     }
 
+    const { segments, unresolved } = expandFaceMarkers(content);
+    if (unresolved.length > 0) {
+      logger.warn(`[SendMessageToolExecutor] Dropped unknown face marker(s): ${unresolved.join(', ')}`);
+    }
+    const sentContent = extractTextFromSegments(segments);
+    if (!sentContent) {
+      return this.error('消息内容没有可发送的文本或表情', 'empty content after face expansion');
+    }
+
     try {
       // Target comes from the conversation context, never from LLM parameters —
       // this tool must not be able to send into arbitrary chats.
-      const sendResult = await this.messageAPI.sendFromContext(content, hookContext.message);
+      const sendResult = await this.messageAPI.sendFromContext(segments, hookContext.message);
       hookContext.metadata.set('sendMessageCount', sent + 1);
-      await this.persistSentMessage(hookContext, content, sendResult.message_seq);
+      await this.persistSentMessage(hookContext, sentContent, sendResult.message_seq);
       return this.success(
         `已发送（这是你本次回复中通过 send_message 发出的第 ${sent + 1} 条，上限 ${maxSends} 条；该额度只计 send_message，卡片与最终文本回复不占用）`,
-        { content },
+        { content: sentContent },
       );
     } catch (err) {
       logger.error('[SendMessageToolExecutor] send failed:', err);
