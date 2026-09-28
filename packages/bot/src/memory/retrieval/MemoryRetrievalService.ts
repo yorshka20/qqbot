@@ -1,10 +1,11 @@
 // The read side of memory: what a reply carries, a whole slot, and search across a group.
 //
-// A group reply carries every manual fact of the group and the speaker (they win any conflict), their
-// automatic facts in the always-include scopes, and the automatic facts a vector search finds
-// relevant to the message. Searched facts are reranked (scoring.ts) and must clear
-// `memory.filter.minRelevanceScore`; each one that makes it into a reply counts a hit. A private
-// reply carries the person's own memory from every group, and no group's memory.
+// A group reply carries the group's and the speaker's facts in the always-include scopes, and the
+// other facts a vector search finds relevant to the message. Manual and automatic facts are
+// selected the same way; a manual fact ranks as fully confirmed, and the reply lists the manual
+// ones first as winning any conflict. Searched facts are reranked (scoring.ts) and must clear
+// `memory.filter.minRelevanceScore`; each automatic one that makes it into a reply counts a hit.
+// A private reply carries the person's own memory from every group, and no group's memory.
 
 import { inject, singleton } from 'tsyringe';
 import type { Config } from '@/core/config';
@@ -14,11 +15,11 @@ import type { MemoryFact } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 import { GROUP_MEMORY_USER_ID } from '../model/constants';
 import { coreScopeOf } from '../model/scopes';
-import { ManualMemoryStore } from '../storage/ManualMemoryStore';
+import { type ManualMemoryFact, ManualMemoryStore } from '../storage/ManualMemoryStore';
 import { MemoryFactStore } from '../storage/MemoryFactStore';
 import { MemoryIndex, type MemorySearchOwners } from '../storage/MemoryIndex';
 import { renderByScope, renderSlot } from './renderSlot';
-import { DEFAULT_SCORING, scoreFact } from './scoring';
+import { DEFAULT_SCORING, scoreFact, scoreManualFact } from './scoring';
 
 const DEFAULT_FILTER: Required<MemoryFilterConfig> = {
   alwaysIncludeScopes: ['instruction', 'rule'],
@@ -35,6 +36,15 @@ export interface MemorySearchResult {
   text: string;
   count: number;
 }
+
+interface Candidates {
+  auto: MemoryFact[];
+  manual: ManualMemoryFact[];
+}
+
+type FoundFact = { source: 'auto'; fact: MemoryFact } | { source: 'manual'; fact: ManualMemoryFact };
+
+type RankedFact = FoundFact & { score: number };
 
 @singleton()
 export class MemoryRetrievalService {
@@ -61,20 +71,24 @@ export class MemoryRetrievalService {
   }
 
   /**
-   * Memory for one group reply: every manual fact of the group and the speaker, their automatic
-   * facts in the always-include scopes, and the other automatic facts relevant to `query`.
+   * Memory for one group reply: the group's and the speaker's facts in the always-include
+   * scopes, and their other facts relevant to `query`.
    */
   async getMemoryForReply(groupId: string, userId: string | undefined, query: string): Promise<ReplyMemory> {
     const groupAuto = await this.store.listSlot(groupId, GROUP_MEMORY_USER_ID, 'active');
     const userAuto = userId ? await this.store.listSlot(groupId, userId, 'active') : [];
+    const groupManual = this.manualStore.getFacts(groupId, GROUP_MEMORY_USER_ID);
+    const userManual = userId ? this.manualStore.getFacts(groupId, userId) : [];
     const owners: MemorySearchOwners = userId ? { userId, includeGroup: true } : 'group';
-    const searched = await this.searchRelevant([groupId], owners, query, [...groupAuto, ...userAuto]);
-    const pick = (slotFacts: MemoryFact[]) =>
-      slotFacts.filter((fact) => this.isAlwaysIncluded(fact) || searched.has(fact.id));
+    const searched = await this.searchRelevant([groupId], owners, query, {
+      auto: [...groupAuto, ...userAuto],
+      manual: [...groupManual, ...userManual],
+    });
+    const pick = <T extends MemoryFact | ManualMemoryFact>(facts: T[]) => this.pick(facts, searched);
 
     return {
-      groupMemoryText: renderSlot(this.manualStore.getFacts(groupId, GROUP_MEMORY_USER_ID), pick(groupAuto)),
-      userMemoryText: userId ? renderSlot(this.manualStore.getFacts(groupId, userId), pick(userAuto)) : '',
+      groupMemoryText: renderSlot(pick(groupManual), pick(groupAuto)),
+      userMemoryText: userId ? renderSlot(pick(userManual), pick(userAuto)) : '',
     };
   }
 
@@ -85,48 +99,49 @@ export class MemoryRetrievalService {
    */
   async getMemoryForPrivateReply(userId: string, query: string): Promise<string> {
     const auto = await this.store.listUserFacts(userId, 'active');
-    const groupIds = [...new Set(auto.map((fact) => fact.groupId))];
-    const searched = await this.searchRelevant(groupIds, { userId, includeGroup: false }, query, auto);
     const manual = this.manualStore
       .listSlots()
       .filter((slot) => slot.userId === userId)
       .flatMap((slot) => this.manualStore.getFacts(slot.groupId, userId));
-    return renderSlot(
-      uniqueByContent(manual),
-      uniqueByContent(auto.filter((fact) => this.isAlwaysIncluded(fact) || searched.has(fact.id))),
-    );
+    const groupIds = [...new Set([...auto, ...manual].map((fact) => fact.groupId))];
+    const searched = await this.searchRelevant(groupIds, { userId, includeGroup: false }, query, { auto, manual });
+    return renderSlot(uniqueByContent(this.pick(manual, searched)), uniqueByContent(this.pick(auto, searched)));
   }
 
-  private isAlwaysIncluded(fact: MemoryFact): boolean {
+  private pick<T extends MemoryFact | ManualMemoryFact>(facts: T[], searched: Set<string>): T[] {
+    return facts.filter((fact) => this.isAlwaysIncluded(fact.scope) || searched.has(fact.id));
+  }
+
+  private isAlwaysIncluded(scope: string): boolean {
     return (
-      this.filter.alwaysIncludeScopes.includes(fact.scope) ||
-      this.filter.alwaysIncludeScopes.includes(coreScopeOf(fact.scope))
+      this.filter.alwaysIncludeScopes.includes(scope) || this.filter.alwaysIncludeScopes.includes(coreScopeOf(scope))
     );
   }
 
   /**
    * Ids of the non-always-include facts relevant to `query`, searched in each group and ranked
-   * together; each one counts a hit. Without a vector index every fact counts as relevant, so
-   * the reply carries every candidate.
+   * together; each automatic one counts a hit. Without a vector index every fact counts as
+   * relevant, so the reply carries every candidate.
    */
   private async searchRelevant(
     groupIds: string[],
     owners: MemorySearchOwners,
     query: string,
-    candidates: MemoryFact[],
+    candidates: Candidates,
   ): Promise<Set<string>> {
+    const all = [...candidates.auto, ...candidates.manual];
     if (!this.index.isEnabled()) {
-      return new Set(candidates.map((fact) => fact.id));
+      return new Set(all.map((fact) => fact.id));
     }
-    if (!query.trim() || candidates.length === 0) {
+    if (!query.trim() || all.length === 0) {
       return new Set();
     }
     const ranked = await this.rank(groupIds, query, owners, this.filter.count, this.coreAlwaysScopes(), candidates);
-    const ids = ranked.map((r) => r.fact.id);
-    this.store.recordHits(ids, Date.now()).catch((err) => {
+    const autoIds = ranked.flatMap((r) => (r.source === 'auto' ? [r.fact.id] : []));
+    this.store.recordHits(autoIds, Date.now()).catch((err) => {
       logger.warn('[MemoryRetrievalService] hit count write failed:', err);
     });
-    return new Set(ids);
+    return new Set(ranked.map((r) => r.fact.id));
   }
 
   private coreAlwaysScopes(): string[] {
@@ -139,9 +154,10 @@ export class MemoryRetrievalService {
     owners: MemorySearchOwners,
     count: number,
     excludeCoreScopes: string[],
-    candidates: MemoryFact[],
-  ): Promise<Array<{ fact: MemoryFact; score: number }>> {
-    const byId = new Map(candidates.map((fact) => [fact.id, fact]));
+    candidates: Candidates,
+  ): Promise<RankedFact[]> {
+    const auto = new Map(candidates.auto.map((fact) => [fact.id, fact]));
+    const manual = new Map(candidates.manual.map((fact) => [fact.id, fact]));
     const options = {
       owners,
       excludeCoreScopes,
@@ -151,9 +167,15 @@ export class MemoryRetrievalService {
     const hits = (await Promise.all(groupIds.map((groupId) => this.index.search(groupId, query, options)))).flat();
     const now = Date.now();
     return hits
-      .flatMap((hit) => {
-        const fact = byId.get(hit.id);
-        return fact ? [{ fact, score: scoreFact(hit.score, fact, this.scoring, now) }] : [];
+      .flatMap((hit): RankedFact[] => {
+        const autoFact = auto.get(hit.id);
+        if (autoFact) {
+          return [{ source: 'auto', fact: autoFact, score: scoreFact(hit.score, autoFact, this.scoring, now) }];
+        }
+        const manualFact = manual.get(hit.id);
+        return manualFact
+          ? [{ source: 'manual', fact: manualFact, score: scoreManualFact(hit.score, this.scoring) }]
+          : [];
       })
       .filter((r) => r.score >= this.filter.minRelevanceScore)
       .sort((a, b) => b.score - a.score)
@@ -175,8 +197,8 @@ export class MemoryRetrievalService {
   }
 
   /**
-   * Facts about `query` across the group: automatic facts by vector search (or substring match
-   * without an index), manual facts by substring match.
+   * Facts about `query` across the group, manual and automatic alike: by vector search, or by
+   * substring match without an index.
    */
   async searchMemory(
     groupId: string,
@@ -191,44 +213,39 @@ export class MemoryRetrievalService {
       slotUserId === GROUP_MEMORY_USER_ID
         ? options.includeGroupMemory
         : !options.userId || slotUserId === options.userId;
-    const active = (await this.store.listGroup(groupId, 'active')).filter((fact) => owns(fact.userId));
+    const candidates: Candidates = {
+      auto: (await this.store.listGroup(groupId, 'active')).filter((fact) => owns(fact.userId)),
+      manual: this.manualStore
+        .listSlots()
+        .filter((slot) => slot.groupId === groupId && owns(slot.userId))
+        .flatMap((slot) => this.manualStore.getFacts(groupId, slot.userId)),
+    };
 
-    let autoFacts: MemoryFact[];
+    let found: FoundFact[];
     if (this.index.isEnabled()) {
       const owners: MemorySearchOwners = options.userId
         ? { userId: options.userId, includeGroup: options.includeGroupMemory }
         : options.includeGroupMemory
           ? 'everyone'
           : 'members';
-      autoFacts = (await this.rank([groupId], query, owners, options.limit, [], active)).map((r) => r.fact);
+      found = await this.rank([groupId], query, owners, options.limit, [], candidates);
     } else {
-      autoFacts = active.filter((fact) => fact.content.toLowerCase().includes(needle)).slice(0, options.limit);
+      const matches = (fact: { content: string }) => fact.content.toLowerCase().includes(needle);
+      found = [
+        ...candidates.manual.filter(matches).map((fact): FoundFact => ({ source: 'manual', fact })),
+        ...candidates.auto.filter(matches).map((fact): FoundFact => ({ source: 'auto', fact })),
+      ].slice(0, options.limit);
     }
 
     const bySlot = new Map<string, Array<{ scope: string; content: string }>>();
-    const add = (slotUserId: string, fact: { scope: string; content: string }) => {
-      const list = bySlot.get(slotUserId);
+    for (const { source, fact } of found) {
+      const entry = { scope: fact.scope, content: source === 'manual' ? `${fact.content}（人工维护）` : fact.content };
+      const list = bySlot.get(fact.userId);
       if (list) {
-        list.push(fact);
+        list.push(entry);
       } else {
-        bySlot.set(slotUserId, [fact]);
+        bySlot.set(fact.userId, [entry]);
       }
-    };
-    let count = 0;
-    for (const slot of this.manualStore.listSlots()) {
-      if (slot.groupId !== groupId || !owns(slot.userId)) {
-        continue;
-      }
-      for (const fact of this.manualStore.getFacts(groupId, slot.userId)) {
-        if (fact.content.toLowerCase().includes(needle)) {
-          add(slot.userId, { scope: fact.scope, content: `${fact.content}（人工维护）` });
-          count++;
-        }
-      }
-    }
-    for (const fact of autoFacts) {
-      add(fact.userId, fact);
-      count++;
     }
     const text = [...bySlot.entries()]
       .map(([slotUserId, facts]) => {
@@ -236,7 +253,7 @@ export class MemoryRetrievalService {
         return `${label}:\n${renderByScope(facts)}`;
       })
       .join('\n\n');
-    return { text, count };
+    return { text, count: found.length };
   }
 }
 

@@ -31,3 +31,8 @@ export function scoreFact(
   );
   return similarity * recency * confirmation;
 }
+
+/** A manual line is confirmed by the person who wrote it: it never decays and carries the full confirmation weight. */
+export function scoreManualFact(similarity: number, scoring: Required<MemoryScoringConfig>): number {
+  return similarity * scoring.confirmBoostCap;
+}

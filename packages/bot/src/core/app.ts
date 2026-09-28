@@ -10,6 +10,7 @@ import type { Database } from 'bun:sqlite';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { AvatarIdleTrigger } from '@/integrations/avatar/services/AvatarIdleTrigger';
 import { initLanRelay } from '@/lan';
+import { MemoryIndexSync } from '@/memory/storage/MemoryIndexSync';
 import { PluginManager } from '@/plugins/PluginManager';
 import { CodingAgentInitializer } from '@/services/codingAgent';
 import { killAllMcpChildren } from '@/services/retrieval/searxng/mcp/childReaper';
@@ -122,6 +123,10 @@ async function connect(bootstrap: BootstrapResult, pluginManager: PluginManager)
   // Bring up search transports that need I/O (SearXNG MCP stdio child)
   await retrievalService.connectSearchTransports();
 
+  // Reconcile the memory index and follow manual memory edits from here on.
+  const memoryIndexSync = getContainer().resolve(MemoryIndexSync);
+  memoryIndexSync.start();
+
   // Start Claude Code service (non-fatal if port is in use)
   if (codingAgentService) {
     try {
@@ -154,6 +159,7 @@ async function connect(bootstrap: BootstrapResult, pluginManager: PluginManager)
 
   return async () => {
     avatarIdleTrigger.stop();
+    await memoryIndexSync.stop();
     if (bilibiliLiveBridge) {
       await bilibiliLiveBridge.stop();
     }

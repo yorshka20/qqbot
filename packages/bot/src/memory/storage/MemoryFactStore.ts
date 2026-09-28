@@ -1,8 +1,9 @@
 // Automatic memory facts: the `memory_facts` rows, and the only writer of them.
 //
 // The rows are the source of truth; every mutation here updates the vector index right after
-// the row. An index failure does not undo the row: it is logged, and `reindexGroup` (daily,
-// `/memory_sync`, `bun run memory reindex`) brings the index back to the rows.
+// the row. An index failure does not undo the row: it is logged, and
+// `MemoryIndexSync.reindexGroup` (startup, daily, `/memory_sync`, `bun run memory reindex`)
+// brings the index back to the rows.
 
 import { inject, singleton } from 'tsyringe';
 import { DatabaseManager } from '@/database/DatabaseManager';
@@ -65,15 +66,6 @@ export class MemoryFactStore {
     return [...new Set(facts.map((fact) => fact.groupId))].sort();
   }
 
-  isIndexed(): boolean {
-    return this.index.isEnabled();
-  }
-
-  /** Make the group's vector index hold exactly its active rows. */
-  async reindexGroup(groupId: string): Promise<{ upserted: number; removed: number }> {
-    return this.index.reconcile(groupId, await this.listGroup(groupId, 'active'));
-  }
-
   get(id: string): Promise<MemoryFact | null> {
     return this.model().findById(id);
   }
@@ -84,7 +76,7 @@ export class MemoryFactStore {
     for (const fact of facts) {
       created.push(await model.create({ ...fact, status: 'active', hitCount: 0 }));
     }
-    await this.syncIndex(() => this.index.upsert(created));
+    await this.syncIndex(() => this.index.upsert(created, 'auto'));
     return created;
   }
 
@@ -133,7 +125,7 @@ export class MemoryFactStore {
     }
     const updated = await model.update(id, patch);
     if (updated.status === 'active') {
-      await this.syncIndex(() => this.index.upsert([updated]));
+      await this.syncIndex(() => this.index.upsert([updated], 'auto'));
     }
     return updated;
   }

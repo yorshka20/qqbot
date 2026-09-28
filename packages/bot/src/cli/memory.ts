@@ -14,7 +14,8 @@
 //       Insert the plan's facts, rename each migrated auto.txt to auto.migrated.txt, export
 //       and drop the legacy memory_fact_meta table, then reindex the groups.
 //   reindex [--group a,b]
-//       Make every memory_* collection hold exactly the active facts (drops legacy points).
+//       Make every memory_* collection hold exactly the active facts and the manual lines
+//       (drops legacy points).
 //   review [--group a,b]
 //       Review the due facts now, as the daily job does.
 //   eval --group <id> [--user <id>] <query>
@@ -50,11 +51,12 @@ import { listManualFacts, scopeGuide } from '@/memory/llm/promptParts';
 import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';
 import { slotLabel } from '@/memory/model/scopes';
 import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';
-import { scoreFact } from '@/memory/retrieval/scoring';
+import { scoreFact, scoreManualFact } from '@/memory/retrieval/scoring';
 import { MemoryReviewService } from '@/memory/review/MemoryReviewService';
 import { ManualMemoryStore } from '@/memory/storage/ManualMemoryStore';
 import { MemoryFactStore } from '@/memory/storage/MemoryFactStore';
 import { MemoryIndex } from '@/memory/storage/MemoryIndex';
+import { MemoryIndexSync } from '@/memory/storage/MemoryIndexSync';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 
 const MEMORY_DIR = 'data/memory';
@@ -350,11 +352,12 @@ async function reindex(onlyGroups: string[]): Promise<void> {
     .map((c) => c.name)
     .filter((name) => name.startsWith('memory_'))
     .map((name) => name.slice('memory_'.length));
-  const groupIds = [...new Set([...(await store.listGroupIds()), ...fromCollections])]
+  const indexSync = container.resolve(MemoryIndexSync);
+  const groupIds = [...new Set([...(await indexSync.listGroupIds()), ...fromCollections])]
     .filter((groupId) => onlyGroups.length === 0 || onlyGroups.includes(groupId))
     .sort();
   for (const groupId of groupIds) {
-    const result = await store.reindexGroup(groupId);
+    const result = await indexSync.reindexGroup(groupId);
     console.log(`  ${MemoryIndex.collectionName(groupId)}: upserted ${result.upserted}, removed ${result.removed}`);
   }
 }
@@ -381,6 +384,13 @@ async function evaluate(): Promise<void> {
   const index = container.resolve(MemoryIndex);
   const active = await store.listGroup(groupId, 'active');
   const byId = new Map(active.map((fact) => [fact.id, fact]));
+  const manualById = new Map(
+    manualStore
+      .listSlots()
+      .filter((slot) => slot.groupId === groupId)
+      .flatMap((slot) => manualStore.getFacts(groupId, slot.userId))
+      .map((fact) => [fact.id, fact]),
+  );
   const hits = await index.search(groupId, query, {
     owners: userId ? { userId, includeGroup: true } : 'everyone',
     excludeCoreScopes: [],
@@ -392,13 +402,16 @@ async function evaluate(): Promise<void> {
   console.log(`query: ${query}\n  sim    final  owner          fact`);
   for (const hit of hits) {
     const fact = byId.get(hit.id);
-    if (!fact) {
-      console.log(`  ${hit.score.toFixed(3)}  (point ${hit.id} has no active fact)`);
+    const manualFact = manualById.get(hit.id);
+    const found = fact ?? manualFact;
+    if (!found) {
+      console.log(`  ${hit.score.toFixed(3)}  (point ${hit.id} has no active fact or manual line)`);
       continue;
     }
-    const final = scoreFact(hit.score, fact, scoring, now);
-    const owner = fact.userId === GROUP_MEMORY_USER_ID ? 'group' : fact.userId;
-    console.log(`  ${hit.score.toFixed(3)}  ${final.toFixed(3)}  ${owner.padEnd(13)}  [${fact.scope}] ${fact.content}`);
+    const final = fact ? scoreFact(hit.score, fact, scoring, now) : scoreManualFact(hit.score, scoring);
+    const owner = found.userId === GROUP_MEMORY_USER_ID ? 'group' : found.userId;
+    const label = manualFact ? `${found.content}（人工维护）` : found.content;
+    console.log(`  ${hit.score.toFixed(3)}  ${final.toFixed(3)}  ${owner.padEnd(13)}  [${found.scope}] ${label}`);
   }
 }
 

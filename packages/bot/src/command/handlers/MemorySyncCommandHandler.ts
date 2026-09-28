@@ -1,20 +1,20 @@
 import { inject, injectable } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
-import { MemoryFactStore } from '@/memory/storage/MemoryFactStore';
+import { MemoryIndexSync } from '@/memory/storage/MemoryIndexSync';
 import type { PermissionChecker } from '@/permission';
 import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 
 /**
- * Bring this group's memory vector index back to its stored facts: index the active facts
- * that are missing or changed, drop every other point.
+ * Bring this group's memory vector index back to its sources: index the active facts and the
+ * manual lines that are missing or changed, drop every other point.
  * Usage: /memory_sync
  */
 @Command({
   name: 'memory_sync',
-  description: '按数据库里的记忆重建本群的向量索引',
+  description: '按数据库里的记忆和人工记忆重建本群的向量索引',
   usage: '/memory_sync',
   permissions: ['owner'],
   aliases: ['同步记忆'],
@@ -22,11 +22,11 @@ import type { CommandContext, CommandHandler, CommandResult } from '../types';
 @injectable()
 export class MemorySyncCommand implements CommandHandler {
   name = 'memory_sync';
-  description = '按数据库里的记忆重建本群的向量索引';
+  description = '按数据库里的记忆和人工记忆重建本群的向量索引';
   usage = '/memory_sync';
 
   constructor(
-    @inject(MemoryFactStore) private factStore: MemoryFactStore,
+    @inject(MemoryIndexSync) private indexSync: MemoryIndexSync,
     @inject(MessageAPI) private messageAPI: MessageAPI,
     @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
   ) {}
@@ -38,12 +38,12 @@ export class MemorySyncCommand implements CommandHandler {
     if (!this.permissionChecker.isAdmin(context.userId.toString(), context.metadata.protocol)) {
       return { success: false, error: '仅限管理员使用。' };
     }
-    if (!this.factStore.isIndexed()) {
+    if (!this.indexSync.isEnabled()) {
       return { success: false, error: 'RAG 服务未启用，没有向量索引。' };
     }
 
     const groupId = context.groupId.toString();
-    this.factStore
+    this.indexSync
       .reindexGroup(groupId)
       .then(({ upserted, removed }) =>
         this.messageAPI.sendFromContext(`记忆索引已同步：写入 ${upserted} 条，移除 ${removed} 条。`, context, 10000),

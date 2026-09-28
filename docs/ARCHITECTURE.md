@@ -753,7 +753,7 @@ These three pieces are rendered into the final user message in this order: `<mem
 | Directory | Holds |
 |---|---|
 | `model/` | Scope rules and constants; no I/O |
-| `storage/` | `MemoryFactStore` (the `memory_facts` rows and the only writer of them), `MemoryIndex` (Qdrant), `ManualMemoryStore` and the manual.txt format |
+| `storage/` | `MemoryFactStore` (the `memory_facts` rows and the only writer of them), `MemoryIndex` (Qdrant), `ManualMemoryStore` and the manual.txt format, `MemoryIndexSync` (keeps the index equal to both sources) |
 | `llm/` | What memory's LLM jobs share: the JSON call and its timeout, validation of fact drafts from model output, prompt fragments |
 | `consolidation/` | Candidate facts → operations on a slot: `MemoryConsolidationService`, operation parsing |
 | `review/` | Due facts → keep / retire / merge: `MemoryReviewService`, due rules and decision parsing |
@@ -766,12 +766,14 @@ Long-term memory has two layers, each with one source of truth:
 
 | Layer | Source of truth | Written by | Reaches a reply |
 |---|---|---|---|
-| manual | `data/memory/{groupId}/{userId\|_global_}/manual.txt` (`ManualMemoryStore`) | people (webui or an editor); never an LLM | in full, every reply, ahead of automatic facts; wins any conflict |
+| manual | `data/memory/{groupId}/{userId\|_global_}/manual.txt` (`ManualMemoryStore`) | people (webui or an editor); never an LLM | like auto; ranks as fully confirmed, is listed ahead of automatic facts and wins any conflict |
 | auto | `memory_facts` rows (`MemoryFactStore`) | consolidation and review | always-include scopes in full, the rest by vector search |
+
+Manual and automatic memory differ only in priority. Both reach a reply the same way, and consolidation and review resolve a conflict between them in favour of the manual line, so an automatic fact that contradicts one does not survive to be retrieved without it.
 
 A manual file is `[scope]` headers followed by one fact per line. The unit is the line: splitting on punctuation cut names and versions such as `M.C.G.A.` or `Qwen3.5` into fragments.
 
-The Qdrant collection `memory_{groupId}` (`MemoryIndex`) is derived from the active `memory_facts` rows and never read as content. A point's id is its row's id (a UUID, which Qdrant keeps as is), so search hits and hit counts map straight back to rows. Manual memory is not indexed. Every write goes through `MemoryFactStore`, which updates the row and then the index; an index failure leaves the row in place and is repaired by `MemoryFactStore.reindexGroup` (daily, `/memory_sync`, `bun run memory reindex`).
+The Qdrant collection `memory_{groupId}` (`MemoryIndex`) is derived from the active `memory_facts` rows and the manual lines, and never read as content. An automatic point's id is its row's id (a UUID, which Qdrant keeps as is), so search hits and hit counts map straight back to rows; a manual point's id is a UUID v5 of its slot, scope and text, so an unchanged line keeps its point and an edited line is a new one. The payload's `source` (`auto` / `manual`) tells them apart. Every row write goes through `MemoryFactStore`, which updates the row and then the index; an index failure leaves the row in place. Manual files change outside the bot's write path, so `MemoryIndexSync` watches the memory directory (started in the connect phase of `startApp`) and reconciles a slot's manual points once its file settles; a webui save goes the same way. `MemoryIndexSync.reindexGroup` makes a collection hold exactly both sources, at startup, daily, on `/memory_sync` and in `bun run memory reindex`.
 
 ### Facts
 
@@ -779,17 +781,17 @@ A fact has a `scope` (`core_scope` or `core_scope:subtag`; group memory: topic /
 
 ### Writing: consolidation
 
-Extraction produces candidate facts per slot. `MemoryConsolidationService.consolidateSlot` shows the model the slot's active facts numbered, its manual facts read-only and the candidates, and applies the operations it answers with: `add`, `confirm` (a restatement: bumps `confirmCount`), `update` (one or more facts replaced by a corrected or merged one) and `delete` (contradicted). Operations are validated against the numbered facts and the slot's allowed scopes; nothing rewrites the slot wholesale.
+Extraction produces candidate facts per slot. `MemoryConsolidationService.consolidateSlot` shows the model the slot's active facts numbered, its manual facts read-only and the candidates, and applies the operations it answers with: `add`, `confirm` (a restatement: bumps `confirmCount`), `update` (one or more facts replaced by a corrected or merged one) and `delete` (contradicted). Operations are validated against the numbered facts and the slot's allowed scopes; nothing rewrites the slot wholesale. The manual facts win: a candidate that repeats or contradicts one is dropped, and an existing fact that contradicts one is corrected or deleted, as is one a manual line already covers, whether or not a candidate touched it.
 
 Every writer goes through it: the daily `memory` task of the `group_day` fan-out (yesterday's chat on the shared prefix, then consolidation on the memory plugin's own `extractProvider`), buffered `memory_note` notes, MemoryTrigger, `/memory_edit`, `/memory_deep`, avatar extraction and `bun run memory backfill`.
 
 ### Review
 
-Daily, `MemoryReviewService` looks for facts unconfirmed and unreviewed past their durability's threshold (`memory.review`: transient 30 days, stable 180). The model sees the slot with those facts marked and decides per fact: keep (long-lived), retire (it only held at the time) or merge with a fact saying the same thing. Retiring changes the status; the row stays. The same daily job reconciles each group's index.
+Daily, `MemoryReviewService` looks for facts unconfirmed and unreviewed past their durability's threshold (`memory.review`: transient 30 days, stable 180). The model sees the slot with those facts marked, and the slot's manual facts as the authority, and decides per fact: keep (long-lived), retire (it only held at the time, or a manual line contradicts or covers it) or merge with a fact saying the same thing. Retiring changes the status; the row stays. The same daily job reconciles each group's index.
 
 ### Reading
 
-`MemoryRetrievalService.getMemoryForReply(groupId, userId, message)` returns the group's and the speaker's slot text: every manual fact, the automatic facts in `memory.filter.alwaysIncludeScopes` (default instruction and rule), and the automatic facts a vector search finds relevant to the message. A searched fact's final score is similarity × recency (transient facts decay from their last confirmation, stable ones do not) × a capped confirmation weight (`memory.scoring`); it must clear `memory.filter.minRelevanceScore`. Without RAG every automatic fact is included. A private chat has no group, so `getMemoryForPrivateReply(userId, message)` reads the person's own memory from every group they have it in, selected the same way, with a fact kept in several groups appearing once; no group's own memory (rules, context) goes into a private chat. `get_memory` returns a whole slot; `search_memory` searches the group.
+`MemoryRetrievalService.getMemoryForReply(groupId, userId, message)` returns the group's and the speaker's slot text: the manual and automatic facts in `memory.filter.alwaysIncludeScopes` (default instruction and rule), and the manual and automatic facts a vector search finds relevant to the message, ranked together. A searched automatic fact's final score is similarity × recency (transient facts decay from their last confirmation, stable ones do not) × a capped confirmation weight (`memory.scoring`); a manual line never decays and takes the full cap. Either must clear `memory.filter.minRelevanceScore`. The manual facts that make it are rendered first, marked as winning any conflict. Without RAG every fact is included. A private chat has no group, so `getMemoryForPrivateReply(userId, message)` reads the person's own memory from every group they have it in, selected the same way, with a fact kept in several groups appearing once; no group's own memory (rules, context) goes into a private chat. `get_memory` returns a whole slot; `search_memory` searches the group's manual and automatic facts the same way.
 
 ### Offline maintenance
 

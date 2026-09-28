@@ -1,5 +1,5 @@
 // Search memory task executor - search stored memory facts across the group
-// (vector search over automatic facts, substring match over manual ones)
+// (manual and automatic facts alike: vector search, or substring match without an index)
 
 import { inject, injectable } from 'tsyringe';
 import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';

@@ -16,6 +16,7 @@ import { GroupDayMemoryTask } from '@/memory/extraction/GroupDayMemoryTask';
 import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
 import { MemoryReviewService } from '@/memory/review/MemoryReviewService';
 import { MemoryFactStore } from '@/memory/storage/MemoryFactStore';
+import { MemoryIndexSync } from '@/memory/storage/MemoryIndexSync';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { RegisterPlugin } from '../decorators';
@@ -151,17 +152,17 @@ export class MemoryPlugin extends PluginBase {
 
   /**
    * Daily maintenance, per group with memory: review the facts that are due (keep, retire or
-   * merge them), then bring the group's vector index back to its facts.
+   * merge them), then bring the group's vector index back to its facts and manual lines.
    */
   private async runDailyMaintenance(): Promise<void> {
     const container = getContainer();
-    const store = container.resolve(MemoryFactStore);
+    const indexSync = container.resolve(MemoryIndexSync);
     const review = container.resolve(MemoryReviewService);
     const options = { provider: this.extractProvider, model: this.extractModel };
     try {
-      for (const groupId of await store.listGroupIds()) {
+      for (const groupId of await indexSync.listGroupIds()) {
         const reviewed = await review.reviewGroup(groupId, options);
-        const indexed = store.isIndexed() ? await store.reindexGroup(groupId) : { upserted: 0, removed: 0 };
+        const indexed = indexSync.isEnabled() ? await indexSync.reindexGroup(groupId) : { upserted: 0, removed: 0 };
         logger.info(
           `[MemoryPlugin] Daily maintenance group=${groupId} | review due=${reviewed.due} kept=${reviewed.kept} ` +
             `retired=${reviewed.retired} merged=${reviewed.merged} | index upserted=${indexed.upserted} removed=${indexed.removed}`,
