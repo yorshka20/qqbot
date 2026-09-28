@@ -31,30 +31,31 @@ export class BilibiliService {
     this.httpClient = new HttpClient({
       baseURL: 'https://api.bilibili.com',
       defaultHeaders: BILIBILI_HEADERS,
-      defaultTimeout: 15000,
+      defaultTimeout: 8000,
     });
     this.hotSearchClient = new HttpClient({
       baseURL: 'https://s.search.bilibili.com/main/hotword',
       defaultHeaders: BILIBILI_HEADERS,
-      defaultTimeout: 10000,
+      defaultTimeout: 8000,
     });
   }
 
   /**
    * Fetch hot search trending keywords.
    */
-  async getHotSearch(): Promise<BilibiliHotSearchResponse> {
+  async getHotSearch(signal?: AbortSignal): Promise<BilibiliHotSearchResponse> {
     logger.debug('[BilibiliService] Fetching hot search');
-    return this.hotSearchClient.get<BilibiliHotSearchResponse>('');
+    return this.hotSearchClient.get<BilibiliHotSearchResponse>('', { signal });
   }
 
   /**
    * Fetch popular/trending videos.
    */
-  async getPopularVideos(page = 1, pageSize = 20): Promise<BilibiliVideoItem[]> {
+  async getPopularVideos(page = 1, pageSize = 20, signal?: AbortSignal): Promise<BilibiliVideoItem[]> {
     logger.debug(`[BilibiliService] Fetching popular videos page=${page}`);
     const data = await this.httpClient.get<BilibiliAPIResponse<BilibiliPopularData>>(
       `/x/web-interface/popular?pn=${page}&ps=${pageSize}`,
+      { signal },
     );
     if (data.code !== 0) {
       throw new Error(`Bilibili API error: ${data.message}`);
@@ -65,16 +66,20 @@ export class BilibiliService {
   /**
    * Search videos by keyword (WBI-signed).
    */
-  async searchVideos(keyword: string, page = 1, pageSize = 20): Promise<BilibiliSearchData> {
+  async searchVideos(keyword: string, page = 1, pageSize = 20, signal?: AbortSignal): Promise<BilibiliSearchData> {
     logger.debug(`[BilibiliService] Searching videos: "${keyword}" page=${page}`);
-    const signedQuery = await signWbiParams({
-      keyword,
-      search_type: 'video',
-      page,
-      page_size: pageSize,
-    });
+    const signedQuery = await signWbiParams(
+      {
+        keyword,
+        search_type: 'video',
+        page,
+        page_size: pageSize,
+      },
+      signal,
+    );
     const data = await this.httpClient.get<BilibiliAPIResponse<BilibiliSearchData>>(
       `/x/web-interface/wbi/search/type?${signedQuery}`,
+      { signal },
     );
     if (data.code !== 0) {
       throw new Error(`Bilibili search API error: ${data.message}`);
@@ -85,10 +90,11 @@ export class BilibiliService {
   /**
    * Get video detail by BV id.
    */
-  async getVideoDetail(bvid: string): Promise<BilibiliVideoItem> {
+  async getVideoDetail(bvid: string, signal?: AbortSignal): Promise<BilibiliVideoItem> {
     logger.debug(`[BilibiliService] Fetching video detail: ${bvid}`);
     const data = await this.httpClient.get<BilibiliAPIResponse<BilibiliVideoItem>>(
       `/x/web-interface/view?bvid=${bvid}`,
+      { signal },
     );
     if (data.code !== 0) {
       throw new Error(`Bilibili video API error: ${data.message}`);

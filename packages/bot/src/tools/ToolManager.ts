@@ -6,6 +6,7 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { getAllToolMetadata, metadataToToolSpec } from './decorators';
+import { runWithToolDeadline } from './toolDeadline';
 import type {
   ToolCall,
   ToolExecutionContext,
@@ -297,19 +298,22 @@ export class ToolManager {
     // `metadata` by reference — handlers/executors may mutate metadata, but
     // top-level fields written on the copy do not propagate.
     const toolHookContext: HookContext = { ...hookContext, toolCall: call };
-    const shouldExecute = await hookManager.execute('onToolBeforeExecute', toolHookContext);
-    if (!shouldExecute) {
-      return {
-        success: false,
-        reply: 'Tool execution interrupted by hook',
-        error: 'Tool execution interrupted by hook',
-      };
-    }
-
     try {
-      logger.debug(`[ToolManager] Executing tool: ${toolSpec.name} (executor: ${executorName})`);
-
-      const result = await executor.execute(call, context);
+      const result = await runWithToolDeadline(toolSpec.name, context, async (executionContext) => {
+        const shouldExecute = await hookManager.execute('onToolBeforeExecute', toolHookContext);
+        if (!shouldExecute) {
+          return {
+            success: false,
+            reply: 'Tool execution interrupted by hook',
+            error: 'Tool execution interrupted by hook',
+          };
+        }
+        if (executionContext.signal?.aborted) {
+          throw new Error(`Tool ${toolSpec.name} timed out`);
+        }
+        logger.debug(`[ToolManager] Executing tool: ${toolSpec.name} (executor: ${executorName})`);
+        return executor.execute(call, executionContext);
+      });
 
       // Notification-only hook, fired detached: nothing consumes its return value
       // and no same-run consumer depends on its side effects, so awaiting it would

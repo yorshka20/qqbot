@@ -226,6 +226,8 @@ export interface ToolExecutionContext {
   toolResults?: Map<string, ToolResult>;
   /** Additional metadata for extensibility */
   metadata?: Record<string, unknown>;
+  /** Aborted when the tool's synchronous execution deadline expires. */
+  signal?: AbortSignal;
 }
 
 /**

@@ -26,6 +26,7 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
+import { deliverBackgroundToolResult, waitForInlineResult } from '../toolBackground';
 import type { ToolCall, ToolExecutionContext, ToolModelDescription, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 
@@ -140,6 +141,30 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
   }
 
   async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
+    const generation = this.generate(call, context);
+    const inline = await waitForInlineResult(generation);
+    if (inline.finished) return inline.result;
+
+    void generation
+      .then(async (result) => {
+        if (!result.success) {
+          await deliverBackgroundToolResult(
+            result.reply,
+            context,
+            this.messageAPI,
+            this.conversationHistoryService,
+            'generate_image',
+          );
+        }
+      })
+      .catch((err) => logger.error('[GenerateImageToolExecutor] Background generation failed:', err));
+    return {
+      ...this.success('绘图已转到后台，完成后会直接发到当前会话。请告知用户并结束本次回复。'),
+      endTurn: true,
+    };
+  }
+
+  private async generate(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     const prompt = (call.parameters?.prompt as string | undefined)?.trim();
     if (!prompt) {
       return this.error('请提供要生成的画面描述 (prompt)', 'Missing required parameter: prompt');

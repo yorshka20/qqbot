@@ -5,13 +5,16 @@ import { inject, injectable } from 'tsyringe';
 import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { SubAgentType } from '@/agent/types';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
+import { deliverBackgroundToolResult, waitForInlineResult } from '../toolBackground';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 
-/** Default timeout for research subagent (60 seconds) */
+/** Per-provider request budget for the research subagent. */
 const RESEARCH_TIMEOUT = 90000;
 
 /** URL extraction regex (HTTP/HTTPS only). Trailing punctuation stripped after match. */
@@ -53,7 +56,7 @@ function detectQuickPathUrl(task: string): string | null {
 @Tool({
   name: 'research',
   description:
-    '调研工具：唯一的"读取外部信息"入口。需要联网搜索、抓取任何 URL 的网页正文、查询知识库或记忆时，都通过本工具发起。底层会自动选择 fetch_page / search / rag_search / search_memory 等工具，并把过程折叠为精炼结论返回。对单 URL 抓取场景会走快路径直接抓取，不再发起额外 LLM 推理。',
+    '调研工具：唯一的"读取外部信息"入口。需要联网搜索、抓取 URL 网页正文、查询知识库或记忆时使用。快速调研直接返回结果；超过 8 秒会转后台，完成后自动发到当前会话。后台调研开始后告知用户结果会随后送达，不要再次调用来等待。',
   executor: 'research',
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
   parameters: {
@@ -83,6 +86,8 @@ export class ResearchToolExecutor extends BaseToolExecutor {
     private subAgents: SubAgentOrchestrator,
     @inject(RetrievalService)
     private retrievalService: RetrievalService,
+    @inject(MessageAPI) private readonly messageAPI: MessageAPI,
+    @inject(ConversationHistoryService) private readonly historyService: ConversationHistoryService,
   ) {
     super();
   }
@@ -94,15 +99,41 @@ export class ResearchToolExecutor extends BaseToolExecutor {
       return this.error('请提供调研任务描述', 'Missing required parameter: task');
     }
 
+    const research = this.runResearch(task, call, context);
+    const inline = await waitForInlineResult(research);
+    if (inline.finished) return inline.result;
+
+    void research
+      .then((result) => this.deliverBackgroundResult(result, context))
+      .catch((err) => logger.error('[ResearchToolExecutor] Background delivery failed:', err));
+    return {
+      ...this.success(
+        '调研已转到后台，完成后会直接发送到当前会话。请告知用户并结束本次回复，不要再次调用 research 等待。',
+      ),
+      endTurn: true,
+    };
+  }
+
+  private async deliverBackgroundResult(result: ToolResult, context: ToolExecutionContext): Promise<void> {
+    const content = `调研结果（回应此前的问题）：\n${result.reply}`;
+    await deliverBackgroundToolResult(content, context, this.messageAPI, this.historyService, 'research');
+  }
+
+  private async runResearch(task: string, call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     // Quick path: trivial single-URL fetch. Skip the subagent LLM's "decide which tool"
     // round and call PageContentFetchService directly. The subagent LLM only existed to
     // pick the right tool — for a bare "fetch this URL" task that decision is foregone.
     const quickPathUrl = detectQuickPathUrl(task);
     if (quickPathUrl) {
-      const quickResult = await this.tryQuickFetch(quickPathUrl, task);
-      if (quickResult) return quickResult;
-      // Fetch failed — fall through to subagent so it can try search / alternative sources.
-      logger.info(`[ResearchToolExecutor] Quick-path fetch returned empty for ${quickPathUrl}, escalating to subagent`);
+      try {
+        const quickResult = await this.tryQuickFetch(quickPathUrl, task);
+        if (quickResult) return quickResult;
+        logger.info(
+          `[ResearchToolExecutor] Quick-path fetch returned empty for ${quickPathUrl}, escalating to subagent`,
+        );
+      } catch (err) {
+        logger.warn(`[ResearchToolExecutor] Quick-path fetch failed for ${quickPathUrl}, escalating to subagent:`, err);
+      }
     }
 
     logger.info(

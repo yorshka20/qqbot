@@ -76,6 +76,18 @@ describe('ToolRunner', () => {
     expect(result).toBe('text-only reply');
   });
 
+  it('forwards endTurn from a subagent tool to the LLM loop', async () => {
+    const toolManager = {
+      getTool: () => ({ name: 'slow_tool', executor: 'slow_tool' }),
+      getExecutor: () => ({ name: 'slow_tool' }),
+      execute: async () => ({ success: true, reply: 'running in background', endTurn: true }),
+    } as unknown as ToolManager;
+    const runner = new ToolRunner(toolManager, new HookManager());
+
+    const result = await runner.run({ name: 'slow_tool', arguments: '{}' }, createMockSession());
+    expect(result).toEqual({ __endTurn: true, result: 'running in background' });
+  });
+
   it('run read_file list with real ToolManager returns real execution result', async () => {
     getContainer().registerInstance(FileReadService, createFileReadService(), {
       allowOverride: true,

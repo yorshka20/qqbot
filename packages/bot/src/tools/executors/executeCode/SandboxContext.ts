@@ -2,6 +2,7 @@
 
 import { logger } from '@/utils/logger';
 import { ToolManager } from '../../ToolManager';
+import { runWithToolDeadline } from '../../toolDeadline';
 import type { ToolExecutionContext, ToolExecutor, ToolResult } from '../../types';
 import type { SandboxConfig, SandboxConsole, SandboxGlobals, SandboxToolFunction, SandboxToolResult } from './types';
 
@@ -131,7 +132,9 @@ export class SandboxContext {
       };
 
       try {
-        const result = (await executor.execute(toolCall, context)) as ToolResult;
+        const result = (await runWithToolDeadline(toolName, context, (executionContext) =>
+          executor.execute(toolCall, executionContext),
+        )) as ToolResult;
         return SandboxContext.normalizeToolResult(result);
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));

@@ -1,9 +1,12 @@
 // Bilibili tool executor - allows LLM/subagent to search and fetch bilibili content
 
 import { inject, injectable } from 'tsyringe';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
+import { deliverBackgroundToolResult, waitForInlineResult } from '@/tools/toolBackground';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import { BilibiliService } from '../BilibiliService';
@@ -44,11 +47,13 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
   constructor(
     @inject(BilibiliService) private bilibiliService: BilibiliService,
     @inject(VideoKnowledgeClient) private videoKnowledgeClient: VideoKnowledgeClient,
+    @inject(MessageAPI) private readonly messageAPI: MessageAPI,
+    @inject(ConversationHistoryService) private readonly historyService: ConversationHistoryService,
   ) {
     super();
   }
 
-  async execute(call: ToolCall, _context: ToolExecutionContext): Promise<ToolResult> {
+  async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     const action = call.parameters?.action as string | undefined;
     const query = call.parameters?.query as string | undefined;
 
@@ -59,15 +64,15 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
     try {
       switch (action) {
         case 'search':
-          return this.handleSearch(query);
+          return this.handleSearch(query, context.signal);
         case 'video':
-          return this.handleVideo(query);
+          return this.handleVideo(query, context.signal);
         case 'popular':
-          return this.handlePopular();
+          return this.handlePopular(context.signal);
         case 'hot':
-          return this.handleHotSearch();
+          return this.handleHotSearch(context.signal);
         case 'analyze':
-          return this.handleAnalyze(query);
+          return this.handleAnalyzeInBackground(query, context);
         default:
           return this.error(`未知操作: ${action}`, `Unknown action: ${action}. Use search/video/popular/hot/analyze`);
       }
@@ -78,12 +83,12 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
     }
   }
 
-  private async handleSearch(query: string | undefined): Promise<ToolResult> {
+  private async handleSearch(query: string | undefined, signal?: AbortSignal): Promise<ToolResult> {
     if (!query?.trim()) {
       return this.error('请提供搜索关键词', 'Missing required parameter: query for search action');
     }
 
-    const searchData = await this.bilibiliService.searchVideos(query, 1, 5);
+    const searchData = await this.bilibiliService.searchVideos(query, 1, 5, signal);
     if (!searchData.result?.length) {
       return this.success(`未找到与「${query}」相关的视频`, { query, results: [] });
     }
@@ -98,7 +103,7 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
     });
   }
 
-  private async handleVideo(query: string | undefined): Promise<ToolResult> {
+  private async handleVideo(query: string | undefined, signal?: AbortSignal): Promise<ToolResult> {
     if (!query) {
       return this.error('请提供BV号或视频链接', 'Missing required parameter: query for video action');
     }
@@ -108,14 +113,14 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
       return this.error(`无法解析视频ID: ${query}`, `Cannot parse bvid from: ${query}`);
     }
 
-    const video = await this.bilibiliService.getVideoDetail(bvid);
+    const video = await this.bilibiliService.getVideoDetail(bvid, signal);
     const formatted = this.bilibiliService.formatVideoDetail(video);
 
     return this.success(formatted, { bvid, title: video.title, owner: video.owner.name });
   }
 
-  private async handlePopular(): Promise<ToolResult> {
-    const videos = await this.bilibiliService.getPopularVideos(1, 5);
+  private async handlePopular(signal?: AbortSignal): Promise<ToolResult> {
+    const videos = await this.bilibiliService.getPopularVideos(1, 5, signal);
     if (!videos.length) {
       return this.success('暂无热门视频数据', { results: [] });
     }
@@ -125,8 +130,8 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
     return this.success(`B站热门视频:\n\n${formatted}`, { resultCount: videos.length });
   }
 
-  private async handleHotSearch(): Promise<ToolResult> {
-    const data = await this.bilibiliService.getHotSearch();
+  private async handleHotSearch(signal?: AbortSignal): Promise<ToolResult> {
+    const data = await this.bilibiliService.getHotSearch(signal);
     if (data.code !== 0 || !data.list?.length) {
       return this.success('暂无热搜数据', { results: [] });
     }
@@ -194,5 +199,34 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
       bvid,
       status: 'done',
     });
+  }
+
+  private async handleAnalyzeInBackground(
+    query: string | undefined,
+    context: ToolExecutionContext,
+  ): Promise<ToolResult> {
+    const analysis = this.handleAnalyze(query);
+    const inline = await waitForInlineResult(analysis);
+    if (inline.finished) return inline.result;
+
+    void analysis
+      .then((result) =>
+        deliverBackgroundToolResult(result.reply, context, this.messageAPI, this.historyService, 'bilibili'),
+      )
+      .catch(async (err) => {
+        logger.error('[BilibiliTool] Background analysis failed:', err);
+        await deliverBackgroundToolResult(
+          `B站视频分析失败：${err instanceof Error ? err.message : String(err)}`,
+          context,
+          this.messageAPI,
+          this.historyService,
+          'bilibili',
+        );
+      })
+      .catch((err) => logger.error('[BilibiliTool] Background error delivery failed:', err));
+    return {
+      ...this.success('B站视频分析已转到后台，完成后会直接发送到当前会话。'),
+      endTurn: true,
+    };
   }
 }

@@ -57,9 +57,10 @@ function extractKeyFromUrl(url: string): string {
 /**
  * Fetch fresh WBI keys from bilibili's nav endpoint.
  */
-async function fetchWbiKeys(): Promise<{ imgKey: string; subKey: string }> {
+async function fetchWbiKeys(signal?: AbortSignal): Promise<{ imgKey: string; subKey: string }> {
   const response = await fetch('https://api.bilibili.com/x/web-interface/nav', {
     headers: WBI_HEADERS,
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(8_000)]) : AbortSignal.timeout(8_000),
   });
 
   const json = (await response.json()) as { code: number; data: { wbi_img: { img_url: string; sub_url: string } } };
@@ -77,14 +78,14 @@ async function fetchWbiKeys(): Promise<{ imgKey: string; subKey: string }> {
 /**
  * Get the current mixin key, fetching fresh WBI keys if the cache has expired.
  */
-async function getMixinKeyWithCache(): Promise<string> {
+async function getMixinKeyWithCache(signal?: AbortSignal): Promise<string> {
   const now = Date.now();
   if (wbiCache && now - wbiCache.timestamp < WBI_CACHE_TTL) {
     return wbiCache.mixinKey;
   }
 
   logger.debug('[WBI] Fetching fresh WBI keys');
-  const { imgKey, subKey } = await fetchWbiKeys();
+  const { imgKey, subKey } = await fetchWbiKeys(signal);
   const mixinKey = getMixinKey(imgKey, subKey);
 
   wbiCache = { imgKey, subKey, mixinKey, timestamp: now };
@@ -99,8 +100,8 @@ async function getMixinKeyWithCache(): Promise<string> {
  * @param params - The query parameters to sign
  * @returns The signed query string (including wts and w_rid)
  */
-export async function signWbiParams(params: Record<string, string | number>): Promise<string> {
-  const mixinKey = await getMixinKeyWithCache();
+export async function signWbiParams(params: Record<string, string | number>, signal?: AbortSignal): Promise<string> {
+  const mixinKey = await getMixinKeyWithCache(signal);
 
   // Add timestamp
   const wts = Math.floor(Date.now() / 1000);
