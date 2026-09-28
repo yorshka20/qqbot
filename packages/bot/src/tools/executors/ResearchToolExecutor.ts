@@ -10,12 +10,18 @@ import { ConversationHistoryService } from '@/conversation/history/ConversationH
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
-import { deliverBackgroundToolResult, waitForInlineResult } from '../toolBackground';
+import { deliverWhenReady } from '../toolBackground';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 
 /** Per-provider request budget for the research subagent. */
 const RESEARCH_TIMEOUT = 90000;
+
+/**
+ * Ceiling for the whole deferred subagent run. `RESEARCH_TIMEOUT` only bounds one
+ * provider request; up to `maxToolRounds` of them plus tool time happen under it.
+ */
+const RESEARCH_DEADLINE = 600_000;
 
 /** URL extraction regex (HTTP/HTTPS only). Trailing punctuation stripped after match. */
 const URL_REGEX = /https?:\/\/[^\s　<>"]+/g;
@@ -56,8 +62,10 @@ function detectQuickPathUrl(task: string): string | null {
 @Tool({
   name: 'research',
   description:
-    '调研工具：唯一的"读取外部信息"入口。需要联网搜索、抓取 URL 网页正文、查询知识库或记忆时使用。快速调研直接返回结果；超过 8 秒会转后台，完成后自动发到当前会话。后台调研开始后告知用户结果会随后送达，不要再次调用来等待。',
+    '调研工具：唯一的"读取外部信息"入口。需要联网搜索、抓取 URL 网页正文、查询知识库或记忆时使用。task 里只写一个 URL 时直接返回网页正文；其余情况交给子代理在后台调研，结论稍后自动发到当前会话——这时先告诉对方你去查了，不要编造结论，也不要再次调用来等待。',
   executor: 'research',
+  // The quick path is a Jina fetch (15s) plus a Readability fallback.
+  timeoutMs: 40_000,
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
   parameters: {
     task: {
@@ -99,30 +107,11 @@ export class ResearchToolExecutor extends BaseToolExecutor {
       return this.error('请提供调研任务描述', 'Missing required parameter: task');
     }
 
-    const research = this.runResearch(task, call, context);
-    const inline = await waitForInlineResult(research);
-    if (inline.finished) return inline.result;
-
-    void research
-      .then((result) => this.deliverBackgroundResult(result, context))
-      .catch((err) => logger.error('[ResearchToolExecutor] Background delivery failed:', err));
-    return {
-      ...this.success(
-        '调研已转到后台，完成后会直接发送到当前会话。请告知用户并结束本次回复，不要再次调用 research 等待。',
-      ),
-      endTurn: true,
-    };
-  }
-
-  private async deliverBackgroundResult(result: ToolResult, context: ToolExecutionContext): Promise<void> {
-    const content = `调研结果（回应此前的问题）：\n${result.reply}`;
-    await deliverBackgroundToolResult(content, context, this.messageAPI, this.historyService, 'research');
-  }
-
-  private async runResearch(task: string, call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     // Quick path: trivial single-URL fetch. Skip the subagent LLM's "decide which tool"
     // round and call PageContentFetchService directly. The subagent LLM only existed to
     // pick the right tool — for a bare "fetch this URL" task that decision is foregone.
+    // This path is one bounded fetch and its text is what the model has to reason over,
+    // so it stays inline; only the multi-round subagent below is deferred.
     const quickPathUrl = detectQuickPathUrl(task);
     if (quickPathUrl) {
       try {
@@ -136,6 +125,19 @@ export class ResearchToolExecutor extends BaseToolExecutor {
       }
     }
 
+    deliverWhenReady(this.runSubagentResearch(task, call, context), context, {
+      messageAPI: this.messageAPI,
+      historyService: this.historyService,
+      viaTool: 'research',
+      timeoutMs: RESEARCH_DEADLINE,
+      render: (result) => `调研结果（回应此前的问题）：\n${result.reply}`,
+    });
+    return this.success(
+      '调研已交给子代理，结论稍后会自动发到当前会话。现在用一句话告诉对方你去查了，不要编造结论，也不要再次调用 research 等待。',
+    );
+  }
+
+  private async runSubagentResearch(task: string, call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     logger.info(
       `[ResearchToolExecutor] Starting research subagent | task=${JSON.stringify(task)} | params=${JSON.stringify(call.parameters)} | userId=${context.userId} | groupId=${context.groupId}`,
     );

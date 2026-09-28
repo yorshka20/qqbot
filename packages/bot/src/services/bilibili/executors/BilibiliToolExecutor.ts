@@ -6,16 +6,22 @@ import { ConversationHistoryService } from '@/conversation/history/ConversationH
 import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
-import { deliverBackgroundToolResult, waitForInlineResult } from '@/tools/toolBackground';
+import { deliverWhenReady } from '@/tools/toolBackground';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import { BilibiliService } from '../BilibiliService';
 
+/** Ceiling for the deferred analyze pipeline; the client's own poll budget is 5 min. */
+const ANALYSIS_DEADLINE = 360_000;
+
 @Tool({
   name: 'bilibili',
   description:
-    '查询B站内容。支持搜索视频、获取视频详情、查看热门视频、热搜榜、以及提交视频分析任务。返回视频标题、UP主、播放量等信息。',
+    '查询B站内容。支持搜索视频、获取视频详情、查看热门视频、热搜榜、以及提交视频分析任务。返回视频标题、UP主、播放量等信息。action=analyze 会立即返回，分析结果稍后自动发到当前会话。',
   executor: 'bilibili',
+  // search/video/popular/hot are bounded HTTP calls with their own 8s network deadline,
+  // plus one WBI key fetch before a search; analyze hands off and returns at once.
+  timeoutMs: 25_000,
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
   parameters: {
     action: {
@@ -201,32 +207,16 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
     });
   }
 
-  private async handleAnalyzeInBackground(
-    query: string | undefined,
-    context: ToolExecutionContext,
-  ): Promise<ToolResult> {
-    const analysis = this.handleAnalyze(query);
-    const inline = await waitForInlineResult(analysis);
-    if (inline.finished) return inline.result;
-
-    void analysis
-      .then((result) =>
-        deliverBackgroundToolResult(result.reply, context, this.messageAPI, this.historyService, 'bilibili'),
-      )
-      .catch(async (err) => {
-        logger.error('[BilibiliTool] Background analysis failed:', err);
-        await deliverBackgroundToolResult(
-          `B站视频分析失败：${err instanceof Error ? err.message : String(err)}`,
-          context,
-          this.messageAPI,
-          this.historyService,
-          'bilibili',
-        );
-      })
-      .catch((err) => logger.error('[BilibiliTool] Background error delivery failed:', err));
-    return {
-      ...this.success('B站视频分析已转到后台，完成后会直接发送到当前会话。'),
-      endTurn: true,
-    };
+  private handleAnalyzeInBackground(query: string | undefined, context: ToolExecutionContext): ToolResult {
+    deliverWhenReady(this.handleAnalyze(query), context, {
+      messageAPI: this.messageAPI,
+      historyService: this.historyService,
+      viaTool: 'bilibili',
+      timeoutMs: ANALYSIS_DEADLINE,
+      render: (result) => result.reply,
+    });
+    return this.success(
+      '视频分析任务已提交，跑完后结果会自动发到当前会话。现在用一句话告诉对方在分析了，不要再次调用来等待。',
+    );
   }
 }

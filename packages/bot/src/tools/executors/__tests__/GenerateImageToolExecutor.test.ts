@@ -16,6 +16,25 @@ function executorWith(aiService: Partial<AIService>): GenerateImageToolExecutor 
   );
 }
 
+/**
+ * generate_image returns a receipt and draws detached, so a test has to wait for
+ * the drawing call itself rather than for `execute`.
+ */
+function recorder<T>(expected = 1): { record: (entry: T) => void; recorded: Promise<T[]> } {
+  const entries: T[] = [];
+  let release!: (entries: T[]) => void;
+  const recorded = new Promise<T[]>((resolve) => {
+    release = resolve;
+  });
+  return {
+    record: (entry: T) => {
+      entries.push(entry);
+      if (entries.length >= expected) release(entries);
+    },
+    recorded,
+  };
+}
+
 function contextWith(imageUrls: string[]): ToolExecutionContext {
   return {
     userId: 1,
@@ -44,15 +63,15 @@ const call = (parameters: Record<string, unknown>): ToolCall => ({
 
 describe('generate_image reference inputs', () => {
   it('forwards every message image and the cited presets to img2img', async () => {
-    const seen: { images: string[]; options: unknown; provider?: string }[] = [];
+    const { record, recorded } = recorder<{ images: string[]; options: unknown; provider?: string }>();
     const executor = executorWith({
       generateImageFromImage: async (_ctx, images, _prompt, options, providerName) => {
-        seen.push({ images, options, provider: providerName });
+        record({ images, options, provider: providerName });
         return { images: [{ url: 'https://example.com/out.png' }] };
       },
     });
 
-    const result = await executor.execute(
+    const result = executor.execute(
       call({
         prompt: '站在窗边',
         provider: 'openai',
@@ -62,6 +81,8 @@ describe('generate_image reference inputs', () => {
     );
 
     expect(result.success).toBe(true);
+
+    const seen = await recorded;
     expect(seen[0]?.provider).toBe('openai');
     expect(seen[0]?.images).toEqual(['https://example.com/a.png', 'https://example.com/b.png']);
     expect(seen[0]?.options).toMatchObject({ model: 'gpt-image-2', presetIds: ['hero', 'outfit'] });
@@ -69,56 +90,59 @@ describe('generate_image reference inputs', () => {
   });
 
   it('sends OpenAI a pixel size and Gemini an aspect ratio', async () => {
-    const seen: { provider?: string; options: unknown }[] = [];
-    const executor = executorWith({
-      generateImageFromImage: async (_ctx, _images, _prompt, options, providerName) => {
-        seen.push({ provider: providerName, options });
-        return { images: [{ url: 'https://example.com/out.png' }] };
-      },
-    });
+    async function drawWith(provider: string): Promise<{ provider?: string; options: unknown }> {
+      const { record, recorded } = recorder<{ provider?: string; options: unknown }>();
+      const executor = executorWith({
+        generateImageFromImage: async (_ctx, _images, _prompt, options, providerName) => {
+          record({ provider: providerName, options });
+          return { images: [{ url: 'https://example.com/out.png' }] };
+        },
+      });
+      executor.execute(
+        call({ prompt: '竖向四格', provider, presets: ['hero'], aspect_ratio: '9:16', size: '1024x1536' }),
+        contextWith([]),
+      );
+      return (await recorded)[0];
+    }
 
-    await executor.execute(
-      call({ prompt: '竖向四格', provider: 'openai', presets: ['hero'], aspect_ratio: '9:16', size: '1024x1536' }),
-      contextWith([]),
-    );
-    await executor.execute(
-      call({ prompt: '竖向四格', provider: 'gemini', presets: ['hero'], aspect_ratio: '9:16', size: '1024x1536' }),
-      contextWith([]),
-    );
+    const openai = await drawWith('openai');
+    expect(openai.provider).toBe('openai');
+    expect(openai.options).toMatchObject({ imageSize: '1024x1536' });
+    expect(openai.options).not.toHaveProperty('aspectRatio');
 
-    expect(seen[0]?.provider).toBe('openai');
-    expect(seen[0]?.options).toMatchObject({ imageSize: '1024x1536' });
-    expect(seen[0]?.options).not.toHaveProperty('aspectRatio');
-    expect(seen[1]?.provider).toBe('laozhang');
-    expect(seen[1]?.options).toMatchObject({ aspectRatio: '9:16' });
-    expect(seen[1]?.options).not.toHaveProperty('imageSize');
+    const gemini = await drawWith('gemini');
+    expect(gemini.provider).toBe('laozhang');
+    expect(gemini.options).toMatchObject({ aspectRatio: '9:16' });
+    expect(gemini.options).not.toHaveProperty('imageSize');
   });
 
   it('uses img2img for presets even when the message has no image, on the default openai provider', async () => {
-    const seen: { images: string[]; provider?: string; options: unknown }[] = [];
+    const { record, recorded } = recorder<{ images: string[]; provider?: string; options: unknown }>();
     const executor = executorWith({
       generateImg: async () => {
         throw new Error('text2img should not run');
       },
       generateImageFromImage: async (_ctx, images, _prompt, options, providerName) => {
-        seen.push({ images, provider: providerName, options });
+        record({ images, provider: providerName, options });
         return { images: [{ url: 'https://example.com/out.png' }] };
       },
     });
 
-    const result = await executor.execute(call({ prompt: '新姿势', presets: ['hero'] }), contextWith([]));
-
+    const result = executor.execute(call({ prompt: '新姿势', presets: ['hero'] }), contextWith([]));
     expect(result.success).toBe(true);
+
+    const seen = await recorded;
     expect(seen[0]?.provider).toBe('openai');
     expect(seen[0]?.images).toEqual([]);
     expect(seen[0]?.options).toMatchObject({ model: 'gpt-image-2', presetIds: ['hero'] });
   });
 
   it('sends the tool prompt straight to text2img without another LLM pass', async () => {
-    const seen: { prompt?: string; skipLLMProcess?: boolean; templateName?: string }[] = [];
+    const { record, recorded } =
+      recorder<{ prompt?: string; skipLLMProcess?: boolean; templateName?: string }>();
     const executor = executorWith({
       generateImg: async (_ctx, options, _provider, skipLLMProcess, templateName) => {
-        seen.push({ prompt: options.prompt, skipLLMProcess, templateName });
+        record({ prompt: options.prompt, skipLLMProcess, templateName });
         return { images: [{ url: 'https://example.com/out.png' }] };
       },
       generateImageFromImage: async () => {
@@ -126,8 +150,10 @@ describe('generate_image reference inputs', () => {
       },
     });
 
-    const result = await executor.execute(call({ prompt: '一只橘猫坐在窗台上，午后阳光' }), contextWith([]));
+    const result = executor.execute(call({ prompt: '一只橘猫坐在窗台上，午后阳光' }), contextWith([]));
     expect(result.success).toBe(true);
+
+    const seen = await recorded;
     expect(seen).toEqual([{ prompt: '一只橘猫坐在窗台上，午后阳光', skipLLMProcess: true, templateName: undefined }]);
   });
 });

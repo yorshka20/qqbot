@@ -22,6 +22,8 @@ const MAX_CHUNK_DISPLAY_LEN = 500;
     '返回相关片段（非全文），含标题、来源和匹配段落。',
   executor: 'wechat_article_rag',
   available: () => WeChatIngestPlugin.isEnabled(),
+  // Vector search goes through the same embedding + Qdrant path as rag_search.
+  timeoutMs: 90_000,
   visibility: ['subagent'],
   parameters: {
     query: {

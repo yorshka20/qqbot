@@ -237,6 +237,8 @@ function buildSpeakSpec(args: {
       `用你自己的声音说一句话，合成语音后直接以语音消息发到当前会话（不是文字）。${cueGuide(capabilities)} ` +
       `语气本身就是内容的时候，语音比文字有意思得多。单条上限 ${limits.maxTextLength} 字，一次回复最多 ${limits.maxPerReply} 条。`,
     executor: 'speak',
+    // TTS synthesis, then a voice upload given SEND_TIMEOUT_MS on its own.
+    timeoutMs: 60_000,
     // QQ only: the Discord adapter has no voice-message segment and would
     // render the audio as a literal `[audio: base64://…]` text blob.
     visibility: { reply: { sources: ['qq-private', 'qq-group'] } },

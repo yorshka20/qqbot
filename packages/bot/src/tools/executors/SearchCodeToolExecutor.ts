@@ -27,6 +27,8 @@ export function searchCodeTruncationNotice(): string {
   description:
     '用 grep -E 在项目里搜文本，参数和 grep / rg 相同。pattern 是扩展正则（|、+、() 直接写）；path 限定文件或目录；glob 等同 --include（如 *.ts、*.md）；context 是 -C 上下文行数；ignoreCase 是 -i；fixed 为 true 时 pattern 按字面量匹配（-F）。结果是 path:line:内容。只限制两件事：输出有字符上限，以及密钥和被禁止的路径不可搜。',
   executor: 'search_code',
+  // SEARCH_TIMEOUT_MS already bounds the grep itself at 20s.
+  timeoutMs: 30_000,
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true }, subagent: true },
   parameters: {
     pattern: {

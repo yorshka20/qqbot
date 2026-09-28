@@ -2,8 +2,8 @@
 
 import { logger } from '@/utils/logger';
 import { ToolManager } from '../../ToolManager';
-import { runWithToolDeadline } from '../../toolDeadline';
-import type { ToolExecutionContext, ToolExecutor, ToolResult } from '../../types';
+import { DEFAULT_TOOL_TIMEOUT_MS, runWithToolDeadline } from '../../toolDeadline';
+import type { ToolExecutionContext, ToolExecutor, ToolResult, ToolSpec } from '../../types';
 import type { SandboxConfig, SandboxConsole, SandboxGlobals, SandboxToolFunction, SandboxToolResult } from './types';
 
 /**
@@ -101,7 +101,7 @@ export class SandboxContext {
         continue;
       }
 
-      const wrappedFn = this.wrapToolExecutor(spec.name, spec.executor, executor);
+      const wrappedFn = this.wrapToolExecutor(spec, executor);
       functions.push({
         name: spec.name,
         description: spec.description,
@@ -116,11 +116,12 @@ export class SandboxContext {
    * Wrap a tool executor into a simple async function that returns a unified SandboxToolResult.
    */
   private wrapToolExecutor(
-    toolName: string,
-    executorName: string,
+    spec: ToolSpec,
     executor: ToolExecutor,
   ): (params: Record<string, unknown>) => Promise<SandboxToolResult> {
     const context = this.executionContext;
+    const toolName = spec.name;
+    const timeoutMs = spec.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
 
     return async (params: Record<string, unknown>): Promise<SandboxToolResult> => {
       logger.debug(`[SandboxContext] Code calling tool: ${toolName}`, { params });
@@ -128,11 +129,11 @@ export class SandboxContext {
       const toolCall = {
         type: toolName,
         parameters: params ?? {},
-        executor: executorName,
+        executor: spec.executor,
       };
 
       try {
-        const result = (await runWithToolDeadline(toolName, context, (executionContext) =>
+        const result = (await runWithToolDeadline(toolName, timeoutMs, context, (executionContext) =>
           executor.execute(toolCall, executionContext),
         )) as ToolResult;
         return SandboxContext.normalizeToolResult(result);

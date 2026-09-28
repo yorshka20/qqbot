@@ -15,6 +15,9 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 - config.d、.env 等密钥路径与项目外路径不可访问；git 的写操作子命令（commit/push/checkout 等）不可用。
 - 与 execute_command 不同：execute_command 代理的是 bot 斜杠命令，本工具执行的是仓库检查命令。`,
   executor: 'run_shell',
+  // ReadOnlyShellService kills the process at 10s; the budget has to sit above
+  // that or the two limits race and the clearer message loses.
+  timeoutMs: 20_000,
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
   parameters: {
     command: {

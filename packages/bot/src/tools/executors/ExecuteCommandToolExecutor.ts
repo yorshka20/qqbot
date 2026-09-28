@@ -25,6 +25,9 @@ const BLOCKED_COMMANDS = new Set(['shell', 'restart']);
   description:
     '代理执行一条 bot 命令（如 /provider、/schedule、/echo 等）。仅当发送者拥有该命令所需权限时才会执行成功。不确定有哪些命令时，先调用 list_bot_features 查看。',
   executor: 'execute_command',
+  // Proxies an arbitrary registered command through the full pipeline, so its
+  // cost is that of the slowest command the sender is allowed to run.
+  timeoutMs: 300_000,
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true } },
   parameters: {
     command: {

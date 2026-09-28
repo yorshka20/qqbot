@@ -8,7 +8,7 @@ import type { ToolExecutionContext } from '../../types';
 import { ResearchToolExecutor } from '../ResearchToolExecutor';
 
 describe('ResearchToolExecutor', () => {
-  it('hands slow research to the background and delivers the final result', async () => {
+  it('defers the subagent run and delivers its conclusion to the session', async () => {
     let finish!: (result: string) => void;
     const orchestrator = {
       run: () => new Promise<string>((resolve) => (finish = resolve)),
@@ -44,7 +44,8 @@ describe('ResearchToolExecutor', () => {
       context,
     );
     expect(result.success).toBe(true);
-    expect(result.endTurn).toBe(true);
+    // The turn must stay open so the model can tell the user it went looking.
+    expect(result.endTurn).toBeUndefined();
     expect(delivered).toEqual([]);
 
     finish('有据可查');

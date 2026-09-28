@@ -40,6 +40,9 @@ import { logger } from '@/utils/logger';
     '同步的内容包括文字、图片（自动下载到本地）、链接等。',
   executor: 'wechat_moments_ingest',
   available: () => WeChatIngestPlugin.isEnabled(),
+  // Pulls a backlog of moments, downloads their images and embeds them, then
+  // runs one LLM analysis over everything ingested.
+  timeoutMs: 600_000,
   visibility: ['subagent'],
   parameters: {
     sinceDaysAgo: {

@@ -146,7 +146,7 @@ The system is organized into the following layers:
 6. **Hook Layer** (`src/hooks/`): 14 hook points for pipeline interception
 7. **Command Layer** (`src/command/`): Prefix-based commands with permission levels
 8. **AI Layer** (`src/ai/`): Multi-provider LLM integration, reply pipeline, image generation
-9. **Agent Layer** (`src/agent/`): Sub-agent spawning and tool execution — `SubAgentManager` is the session registry (spawn limits, status, wait), `SubAgentExecutor` runs a session (and handles `spawn_subagent` by recursing into itself), `ToolRunner` runs every other tool call. Dependencies run one way (executor → manager, executor → runner). Outside the module everything goes through `SubAgentOrchestrator.run()` (spawn → execute → wait): the research tool, agenda sub-agent items, the video-analyze plugin and command, the sub-agent message triggers and `/wechat analyze`. Research, image generation, and video analysis return inline within 8 seconds or continue in the background and deliver their results to the originating chat. Every call through `ToolManager.execute` and every nested `execute_code` tool call has a 10-second response deadline; the deadline aborts executors that use `ToolExecutionContext.signal`. Timers bound asynchronous waits but cannot interrupt a synchronous JavaScript loop on the same thread.
+9. **Agent Layer** (`src/agent/`): Sub-agent spawning and tool execution — `SubAgentManager` is the session registry (spawn limits, status, wait), `SubAgentExecutor` runs a session (and handles `spawn_subagent` by recursing into itself), `ToolRunner` runs every other tool call. Dependencies run one way (executor → manager, executor → runner). Outside the module everything goes through `SubAgentOrchestrator.run()` (spawn → execute → wait): the research tool, agenda sub-agent items, the video-analyze plugin and command, the sub-agent message triggers and `/wechat analyze`
 10. **Tool Layer** (`src/tools/`): LLM-callable tools with @Tool() decorator
 11. **Memory Layer** (`src/memory/`): Per-user/per-group long-term memory with LLM extraction
 12. **Context Layer** (`src/context/`): HookContext building, conversation context management
@@ -689,6 +689,37 @@ export class SearchExecutor implements ToolExecutor {
   }
 }
 ```
+
+### Execution deadline (`ToolSpec.timeoutMs`)
+
+How long a tool may run is a property of the tool, not of the framework. A tool
+that is a local store read or one bounded HTTP call says nothing and gets
+`DEFAULT_TOOL_TIMEOUT_MS` (10s); a tool that is slower by construction — a
+Puppeteer render, a media download, an LLM pass, a batch job — declares its own
+`timeoutMs` above whatever its internals already allow, so the two limits do not
+race and the clearer error wins.
+
+`ToolManager.execute` and the `execute_code` sandbox both enforce it through
+`runWithToolDeadline`, which aborts via `ToolExecutionContext.signal`. Timers
+bound asynchronous waits; they cannot interrupt a synchronous loop on the same
+thread.
+
+### Deferred delivery (`deliverWhenReady`)
+
+A few tools hand their work off instead of finishing inside the turn —
+`generate_image` (an image model), `research` (a multi-round subagent),
+`bilibili action=analyze` (an external analysis pipeline). This is declared by
+what the tool *is*, not decided per call from an elapsed time: the executor
+returns a receipt at once and passes the promise to `deliverWhenReady`, which
+delivers the outcome to the originating session when it is ready and carries the
+budget for the detached work.
+
+Such a tool must **not** set `endTurn`. The receipt is only useful if the model
+still gets a round to say it went looking, and an `endTurn` with no trailing text
+suppresses the reply entirely (`ResponseDispatchStage` path 0). Where one tool
+has both a fast and a slow mode, the split is structural and known before the
+call — `research` fetches a lone URL inline because that text is the model's
+input, `bilibili` defers only `analyze`.
 
 ### Visibility Scopes
 

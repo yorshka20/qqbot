@@ -20,6 +20,8 @@ const DOWNLOAD_ROOT = 'output/downloads';
   description:
     'Scan downloaded group media for content-identical duplicate files and remove them, keeping the oldest copy. Supports dry-run mode to preview results without deletion.',
   executor: 'deduplicate_files',
+  // Hashes every downloaded file under the scanned group directories.
+  timeoutMs: 300_000,
   parameters: {
     groupId: {
       type: 'string',

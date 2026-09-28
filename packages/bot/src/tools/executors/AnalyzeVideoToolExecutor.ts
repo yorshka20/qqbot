@@ -14,14 +14,11 @@ import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import type { GeminiProvider } from '@/ai/providers/GeminiProvider';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
-import { MessageAPI } from '@/api/methods/MessageAPI';
-import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { DITokens } from '@/core/DITokens';
 import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
 import { VideoDownloadService } from '@/services/video/VideoDownloadService';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
-import { deliverBackgroundToolResult, waitForInlineResult } from '../toolBackground';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 
@@ -39,6 +36,11 @@ const MAX_VIDEO_DURATION_SECONDS = 10 * 60; // 10 minutes
   // it sees in chat. Video analysis must be invoked explicitly via the /video command, which
   // routes through VideoAnalyzePlugin → SubAgentOrchestrator.run('video_analyzer') → this tool.
   visibility: { subagent: true },
+  // Download (up to 120s) + Gemini File API upload, processing and analysis of a clip
+  // up to MAX_VIDEO_DURATION_SECONDS. The whole /video job is this one call, and its
+  // text is what the subagent reports back, so it runs to completion rather than
+  // handing off — the user asked for it explicitly and nothing else is waiting.
+  timeoutMs: 900_000,
   parameters: {
     url: {
       type: 'string',
@@ -63,8 +65,6 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
     @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
     @inject(VideoDownloadService) private videoDownloadService: VideoDownloadService,
     @inject(ResourceCleanupService) private resourceCleanupService: ResourceCleanupService,
-    @inject(MessageAPI) private readonly messageAPI: MessageAPI,
-    @inject(ConversationHistoryService) private readonly historyService: ConversationHistoryService,
   ) {
     super();
   }
@@ -119,24 +119,7 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
     return 'video/mp4'; // default — covers bilibili, youtube, and generic .mp4
   }
 
-  async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
-    const analysis = this.analyze(call);
-    const inline = await waitForInlineResult(analysis);
-    if (inline.finished) return inline.result;
-
-    void analysis
-      .then((result) => {
-        const text = result.success ? String(result.data?.analysisText ?? result.reply) : result.reply;
-        return deliverBackgroundToolResult(text, context, this.messageAPI, this.historyService, 'analyze_video');
-      })
-      .catch((err) => logger.error('[AnalyzeVideoToolExecutor] Background delivery failed:', err));
-    return {
-      ...this.success('视频分析已转到后台，完成后会直接发送到当前会话。'),
-      endTurn: true,
-    };
-  }
-
-  private async analyze(call: ToolCall): Promise<ToolResult> {
+  async execute(call: ToolCall, _context: ToolExecutionContext): Promise<ToolResult> {
     const url = call.parameters?.url as string | undefined;
     if (!url) {
       return this.error('请提供视频 URL', 'Missing required parameter: url');

@@ -2,8 +2,6 @@ import 'reflect-metadata';
 import { afterEach, describe, expect, it, vi } from 'bun:test';
 import type { AIManager } from '@/ai/AIManager';
 import type { GeminiProvider } from '@/ai/providers/GeminiProvider';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { ResourceCleanupService, VideoDownloadResult, VideoDownloadService } from '@/services/video';
 import type { ToolCall, ToolExecutionContext } from '@/tools/types';
 import { AnalyzeVideoToolExecutor } from '../AnalyzeVideoToolExecutor';
@@ -78,7 +76,7 @@ function makeExecutor(
   const aiManager = makeAIManager(gemini);
   const vds = makeVideoDownloadService(vdsOverrides);
   const rcs = makeResourceCleanupService(rcsOverrides);
-  const executor = new AnalyzeVideoToolExecutor(aiManager, vds, rcs, {} as MessageAPI, {} as ConversationHistoryService);
+  const executor = new AnalyzeVideoToolExecutor(aiManager, vds, rcs);
   return { executor, gemini, vds, rcs };
 }
 

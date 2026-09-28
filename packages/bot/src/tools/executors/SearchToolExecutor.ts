@@ -17,6 +17,8 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   description:
     '联网搜索实时信息。返回多条搜索结果摘要（标题、URL、正文片段）。适用于需要最新数据、事实核查或你不确定的知识。',
   executor: 'search',
+  // Serper gives each attempt 10s and retries twice with backoff.
+  timeoutMs: 40_000,
   visibility: ['subagent'],
   parameters: {
     query: {

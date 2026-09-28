@@ -21,6 +21,9 @@ import { DEFAULT_SANDBOX_CONFIG } from './types';
 - 可 \`await import('node:xxx')\` 的内置模块：${[...IMPORTABLE_BUILTINS].join(' / ')}。
 - 不可用：fs、child_process、worker_threads、vm、require、process、Bun、项目内模块与 node_modules 包（沙箱与 bot 同进程，这些等价于绕过密钥防护）。读文件用 tools.read_file，搜代码用 tools.search_code，git/仓库检查用 run_shell 工具。`,
   executor: 'execute_code',
+  // MAX_TIMEOUT_MS caps the sandbox at 30s, and the code inside it calls tools
+  // that carry their own budgets on top of that.
+  timeoutMs: 120_000,
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true }, subagent: true },
   parameters: {
     code: {

@@ -12,6 +12,8 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   description:
     '按**语义**检索群聊历史：用自然语言描述你要找的意思，向量相似度返回最接近的若干片段（每条带相似度分数）。返回的是片段本身，**不带时间和发言人**，也不保证覆盖全部相关消息——只是最相似的 top-K。',
   executor: 'rag_search',
+  // One embedding call (60s in EmbeddingClient) then one Qdrant query (30s).
+  timeoutMs: 90_000,
   visibility: { subagent: true, agent: true },
   parameters: {
     query: {

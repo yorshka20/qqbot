@@ -25,6 +25,8 @@ export interface ToolOptions {
   available?: () => boolean;
   /** See {@link ToolSpec.describeForModel}. */
   describeForModel?: () => ToolModelDescription;
+  /** See {@link ToolSpec.timeoutMs} — this tool's own wall-clock budget. */
+  timeoutMs?: number;
 }
 
 /**
@@ -106,5 +108,6 @@ export function metadataToToolSpec(metadata: ToolMetadata): ToolSpec {
     whenToUse: metadata.whenToUse,
     available: metadata.available,
     describeForModel: metadata.describeForModel,
+    timeoutMs: metadata.timeoutMs,
   };
 }

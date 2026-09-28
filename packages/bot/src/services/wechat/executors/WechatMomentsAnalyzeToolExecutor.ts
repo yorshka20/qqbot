@@ -26,6 +26,8 @@ const ALLOWED_PROVIDERS = ['ollama', 'deepseek', 'doubao'] as const;
     '注意：本工具会调用 LLM 进行分析，响应时间较长，请在调用前告知用户正在分析中。',
   executor: 'wechat_moments_analyze',
   available: () => WeChatIngestPlugin.isEnabled(),
+  // A retrieval pass, then an LLM analysis that falls back across three providers.
+  timeoutMs: 180_000,
   parameters: {
     topic: {
       type: 'string',

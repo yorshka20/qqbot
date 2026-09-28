@@ -147,6 +147,20 @@ export interface ToolSpec {
    * A throwing overlay is ignored and the static spec is sent instead.
    */
   describeForModel?: () => ToolModelDescription;
+
+  /**
+   * Wall-clock budget for one `execute()`, in ms. Defaults to
+   * {@link DEFAULT_TOOL_TIMEOUT_MS}; declare a larger one when the tool's own work
+   * is slower than that by construction (an LLM round, a Puppeteer render, a media
+   * download). This is a property of the tool, not of the framework: a single
+   * global deadline would either strangle those tools or let a hung HTTP call
+   * stall a reply.
+   *
+   * A tool that hands its work off and delivers later (generate_image, research)
+   * returns within the default; the budget for the detached work lives next to
+   * that work, in the executor.
+   */
+  timeoutMs?: number;
 }
 
 /**

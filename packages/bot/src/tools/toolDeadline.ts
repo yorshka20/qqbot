@@ -1,9 +1,15 @@
 import type { ToolExecutionContext } from './types';
 
-export const TOOL_EXECUTION_TIMEOUT_MS = 10_000;
+/**
+ * Budget for a tool that does not declare one on `@Tool`. It covers everything
+ * backed by a local store or a single bounded HTTP call; anything slower by
+ * construction states its own `timeoutMs`.
+ */
+export const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
 
 export async function runWithToolDeadline<T>(
   name: string,
+  timeoutMs: number,
   context: ToolExecutionContext,
   execute: (context: ToolExecutionContext) => Promise<T> | T,
 ): Promise<T> {
@@ -16,8 +22,8 @@ export async function runWithToolDeadline<T>(
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
           controller.abort();
-          reject(new Error(`Tool ${name} timed out after ${TOOL_EXECUTION_TIMEOUT_MS}ms`));
-        }, TOOL_EXECUTION_TIMEOUT_MS);
+          reject(new Error(`Tool ${name} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
       }),
     ]);
   } finally {

@@ -6,7 +6,7 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { logger } from '@/utils/logger';
 import { getAllToolMetadata, metadataToToolSpec } from './decorators';
-import { runWithToolDeadline } from './toolDeadline';
+import { DEFAULT_TOOL_TIMEOUT_MS, runWithToolDeadline } from './toolDeadline';
 import type {
   ToolCall,
   ToolExecutionContext,
@@ -299,7 +299,8 @@ export class ToolManager {
     // top-level fields written on the copy do not propagate.
     const toolHookContext: HookContext = { ...hookContext, toolCall: call };
     try {
-      const result = await runWithToolDeadline(toolSpec.name, context, async (executionContext) => {
+      const timeoutMs = toolSpec.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
+      const result = await runWithToolDeadline(toolSpec.name, timeoutMs, context, async (executionContext) => {
         const shouldExecute = await hookManager.execute('onToolBeforeExecute', toolHookContext);
         if (!shouldExecute) {
           return {

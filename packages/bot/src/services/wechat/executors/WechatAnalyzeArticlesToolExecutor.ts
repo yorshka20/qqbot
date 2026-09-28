@@ -21,6 +21,9 @@ const DEFAULT_COUNT = 100;
     '注意：此操作耗时较长（每篇文章数秒到数十秒），建议在非高峰时段运行。',
   executor: 'wechat_analyze_articles',
   available: () => WeChatIngestPlugin.isEnabled(),
+  // A batch of up to `count` articles, each its own LLM call. Scheduled work,
+  // not something a chat turn waits on.
+  timeoutMs: 1_800_000,
   parameters: {
     count: {
       type: 'number',
