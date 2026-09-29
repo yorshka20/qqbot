@@ -155,10 +155,6 @@ export interface ToolSpec {
    * download). This is a property of the tool, not of the framework: a single
    * global deadline would either strangle those tools or let a hung HTTP call
    * stall a reply.
-   *
-   * A tool that hands its work off and delivers later (generate_image, research)
-   * returns within the default; the budget for the detached work lives next to
-   * that work, in the executor.
    */
   timeoutMs?: number;
 }
@@ -240,7 +236,7 @@ export interface ToolExecutionContext {
   toolResults?: Map<string, ToolResult>;
   /** Additional metadata for extensibility */
   metadata?: Record<string, unknown>;
-  /** Aborted when the tool's synchronous execution deadline expires. */
+  /** Aborted when the tool's `timeoutMs` deadline expires. */
   signal?: AbortSignal;
 }
 

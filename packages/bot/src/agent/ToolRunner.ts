@@ -103,7 +103,9 @@ export class ToolRunner implements IToolRunner {
     // Per ToolResult contract: `reply` is the authoritative LLM-facing message.
     // Fall back to `data` only when reply is empty so non-trivial `data` cannot
     // silently shadow real content (cf. the research-subagent regression).
-    const output = result.reply ? result.reply : (result.data ?? '');
-    return result.endTurn ? { __endTurn: true, result: output } : output;
+    if (result.reply) {
+      return result.reply;
+    }
+    return result.data ?? '';
   }
 }

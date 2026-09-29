@@ -26,12 +26,8 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
-import { deliverWhenReady } from '../toolBackground';
 import type { ToolCall, ToolExecutionContext, ToolModelDescription, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
-
-/** Ceiling for one picture, well above the 50–65s gpt-image-2 normally takes. */
-const IMAGE_GENERATION_TIMEOUT_MS = 300_000;
 
 // Maps the user-facing `provider` choice to an AIService provider name + image model.
 // gemini routes through the Laozhang relay (Gemini's own image API is too expensive); both
@@ -83,8 +79,10 @@ export function describeGenerateImageForModel(): ToolModelDescription {
 @Tool({
   name: 'generate_image',
   description:
-    '根据自然语言描述生成图片并直接发送给用户。调用后立即返回，绘图在后台进行，画好后系统自动把图发到当前会话，不需要你等待或再调用一次。prompt 会原样交给绘图模型，不会再经一轮改写，所以把画面写完整：主体、动作、表情、构图；多格要写明格数、阅读顺序和每一格。消息里带了图，或填了 preset 时，系统另附参考图和外形，不要把外形抄进 prompt。需要复用某个常驻角色或元素时，在 presets 里引用它的 id。支持 openai（默认，gpt-image-2）和 gemini，两边共用同一套参考拼装。',
+    '根据自然语言描述生成图片并直接发送给用户，一张图通常要一分钟左右。prompt 会原样交给绘图模型，不会再经一轮改写，所以把画面写完整：主体、动作、表情、构图；多格要写明格数、阅读顺序和每一格。消息里带了图，或填了 preset 时，系统另附参考图和外形，不要把外形抄进 prompt。需要复用某个常驻角色或元素时，在 presets 里引用它的 id。支持 openai（默认，gpt-image-2）和 gemini，两边共用同一套参考拼装。',
   executor: 'generate_image',
+  // gpt-image-2 measured at 50–65s per picture; the ceiling leaves room for a slow provider.
+  timeoutMs: 300_000,
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
   parameters: {
     prompt: {
@@ -143,23 +141,7 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
     super();
   }
 
-  execute(call: ToolCall, context: ToolExecutionContext): ToolResult {
-    // Measured 50–65s per picture against gpt-image-2, so the turn never waits for
-    // it. The picture is delivered by `generate` itself; only a failure has to be
-    // reported back to the session.
-    deliverWhenReady(this.generate(call, context), context, {
-      messageAPI: this.messageAPI,
-      historyService: this.conversationHistoryService,
-      viaTool: 'generate_image',
-      timeoutMs: IMAGE_GENERATION_TIMEOUT_MS,
-      render: (result) => (result.success ? null : result.reply),
-    });
-    return this.success(
-      '绘图已经开始，画好后系统会自动把图发到当前会话。现在只需要用一句话告诉对方在画了，不要描述画面，也不要再调用一次 generate_image。',
-    );
-  }
-
-  private async generate(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
+  async execute(call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {
     const prompt = (call.parameters?.prompt as string | undefined)?.trim();
     if (!prompt) {
       return this.error('请提供要生成的画面描述 (prompt)', 'Missing required parameter: prompt');

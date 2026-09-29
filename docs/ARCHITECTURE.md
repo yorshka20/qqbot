@@ -704,22 +704,26 @@ race and the clearer error wins.
 bound asynchronous waits; they cannot interrupt a synchronous loop on the same
 thread.
 
-### Deferred delivery (`deliverWhenReady`)
+### Where a tool result goes
 
-A few tools hand their work off instead of finishing inside the turn —
-`generate_image` (an image model), `research` (a multi-round subagent),
-`bilibili action=analyze` (an external analysis pipeline). This is declared by
-what the tool *is*, not decided per call from an elapsed time: the executor
-returns a receipt at once and passes the promise to `deliverWhenReady`, which
-delivers the outcome to the originating session when it is ready and carries the
-budget for the detached work.
+A tool's result has one destination: the tool message of the LLM loop that issued
+the call. `LLMService.generateWithTools` awaits every call of a round before the
+next provider request, so a slow tool keeps its reply thread waiting and the model
+answers from the real outcome — the reply then leaves through the normal
+PREPARE / SEND stages. No tool posts its result to the conversation on its own.
 
-Such a tool must **not** set `endTurn`. The receipt is only useful if the model
-still gets a round to say it went looking, and an `endTurn` with no trailing text
-suppresses the reply entirely (`ResponseDispatchStage` path 0). Where one tool
-has both a fast and a slow mode, the split is structural and known before the
-call — `research` fetches a lone URL inline because that text is the model's
-input, `bilibili` defers only `analyze`.
+The pipeline itself sets no deadline on that wait; the only limits are the
+provider request timeout and the tool's own `timeoutMs`. A tool that takes
+minutes by construction (`generate_image`, `research` beyond a single URL,
+`bilibili action=analyze`) declares a budget that fits and says in its
+description roughly how long it takes, so the model can send a heads-up with
+`send_message` first.
+
+A tool may still deliver its *product* directly when the product is not text the
+model reasons over — `generate_image` sends the picture and returns a confirmation
+the model captions. `delegate_agent_task` is the deliberate exception: a local
+agent runs for minutes to tens of minutes and reports to the conversation itself,
+so it returns once the task is queued.
 
 ### Visibility Scopes
 

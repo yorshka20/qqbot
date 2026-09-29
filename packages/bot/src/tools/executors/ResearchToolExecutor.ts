@@ -5,23 +5,14 @@ import { inject, injectable } from 'tsyringe';
 import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { SubAgentType } from '@/agent/types';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
-import { MessageAPI } from '@/api/methods/MessageAPI';
-import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
-import { deliverWhenReady } from '../toolBackground';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 
 /** Per-provider request budget for the research subagent. */
 const RESEARCH_TIMEOUT = 90000;
-
-/**
- * Ceiling for the whole deferred subagent run. `RESEARCH_TIMEOUT` only bounds one
- * provider request; up to `maxToolRounds` of them plus tool time happen under it.
- */
-const RESEARCH_DEADLINE = 600_000;
 
 /** URL extraction regex (HTTP/HTTPS only). Trailing punctuation stripped after match. */
 const URL_REGEX = /https?:\/\/[^\s　<>"]+/g;
@@ -62,10 +53,11 @@ function detectQuickPathUrl(task: string): string | null {
 @Tool({
   name: 'research',
   description:
-    '调研工具：唯一的"读取外部信息"入口。需要联网搜索、抓取 URL 网页正文、查询知识库或记忆时使用。task 里只写一个 URL 时直接返回网页正文；其余情况交给子代理在后台调研，结论稍后自动发到当前会话——这时先告诉对方你去查了，不要编造结论，也不要再次调用来等待。',
+    '调研工具：唯一的"读取外部信息"入口。需要联网搜索、抓取任何 URL 的网页正文、查询知识库或记忆时，都通过本工具发起。底层会自动选择 fetch_page / search / rag_search / search_memory 等工具，并把过程折叠为精炼结论返回。对单 URL 抓取场景会走快路径直接抓取，不再发起额外 LLM 推理；其余情况由子代理多步调研，通常要一到几分钟。',
   executor: 'research',
-  // The quick path is a Jina fetch (15s) plus a Readability fallback.
-  timeoutMs: 40_000,
+  // `RESEARCH_TIMEOUT` bounds one provider request of the subagent; up to
+  // `maxToolRounds` of them plus their tool calls run under this ceiling.
+  timeoutMs: 600_000,
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] } },
   parameters: {
     task: {
@@ -94,8 +86,6 @@ export class ResearchToolExecutor extends BaseToolExecutor {
     private subAgents: SubAgentOrchestrator,
     @inject(RetrievalService)
     private retrievalService: RetrievalService,
-    @inject(MessageAPI) private readonly messageAPI: MessageAPI,
-    @inject(ConversationHistoryService) private readonly historyService: ConversationHistoryService,
   ) {
     super();
   }
@@ -110,8 +100,6 @@ export class ResearchToolExecutor extends BaseToolExecutor {
     // Quick path: trivial single-URL fetch. Skip the subagent LLM's "decide which tool"
     // round and call PageContentFetchService directly. The subagent LLM only existed to
     // pick the right tool — for a bare "fetch this URL" task that decision is foregone.
-    // This path is one bounded fetch and its text is what the model has to reason over,
-    // so it stays inline; only the multi-round subagent below is deferred.
     const quickPathUrl = detectQuickPathUrl(task);
     if (quickPathUrl) {
       try {
@@ -125,16 +113,7 @@ export class ResearchToolExecutor extends BaseToolExecutor {
       }
     }
 
-    deliverWhenReady(this.runSubagentResearch(task, call, context), context, {
-      messageAPI: this.messageAPI,
-      historyService: this.historyService,
-      viaTool: 'research',
-      timeoutMs: RESEARCH_DEADLINE,
-      render: (result) => `调研结果（回应此前的问题）：\n${result.reply}`,
-    });
-    return this.success(
-      '调研已交给子代理，结论稍后会自动发到当前会话。现在用一句话告诉对方你去查了，不要编造结论，也不要再次调用 research 等待。',
-    );
+    return this.runSubagentResearch(task, call, context);
   }
 
   private async runSubagentResearch(task: string, call: ToolCall, context: ToolExecutionContext): Promise<ToolResult> {

@@ -1,27 +1,22 @@
 // Bilibili tool executor - allows LLM/subagent to search and fetch bilibili content
 
 import { inject, injectable } from 'tsyringe';
-import { MessageAPI } from '@/api/methods/MessageAPI';
-import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
-import { deliverWhenReady } from '@/tools/toolBackground';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { logger } from '@/utils/logger';
 import { BilibiliService } from '../BilibiliService';
 
-/** Ceiling for the deferred analyze pipeline; the client's own poll budget is 5 min. */
-const ANALYSIS_DEADLINE = 360_000;
-
 @Tool({
   name: 'bilibili',
   description:
-    '查询B站内容。支持搜索视频、获取视频详情、查看热门视频、热搜榜、以及提交视频分析任务。返回视频标题、UP主、播放量等信息。action=analyze 会立即返回，分析结果稍后自动发到当前会话。',
+    '查询B站内容。支持搜索视频、获取视频详情、查看热门视频、热搜榜、以及提交视频分析任务。返回视频标题、UP主、播放量等信息。action=analyze 要等后端跑完分析，通常需要几分钟。',
   executor: 'bilibili',
-  // search/video/popular/hot are bounded HTTP calls with their own 8s network deadline,
-  // plus one WBI key fetch before a search; analyze hands off and returns at once.
-  timeoutMs: 25_000,
+  // Sized for analyze, which polls the video-knowledge backend for up to
+  // `videoKnowledge.pollTimeoutMs` (300s by default). search/video/popular/hot are
+  // bounded well below this by their own 8s network deadline.
+  timeoutMs: 360_000,
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
   parameters: {
     action: {
@@ -53,8 +48,6 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
   constructor(
     @inject(BilibiliService) private bilibiliService: BilibiliService,
     @inject(VideoKnowledgeClient) private videoKnowledgeClient: VideoKnowledgeClient,
-    @inject(MessageAPI) private readonly messageAPI: MessageAPI,
-    @inject(ConversationHistoryService) private readonly historyService: ConversationHistoryService,
   ) {
     super();
   }
@@ -78,7 +71,7 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
         case 'hot':
           return this.handleHotSearch(context.signal);
         case 'analyze':
-          return this.handleAnalyzeInBackground(query, context);
+          return this.handleAnalyze(query);
         default:
           return this.error(`未知操作: ${action}`, `Unknown action: ${action}. Use search/video/popular/hot/analyze`);
       }
@@ -205,18 +198,5 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
       bvid,
       status: 'done',
     });
-  }
-
-  private handleAnalyzeInBackground(query: string | undefined, context: ToolExecutionContext): ToolResult {
-    deliverWhenReady(this.handleAnalyze(query), context, {
-      messageAPI: this.messageAPI,
-      historyService: this.historyService,
-      viaTool: 'bilibili',
-      timeoutMs: ANALYSIS_DEADLINE,
-      render: (result) => result.reply,
-    });
-    return this.success(
-      '视频分析任务已提交，跑完后结果会自动发到当前会话。现在用一句话告诉对方在分析了，不要再次调用来等待。',
-    );
   }
 }
