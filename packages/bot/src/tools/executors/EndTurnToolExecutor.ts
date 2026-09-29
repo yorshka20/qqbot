@@ -3,13 +3,15 @@ import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 
+export const END_TURN_TOOL_NAME = 'end_turn';
+
 // The agentic loop's only other exit is "emit a response with no tool calls",
 // i.e. speaking IS stopping. After send_card / send_message the model often has
 // nothing left to say, but the API still demands a response — this tool gives
 // that state an explicit, non-content exit so the model never has to emit
 // throwaway text (or agonize over whether its text will be delivered).
 @Tool({
-  name: 'end_turn',
+  name: END_TURN_TOOL_NAME,
   description:
     '结束本次回复，不再发送任何内容。当你要说的内容已经全部发出（例如已用 send_card 发出卡片、或已用 send_message 说完），且没有需要补充的话时调用。调用后本次回复立即结束。注意：若你仍有内容想说，直接输出文本即可（输出的文本一定会被发送），不要调用本工具。',
   executor: 'end_turn',
@@ -26,7 +28,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 })
 @injectable()
 export class EndTurnToolExecutor extends BaseToolExecutor {
-  name = 'end_turn';
+  name = END_TURN_TOOL_NAME;
 
   execute(_call: ToolCall, _context: ToolExecutionContext): ToolResult {
     return {

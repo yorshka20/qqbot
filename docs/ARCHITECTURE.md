@@ -626,12 +626,19 @@ delivery actions with non-overlapping semantics:
 - **Final text output** — always delivered (long structured text may auto-render
   as a card image). After `send_card`, trailing text is appended as a follow-up
   after the card instead of being dropped.
-- **`send_message`** — immediate pre-notice before slow tool calls, capped per
-  run (`agenda.llmLimits.maxSendsPerRun`, shared across provider-fallback
-  retries because the sends are real). It expands `[表情:名字]` and
-  `[表情：名字]` with the same QQ face parser as the main reply path, sends face
-  segments, and persists the delivered content in canonical text form via
-  `ConversationHistoryService.appendBotMessageToSession`.
+- **Text written alongside tool calls** — delivered immediately, before that
+  round's tools run: it is the heads-up for a slow tool. `LLMService.generateWithTools`
+  hands each tool round's text to `onToolRoundText` (awaited, failures swallowed)
+  and keeps it in the loop transcript; `GenerationStage` sends it through
+  `ConversationMessageSender`. A round that calls `end_turn` is the exception — its
+  text is the final text and leaves through `ResponseDispatchStage`, after any card
+  queued earlier in the turn. Only the reply flow wires the callback: agenda and
+  proactive runs have no one waiting on a heads-up.
+- **`send_message`** — an explicit immediate message, capped per run
+  (`agenda.llmLimits.maxSendsPerRun`, shared across provider-fallback retries
+  because the sends are real). It is delivered even when the same round's text
+  already said the same thing; the scene prompt tells the model to use one or the
+  other.
 - **`send_card`** — renders a card image and queues it on the context
   (`cardSent`); history stores the deck as readable text (`cardDeckToHistoryText`),
   never raw JSON.
@@ -644,6 +651,12 @@ delivery actions with non-overlapping semantics:
   stopReason `end_turn_tool` — the loop exits without demanding another model
   response. With no trailing text, `ResponseDispatchStage` queues no reply at
   all (Path 0).
+
+Tool-round text and `send_message` both go through `ConversationMessageSender`: the target comes from
+the hook context, leaked tool-call blocks are stripped and `[表情:名字]` /
+`[表情：名字]` expanded as in `ReplyPrepareSystem`, and the delivered text is
+persisted in canonical form via `ConversationHistoryService.appendBotMessageToSession`
+— these sends bypass SendSystem, so nothing else would record them.
 
 Tool rounds are capped by `ai.chat.maxToolRounds` (default 15).
 
@@ -725,8 +738,9 @@ The pipeline itself sets no deadline on that wait; the only limits are the
 provider request timeout and the tool's own `timeoutMs`. A tool that takes
 minutes by construction (`generate_image`, `research` beyond a single URL,
 `bilibili action=analyze`) declares a budget that fits and says in its
-description roughly how long it takes, so the model can send a heads-up with
-`send_message` first.
+description roughly how long it takes, so the model sends a heads-up first — as
+text in the same round as the call, or with `send_message` (see
+[Reply delivery contract](#reply-delivery-contract)).
 
 A tool may still deliver its *product* directly when the product is not text the
 model reasons over — `generate_image` sends the picture and returns a confirmation

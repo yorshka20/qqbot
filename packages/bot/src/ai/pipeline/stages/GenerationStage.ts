@@ -4,16 +4,18 @@ import { inject, singleton } from 'tsyringe';
 import { LLMService } from '@/ai/services/LLMService';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationConfigService } from '@/conversation/ConversationConfigService';
+import { ConversationMessageSender } from '@/conversation/ConversationMessageSender';
 import { normalizeSessionForConfig } from '@/core/config/SessionUtils';
 import type { ReasoningEffort } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
+import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
 import { executeSkillCall } from '../../tools/replyTools';
-import type { AIGenerateResponse, ChatMessage, ToolDefinition } from '../../types';
+import type { AIGenerateResponse, ChatMessage, FunctionCall, ToolDefinition } from '../../types';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
 import type { ReplyStage } from '../types';
 
@@ -63,6 +65,7 @@ export class GenerationStage implements ReplyStage {
     @inject(HookManager) private hookManager: HookManager,
     @inject(MessageAPI) private messageAPI: MessageAPI,
     @inject(ConversationConfigService) private conversationConfigService: ConversationConfigService,
+    @inject(ConversationMessageSender) private messageSender: ConversationMessageSender,
   ) {}
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
@@ -158,6 +161,26 @@ export class GenerationStage implements ReplyStage {
   }
 
   // ---------------------------------------------------------------------------
+  // Tool-round text
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Deliver the text a tool round wrote, now, before that round's tools run — it is the
+   * heads-up for work that may take minutes, and the loop already records it as said.
+   * A round that calls end_turn is the exception: its text is the final reply and leaves
+   * through ResponseDispatchStage, after any card queued earlier in the turn.
+   */
+  private async deliverToolRoundText(context: HookContext, text: string, calls: FunctionCall[]): Promise<void> {
+    if (calls.some((call) => call.name === END_TURN_TOOL_NAME)) {
+      return;
+    }
+    const delivered = await this.messageSender.sendText(context, text);
+    if (delivered) {
+      logger.info(`[GenerationStage] Sent tool-round text before its tools ran: ${delivered}`);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Single attempt
   // ---------------------------------------------------------------------------
 
@@ -207,6 +230,7 @@ export class GenerationStage implements ReplyStage {
         nativeWebSearch: effectiveNativeSearchEnabled,
         toolExecutor,
         onReasoning,
+        onToolRoundText: (text, calls) => this.deliverToolRoundText(context, text, calls),
         onProviderResolved: ({ providerName, model }) => {
           context.metadata.set('activeProvider', providerName);
           if (model) context.metadata.set('activeModel', model);

@@ -20,6 +20,7 @@ import type {
   ChatMessage,
   ChatMessageToolCall,
   ContentPart,
+  FunctionCall,
   LLMTraceObserver,
   StreamingHandler,
   ToolDefinition,
@@ -900,6 +901,8 @@ export class LLMService {
 
       // Execute tools if executor is provided
       if (toolExecutor) {
+        await this.emitToolRoundText(response, calls, options);
+
         // Build assistant message with all tool_calls for this round
         const assistantToolCalls: ChatMessageToolCall[] = [];
         const toolMessages: ChatMessage[] = [];
@@ -1115,6 +1118,27 @@ export class LLMService {
       await options.onReasoning(text, response.resolvedProviderName ?? provider);
     } catch (err) {
       logger.warn('[LLMService] onReasoning callback failed:', err);
+    }
+  }
+
+  /**
+   * Hand the text a tool round wrote to the caller before the round's tools run. A
+   * failing callback is logged and swallowed: whatever the caller does with the text,
+   * it must not cost the turn its tools or its reply.
+   */
+  private async emitToolRoundText(
+    response: AIGenerateResponse,
+    calls: FunctionCall[],
+    options: ToolUseGenerateOptions | undefined,
+  ): Promise<void> {
+    const text = response.text?.trim();
+    if (!text || !options?.onToolRoundText) {
+      return;
+    }
+    try {
+      await options.onToolRoundText(text, calls);
+    } catch (err) {
+      logger.warn('[LLMService] onToolRoundText callback failed:', err);
     }
   }
 

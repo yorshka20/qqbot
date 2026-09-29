@@ -511,6 +511,70 @@ describe('LLMService resolvedModel stamping', () => {
     });
   });
 
+  describe('generateWithTools tool-round text', () => {
+    const tools: ToolDefinition[] = [
+      { name: 'noop', description: 'does nothing', parameters: { type: 'object', properties: {} } },
+    ];
+
+    /** Provider that replays `rounds` in order; every round but the last calls noop. */
+    function createService(rounds: string[]) {
+      let round = 0;
+      const provider = {
+        name: 'mock',
+        getCapabilities: () => ['llm'],
+        isAvailable: () => true,
+        supportsToolUse: true,
+        generate: async (): Promise<AIGenerateResponse> => {
+          const text = rounds[round];
+          round++;
+          return round < rounds.length
+            ? { text, functionCalls: [{ name: 'noop', arguments: '{}', toolCallId: `call_${round}` }] }
+            : { text };
+        },
+      };
+      const aiManager = {
+        getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+        getProvidersForCapability: () => [],
+        getDefaultProvider: () => provider,
+      } as unknown as AIManager;
+      return createLLMService(aiManager, { toolUseProviders: ['mock'], fallback: { fallbackOrder: [] } });
+    }
+
+    it("reports each tool round's text before that round's tools run, and returns only the final text", async () => {
+      const service = createService(['稍等，我查一下', '', '结论如下']);
+      const seen: string[] = [];
+      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        toolExecutor: async () => {
+          seen.push('<tool>');
+          return 'ok';
+        },
+        onToolRoundText: async (text, calls) => {
+          seen.push(`${text} → ${calls.map((c) => c.name).join(',')}`);
+        },
+      });
+
+      expect(seen).toEqual(['稍等，我查一下 → noop', '<tool>', '<tool>']);
+      expect(res.text).toBe('结论如下');
+    });
+
+    it('still runs the tools and returns the reply when the callback throws', async () => {
+      const service = createService(['稍等', '结论如下']);
+      let toolRuns = 0;
+      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        toolExecutor: async () => {
+          toolRuns++;
+          return 'ok';
+        },
+        onToolRoundText: async () => {
+          throw new Error('send failed');
+        },
+      });
+
+      expect(toolRuns).toBe(1);
+      expect(res.text).toBe('结论如下');
+    });
+  });
+
   describe('reasoning echo at the provider boundary', () => {
     function captureProvider(echoesReasoningNatively: boolean) {
       const seen: AIGenerateOptions[] = [];

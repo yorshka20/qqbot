@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import { ConversationMessageSender } from '@/conversation/ConversationMessageSender';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
 import { HookMetadataMap } from '@/hooks/metadata';
@@ -13,17 +14,19 @@ function setup() {
   const history: string[] = [];
   const executor = new SendMessageToolExecutor(
     { getAgendaLlmLimits: () => ({ maxSendsPerRun: 3 }) } as Config,
-    {
-      sendFromContext: async (segments: MessageSegment[]) => {
-        sent.push(segments);
-        return { message_seq: 42 };
-      },
-    } as unknown as MessageAPI,
-    {
-      appendBotMessageToSession: async (_session: unknown, content: string) => {
-        history.push(content);
-      },
-    } as unknown as ConversationHistoryService,
+    new ConversationMessageSender(
+      {
+        sendFromContext: async (segments: MessageSegment[]) => {
+          sent.push(segments);
+          return { message_seq: 42 };
+        },
+      } as unknown as MessageAPI,
+      {
+        appendBotMessageToSession: async (_session: unknown, content: string) => {
+          history.push(content);
+        },
+      } as unknown as ConversationHistoryService,
+    ),
   );
   const metadata = new HookMetadataMap();
   const context = {

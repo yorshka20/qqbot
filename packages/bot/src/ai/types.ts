@@ -355,6 +355,15 @@ export interface ToolUseGenerateOptions extends AIGenerateOptions {
    * a mid-turn fallback changes it and the caller cannot read it from context yet.
    */
   onReasoning?: (text: string, provider: string | undefined) => void | Promise<void>;
+  /**
+   * Invoked with the text a round wrote alongside its tool calls, before those calls
+   * run, and awaited — a caller that delivers it lands it ahead of anything the tools
+   * send and while a slow tool is still working. Only the final round's text (or the
+   * text of a round that ends the turn via end_turn) is returned as `text`; this is
+   * the only place every other round's text surfaces. `calls` lets the caller tell a
+   * round that ends the turn, whose text also comes back as `text`.
+   */
+  onToolRoundText?: (text: string, calls: FunctionCall[]) => void | Promise<void>;
 }
 
 /** Tool Use generation response */

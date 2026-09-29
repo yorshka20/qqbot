@@ -124,3 +124,13 @@ export function stripTextToolCalls(text: string): string {
   result = result.replace(/\n{3,}/g, '\n\n').trim();
   return result;
 }
+
+/**
+ * Strip every tool-call artifact a model can leak into text meant for the chat: DSML
+ * blocks and text-based `<tool_call>` / `<tool_result>` blocks. Returns the input
+ * unchanged when it carries neither.
+ */
+export function stripLeakedToolCalls(text: string): string {
+  const withoutDsml = stripDSML(text);
+  return containsTextToolCalls(withoutDsml) ? stripTextToolCalls(withoutDsml) : withoutDsml;
+}

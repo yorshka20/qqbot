@@ -1,7 +1,7 @@
 // Reply Prepare System - post-process reply before sending
 // Handles text cleanup and sendAsForward computation for ALL reply sources.
 
-import { containsTextToolCalls, stripDSML, stripTextToolCalls } from '@/ai/utils/dsmlParser';
+import { stripLeakedToolCalls } from '@/ai/utils/dsmlParser';
 import { extractTextFromSegments } from '@/ai/utils/imageUtils';
 import { hasReply } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
@@ -65,18 +65,8 @@ export class ReplyPrepareSystem implements System {
         continue;
       }
 
-      let text = segment.data.text;
-
-      // Strip DSML function call blocks (DeepSeek-specific)
-      const afterDsml = stripDSML(text);
-      if (afterDsml !== text) {
-        text = afterDsml;
-        cleaned = true;
-      }
-
-      // Strip text-based <tool_call>/<tool_result> blocks
-      if (containsTextToolCalls(text)) {
-        text = stripTextToolCalls(text);
+      const text = stripLeakedToolCalls(segment.data.text);
+      if (text !== segment.data.text) {
         cleaned = true;
       }
 

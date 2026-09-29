@@ -1,11 +1,7 @@
 import { inject, injectable } from 'tsyringe';
-import { extractTextFromSegments } from '@/ai/utils/imageUtils';
-import { MessageAPI } from '@/api/methods/MessageAPI';
-import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import { ConversationMessageSender } from '@/conversation/ConversationMessageSender';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
-import type { HookContext } from '@/hooks/types';
-import { expandFaceMarkers } from '@/message/qqFace';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -39,8 +35,7 @@ export class SendMessageToolExecutor extends BaseToolExecutor {
 
   constructor(
     @inject(DITokens.CONFIG) private readonly config: Config,
-    @inject(MessageAPI) private readonly messageAPI: MessageAPI,
-    @inject(ConversationHistoryService) private readonly historyService: ConversationHistoryService,
+    @inject(ConversationMessageSender) private readonly sender: ConversationMessageSender,
   ) {
     super();
   }
@@ -65,21 +60,12 @@ export class SendMessageToolExecutor extends BaseToolExecutor {
       );
     }
 
-    const { segments, unresolved } = expandFaceMarkers(content);
-    if (unresolved.length > 0) {
-      logger.warn(`[SendMessageToolExecutor] Dropped unknown face marker(s): ${unresolved.join(', ')}`);
-    }
-    const sentContent = extractTextFromSegments(segments);
-    if (!sentContent) {
-      return this.error('消息内容没有可发送的文本或表情', 'empty content after face expansion');
-    }
-
     try {
-      // Target comes from the conversation context, never from LLM parameters —
-      // this tool must not be able to send into arbitrary chats.
-      const sendResult = await this.messageAPI.sendFromContext(segments, hookContext.message);
+      const sentContent = await this.sender.sendText(hookContext, content, 'send_message');
+      if (!sentContent) {
+        return this.error('消息内容没有可发送的文本或表情', 'empty content after face expansion');
+      }
       hookContext.metadata.set('sendMessageCount', sent + 1);
-      await this.persistSentMessage(hookContext, sentContent, sendResult.message_seq);
       return this.success(
         `已发送（这是你本次回复中通过 send_message 发出的第 ${sent + 1} 条，上限 ${maxSends} 条；该额度只计 send_message，卡片与最终文本回复不占用）`,
         { content: sentContent },
@@ -89,30 +75,5 @@ export class SendMessageToolExecutor extends BaseToolExecutor {
       const msg = err instanceof Error ? err.message : String(err);
       return this.error(`发送失败：${msg}`, msg);
     }
-  }
-
-  /**
-   * Persist the sent message into session history. This send bypasses
-   * SendSystem/onMessageSent, so without an explicit write the conversation
-   * history would omit it and the next turn's LLM would see its own delivered
-   * messages missing. Failure is non-fatal — the message already reached the
-   * user; history is best-effort (appendBotMessageToSession catches internally).
-   */
-  private async persistSentMessage(hookContext: HookContext, content: string, messageSeq?: number): Promise<void> {
-    const message = hookContext.message;
-    const isGroup = message.messageType === 'group';
-    const targetId = isGroup ? message.groupId : message.userId;
-    if (targetId == null) return;
-    const botSelfId = Number(hookContext.metadata.get('botSelfId'));
-    await this.historyService.appendBotMessageToSession(
-      { sessionType: isGroup ? 'group' : 'user', targetId },
-      content,
-      message.protocol,
-      {
-        botUserId: Number.isNaN(botSelfId) ? 0 : botSelfId,
-        messageSeq,
-        viaTool: 'send_message',
-      },
-    );
   }
 }
