@@ -664,7 +664,16 @@ Multi-provider support is handled by `AIManager` + `ProviderRouter`:
 - **Name prefix** — a provider name or alias (`claude`, `gpt`, `哈基米`, …) at the **start** of the message, followed by a separator (space, comma, colon).
 - **Color nickname** — a color nickname such as `橙色高手` / `紫色高手`, matched **anywhere** in the message.
 
-Nicknames are tried before prefixes, and longer nicknames before shorter ones, so `橙色高手` is never shadowed by the bare `高手`. The bare `高手` is the default nickname: it triggers a reply but names no provider, so the request falls back to the configured default provider and is not treated as an explicit user choice (no paid-tier preference).
+Nicknames are tried before prefixes, and longer nicknames before shorter ones, so `橙色高手` is never shadowed by the bare `高手`. The bare `高手` is the default nickname: it triggers a reply but names no provider, so the request falls back to the configured default provider and is not treated as an explicit user choice (no paid-tier preference). A name or nickname whose provider is not registered does not route; the request goes to the default provider.
+
+### Failed calls: retry or fallback
+
+`LLMService` accepts every provider completion through one check: a completion with neither text nor tool calls is a failed call (`EmptyCompletionError`) — no caller asks for an empty answer, and a reply stays silent only through `end_turn`. What happens next depends on whether the failure is silent:
+
+- **Retry on the same provider, then fall back** — a silent empty completion (the provider reported success), 429 / 5xx, and socket-level blips (`isTransientLLMError`).
+- **Fall back directly** — an error the provider stated, such as "no content (finish_reason=length)" or a 4xx. Trying the same request again would fail the same way.
+
+Fallback tries the other registered, healthy providers in `ai.llmFallback.fallbackOrder` order (unlisted ones last). Each tool round is one `generate` call, so a round that fails is re-run alone and the tools from earlier rounds do not run again.
 
 ## Tool System
 

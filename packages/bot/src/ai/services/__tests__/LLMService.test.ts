@@ -4,7 +4,7 @@ import { describe, expect, it, test } from 'bun:test';
 import type { AIManager } from '@/ai/AIManager';
 import type { AIGenerateOptions, AIGenerateResponse, ToolDefinition } from '@/ai/types';
 import { HttpClientError } from '@/api/http/HttpClient';
-import { isTransientLLMError, LLMService } from '../LLMService';
+import { EmptyCompletionError, isTransientLLMError, LLMService } from '../LLMService';
 import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import {
   createAIManagerWithProvider,
@@ -150,6 +150,12 @@ describe('isTransientLLMError', () => {
     expect(isTransientLLMError(new Error('some random validation error'))).toBe(false);
   });
 
+  it('retries a silent empty completion but not a provider that said why it has no content', () => {
+    expect(isTransientLLMError(new EmptyCompletionError('generate:deepseek'))).toBe(true);
+    expect(isTransientLLMError(new Error('DeepSeek returned no content (finish_reason=length)'))).toBe(false);
+    expect(isTransientLLMError(new Error('Gemini returned no content (finishReason=SAFETY)'))).toBe(false);
+  });
+
   it('treats hard timeouts as transient only when retryOnTimeout is set', () => {
     const timeout = new Error('Request timeout after 90000ms');
     expect(isTransientLLMError(timeout)).toBe(false);
@@ -189,6 +195,35 @@ describe('LLMService same-provider retry', () => {
     expect(res.resolvedModel).toBe('gemini-3.5-flash');
     expect(getCalls()).toBe(2);
   }, 20_000);
+
+  it('retries a silent empty completion on the same provider', async () => {
+    let n = 0;
+    const { service, getCalls } = makeService(async () => {
+      n++;
+      return n === 1 ? { text: '', reasoningContent: '想到一半' } : { text: 'ok' };
+    });
+    const res = await service.generate('hi', undefined, 'mock');
+    expect(res.text).toBe('ok');
+    expect(getCalls()).toBe(2);
+  }, 20_000);
+
+  it('accepts a completion that carries only tool calls', async () => {
+    const { service, getCalls } = makeService(async () => ({
+      text: '',
+      functionCalls: [{ name: 'search', arguments: '{}' }],
+    }));
+    const res = await service.generate('hi', undefined, 'mock');
+    expect(res.functionCalls).toHaveLength(1);
+    expect(getCalls()).toBe(1);
+  });
+
+  it('does not retry a provider that reported why it has no content', async () => {
+    const { service, getCalls } = makeService(async () => {
+      throw new Error('DeepSeek returned no content (finish_reason=length)');
+    });
+    await service.generate('hi', undefined, 'mock');
+    expect(getCalls()).toBe(1);
+  });
 
   it('does not retry a non-transient 404 (no fallback provider configured → fallback response)', async () => {
     const { service, getCalls } = makeService(async () => {

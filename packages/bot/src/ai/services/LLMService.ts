@@ -77,6 +77,33 @@ function withHardTimeout<T>(p: Promise<T>, timeoutMs: number, label: string): Pr
 }
 
 /**
+ * A provider reported success but returned neither text nor tool calls. No caller
+ * asks for an empty completion, so it is a failed call, and a silent one: a provider
+ * that states why it produced nothing (a non-stop finish reason) throws its own error
+ * instead. Observed on DeepSeek as reasoning cut off mid-sentence under
+ * `finish_reason: stop`.
+ */
+export class EmptyCompletionError extends Error {
+  constructor(label: string) {
+    super(`[LLMService] ${label} returned an empty completion (no text, no tool calls)`);
+    this.name = 'EmptyCompletionError';
+  }
+}
+
+/** Every provider completion LLMService accepts goes through here. */
+async function awaitCompletion(
+  completion: Promise<AIGenerateResponse>,
+  timeoutMs: number,
+  label: string,
+): Promise<AIGenerateResponse> {
+  const result = await withHardTimeout(completion, timeoutMs, label);
+  if (!result.text?.trim() && !result.functionCalls?.length) {
+    throw new EmptyCompletionError(label);
+  }
+  return result;
+}
+
+/**
  * Turns `generateWithTools` appends after the assembled request envelope. They are
  * plumbing, not user speech, so each says so and points back at `<current_query>` —
  * `base.system.txt` tells the model to read them that way. They stay on the `user`
@@ -115,6 +142,12 @@ const TRANSIENT_LLM_ERROR_PATTERNS: RegExp[] = [
 const HARD_TIMEOUT_PATTERN = /hard-timeout|Request timeout/i;
 
 export function isTransientLLMError(err: Error, opts?: { retryOnTimeout?: boolean }): boolean {
+  // A silent empty completion is worth another try on the same provider. A provider
+  // that says why it produced nothing (e.g. "no content (finish_reason=length)")
+  // throws a plain error that matches no pattern below, so it goes straight to fallback.
+  if (err instanceof EmptyCompletionError) {
+    return true;
+  }
   const msg = err.message;
   if (HARD_TIMEOUT_PATTERN.test(msg) || err.name === 'AbortError') {
     return opts?.retryOnTimeout ?? false;
@@ -499,7 +532,7 @@ export class LLMService {
         providerName,
         async () => {
           const hardTimeoutMs = options?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-          return await withHardTimeout(
+          return await awaitCompletion(
             provider.generate(prompt, this.optionsForProvider(provider, options)),
             hardTimeoutMs,
             `generateFixed:${providerName}`,
@@ -553,7 +586,7 @@ export class LLMService {
         resolvedName,
         async () => {
           const hardTimeoutMs = effectiveOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-          return await withHardTimeout(
+          return await awaitCompletion(
             provider.generate(prompt, this.optionsForProvider(provider, effectiveOptions)),
             hardTimeoutMs,
             `generate:${resolvedName}`,
@@ -586,7 +619,7 @@ export class LLMService {
         sessionId,
         (p) => {
           const t = fallbackOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-          return withHardTimeout(
+          return awaitCompletion(
             p.generate(prompt, this.optionsForProvider(p, fallbackOptions)),
             t,
             `generate-fallback`,
@@ -630,7 +663,7 @@ export class LLMService {
         resolvedName,
         async () => {
           const hardTimeoutMs = mergedOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-          return await withHardTimeout(
+          return await awaitCompletion(
             this.invokeLiteGeneration(provider, prompt, mergedOptions),
             hardTimeoutMs,
             `generateLite:${resolvedName}`,
@@ -655,7 +688,7 @@ export class LLMService {
         sessionId,
         (p) => {
           const t = fallbackOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-          return withHardTimeout(this.invokeLiteGeneration(p, prompt, fallbackOptions), t, `generateLite-fallback`);
+          return awaitCompletion(this.invokeLiteGeneration(p, prompt, fallbackOptions), t, `generateLite-fallback`);
         },
         prompt,
       );
