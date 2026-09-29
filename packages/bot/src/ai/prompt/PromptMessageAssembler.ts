@@ -1,5 +1,6 @@
 import type { ChatMessage } from '@/ai/types';
 import type { ConversationMessageEntry } from '@/conversation/history';
+import { collectViewableImageSegments } from '@/message/imageSegments';
 import type { MessageSegment } from '@/message/types';
 import { formatTimeSpanCompact } from '@/utils/dateTime';
 import { contentToPlainString } from '../utils/contentUtils';
@@ -308,17 +309,13 @@ export class PromptMessageAssembler {
   }
 
   private extractImageTags(segments?: MessageSegment[], messageId?: string): string {
-    if (!segments?.length) return '';
-    const tags: string[] = [];
-    let imageIndex = 0;
-    for (const segment of segments) {
-      if (segment.type !== 'image') continue;
-      const id = messageId ? `${messageId}:${imageIndex}` : '';
-      const summary = this.normalize(String(segment.data.summary ?? ''));
-      tags.push(`<image_segment${id ? ` id="${id}"` : ''} summary="${summary}" />`);
-      imageIndex++;
-    }
-    return tags.join('\n');
+    return collectViewableImageSegments(segments)
+      .map((segment, imageIndex) => {
+        const id = messageId ? `${messageId}:${imageIndex}` : '';
+        const summary = this.normalize(String(segment.data.summary ?? ''));
+        return `<image_segment${id ? ` id="${id}"` : ''} summary="${summary}" />`;
+      })
+      .join('\n');
   }
 
   private normalize(value: string): string {

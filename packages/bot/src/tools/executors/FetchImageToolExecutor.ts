@@ -6,6 +6,7 @@ import { extractImagesFromSegmentsAsync, normalizeVisionImages } from '@/ai/util
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
+import { collectViewableImageSegments } from '@/message/imageSegments';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
@@ -20,7 +21,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 @Tool({
   name: 'fetch_image',
   description:
-    '获取历史消息中的图片内容，返回给你进行视觉分析。使用消息中 <image_segment> 标签的 id 属性来指定要获取的图片。',
+    '获取历史消息中的图片或表情内容，返回给你进行视觉分析。使用消息中 <image_segment> 标签的 id 属性来指定要获取的图片。',
   executor: 'fetch_image',
   // Each image download is given 30s and one call may carry several.
   timeoutMs: 90_000,
@@ -36,7 +37,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   examples: ['帮我看看这张图片是什么', '分析一下刚才发的那张图', '识别历史消息中的图片内容'],
   triggerKeywords: ['看图', '图片识别', '分析图片', '图片内容', '看看图片'],
   whenToUse:
-    '当你需要查看历史消息中某张图片的具体内容时调用。前提：消息中有 <image_segment id="..." /> 标签。注意：当前消息附带的图片已经自动展示给你，无需调用此工具；此工具仅用于获取历史消息中你尚未看到的图片。',
+    '当你需要查看历史消息中某张图片或表情的具体内容时调用。前提：消息中有 <image_segment id="..." /> 标签（自定义表情、商城表情同样是这种标签）。注意：当前消息附带的图片已经自动展示给你，无需调用此工具；此工具仅用于获取历史消息中你尚未看到的图片。',
 })
 @injectable()
 export class FetchImageToolExecutor extends BaseToolExecutor {
@@ -108,8 +109,9 @@ export class FetchImageToolExecutor extends BaseToolExecutor {
       return this.error('消息原始内容格式无效', 'rawContent is not a string or array');
     }
 
-    // Count image segments and find the target
-    const imageSegments = segments.filter((s) => s.type === 'image');
+    // Count viewable images and find the target. The index comes from an <image_segment>
+    // tag, so this list must be the one that produced it.
+    const imageSegments = collectViewableImageSegments(segments);
     if (imageSegments.length === 0) {
       return this.error('该消息中没有图片', 'No image segments in message');
     }

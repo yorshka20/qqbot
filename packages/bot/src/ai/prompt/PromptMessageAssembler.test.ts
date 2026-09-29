@@ -114,6 +114,33 @@ describe('PromptMessageAssembler', () => {
 
     expect(messages[1].content).toContain('<image_segment id="1:0" summary="img" />');
   });
+
+  it('tags market stickers as images, numbering them alongside real images', () => {
+    const assembler = new PromptMessageAssembler();
+    const entries: ConversationMessageEntry[] = [
+      {
+        messageId: '2',
+        userId: 10000001,
+        nickname: '测试用户甲',
+        content: '',
+        segments: [
+          { type: 'image', data: { uri: 'https://example.com/a.png', summary: '[图片]' } },
+          { type: 'market_face', data: { url: 'https://example.com/s.gif', summary: '[跑]' } },
+        ],
+        isBotReply: false,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    ];
+
+    const messages = assembler.buildNormalMessages({
+      sceneSystem: 'scene',
+      historyEntries: entries,
+      finalUserBlocks: { currentQuery: 'q' },
+    });
+
+    expect(messages[1].content).toContain('<image_segment id="2:0" summary="[图片]" />');
+    expect(messages[1].content).toContain('<image_segment id="2:1" summary="[跑]" />');
+  });
   it('renders a summary entry as its own tagged block covering a span, not a chat turn', () => {
     const assembler = new PromptMessageAssembler();
     const from = new Date('2026-08-27T03:30:00.000Z');

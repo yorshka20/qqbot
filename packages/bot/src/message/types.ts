@@ -33,6 +33,19 @@ export interface ImageSegment {
   };
 }
 
+/**
+ * QQ market sticker (商城表情). Inbound only: the protocol hands over a plain image URL,
+ * so it is a picture wherever the model may look at one — unlike {@link FaceSegment},
+ * whose built-in faces are words and render as `[表情:名字]`.
+ */
+export interface MarketFaceSegment {
+  type: 'market_face';
+  data: {
+    url: string;
+    summary?: string;
+  };
+}
+
 export interface ReplySegment {
   type: 'reply';
   data: {
@@ -83,6 +96,7 @@ export type MessageSegment =
   | AtSegment
   | FaceSegment
   | ImageSegment
+  | MarketFaceSegment
   | ReplySegment
   | RecordSegment
   | FileSegment;

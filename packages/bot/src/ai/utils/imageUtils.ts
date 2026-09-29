@@ -3,6 +3,7 @@
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedMessageEvent } from '@/events/types';
+import { collectViewableImageSegments } from '@/message/imageSegments';
 import { renderFaceToken } from '@/message/qqFace';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
@@ -43,10 +44,10 @@ export function isPubliclyAccessibleURL(url: string): boolean {
 }
 
 /**
- * Build a single VisionImage from segment.data using only uri and temp_url (no resource_id).
+ * Build a single VisionImage from the URLs a segment carries directly (no resource_id).
  * Used as fallback when get_resource_temp_url is not available or when temp_url might still be valid.
  */
-function buildVisionImageFromUriAndTempUrl(imageData: Record<string, unknown> | undefined): VisionImage | null {
+function buildVisionImageFromDirectSources(imageData: Record<string, unknown> | undefined): VisionImage | null {
   if (!imageData || typeof imageData !== 'object') return null;
   const visionImage: VisionImage = {};
 
@@ -70,17 +71,11 @@ function buildVisionImageFromUriAndTempUrl(imageData: Record<string, unknown> | 
       visionImage.url = imageData.uri;
     }
   }
-  // Priority 2: Handle Milky protocol temp_url field
-  // temp_url is a temporary download URL provided by Milky protocol
-  // This is typically available for images received in messages
-  if (
-    imageData.temp_url &&
-    typeof imageData.temp_url === 'string' &&
-    !visionImage.url &&
-    !visionImage.base64 &&
-    !visionImage.file
-  ) {
-    visionImage.url = imageData.temp_url;
+  // Priority 2: a URL the segment already carries — Milky's temp_url on images, or the
+  // permanent `url` of a market sticker.
+  const directUrl = imageData.temp_url ?? imageData.url;
+  if (directUrl && typeof directUrl === 'string' && !visionImage.url && !visionImage.base64 && !visionImage.file) {
+    visionImage.url = directUrl;
   }
 
   if (!visionImage.url && !visionImage.base64 && !visionImage.file) return null;
@@ -103,45 +98,6 @@ function buildVisionImageFromUriAndTempUrl(imageData: Record<string, unknown> | 
 }
 
 /**
- * Extract images from message segments
- * Supports both MessageSegment (standard format) and IncomingSegment (Milky protocol format)
- */
-export function extractImagesFromSegments(segments: MessageSegment[]): VisionImage[] {
-  const images: VisionImage[] = [];
-
-  for (const segment of segments) {
-    // Type guard: check if segment has type field
-    if (typeof segment !== 'object' || segment === null || !('type' in segment)) {
-      continue;
-    }
-
-    // Handle both MessageSegment and IncomingSegment types
-    if (segment.type === 'image') {
-      const imageData = segment.data as Record<string, unknown> | undefined;
-
-      // Check if this is a sticker (sub_type === 'sticker')
-      const imageType = imageData?.sub_type || 'normal';
-
-      // Log image segment data for debugging
-      logger.debug(`[imageUtils] Processing ${imageType} image segment | data=${JSON.stringify(imageData)}`);
-
-      const visionImage = buildVisionImageFromUriAndTempUrl(imageData);
-      if (visionImage) {
-        images.push(visionImage);
-      } else if (imageData?.resource_id) {
-        // Priority 3: When only resource_id is present, use extractImagesFromSegmentsAsync with getResourceUrl to resolve via get_resource_temp_url
-        logger.warn(
-          `[imageUtils] Image segment has resource_id but no uri/temp_url | resource_id=${imageData.resource_id} | Use extractImagesFromSegmentsAsync with getResourceUrl to resolve`,
-        );
-      }
-    }
-  }
-
-  logger.info(`[imageUtils] Extracted ${images.length} image(s) from ${segments.length} segment(s)`);
-  return images;
-}
-
-/**
  * Extract images from segments with optional resolution of Milky resource_id via get_resource_temp_url.
  * When getResourceUrl is provided: prefer resolving resource_id to a fresh URL (so expired temp_url is not used);
  * if that fails or resource_id is missing, fall back to uri/temp_url. Never skip an image when segment has resource_id or uri/temp_url.
@@ -154,12 +110,10 @@ export async function extractImagesFromSegmentsAsync(
   getResourceUrl?: (resourceId: string) => Promise<string | null>,
 ): Promise<VisionImage[]> {
   const images: VisionImage[] = [];
-  if (!segments?.length) return images;
+  const viewable = collectViewableImageSegments(segments);
+  if (viewable.length === 0) return images;
 
-  for (const segment of segments) {
-    if (typeof segment !== 'object' || segment === null || !('type' in segment) || segment.type !== 'image') {
-      continue;
-    }
+  for (const segment of viewable) {
     const imageData = segment.data as Record<string, unknown> | undefined;
     let visionImage: VisionImage | null = null;
 
@@ -182,9 +136,9 @@ export async function extractImagesFromSegmentsAsync(
       }
     }
 
-    // Fallback: use uri or temp_url (e.g. when no getResourceUrl, or getResourceUrl returned null / threw)
+    // Fallback: use the URLs on the segment (e.g. no getResourceUrl, or it returned null / threw)
     if (!visionImage) {
-      visionImage = buildVisionImageFromUriAndTempUrl(imageData);
+      visionImage = buildVisionImageFromDirectSources(imageData);
     }
 
     if (visionImage) {

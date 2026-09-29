@@ -8,6 +8,7 @@ import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptIn
 import type { Config } from '@/core/config';
 import type { ReasoningEffort } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
+import { collectViewableImageSegments } from '@/message/imageSegments';
 import type { MessageSegment } from '@/message/types';
 import { logger } from '@/utils/logger';
 import type { VisionImage } from '../../capabilities/types';
@@ -146,12 +147,12 @@ export class PromptAssemblyStage implements ReplyStage {
         this.messageAPI.getResourceTempUrl(resourceId, hookContext.message);
       for (let i = 0; i < ctx.historyEntries.length; i++) {
         const entry = ctx.historyEntries[i];
-        const hasImage = entry.segments?.some((s) => s.type === 'image');
-        if (!hasImage || !entry.segments?.length) {
+        const viewableImages = collectViewableImageSegments(entry.segments);
+        if (viewableImages.length === 0) {
           continue;
         }
         try {
-          const visionImages = await extractImagesFromSegmentsAsync(entry.segments, getResourceUrl);
+          const visionImages = await extractImagesFromSegmentsAsync(viewableImages, getResourceUrl);
           if (visionImages.length === 0) {
             continue;
           }
