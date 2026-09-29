@@ -27,6 +27,7 @@ export { RagSearchToolExecutor } from './RagSearchToolExecutor';
 export { ReactToolExecutor } from './ReactToolExecutor';
 export { ReadFileToolExecutor } from './ReadFileToolExecutor';
 export { ReadForwardToolExecutor } from './ReadForwardToolExecutor';
+export { RecallMessageToolExecutor } from './RecallMessageToolExecutor';
 export { ReplyToolExecutor } from './ReplyToolExecutor';
 export { ResearchToolExecutor } from './ResearchToolExecutor';
 export { RunShellToolExecutor } from './RunShellToolExecutor';

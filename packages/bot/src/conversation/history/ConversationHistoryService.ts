@@ -43,6 +43,11 @@ export interface ConversationMessageEntry {
   isSummary?: boolean;
   /** For summary entries: the span covered. A summary has no single moment of its own. */
   summarySpan?: { from: Date; to: Date };
+  /**
+   * True once the chat withdrew this message (a `message_recall` notice). The text is kept so
+   * readers know what was retracted; every rendering leads it with `RECALLED_MARKER`.
+   */
+  recalled?: boolean;
 }
 
 /** Outcome of a summary roll: the resulting window plus how many entries the summary stands for. */
@@ -227,6 +232,43 @@ export class ConversationHistoryService {
     } catch (error) {
       const err = error instanceof Error ? error : error;
       logger.warn('[ConversationHistoryService] Failed to append bot message to session:', err);
+    }
+  }
+
+  /**
+   * Mark the message a recall notice names as recalled, keeping its text. Returns false when
+   * no stored row carries that sequence number — e.g. a message sent before it was persisted.
+   */
+  async markMessageRecalled(
+    sessionId: string,
+    sessionType: 'group' | 'user',
+    messageSeq: number,
+    recall: { recalledAt: Date; operatorId?: number },
+  ): Promise<boolean> {
+    const adapter = this.databaseManager.getAdapter();
+    if (!adapter?.isConnected()) {
+      return false;
+    }
+    try {
+      const conversation = await adapter.getModel('conversations').findOne({ sessionId, sessionType });
+      if (!conversation) {
+        return false;
+      }
+      const messages = adapter.getModel('messages');
+      const rows = await messages.find({ conversationId: conversation.id, messageSeq } as Partial<Message>);
+      for (const row of rows as Message[]) {
+        await messages.update(row.id, {
+          metadata: {
+            ...(row.metadata ?? {}),
+            recalledAt: recall.recalledAt.toISOString(),
+            ...(recall.operatorId != null ? { recalledBy: recall.operatorId } : {}),
+          },
+        });
+      }
+      return rows.length > 0;
+    } catch (error) {
+      logger.warn('[ConversationHistoryService] Failed to mark message recalled:', error);
+      return false;
     }
   }
 
@@ -433,6 +475,7 @@ export class ConversationHistoryService {
       createdAt: new Date(msg.createdAt),
       wasAtBot: meta.wasAtBot === true,
       reasoning: typeof meta.reasoning === 'string' && meta.reasoning.length > 0 ? meta.reasoning : undefined,
+      recalled: typeof meta.recalledAt === 'string',
     };
   }
 

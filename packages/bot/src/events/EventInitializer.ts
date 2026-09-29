@@ -3,6 +3,7 @@
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { enterMessageContext } from '@/context/MessageContextStorage';
 import type { ConversationManager } from '@/conversation/ConversationManager';
+import type { MessageRecallRecorder } from '@/conversation/MessageRecallRecorder';
 import type { Config } from '@/core/config';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
@@ -27,10 +28,16 @@ export class EventInitializer {
    * Initialize event system with all handlers
    * @param config - Bot configuration
    * @param conversationManager - Conversation manager (required for MessageHandler)
+   * @param recallRecorder - Applies message_recall notices to conversation history (NoticeHandler)
    * @param hookManager - Hook manager (optional; when provided, notice events trigger onNoticeReceived hook)
    * @returns Initialized event system
    */
-  static initialize(config: Config, conversationManager: ConversationManager, hookManager?: HookManager): EventSystem {
+  static initialize(
+    config: Config,
+    conversationManager: ConversationManager,
+    recallRecorder: MessageRecallRecorder,
+    hookManager?: HookManager,
+  ): EventSystem {
     logger.info('[EventInitializer] Starting initialization...');
 
     // Initialize event router
@@ -40,7 +47,7 @@ export class EventInitializer {
 
     // Initialize event handlers
     const messageHandler = new MessageHandler(conversationManager);
-    const noticeHandler = new NoticeHandler();
+    const noticeHandler = new NoticeHandler(recallRecorder);
     const requestHandler = new RequestHandler();
     const metaEventHandler = new MetaEventHandler();
 

@@ -268,6 +268,23 @@ export class EpisodeCacheManager {
     );
   }
 
+  /**
+   * Reflect a recall in the session's live window. The window holds DB rows frozen for the
+   * provider's prefix cache, and a recall is the one change to an already-cached row it must
+   * pick up — otherwise the model reads a withdrawn message as live until the episode ends.
+   */
+  markRecalled(sessionId: string, messageSeq: number): void {
+    const episodeKey = this.activeEpisodeKeyBySession.get(sessionId);
+    const window = episodeKey != null ? this.episodeHistoryCache.get(episodeKey) : undefined;
+    if (!episodeKey || !window?.some((entry) => entry.messageSeq === messageSeq && !entry.recalled)) {
+      return;
+    }
+    this.episodeHistoryCache.set(
+      episodeKey,
+      window.map((entry) => (entry.messageSeq === messageSeq ? { ...entry, recalled: true } : entry)),
+    );
+  }
+
   /** An episode's window dies with the episode; without this the map grows for the life of the process. */
   private releasePreviousEpisode(sessionId: string, episodeKey: string): void {
     const previousKey = this.activeEpisodeKeyBySession.get(sessionId);

@@ -297,6 +297,26 @@ Prevents duplicate event processing from multiple protocols.
 - `priority-protocol`: Process event from highest-priority protocol
 - `merge`: Merge data from multiple protocol versions
 
+#### Recalled messages (`message_recall`)
+
+History shows what the chat shows: a recalled message stays in history, marked as withdrawn.
+Milky pushes a `message_recall` notice for every recall — the bot's own (the `recall_message`
+tool, a recall reaction in `MessageOperationPlugin`, `AutoRecallPlugin`) and any member's — so
+that notice is the only writer of the state. `NoticeHandler` hands it to `MessageRecallRecorder`,
+which sets `metadata.recalledAt` / `recalledBy` on the stored row
+(`ConversationHistoryService.markMessageRecalled`, matched by session + `messageSeq`) and
+updates the same entry in the live episode window (`EpisodeCacheManager.markRecalled`), whose
+cached rows would otherwise keep showing it as live until the episode ends.
+
+The entry keeps its text and carries `recalled: true`; every rendering leads it with
+`[已撤回]` (`RECALLED_MARKER` via `buildHistoryEntryPrefix` for the prompt, `recallMark` for
+the flat-text formats), and `base.system.txt` tells the model the marker is an annotation it
+never writes. The `recall_message` tool (Milky, `qq-group` / `qq-private`) takes an excerpt of
+one of the bot's own recent messages, resolves it to a unique stored message, and recalls it
+through `MessageAPI.recallFromContext`; the call itself lands in `<recent_actions>` through
+`AuditEventPlugin` like any tool call. A long reply split into several sends stores only the
+last send's sequence number, so only that part can be recalled.
+
 ### Conversation Layer
 
 #### ConversationManager

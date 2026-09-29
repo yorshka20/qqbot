@@ -49,8 +49,20 @@ function stripStructuralChars(value: string): string {
 }
 
 /**
+ * Marks a history entry the chat has since withdrawn. The text stays readable so the model
+ * knows what was retracted; the chat itself no longer shows it.
+ */
+export const RECALLED_MARKER = '[已撤回]';
+
+/** `[已撤回] ` for a recalled entry, '' otherwise — the lead every history rendering puts before the body. */
+export function recallMark(entry: { recalled?: boolean }): string {
+  return entry.recalled ? `${RECALLED_MARKER} ` : '';
+}
+
+/**
  * Build the leading label for a conversation history entry: `[M/DD HH:mm] [speaker:…]`
- * on user turns, nothing on the bot's own turns.
+ * on user turns, nothing on the bot's own turns — except {@link RECALLED_MARKER}, which
+ * any recalled entry carries.
  *
  * Whether a line is minutes or hours old decides whether a topic is still live, and the
  * retrieved `<rag_context>` fragments carry their own timestamps — untimed history would
@@ -64,6 +76,10 @@ function stripStructuralChars(value: string): string {
  * 变成了 Y，QQ 号不同"), which in a 1:1 chat contradicts the private-chat rule that
  * consecutive user messages are all the same person.
  *
+ * The recall marker is the one label a bot turn carries: it states a fact about that one
+ * message rather than decorating every turn, so it is rare enough not to read as the output
+ * format, and base.system.txt tells the model it is an annotation it never writes.
+ *
  * Shared by the plain-text assembler and the vision branch, which builds
  * `ContentPart[]` directly.
  */
@@ -72,10 +88,12 @@ export function buildHistoryEntryPrefix(entry: {
   userId?: string | number;
   nickname?: string;
   createdAt?: Date;
+  recalled?: boolean;
 }): string {
   if (entry.isBotReply) {
-    return '';
+    return entry.recalled ? RECALLED_MARKER : '';
   }
   const speaker = buildSpeakerTag(String(entry.userId ?? ''), entry.nickname);
-  return entry.createdAt ? `[${formatTimeCompact(entry.createdAt)}] ${speaker}` : speaker;
+  const label = entry.createdAt ? `[${formatTimeCompact(entry.createdAt)}] ${speaker}` : speaker;
+  return entry.recalled ? `${label} ${RECALLED_MARKER}` : label;
 }

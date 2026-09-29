@@ -1,6 +1,6 @@
 // Shared formatter for conversation history entries (same format as ConversationHistoryService.formatAsText)
 
-import { buildSpeakerTag } from '@/ai/prompt/speakerTag';
+import { buildSpeakerTag, recallMark } from '@/ai/prompt/speakerTag';
 import { formatTimeCompact, formatTimeSpanCompact } from '@/utils/dateTime';
 import type { ConversationMessageEntry } from './ConversationHistoryService';
 
@@ -14,10 +14,10 @@ const formatSimpleTime = (d: Date): string => formatTimeCompact(d);
  */
 export function formatContentWithSpeakerForRAG(entry: ConversationMessageEntry): string {
   if (entry.isBotReply) {
-    return `Assistant: ${entry.content}`;
+    return `Assistant: ${recallMark(entry)}${entry.content}`;
   }
   const speaker = entry.nickname != null && entry.nickname !== '' ? entry.nickname : String(entry.userId);
-  return `${speaker}: ${entry.content}`;
+  return `${speaker}: ${recallMark(entry)}${entry.content}`;
 }
 
 /**
@@ -38,7 +38,7 @@ export function formatSingleEntryToText(entry: ConversationMessageEntry): string
   const t = entry.createdAt instanceof Date ? entry.createdAt : new Date(entry.createdAt);
   const timeStr = formatSimpleTime(t);
   const atBotMark = !entry.isBotReply && entry.wasAtBot ? ' [用户@机器人，已针对性回复]' : '';
-  return `${timeStr} ${who}: ${entry.content}${atBotMark}`;
+  return `${timeStr} ${who}: ${recallMark(entry)}${entry.content}${atBotMark}`;
 }
 
 /**
@@ -73,7 +73,7 @@ export function formatEntriesForSummaryInput(entries: ConversationMessageEntry[]
         return `${summaryLabel(entry)} ${entry.content}`;
       }
       const who = entry.isBotReply ? 'Assistant' : buildSpeakerTag(String(entry.userId), entry.nickname);
-      return `${formatTimeCompact(entry.createdAt)} ${who}: ${entry.content}`;
+      return `${formatTimeCompact(entry.createdAt)} ${who}: ${recallMark(entry)}${entry.content}`;
     })
     .join('\n');
 }

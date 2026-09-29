@@ -39,6 +39,8 @@ export interface NormalizedNoticeEvent extends BaseEvent {
   // Group nudge (group_nudge), normalized camelCase
   senderId?: number;
   receiverId?: number;
+  // Message recall (message_recall): who withdrew the message; senderId is who sent it
+  operatorId?: number;
   displayAction?: string;
   displaySuffix?: string;
   displayActionImgUrl?: string;

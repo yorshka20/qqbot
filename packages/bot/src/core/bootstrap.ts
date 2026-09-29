@@ -18,6 +18,7 @@ import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterT
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
 import { MessagePipeline } from '@/conversation/MessagePipeline';
+import { MessageRecallRecorder } from '@/conversation/MessageRecallRecorder';
 import { ProcessStageInterceptorRegistry } from '@/conversation/ProcessStageInterceptor';
 import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import { AdminAlertService } from '@/core/alert/AdminAlertService';
@@ -222,6 +223,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   const eventSystem = EventInitializer.initialize(
     config,
     conversationComponents.conversationManager,
+    container.resolve(MessageRecallRecorder),
     conversationComponents.hookManager,
   );
   const eventRouter = eventSystem.eventRouter;
