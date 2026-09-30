@@ -13,7 +13,6 @@ import type { LLMCapability } from '../capabilities/LLMCapability';
 import { isLLMCapability } from '../capabilities/LLMCapability';
 import { foldReasoningIntoContent } from '../prompt/PromptMessageAssembler';
 import { TokenRateLimiter, type TokenRateLimiterConfig } from '../rateLimit';
-import { TOKEN_BUDGET } from '../tokenBudget';
 import type {
   AIGenerateOptions,
   AIGenerateResponse,
@@ -21,10 +20,12 @@ import type {
   ChatMessageToolCall,
   ContentPart,
   FunctionCall,
+  LLMCallOptions,
   LLMTraceObserver,
   StreamingHandler,
   ToolDefinition,
   ToolResult,
+  ToolUseCallOptions,
   ToolUseGenerateOptions,
   ToolUseGenerateResponse,
 } from '../types';
@@ -510,7 +511,7 @@ export class LLMService {
   async generateFixed(
     providerName: string,
     prompt: string,
-    options?: AIGenerateOptions,
+    options: LLMCallOptions,
     retryConfig?: { maxRetries?: number; retryDelayMs?: number },
   ): Promise<AIGenerateResponse> {
     const maxRetries = retryConfig?.maxRetries ?? 3;
@@ -562,7 +563,7 @@ export class LLMService {
    * Automatically falls back to alternative providers on runtime failure.
    * Updates provider health status based on success/failure.
    */
-  async generate(prompt: string, options?: AIGenerateOptions, providerName?: string): Promise<AIGenerateResponse> {
+  async generate(prompt: string, options: LLMCallOptions, providerName?: string): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
     const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
 
@@ -635,7 +636,7 @@ export class LLMService {
    * Generate with lite defaults (low temperature, small maxTokens) for cheap/fast tasks (e.g. prefix-invitation, analysis).
    * Supports explicit provider and model override (e.g. doubao, doubao-1-5-lite-32k-250115).
    */
-  async generateLite(prompt: string, options?: AIGenerateOptions, providerName?: string): Promise<AIGenerateResponse> {
+  async generateLite(prompt: string, options: LLMCallOptions, providerName?: string): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
     const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
 
@@ -647,8 +648,6 @@ export class LLMService {
     const { provider, resolvedName, swapped } = resolved;
     const liteDefaults: AIGenerateOptions = {
       temperature: 0.1,
-      maxTokens: TOKEN_BUDGET.decision,
-      reasoningEffort: 'minimal',
     };
     const incomingOptions = this.stripModelIfSwapped(options, swapped);
     const mergedOptions: AIGenerateOptions = {
@@ -714,12 +713,12 @@ export class LLMService {
    */
   private async generateFromMessages(
     messages: ChatMessage[],
-    options?: Omit<AIGenerateOptions, 'messages'>,
+    options: Omit<LLMCallOptions, 'messages'>,
     providerName?: string,
   ): Promise<AIGenerateResponse> {
     const lastContent = messages[messages.length - 1]?.content;
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
-    return this.generate(prompt, { ...(options ?? {}), messages }, providerName);
+    return this.generate(prompt, { ...options, messages }, providerName);
   }
 
   /**
@@ -730,7 +729,7 @@ export class LLMService {
   async generateStream(
     prompt: string,
     handler: StreamingHandler,
-    options?: AIGenerateOptions,
+    options: LLMCallOptions,
     providerName?: string,
   ): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
@@ -784,7 +783,7 @@ export class LLMService {
   async generateWithTools(
     messages: ChatMessage[],
     tools: ToolDefinition[],
-    options?: ToolUseGenerateOptions,
+    options: ToolUseCallOptions,
     providerName?: string,
   ): Promise<ToolUseGenerateResponse> {
     // No tools — short-circuit to plain generate.
@@ -1188,7 +1187,7 @@ export class LLMService {
       const result = await visionProvider.generate('', {
         messages,
         temperature: 0.1,
-        maxTokens: TOKEN_BUDGET.analysis,
+        reasoningEffort: 'none',
       });
 
       logger.info(`[LLMService] Vision provider "${visionProviderName}" described image: ${result.text.length} chars`);
@@ -1411,12 +1410,12 @@ export class LLMService {
   private async generateMessagesWithToolSupport(
     messages: ChatMessage[],
     tools: ToolDefinition[],
-    options: ToolUseGenerateOptions | undefined,
+    options: ToolUseCallOptions,
     providerName: string,
   ): Promise<ToolUseGenerateResponse> {
     const lastContent = messages[messages.length - 1]?.content;
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
-    const response = await this.generate(prompt, { ...(options ?? {}), messages, tools }, providerName);
+    const response = await this.generate(prompt, { ...options, messages, tools }, providerName);
 
     // Fallback: if no structured functionCalls but text contains DSML, parse it
     if (!response.functionCalls?.length && response.text && containsDSML(response.text)) {

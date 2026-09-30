@@ -14,22 +14,19 @@ const DEFAULT_MAX_TOKENS_CEILING = 50_000;
 export const PREMIUM_MAX_TOKENS_CEILING = 20_000;
 
 /**
- * Clamp a caller's output-token budget to what a provider accepts.
+ * Resolve a call's output-token budget for a provider.
  *
- * Callers size their budget for the task (see `TOKEN_BUDGET`) without knowing which
- * provider will serve the call — fallback can land the same request on any of them.
- * The ceiling therefore has to be applied here, where the provider is known. Pass
- * `ceiling` when a provider must stop below the default: its API rejects a larger
- * value with a 400, or its output rate makes the default too expensive.
- *
- * `undefined` passes through: it means "no cap requested", and providers that omit
- * the field let the model use its own full budget.
+ * Callers do not size budgets per task: fallback can land the same request on any
+ * provider, and how much of the budget reasoning takes is up to the model, so a cap sized
+ * for the visible answer only truncates. A call normally passes nothing and gets the
+ * provider's ceiling, which is where the budget is set. Pass `ceiling` when a provider
+ * must stop below the default: its API rejects a larger value with a 400, or its output
+ * rate makes the default too expensive. An explicit value is still honoured below the
+ * ceiling, for the rare caller whose output length is itself the requirement.
  */
-export function clampMaxTokens(value: number, ceiling?: number): number;
-export function clampMaxTokens(value: number | undefined, ceiling?: number): number | undefined;
-export function clampMaxTokens(value: number | undefined, ceiling?: number): number | undefined {
+export function clampMaxTokens(value: number | undefined, ceiling = DEFAULT_MAX_TOKENS_CEILING): number {
   if (value === undefined) {
-    return undefined;
+    return ceiling;
   }
-  return Math.min(Math.max(1, Math.floor(value)), ceiling ?? DEFAULT_MAX_TOKENS_CEILING);
+  return Math.min(Math.max(1, Math.floor(value)), ceiling);
 }

@@ -1,7 +1,7 @@
 // Capability type definitions
 
 import type { AIProviderCapability } from '@/core/config/types/ai';
-import type { AIGenerateResponse } from '../types';
+import type { AIGenerateOptions, AIGenerateResponse } from '../types';
 
 /**
  * Vision image input type
@@ -74,6 +74,7 @@ export interface VideoAnalysisOptions {
   temperature?: number;
   maxTokens?: number;
   systemPrompt?: string;
+  reasoningEffort: NonNullable<AIGenerateOptions['reasoningEffort']>;
 }
 
 /**

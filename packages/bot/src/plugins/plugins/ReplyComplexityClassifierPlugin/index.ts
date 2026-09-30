@@ -6,7 +6,6 @@
 import { z } from 'zod';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import { getReply } from '@/context/HookContextHelpers';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
@@ -107,7 +106,7 @@ export class ReplyComplexityClassifierPlugin extends PluginBase {
 
     const callPromise = this.llmService.generateLite(
       prompt,
-      { maxTokens: TOKEN_BUDGET.decision, jsonMode: true, model: liteModel || undefined },
+      { reasoningEffort: 'none', jsonMode: true, model: liteModel || undefined },
       liteProvider,
     );
 

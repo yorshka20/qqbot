@@ -7,8 +7,12 @@ import { PromptMessageAssembler } from '../../../prompt/PromptMessageAssembler';
 import type { ReplyPipelineContext } from '../../ReplyPipelineContext';
 import { PromptAssemblyStage } from '../PromptAssemblyStage';
 import type { Config } from '@/core/config';
+import { DEFAULT_CHAT_REASONING_EFFORTS } from '@/core/config/types/ai';
 
-const NO_AI_CONFIG = { getAIConfig: () => undefined } as unknown as Config;
+const NO_AI_CONFIG = {
+  getAIConfig: () => undefined,
+  getChatReasoningEfforts: () => DEFAULT_CHAT_REASONING_EFFORTS,
+} as unknown as Config;
 
 /** Minimal promptManager mock: user_frame render + the real shared assembler. */
 const mockPromptManager = {

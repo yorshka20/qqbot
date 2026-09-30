@@ -4,7 +4,6 @@
 import { inject, injectable } from 'tsyringe';
 import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { SubAgentType } from '@/agent/types';
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
@@ -153,7 +152,7 @@ export class ResearchToolExecutor extends BaseToolExecutor {
           // calls: a round can carry several parallel searches, which the prompt asks
           // for — this only bounds the serial worst case.
           maxToolRounds: 5,
-          maxTokens: TOKEN_BUDGET.analysis,
+          reasoningEffort: 'low',
         },
       );
 

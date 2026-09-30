@@ -749,6 +749,10 @@
       // "subagentModel": ""
     },
     // AI providers configuration
+    // maxTokens: leave unset. A call runs at the provider's output ceiling (50k; 20k for
+    // premium-priced providers such as openai / anthropic) because reasoning models charge
+    // their thinking against the same budget — a small cap returns a finished chain of
+    // thought with no answer. Set it only to force a provider lower.
     "providers": {
       // Ollama provider example
       "ollama": {
@@ -764,7 +768,6 @@
       //   "model": "gpt-3.5-turbo",
       //   "baseURL": "https://api.openai.com/v1",
       //   "temperature": 0.7,
-      //   "maxTokens": 2000,
       //   // Optional: enable gpt-image-2 text2img (/v1/images/generations) +
       //   // img2img (/v1/images/edits). Powers the /gpt2 command. When enabled,
       //   // OpenAIProvider also registers `text2img` + `img2img` capabilities.
@@ -817,7 +820,6 @@
       //   "llm": {
       //     "model": "gemini-2.5-flash",
       //     "temperature": 0.7,
-      //     "maxTokens": 2000,
       //     "enableContext": true,
       //     "contextMessageCount": 10
       //   },
@@ -840,7 +842,6 @@
       //   "baseURL": "https://ark.cn-beijing.volces.com/api/v3",
       //   "reasoningEffort": "medium", // Options: "low", "medium", "high"
       //   "temperature": 0.7,
-      //   "maxTokens": 2000,
       //   "enableContext": true,
       //   "contextMessageCount": 10
       // },
@@ -852,7 +853,6 @@
       //   "llm": {
       //     "model": "gemini-2.0-flash",
       //     "temperature": 0.7,
-      //     "maxTokens": 2000,
       //     "enableContext": true,
       //     "contextMessageCount": 10
       //   },
@@ -884,8 +884,7 @@
       //   "type": "groq",
       //   "apiKey": "your_groq_api_key_here",
       //   "model": "qwen/qwen3-32b",
-      //   "temperature": 0.7,
-      //   "maxTokens": 2000
+      //   "temperature": 0.7
       // },
       // MiniMax provider (LLM + Vision). OpenAI-compatible API at https://api.minimax.io/v1
       // Supports MiniMax-M2.7, MiniMax-M2.5, MiniMax-M2.1, MiniMax-M2 and highspeed variants.
@@ -895,7 +894,6 @@
       //   "apiKey": "your_minimax_api_key_here",
       //   "model": "MiniMax-M2.7",
       //   "temperature": 1.0,
-      //   "maxTokens": 2000,
       //   "enableContext": true,
       //   "contextMessageCount": 10,
       //   "reasoningSplit": true
@@ -907,7 +905,6 @@
       //   "model": "Qwen/Qwen2.5-7B-Instruct",
       //   "baseURL": "https://api.siliconflow.com/v1",
       //   "temperature": 0.7,
-      //   "maxTokens": 2000,
       //   "enableContext": true,
       //   "contextMessageCount": 10
       // }

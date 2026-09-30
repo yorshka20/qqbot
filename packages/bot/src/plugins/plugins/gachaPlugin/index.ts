@@ -100,7 +100,7 @@ export class GachaPlugin extends PluginBase {
         {
           systemPrompt,
           temperature: 0.8,
-          maxTokens: 8192,
+          reasoningEffort: 'none',
           sessionId,
         },
         'deepseek',

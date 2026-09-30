@@ -16,6 +16,7 @@
 
 import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
+import { clampMaxTokens } from '../providers/maxTokens';
 import type { AIGenerateOptions } from '../types';
 import type { BatchAdapter, BatchJob, BatchJobStatus, BatchRequest, BatchResult } from './types';
 
@@ -207,7 +208,7 @@ export class DoubaoBatchAdapter implements BatchAdapter {
 export function buildDoubaoJsonlLine(customId: string, prompt: string, options?: AIGenerateOptions): string {
   const body: Record<string, unknown> = {
     messages: [{ role: 'user', content: prompt }],
-    max_tokens: options?.maxTokens ?? 2048,
+    max_tokens: clampMaxTokens(options?.maxTokens),
   };
   if (options?.temperature !== undefined) body.temperature = options.temperature;
   if (options?.model) body.model = options.model;

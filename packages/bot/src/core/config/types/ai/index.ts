@@ -111,30 +111,26 @@ export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
 /**
  * Chat-pipeline reasoning configuration. Split by whether the turn involves
- * tool invocation because the two jobs have fundamentally different reasoning
- * needs:
+ * tool invocation because the two jobs have different reasoning needs: a
+ * zero-tool turn (pure chat / roleplay) mostly spends thinking "planning" a
+ * persona the system prompt already pins down, while a tool-use turn gains
+ * from it in tool selection, argument construction and multi-step planning.
+ * Defaults in `DEFAULT_CHAT_REASONING_EFFORTS`.
  *
- * - Zero-tool turn (pure chat / roleplay): thinking is usually *worse* than
- *   useless — the model wastes tokens "planning" persona/style that the
- *   system prompt already pins down, and the full TTFT gets blocked behind
- *   the hidden `<think>` block. Default `'none'`.
- * - Tool-use turn: thinking improves tool selection, argument construction,
- *   and multi-step planning. Default `'medium'`.
- *
- * Overridable via `ai.chat` in config. Applied in `PromptAssemblyStage`.
+ * Overridable via `ai.chat` in config. Applied to both the reply pipeline
+ * (`PromptAssemblyStage`) and proactive replies.
  */
 export interface AIChatConfig {
-  /** Reasoning effort for chat turns with no tool definitions. Default `'none'`. */
+  /** Reasoning effort for chat turns with no tool definitions. */
   reasoningEffort?: ReasoningEffort;
-  /** Reasoning effort for chat turns that have tool definitions. Default `'medium'`. */
+  /** Reasoning effort for chat turns that have tool definitions. */
   toolReasoningEffort?: ReasoningEffort;
   /**
    * Reasoning effort applied when (a) the selected provider is in
    * `replyModeProviders` AND `metadata.replyMode === 'quick'`, OR (b) the
    * selected provider is in `lowEffortProviders` (always, regardless of
    * replyMode). Tool turns are never downgraded — they always use
-   * `toolReasoningEffort`. Default `'minimal'` — the smallest thinking
-   * budget on providers that support it.
+   * `toolReasoningEffort`.
    */
   quickReasoningEffort?: ReasoningEffort;
   /**
@@ -160,6 +156,22 @@ export interface AIChatConfig {
    */
   maxToolRounds?: number;
 }
+
+export type ChatReasoningEfforts = Required<
+  Pick<AIChatConfig, 'reasoningEffort' | 'toolReasoningEffort' | 'quickReasoningEffort'>
+>;
+
+/**
+ * Chat and tool turns default to `'medium'`, the pipeline's historical behavior; the split
+ * exists so operators can tune them apart. This is the general QQ conversation pipeline —
+ * the avatar path has its own knob (`avatar.llmReasoningEffort`), because live roleplay pays
+ * for thinking in TTFT and character coherence.
+ */
+export const DEFAULT_CHAT_REASONING_EFFORTS: ChatReasoningEfforts = {
+  reasoningEffort: 'medium',
+  toolReasoningEffort: 'medium',
+  quickReasoningEffort: 'minimal',
+};
 
 /**
  * Per-model token pricing (USD per 1M tokens).

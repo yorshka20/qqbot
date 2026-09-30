@@ -72,12 +72,11 @@ export class NsfwReplyService {
       });
       const baseSystemPrompt = this.promptManager.renderBasePrompt();
 
-      // 300-500 word narrative replies; maxTokens capped for API limits (e.g. DeepSeek 4096)
       const response = await this.llmService.generate(
         prompt,
         {
           temperature: 0.8,
-          maxTokens: 4096,
+          reasoningEffort: 'none',
           sessionId,
           systemPrompt: baseSystemPrompt,
         },

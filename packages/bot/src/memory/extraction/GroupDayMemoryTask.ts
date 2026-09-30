@@ -4,7 +4,6 @@
 // Only the extract call shares the prefix. Consolidation (memory.consolidate) reads stored
 // memory and the new facts, not the chat, so it keeps memory's own provider and model.
 
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
 import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
 import { MEMORY_JOB_TIMEOUT_MS, type MemoryLLMOptions } from '../llm/memoryLLM';
@@ -14,7 +13,7 @@ export class GroupDayMemoryTask implements FanoutTask<GroupDayContext, null> {
   static readonly NAME = 'memory';
   readonly name = GroupDayMemoryTask.NAME;
   readonly tools = [];
-  readonly limits = { maxTokens: TOKEN_BUDGET.document, timeout: MEMORY_JOB_TIMEOUT_MS, maxToolRounds: 1 };
+  readonly limits = { reasoningEffort: 'medium', timeout: MEMORY_JOB_TIMEOUT_MS, maxToolRounds: 1 } as const;
 
   constructor(
     private readonly extractService: MemoryExtractService,

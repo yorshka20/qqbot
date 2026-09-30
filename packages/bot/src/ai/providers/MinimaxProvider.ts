@@ -196,7 +196,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
     return {
       model: this.config.model || MINIMAX_DEFAULT_MODEL,
       defaultTemperature: this.config.defaultTemperature ?? 1.0,
-      defaultMaxTokens: this.config.defaultMaxTokens ?? 2000,
+      defaultMaxTokens: clampMaxTokens(this.config.defaultMaxTokens),
       reasoningSplit: this.config.reasoningSplit ?? true,
     };
   }

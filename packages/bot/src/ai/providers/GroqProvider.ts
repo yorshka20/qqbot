@@ -135,23 +135,6 @@ export class GroqProvider extends AIProvider implements LLMCapability {
     });
   }
 
-  async generateLite(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
-    const model = options?.model ?? this.config.model ?? 'qwen/qwen3-32b';
-    const temperature = options?.temperature ?? 0.1;
-    const maxTokens = options?.maxTokens ?? 256;
-
-    const injectOptions: AIGenerateOptions = {
-      model,
-      temperature,
-      maxTokens,
-      ...options,
-      tools: [],
-      reasoningEffort: 'none', // groq can use none.
-    };
-
-    return this.generate(prompt, injectOptions);
-  }
-
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'qwen/qwen3-32b';
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;

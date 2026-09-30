@@ -384,6 +384,7 @@ export class AgentLoop {
         {
           maxToolRounds: Math.max(1, item.maxSteps ?? 15),
           toolExecutor,
+          reasoningEffort: 'low',
         },
         DEFAULT_PROVIDER,
       );

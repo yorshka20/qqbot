@@ -347,6 +347,7 @@ function defineProviderSuite(providerName: IntegrationProviderName): void {
           scenario.messages,
           [getExecuteCodeDef()],
           {
+            reasoningEffort: 'none',
             maxToolRounds: 5,
             maxTokens: 1024,
             toolExecutor: async (call) => {

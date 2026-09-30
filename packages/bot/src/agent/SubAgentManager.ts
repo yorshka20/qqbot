@@ -21,6 +21,7 @@ export class SubAgentManager {
     maxDepth: 2,
     maxChildren: 5,
     timeout: 300000, // 5 minutes
+    reasoningEffort: 'low',
     inheritSoul: false,
     inheritMemory: false,
     inheritPreference: false,

@@ -4,7 +4,7 @@
 // tool list) and the same user-message prefix; only the task suffix differs. That is
 // what lets the provider's prefix cache serve every task after the first one.
 
-import type { AIGenerateResponse, ToolResult } from '@/ai/types';
+import type { AIGenerateOptions, AIGenerateResponse, ToolResult } from '@/ai/types';
 import type { ProtocolName } from '@/core/config/types/protocol';
 
 /** The chat a run belongs to: where its tools deliver and what it is keyed by. */
@@ -23,7 +23,7 @@ export interface FanoutRun<C> {
 }
 
 export interface FanoutTaskLimits {
-  maxTokens: number;
+  reasoningEffort: NonNullable<AIGenerateOptions['reasoningEffort']>;
   timeout: number;
   maxToolRounds: number;
 }

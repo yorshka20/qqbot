@@ -30,12 +30,12 @@ export interface VideoAnalysisCapability {
     timeoutMs?: number,
     pollIntervalMs?: number,
   ): Promise<VideoAnalysisUploadedFile>;
-  generateWithVideo(prompt: string, videoBuffer: Buffer, options?: VideoAnalysisOptions): Promise<VideoAnalysisResult>;
+  generateWithVideo(prompt: string, videoBuffer: Buffer, options: VideoAnalysisOptions): Promise<VideoAnalysisResult>;
   generateWithFileUri(
     prompt: string,
     fileUri: string,
     mimeType: string,
-    options?: VideoAnalysisOptions,
+    options: VideoAnalysisOptions,
   ): Promise<VideoAnalysisResult>;
   deleteUploadedFile(fileName: string): Promise<void>;
 }

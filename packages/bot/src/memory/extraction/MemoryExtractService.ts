@@ -4,7 +4,6 @@
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import type { Config } from '@/core/config';
 import { GROUP_CORE_SCOPES, USER_CORE_SCOPES } from '@/core/config/types/memory';
@@ -268,7 +267,7 @@ export class MemoryExtractService {
         prompt,
         {
           temperature: 0.4,
-          maxTokens: TOKEN_BUDGET.document,
+          reasoningEffort: 'medium',
           model: options.model,
           systemPrompt: baseSystemPrompt,
           jsonMode: true,
@@ -351,7 +350,7 @@ export class MemoryExtractService {
         prompt,
         {
           temperature: 0.4,
-          maxTokens: TOKEN_BUDGET.document,
+          reasoningEffort: 'medium',
           model: options.model,
           jsonMode: true,
           timeout: MEMORY_JOB_TIMEOUT_MS,

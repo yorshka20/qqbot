@@ -9,6 +9,7 @@ import { container } from 'tsyringe';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
 import type { AIGenerateOptions } from '../../types';
 import { GeminiProvider } from '../GeminiProvider';
+import { clampMaxTokens } from '../maxTokens';
 import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
 
 function baseConfig(): GeminiProviderConfig {
@@ -26,6 +27,7 @@ function baseConfig(): GeminiProviderConfig {
 interface RecordedCall {
   model: string;
   thinkingConfig?: { thinkingLevel?: string; thinkingBudget?: number; includeThoughts?: boolean };
+  maxOutputTokens?: number;
 }
 
 /** Stub getClient() to record each generateContent call. */
@@ -36,8 +38,15 @@ function installFakeClient(
   const calls: RecordedCall[] = [];
   const fakeClient = {
     models: {
-      generateContent: async (req: { model: string; config?: { thinkingConfig?: RecordedCall['thinkingConfig'] } }) => {
-        calls.push({ model: req.model, thinkingConfig: req.config?.thinkingConfig });
+      generateContent: async (req: {
+        model: string;
+        config?: { thinkingConfig?: RecordedCall['thinkingConfig']; maxOutputTokens?: number };
+      }) => {
+        calls.push({
+          model: req.model,
+          thinkingConfig: req.config?.thinkingConfig,
+          maxOutputTokens: req.config?.maxOutputTokens,
+        });
         return {
           candidates: [{ content: { parts: responseParts }, finishReason: 'STOP' }],
           text: 'hi',
@@ -207,5 +216,24 @@ describe('GeminiProvider thought parts → reasoningContent', () => {
     const res = await provider.generate('hi', promptOpts);
 
     expect(res.reasoningContent).toBeUndefined();
+  });
+});
+
+describe('GeminiProvider output budget', () => {
+  beforeEach(() => {
+    container.register(ResourceCleanupService, {
+      useValue: { registerFileCleanup: () => {} } as unknown as ResourceCleanupService,
+    });
+  });
+
+  it('sends the ceiling when neither the call nor the config sets a budget', async () => {
+    const config = baseConfig();
+    config.llm = { ...config.llm, maxTokens: undefined } as GeminiProviderConfig['llm'];
+    const provider = new GeminiProvider(config);
+    const calls = installFakeClient(provider);
+
+    await provider.generate('hi', { ...promptOpts, reasoningEffort: 'low' });
+
+    expect(calls[0].maxOutputTokens).toBe(clampMaxTokens(undefined));
   });
 });

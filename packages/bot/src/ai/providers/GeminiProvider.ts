@@ -509,12 +509,9 @@ export class GeminiProvider
     const config: Record<string, unknown> = {
       temperature: options?.temperature ?? 0.7,
     };
-    // Omit maxOutputTokens when unset so the model uses its full output budget. Capping it low is
-    // especially harmful for thinking models: thinking tokens count against this budget, so a small
-    // cap can be fully consumed by thinking, yielding finishReason=MAX_TOKENS with no text parts.
-    if (options?.maxTokens !== undefined) {
-      config.maxOutputTokens = clampMaxTokens(options.maxTokens);
-    }
+    // Thinking tokens count against this budget, so a cap sized for the answer can be fully consumed
+    // by thinking, yielding finishReason=MAX_TOKENS with no text parts; unset means the ceiling.
+    config.maxOutputTokens = clampMaxTokens(options?.maxTokens);
     // Tools array can hold both functionDeclarations and googleSearch grounding entries.
     // Drop caller-supplied `search` tool when grounding is on so the model uses grounding instead.
     const effectiveTools = options?.nativeWebSearch
@@ -1159,7 +1156,7 @@ export class GeminiProvider
   async generateWithVideo(
     prompt: string,
     videoBuffer: Buffer,
-    options?: VideoAnalysisOptions,
+    options: VideoAnalysisOptions,
   ): Promise<VideoAnalysisResult> {
     const client = this.getClient();
 
@@ -1173,11 +1170,9 @@ export class GeminiProvider
 
     // 3. Generate with video
     logger.info('[GeminiProvider] Generating analysis with video...');
-    const temperature = options?.temperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? 2000;
-
+    const model = this.config.videoAnalysisModel ?? 'gemini-2.5-flash';
     const response = await client.models.generateContent({
-      model: this.config.videoAnalysisModel ?? 'gemini-2.5-flash',
+      model,
       contents: [
         {
           role: 'user',
@@ -1187,11 +1182,7 @@ export class GeminiProvider
           ],
         },
       ],
-      config: {
-        temperature,
-        maxOutputTokens: maxTokens,
-        systemInstruction: options?.systemPrompt,
-      },
+      config: GeminiProvider.videoGenerationConfig(model, options),
     });
 
     const text = (response as { text?: string }).text ?? '';
@@ -1213,30 +1204,33 @@ export class GeminiProvider
     prompt: string,
     fileUri: string,
     mimeType: string,
-    options?: VideoAnalysisOptions,
+    options: VideoAnalysisOptions,
   ): Promise<VideoAnalysisResult> {
-    const temperature = options?.temperature ?? 0.7;
-    const maxTokens = options?.maxTokens ?? 2000;
-
     logger.info('[GeminiProvider] Generating analysis from file URI...');
 
+    const model = this.config.videoAnalysisModel ?? 'gemini-2.5-flash';
     const response = await this.getClient().models.generateContent({
-      model: this.config.videoAnalysisModel ?? 'gemini-2.5-flash',
+      model,
       contents: [
         {
           role: 'user',
           parts: [{ text: prompt }, { fileData: { mimeType, fileUri } }],
         },
       ],
-      config: {
-        temperature,
-        maxOutputTokens: maxTokens,
-        systemInstruction: options?.systemPrompt,
-      },
+      config: GeminiProvider.videoGenerationConfig(model, options),
     });
 
     const text = (response as { text?: string }).text ?? '';
     return { text };
+  }
+
+  private static videoGenerationConfig(model: string, options: VideoAnalysisOptions): Record<string, unknown> {
+    return {
+      temperature: options.temperature ?? 0.7,
+      maxOutputTokens: clampMaxTokens(options.maxTokens),
+      systemInstruction: options.systemPrompt,
+      thinkingConfig: GeminiProvider.mapReasoningEffortToThinking(options.reasoningEffort, model),
+    };
   }
 
   /**

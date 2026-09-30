@@ -62,7 +62,7 @@ for (const providerName of ALL_TOOL_USE_PROVIDERS) {
           ];
           const res = await llmService.generate(
             '',
-            { messages, tools: [SEND_CARD_DEF], maxTokens: 1024 },
+            { reasoningEffort: 'none', messages, tools: [SEND_CARD_DEF], maxTokens: 1024 },
             providerName,
           );
 

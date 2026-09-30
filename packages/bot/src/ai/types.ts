@@ -336,6 +336,13 @@ export interface ToolResult {
   error?: string;
 }
 
+/**
+ * Options for a call through LLMService. The reasoning effort is required: left out, a call
+ * runs at the vendor's default, which on thinking models is the most expensive setting
+ * (DeepSeek: high), so every task states how much it should think.
+ */
+export type LLMCallOptions = AIGenerateOptions & Required<Pick<AIGenerateOptions, 'reasoningEffort'>>;
+
 /** Tool Use generation options */
 export interface ToolUseGenerateOptions extends AIGenerateOptions {
   tools?: ToolDefinition[];
@@ -365,6 +372,8 @@ export interface ToolUseGenerateOptions extends AIGenerateOptions {
    */
   onToolRoundText?: (text: string, calls: FunctionCall[]) => void | Promise<void>;
 }
+
+export type ToolUseCallOptions = ToolUseGenerateOptions & Required<Pick<AIGenerateOptions, 'reasoningEffort'>>;
 
 /** Tool Use generation response */
 export interface ToolUseGenerateResponse extends AIGenerateResponse {

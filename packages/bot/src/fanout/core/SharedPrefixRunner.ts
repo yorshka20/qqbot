@@ -103,7 +103,7 @@ async function runTask<C>(
         envelope.tools,
         {
           model: envelope.model,
-          maxTokens: task.limits.maxTokens,
+          reasoningEffort: task.limits.reasoningEffort,
           timeout: task.limits.timeout,
           maxToolRounds: task.limits.maxToolRounds,
           toolExecutor,

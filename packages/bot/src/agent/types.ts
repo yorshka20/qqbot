@@ -1,5 +1,7 @@
 // SubAgent system type definitions
 
+import type { AIGenerateOptions } from '@/ai/types';
+
 /**
  * SubAgent types
  */
@@ -42,7 +44,7 @@ export interface SubAgentConfig {
   providerModels?: Record<string, string>; // Model override keyed by provider name; matches the provider picked from providerName arrays.
 
   // LLM generation parameters
-  maxTokens?: number; // Output-token cap. Unset leaves the provider's own default.
+  reasoningEffort: NonNullable<AIGenerateOptions['reasoningEffort']>;
   maxToolRounds?: number | null; // Round cap. Unset uses 5. null means no cap.
 
   // Prompt overrides

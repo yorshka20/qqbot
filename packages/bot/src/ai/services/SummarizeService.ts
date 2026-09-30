@@ -8,7 +8,6 @@ import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
-import { TOKEN_BUDGET } from '../tokenBudget';
 
 /** cleanThreadTopic prompt expects JSON (keepIndices); usually in code block or raw. */
 const CLEAN_THREAD_TOPIC_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'regex'];
@@ -17,16 +16,9 @@ export interface SummarizeOptions {
   /** Override LLM provider for this call (e.g. "ollama"). If not set, uses defaultProvider from constructor. */
   provider?: string;
   temperature?: number;
-  maxTokens?: number;
 }
 
 const DEFAULT_TEMPERATURE = 0.5;
-/**
- * Budget for reasoning + answer, not answer length — every mainstream provider counts
- * thinking tokens against this cap, so a summary-sized value starves the answer to
- * empty on any reasoning model. Output length is governed by the prompt instead.
- */
-const DEFAULT_MAX_TOKENS = TOKEN_BUDGET.analysis;
 
 /**
  * Unified summarization: renders llm.summarize prompt and calls LLM.
@@ -58,8 +50,7 @@ export class SummarizeService {
       prompt,
       {
         temperature: options?.temperature ?? DEFAULT_TEMPERATURE,
-        maxTokens: options?.maxTokens ?? DEFAULT_MAX_TOKENS,
-        reasoningEffort: 'minimal',
+        reasoningEffort: 'low',
       },
       options?.provider ?? this.defaultProvider,
     );
@@ -87,6 +78,7 @@ export class SummarizeService {
       {
         temperature: options?.temperature ?? 0.3,
         jsonMode: true,
+        reasoningEffort: 'low',
       },
       options?.provider ?? this.defaultProvider,
     );

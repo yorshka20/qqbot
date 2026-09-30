@@ -9,6 +9,7 @@
 
 import { HttpClient } from '@/api/http/HttpClient';
 import { logger } from '@/utils/logger';
+import { clampMaxTokens, PREMIUM_MAX_TOKENS_CEILING } from '../providers/maxTokens';
 import type { BatchAdapter, BatchJob, BatchJobStatus, BatchRequest, BatchResult } from './types';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -91,7 +92,7 @@ export class AnthropicBatchAdapter implements BatchAdapter {
       custom_id: req.customId,
       params: {
         model: req.options?.model ?? resolvedModel,
-        max_tokens: req.options?.maxTokens ?? 2048,
+        max_tokens: clampMaxTokens(req.options?.maxTokens, PREMIUM_MAX_TOKENS_CEILING),
         temperature: req.options?.temperature,
         messages: [{ role: 'user', content: req.prompt }],
       },

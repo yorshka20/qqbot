@@ -8,7 +8,6 @@
 
 import type { AgendaService } from '@/agenda/AgendaService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import type { ConversationMessageEntry } from '@/conversation/history/ConversationHistoryService';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
 import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
@@ -42,7 +41,7 @@ export class KeywordMinesTask implements FanoutTask<GroupDayContext, KeywordMine
   static readonly NAME = 'mines';
   readonly name = KeywordMinesTask.NAME;
   readonly tools = [];
-  readonly limits = { maxTokens: TOKEN_BUDGET.document, timeout: 240_000, maxToolRounds: 1 };
+  readonly limits = { reasoningEffort: 'low', timeout: 240_000, maxToolRounds: 1 } as const;
 
   constructor(private readonly deps: KeywordMinesTaskDeps) {}
 

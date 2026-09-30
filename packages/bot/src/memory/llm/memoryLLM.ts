@@ -1,7 +1,6 @@
 // The one way memory jobs call an LLM: a JSON answer from a background job.
 
 import type { LLMService } from '@/ai/services/LLMService';
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import { logger } from '@/utils/logger';
 
@@ -34,7 +33,7 @@ export async function generateMemoryJson(
       prompt,
       {
         temperature: 0.2,
-        maxTokens: TOKEN_BUDGET.document,
+        reasoningEffort: 'medium',
         model: options.model,
         jsonMode: true,
         timeout: MEMORY_JOB_TIMEOUT_MS,

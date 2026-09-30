@@ -8,7 +8,7 @@ import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { VisionImage } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
 import { isVisionCapability } from '../capabilities/VisionCapability';
-import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler } from '../types';
+import type { AIGenerateResponse, ChatMessage, LLMCallOptions, StreamingHandler } from '../types';
 import { normalizeVisionImages } from '../utils/imageUtils';
 
 /**
@@ -28,7 +28,7 @@ export class VisionService {
   async generateWithVision(
     prompt: string,
     images: VisionImage[],
-    options?: AIGenerateOptions,
+    options: LLMCallOptions,
     providerName?: string,
   ): Promise<AIGenerateResponse> {
     if (images.length === 0) {
@@ -131,7 +131,7 @@ export class VisionService {
   async explainImages(
     images: VisionImage[],
     prompt: string,
-    options?: AIGenerateOptions,
+    options: LLMCallOptions,
     providerName?: string,
   ): Promise<AIGenerateResponse> {
     if (images.length === 0) {
@@ -182,7 +182,7 @@ export class VisionService {
     prompt: string,
     images: VisionImage[],
     handler: StreamingHandler,
-    options?: AIGenerateOptions,
+    options: LLMCallOptions,
     providerName?: string,
   ): Promise<AIGenerateResponse> {
     if (images.length === 0) {
@@ -234,7 +234,7 @@ export class VisionService {
    */
   async generateWithVisionMessages(
     messages: ChatMessage[],
-    options?: AIGenerateOptions,
+    options: LLMCallOptions,
     providerName?: string,
   ): Promise<AIGenerateResponse> {
     if (messages.length === 0) {

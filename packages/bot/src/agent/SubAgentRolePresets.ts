@@ -50,7 +50,7 @@ interface PresetConfigFile {
   inheritPreference?: boolean;
   providerName?: string | string[];
   providerModels?: Record<string, string>;
-  maxTokens?: number;
+  reasoningEffort?: SubAgentConfig['reasoningEffort'];
   maxToolRounds?: number;
   systemTemplate?: string;
 }
@@ -124,7 +124,7 @@ function configToPreset(cfg: PresetConfigFile): RolePreset {
   if (cfg.inheritPreference !== undefined) overrides.inheritPreference = cfg.inheritPreference;
   if (cfg.providerName !== undefined) overrides.providerName = cfg.providerName;
   if (cfg.providerModels !== undefined) overrides.providerModels = cfg.providerModels;
-  if (cfg.maxTokens !== undefined) overrides.maxTokens = cfg.maxTokens;
+  if (cfg.reasoningEffort !== undefined) overrides.reasoningEffort = cfg.reasoningEffort;
   if (cfg.maxToolRounds !== undefined) overrides.maxToolRounds = cfg.maxToolRounds;
   if (cfg.systemTemplate !== undefined) overrides.systemTemplate = cfg.systemTemplate;
 

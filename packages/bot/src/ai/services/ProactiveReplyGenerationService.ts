@@ -5,6 +5,8 @@ import { LLMService } from '@/ai/services/LLMService';
 import { VisionService } from '@/ai/services/VisionService';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { ProactiveReplyInjectContext } from '@/context/types';
+import type { Config } from '@/core/config';
+import type { ChatReasoningEfforts } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
@@ -41,13 +43,19 @@ const PROACTIVE_GEN_OPTIONS = {
  */
 @singleton()
 export class ProactiveReplyGenerationService {
+  /** A proactive reply is a chat reply, so it thinks as much as the reply pipeline does. */
+  private readonly reasoningEfforts: ChatReasoningEfforts;
+
   constructor(
     @inject(LLMService) private llmService: LLMService,
     @inject(VisionService) private visionService: VisionService,
     @inject(HookManager) private hookManager: HookManager,
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
     @inject(DITokens.TOOL_MANAGER) private toolManager: ToolManager,
-  ) {}
+    @inject(DITokens.CONFIG) config: Config,
+  ) {
+    this.reasoningEfforts = config.getChatReasoningEfforts();
+  }
 
   /** Shared assembler held by PromptManager — single instance for the whole AI service. */
   private get messageAssembler() {
@@ -237,6 +245,7 @@ export class ProactiveReplyGenerationService {
             sessionId: genOptions.sessionId,
             nativeWebSearch: nativeWebSearchEnabled,
             toolExecutor,
+            reasoningEffort: this.reasoningEfforts.toolReasoningEffort,
           },
           effectiveProviderName,
         );
@@ -244,7 +253,11 @@ export class ProactiveReplyGenerationService {
       }
       return this.visionService.generateWithVisionMessages(
         messages,
-        { temperature: genOptions.temperature, sessionId: genOptions.sessionId },
+        {
+          temperature: genOptions.temperature,
+          sessionId: genOptions.sessionId,
+          reasoningEffort: this.reasoningEfforts.reasoningEffort,
+        },
         effectiveProviderName,
       );
     }
@@ -258,6 +271,7 @@ export class ProactiveReplyGenerationService {
           sessionId: genOptions.sessionId,
           nativeWebSearch: nativeWebSearchEnabled,
           toolExecutor,
+          reasoningEffort: this.reasoningEfforts.toolReasoningEffort,
         },
         effectiveProviderName,
       );
@@ -265,7 +279,11 @@ export class ProactiveReplyGenerationService {
     }
     const lastContent = messages[messages.length - 1]?.content;
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
-    return this.llmService.generate(prompt, { ...genOptions, messages }, effectiveProviderName);
+    return this.llmService.generate(
+      prompt,
+      { ...genOptions, messages, reasoningEffort: this.reasoningEfforts.reasoningEffort },
+      effectiveProviderName,
+    );
   }
 
   // ---------------------------------------------------------------------------

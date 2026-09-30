@@ -15,7 +15,6 @@ import type { AgendaService } from '@/agenda/AgendaService';
 import type { ScheduleFileService } from '@/agenda/ScheduleFileService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { JSON_ONLY_STRATEGIES, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
@@ -181,7 +180,7 @@ export class ScheduleCommand implements CommandHandler {
 
     const response = await this.llmService.generateLite(
       prompt,
-      { maxTokens: TOKEN_BUDGET.decision, jsonMode: true, model: liteModel },
+      { reasoningEffort: 'low', jsonMode: true, model: liteModel },
       liteProvider,
     );
     if (!response.text) return null;

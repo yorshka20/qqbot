@@ -26,6 +26,7 @@ function createMockSession(overrides?: Partial<SubAgentSession>): SubAgentSessio
       maxDepth: 2,
       maxChildren: 5,
       timeout: 300000,
+      reasoningEffort: 'low',
       inheritSoul: false,
       inheritMemory: false,
       inheritPreference: false,

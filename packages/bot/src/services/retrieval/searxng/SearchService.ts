@@ -2,7 +2,6 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { parseSearchDecision as parseSearchDecisionShared } from '@/ai/utils/llmJsonExtract';
 import type { MCPConfig, SearchProvider } from '@/core/config/types/mcp';
 import type { HealthCheckManager } from '@/core/health';
@@ -146,7 +145,7 @@ export class SearchService {
     try {
       const response = await llmService.generate(prompt, {
         temperature: 0.2,
-        maxTokens: TOKEN_BUDGET.analysis,
+        reasoningEffort: 'none',
       });
       responseText = (response.text || '').trim();
     } catch (err) {
@@ -428,7 +427,7 @@ export class SearchService {
         });
         const decisionResponse = await llmService.generate(decisionPrompt, {
           temperature: 0.3,
-          maxTokens: TOKEN_BUDGET.decision,
+          reasoningEffort: 'none',
           sessionId,
         });
         const searchDecision = parseSearchDecisionShared(decisionResponse.text);

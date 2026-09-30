@@ -5,7 +5,6 @@ import type { AIManager } from '@/ai/AIManager';
 import type { AIGenerateOptions, AIGenerateResponse, ToolDefinition } from '@/ai/types';
 import { HttpClientError } from '@/api/http/HttpClient';
 import { EmptyCompletionError, isTransientLLMError, LLMService } from '../LLMService';
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import {
   createAIManagerWithProvider,
   getIntegrationProvider,
@@ -53,7 +52,7 @@ describe('LLMService', () => {
   });
 
   describe('generateLite', () => {
-    it('calls provider.generate with lite defaults and optional provider/model', async () => {
+    it("passes the caller's effort through with a low temperature and no per-call token cap", async () => {
       let lastOptions: AIGenerateOptions | undefined;
       const mockProvider = {
         name: 'mock',
@@ -70,20 +69,21 @@ describe('LLMService', () => {
       } as unknown as AIManager;
       const llmService = createLLMService(aiManager);
 
-      await llmService.generateLite('test prompt');
+      await llmService.generateLite('test prompt', { reasoningEffort: 'none' });
       expect(lastOptions).toBeDefined();
       expect(lastOptions?.temperature).toBe(0.1);
-      expect(lastOptions?.maxTokens).toBe(TOKEN_BUDGET.decision);
-      expect(lastOptions?.reasoningEffort).toBe('minimal');
+      // The budget is the provider's ceiling (clampMaxTokens), not something a lite call sizes.
+      expect(lastOptions?.maxTokens).toBeUndefined();
+      expect(lastOptions?.reasoningEffort).toBe('none');
 
-      await llmService.generateLite('test', { model: 'doubao-1-5-lite-32k-250115' }, 'doubao');
+      await llmService.generateLite('test', { reasoningEffort: 'none', model: 'doubao-1-5-lite-32k-250115' }, 'doubao');
       expect(lastOptions?.model).toBe('doubao-1-5-lite-32k-250115');
     });
 
     it('returns fallback when no provider available', async () => {
       const aiManager = createMockAIManager();
       const llmService = createLLMService(aiManager);
-      const res = await llmService.generateLite('hello', undefined, 'nonexistent');
+      const res = await llmService.generateLite('hello', { reasoningEffort: 'none' }, 'nonexistent');
       expect(res.text).toContain('unavailable');
     });
   });
@@ -96,7 +96,7 @@ describe('LLMService', () => {
     test(
       'generate returns text and optional usage',
       async () => {
-        const res = await llmService.generate('Say "hello" in one short word.', undefined, 'doubao');
+        const res = await llmService.generate('Say "hello" in one short word.', { reasoningEffort: 'none' }, 'doubao');
         expect(res).toBeDefined();
         expect(typeof res.text).toBe('string');
         expect(res.text.length).toBeGreaterThan(0);
@@ -112,7 +112,7 @@ describe('LLMService', () => {
       'generate with messages returns text',
       async () => {
         const messages = [{ role: 'user' as const, content: 'Reply with only the number 42.' }];
-        const res = await llmService.generate('Reply with only the number 42.', { messages }, 'doubao');
+        const res = await llmService.generate('Reply with only the number 42.', { reasoningEffort: 'none', messages }, 'doubao');
         expect(res).toBeDefined();
         expect(typeof res.text).toBe('string');
         expect(res.text.length).toBeGreaterThan(0);
@@ -190,7 +190,7 @@ describe('LLMService same-provider retry', () => {
       if (n === 1) throw new HttpClientError('Overloaded', 529);
       return { text: 'ok', resolvedModel: 'gemini-3.5-flash' };
     });
-    const res = await service.generate('hi', undefined, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
     expect(res.text).toBe('ok');
     expect(res.resolvedModel).toBe('gemini-3.5-flash');
     expect(getCalls()).toBe(2);
@@ -202,7 +202,7 @@ describe('LLMService same-provider retry', () => {
       n++;
       return n === 1 ? { text: '', reasoningContent: '想到一半' } : { text: 'ok' };
     });
-    const res = await service.generate('hi', undefined, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
     expect(res.text).toBe('ok');
     expect(getCalls()).toBe(2);
   }, 20_000);
@@ -212,7 +212,7 @@ describe('LLMService same-provider retry', () => {
       text: '',
       functionCalls: [{ name: 'search', arguments: '{}' }],
     }));
-    const res = await service.generate('hi', undefined, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
     expect(res.functionCalls).toHaveLength(1);
     expect(getCalls()).toBe(1);
   });
@@ -221,7 +221,7 @@ describe('LLMService same-provider retry', () => {
     const { service, getCalls } = makeService(async () => {
       throw new Error('DeepSeek returned no content (finish_reason=length)');
     });
-    await service.generate('hi', undefined, 'mock');
+    await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
     expect(getCalls()).toBe(1);
   });
 
@@ -229,7 +229,7 @@ describe('LLMService same-provider retry', () => {
     const { service, getCalls } = makeService(async () => {
       throw new HttpClientError('not found', 404);
     });
-    const res = await service.generate('hi', undefined, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
     // No same-provider retry, no alternative provider → graceful fallback text.
     expect(getCalls()).toBe(1);
     expect(res.text.length).toBeGreaterThan(0);
@@ -258,7 +258,7 @@ describe('LLMService trace observers', () => {
     const seen: import('@/ai/types').LLMTraceEntry[] = [];
     service.addTraceObserver((e) => seen.push(e));
 
-    await service.generate('ask', { messages: [{ role: 'user', content: 'ask' }], systemPrompt: 'sys' }, 'mock');
+    await service.generate('ask', { reasoningEffort: 'none', messages: [{ role: 'user', content: 'ask' }], systemPrompt: 'sys' }, 'mock');
 
     expect(seen.length).toBe(1);
     expect(seen[0].opLabel).toBe('generate');
@@ -287,7 +287,7 @@ describe('LLMService trace observers', () => {
       throw new Error('observer boom');
     });
 
-    const res = await service.generate('hi', undefined, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
     expect(res.text).toBe('ok');
   });
 });
@@ -308,7 +308,7 @@ describe('LLMService resolvedModel stamping', () => {
     } as unknown as AIManager;
     const service = createLLMService(aiManager);
 
-    const res = await service.generate('hi', undefined, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
     expect(res.resolvedModel).toBe('gpt-4o-mini');
   });
 
@@ -327,7 +327,7 @@ describe('LLMService resolvedModel stamping', () => {
     } as unknown as AIManager;
     const service = createLLMService(aiManager);
 
-    const res = await service.generate('hi', undefined, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
     expect(res.resolvedModel).toBe('gemini-3.5-flash');
   });
 
@@ -353,7 +353,7 @@ describe('LLMService resolvedModel stamping', () => {
     const tools: ToolDefinition[] = [
       { name: 'noop', description: 'does nothing', parameters: { type: 'object', properties: {} } },
     ];
-    const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, undefined, 'mock');
+    const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, { reasoningEffort: 'none' }, 'mock');
     expect(res.resolvedModel).toBe('gpt-4o-mini');
   });
 
@@ -399,6 +399,7 @@ describe('LLMService resolvedModel stamping', () => {
     it('joins reasoning from every tool round, not just the final one', async () => {
       const service = createService(createReasoningProvider(2));
       const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        reasoningEffort: 'none',
         toolExecutor: async () => 'ok',
       });
 
@@ -410,6 +411,7 @@ describe('LLMService resolvedModel stamping', () => {
       const service = createService(createReasoningProvider(2));
       const seen: string[] = [];
       await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        reasoningEffort: 'none',
         toolExecutor: async () => {
           // Records interleaving: a round's thinking must arrive before its tools run.
           seen.push('<tool>');
@@ -451,6 +453,7 @@ describe('LLMService resolvedModel stamping', () => {
       const service = createService(provider);
       const emitted: string[] = [];
       const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        reasoningEffort: 'none',
         toolExecutor: async () => 'ok',
         onReasoning: async (text) => {
           emitted.push(text);
@@ -465,6 +468,7 @@ describe('LLMService resolvedModel stamping', () => {
       const service = createService(createReasoningProvider(0));
       const emitted: string[] = [];
       await service.generateWithTools([{ role: 'user', content: 'hi' }], [], {
+        reasoningEffort: 'none',
         onReasoning: async (text) => {
           emitted.push(text);
         },
@@ -476,6 +480,7 @@ describe('LLMService resolvedModel stamping', () => {
     it('survives an onReasoning callback that throws', async () => {
       const service = createService(createReasoningProvider(0));
       const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        reasoningEffort: 'none',
         toolExecutor: async () => 'ok',
         onReasoning: async () => {
           throw new Error('send failed');
@@ -488,6 +493,7 @@ describe('LLMService resolvedModel stamping', () => {
     it('returns the single round of reasoning when no tool is called', async () => {
       const service = createService(createReasoningProvider(0));
       const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        reasoningEffort: 'none',
         toolExecutor: async () => 'ok',
       });
 
@@ -504,6 +510,7 @@ describe('LLMService resolvedModel stamping', () => {
       };
       const service = createService(provider);
       const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        reasoningEffort: 'none',
         toolExecutor: async () => 'ok',
       });
 
@@ -544,6 +551,7 @@ describe('LLMService resolvedModel stamping', () => {
       const service = createService(['稍等，我查一下', '', '结论如下']);
       const seen: string[] = [];
       const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        reasoningEffort: 'none',
         toolExecutor: async () => {
           seen.push('<tool>');
           return 'ok';
@@ -561,6 +569,7 @@ describe('LLMService resolvedModel stamping', () => {
       const service = createService(['稍等', '结论如下']);
       let toolRuns = 0;
       const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        reasoningEffort: 'none',
         toolExecutor: async () => {
           toolRuns++;
           return 'ok';
@@ -613,7 +622,7 @@ describe('LLMService resolvedModel stamping', () => {
 
     it('leaves the field alone for a provider that replays it natively', async () => {
       const { seen, provider } = captureProvider(true);
-      await serviceFor(provider).generate('hi', { messages: history });
+      await serviceFor(provider).generate('hi', { reasoningEffort: 'none', messages: history });
 
       expect(seen[0].messages?.[1].content).toBe('在的');
       expect(seen[0].messages?.[1].reasoning_content).toBe('甲是在打招呼，轻松回应即可。');
@@ -621,7 +630,7 @@ describe('LLMService resolvedModel stamping', () => {
 
     it('folds the field into the text for a provider that would drop it', async () => {
       const { seen, provider } = captureProvider(false);
-      await serviceFor(provider).generate('hi', { messages: history });
+      await serviceFor(provider).generate('hi', { reasoningEffort: 'none', messages: history });
 
       expect(seen[0].messages?.[1].content).toBe('<thought>\n甲是在打招呼，轻松回应即可。\n</thought>\n在的');
       expect(seen[0].messages?.[1].reasoning_content).toBeUndefined();

@@ -46,7 +46,7 @@ export class ProviderFactory {
             baseUrl: config.baseUrl,
             model: config.model,
             defaultTemperature: config.temperature,
-            defaultMaxTokens: config.maxTokens || 2000,
+            defaultMaxTokens: config.maxTokens,
             enableContext: config.enableContext,
             contextMessageCount: config.contextMessageCount,
           });

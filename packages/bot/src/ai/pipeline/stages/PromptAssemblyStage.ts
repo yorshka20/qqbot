@@ -26,21 +26,6 @@ import type { ReplyStage } from '../types';
  * instructions, and the current user query. Handles vision ContentPart injection
  * for history images and current message images.
  */
-/**
- * Defaults for `AIChatConfig`. Both default to `'medium'` to preserve the
- * historical behavior of the conversation pipeline (which previously
- * hardcoded `'medium'` for all turns). The split is exposed so operators
- * *can* tune them independently — e.g. lower non-tool reasoning if their
- * session is pure casual chat — but we don't presume the split ourselves.
- *
- * NOTE: this is the GENERAL QQ conversation pipeline, not the avatar/Live2D
- * path. The avatar path has its own knob (`avatar.llmReasoningEffort`)
- * defaulting to `'none'`, because it's pure live roleplay where thinking
- * is net-negative on TTFT and character coherence.
- */
-const DEFAULT_CHAT_REASONING: ReasoningEffort = 'medium';
-const DEFAULT_TOOL_REASONING: ReasoningEffort = 'medium';
-const DEFAULT_QUICK_REASONING: ReasoningEffort = 'minimal';
 const DEFAULT_REPLY_MODE_PROVIDERS = ['deepseek', 'openai', 'gemini'];
 const DEFAULT_LOW_EFFORT_PROVIDERS = ['doubao'];
 const DEFAULT_MAX_TOOL_ROUNDS = 15;
@@ -63,9 +48,10 @@ export class PromptAssemblyStage implements ReplyStage {
     @inject(DITokens.CONFIG) config: Config,
   ) {
     const chatConfig = config.getAIConfig()?.chat;
-    this.chatReasoning = chatConfig?.reasoningEffort ?? DEFAULT_CHAT_REASONING;
-    this.toolReasoning = chatConfig?.toolReasoningEffort ?? DEFAULT_TOOL_REASONING;
-    this.quickReasoning = chatConfig?.quickReasoningEffort ?? DEFAULT_QUICK_REASONING;
+    const efforts = config.getChatReasoningEfforts();
+    this.chatReasoning = efforts.reasoningEffort;
+    this.toolReasoning = efforts.toolReasoningEffort;
+    this.quickReasoning = efforts.quickReasoningEffort;
     this.replyModeProviders = new Set(chatConfig?.replyModeProviders ?? DEFAULT_REPLY_MODE_PROVIDERS);
     this.lowEffortProviders = new Set(chatConfig?.lowEffortProviders ?? DEFAULT_LOW_EFFORT_PROVIDERS);
     this.maxToolRounds = Math.max(1, chatConfig?.maxToolRounds ?? DEFAULT_MAX_TOOL_ROUNDS);

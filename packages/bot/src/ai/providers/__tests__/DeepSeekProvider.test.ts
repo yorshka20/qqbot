@@ -9,6 +9,7 @@ import { describe, expect, it } from 'bun:test';
 import type { DeepSeekProviderConfig } from '@/core/config/types/ai';
 import type { AIGenerateOptions, ToolDefinition } from '../../types';
 import { DeepSeekProvider } from '../DeepSeekProvider';
+import { clampMaxTokens } from '../maxTokens';
 
 interface Choice {
   finish_reason?: string;
@@ -146,4 +147,14 @@ describe('DeepSeekProvider reasoning_effort', () => {
       expect(bodies[0].reasoning_effort).toBe(sent);
     });
   }
+});
+
+describe('DeepSeekProvider max_tokens', () => {
+  it('sends the ceiling when the call sets no budget, leaving reasoning room for the answer', async () => {
+    const { provider, bodies } = providerCapturing();
+
+    await provider.generate('hi', { reasoningEffort: 'low' });
+
+    expect(bodies[0].max_tokens).toBe(clampMaxTokens(undefined));
+  });
 });

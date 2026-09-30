@@ -317,7 +317,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     return {
       model: this.config.model ?? DEFAULT_DOUBAO_MODEL,
       defaultTemperature: this.config.defaultTemperature ?? 0.7,
-      defaultMaxTokens: this.config.defaultMaxTokens ?? 2000,
+      defaultMaxTokens: clampMaxTokens(this.config.defaultMaxTokens),
       reasoningEffort: this.config.reasoningEffort ?? 'medium',
     };
   }

@@ -5,7 +5,6 @@
 // model might misread or rewrite ever reaches the card.
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
 import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
@@ -33,7 +32,7 @@ export class ReportTask implements FanoutTask<GroupDayContext, null> {
   static readonly NAME = 'report';
   readonly name = ReportTask.NAME;
   readonly tools = [];
-  readonly limits = { maxTokens: TOKEN_BUDGET.document, timeout: 360_000, maxToolRounds: 1 };
+  readonly limits = { reasoningEffort: 'low', timeout: 360_000, maxToolRounds: 1 } as const;
 
   constructor(private readonly deps: ReportTaskDeps) {}
 

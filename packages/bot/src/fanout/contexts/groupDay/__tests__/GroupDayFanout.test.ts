@@ -73,7 +73,7 @@ function captureTask(name: string, suffix: string, seen: GroupDayContext[]): Fan
   return {
     name,
     tools: [],
-    limits: { maxTokens: 100, timeout: 1000, maxToolRounds: 1 },
+    limits: { reasoningEffort: 'none', timeout: 1000, maxToolRounds: 1 },
     parseParams: () => null,
     suffix: () => suffix,
     handle: async (_output, run) => {

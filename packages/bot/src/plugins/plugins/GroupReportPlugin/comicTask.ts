@@ -5,7 +5,6 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { ImageRequestAssembler } from '@/ai/services/ImageRequestAssembler';
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
@@ -34,7 +33,7 @@ export class ComicTask implements FanoutTask<GroupDayContext, ComicTaskParams> {
   static readonly NAME = 'comic';
   readonly name = ComicTask.NAME;
   readonly tools = ['generate_image'];
-  readonly limits = { maxTokens: TOKEN_BUDGET.document, timeout: 240_000, maxToolRounds: 4 };
+  readonly limits = { reasoningEffort: 'low', timeout: 240_000, maxToolRounds: 4 } as const;
 
   constructor(private readonly deps: ComicTaskDeps) {}
 

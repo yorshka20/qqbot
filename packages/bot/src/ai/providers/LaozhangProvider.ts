@@ -341,11 +341,9 @@ export class LaozhangProvider
     const generationConfig: Record<string, unknown> = {
       temperature: options?.temperature ?? 0.7,
     };
-    // Omit maxOutputTokens when unset so the model uses its full output budget (see GeminiProvider:
-    // a low cap can be entirely consumed by thinking tokens, leaving no text).
-    if (options?.maxTokens !== undefined) {
-      generationConfig.maxOutputTokens = clampMaxTokens(options.maxTokens);
-    }
+    // Thinking tokens count against this budget, so it is never sized for the answer: unset means
+    // the ceiling (see GeminiProvider).
+    generationConfig.maxOutputTokens = clampMaxTokens(options?.maxTokens);
     const payload = {
       contents: [{ parts: contentsParts }],
       generationConfig,

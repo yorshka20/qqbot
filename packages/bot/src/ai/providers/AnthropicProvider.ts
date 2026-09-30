@@ -118,10 +118,6 @@ type AnthropicWebSearchTool = {
 type AnthropicTool = AnthropicClientTool | AnthropicWebSearchTool;
 
 const ANTHROPIC_DEFAULT_MODEL = 'claude-3-sonnet-20240229';
-// Anthropic's API requires max_tokens on every request (unlike most providers, which let it be
-// omitted to default to the model's full output budget). 8192 is the smallest per-model output
-// cap across current Claude models, so it's the largest value safe to send unconditionally.
-const ANTHROPIC_DEFAULT_MAX_TOKENS = 8192;
 /**
  * Translate the pipeline's reasoning effort into Claude's thinking controls.
  *
@@ -332,10 +328,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
-    const maxTokens = clampMaxTokens(
-      options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
-      PREMIUM_MAX_TOKENS_CEILING,
-    );
+    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens, PREMIUM_MAX_TOKENS_CEILING);
 
     try {
       logger.info(`[STATS] [AnthropicProvider] Generating with model: ${model}`);
@@ -424,10 +417,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
-    const maxTokens = clampMaxTokens(
-      options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
-      PREMIUM_MAX_TOKENS_CEILING,
-    );
+    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens, PREMIUM_MAX_TOKENS_CEILING);
 
     try {
       logger.info(`[STATS] [AnthropicProvider] Generating stream with model: ${model}`);
@@ -529,10 +519,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'claude-3-opus-20240229';
-    const maxTokens = clampMaxTokens(
-      options?.maxTokens ?? this.config.defaultMaxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
-      PREMIUM_MAX_TOKENS_CEILING,
-    );
+    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens, PREMIUM_MAX_TOKENS_CEILING);
 
     try {
       logger.info(`[STATS] [AnthropicProvider] Generating with vision, model: ${model}`);

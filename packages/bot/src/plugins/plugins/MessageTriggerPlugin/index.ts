@@ -6,7 +6,6 @@ import { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import { LLMService } from '@/ai/services/LLMService';
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { parseLlmTrueFalse } from '@/ai/utils/llmJsonExtract';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { hasWhitelistCapability } from '@/context/HookContextHelpers';
@@ -132,7 +131,7 @@ export class MessageTriggerPlugin extends PluginBase {
       });
       const response = await this.llmService.generateLite(
         prompt,
-        { maxTokens: TOKEN_BUDGET.decision, model: liteModel },
+        { reasoningEffort: 'none', model: liteModel },
         liteProvider,
       );
       const raw = parseLlmTrueFalse(response.text);

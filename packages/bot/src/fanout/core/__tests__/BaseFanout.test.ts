@@ -91,7 +91,7 @@ function task(
   return {
     name,
     tools,
-    limits: { maxTokens: 100, timeout: 1000, maxToolRounds: 1 },
+    limits: { reasoningEffort: 'none', timeout: 1000, maxToolRounds: 1 },
     parseParams: (raw: unknown) => raw,
     suffix: () => `## 任务 ${name}`,
     handle: async (output: FanoutTaskOutput) => {

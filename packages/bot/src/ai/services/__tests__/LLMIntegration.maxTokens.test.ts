@@ -1,6 +1,6 @@
 /**
- * Verification for the "no artificial maxTokens cap" change: every provider must omit the field
- * when unconfigured and still return non-empty text. Specifically exercises Gemini (the provider
+ * Verification for the "no artificial maxTokens cap" change: with no per-call budget every provider
+ * runs at its ceiling (clampMaxTokens) and still returns non-empty text. Specifically exercises Gemini (the provider
  * whose thinking-budget exhaustion under a low cap produced "Invalid response structure").
  *
  * Run: NETWORK_TESTS=1 bun test src/ai/services/LLMIntegration.maxTokens.test.ts
@@ -42,7 +42,7 @@ function runProvider(name: IntegrationProviderName): void {
     test(
       'generate() with NO maxTokens returns non-empty text',
       async () => {
-        const res = await llm.generate('用一句话自我介绍。', undefined, name);
+        const res = await llm.generate('用一句话自我介绍。', { reasoningEffort: 'none' }, name);
         console.log(LOG_PREFIX, `[${name}] short`, {
           len: res.text?.length,
           preview: res.text?.slice(0, 60),
@@ -57,7 +57,7 @@ function runProvider(name: IntegrationProviderName): void {
     test(
       'long-output prompt with NO maxTokens is not truncated to empty / errored',
       async () => {
-        const res = await llm.generate(LONG_PROMPT, undefined, name);
+        const res = await llm.generate(LONG_PROMPT, { reasoningEffort: 'none' }, name);
         console.log(LOG_PREFIX, `[${name}] long`, {
           len: res.text?.length,
           completionTokens: res.usage?.completionTokens,

@@ -9,7 +9,6 @@ import { type PreliminaryAnalysisResult, PreliminaryAnalysisSchema } from '@/ai/
 import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
-import { TOKEN_BUDGET } from '../tokenBudget';
 
 /** analysis.ollama / analysis.ollama_multi expect JSON object; code block or raw. */
 const PRELIMINARY_ANALYSIS_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'braceMatch', 'regex'];
@@ -96,7 +95,7 @@ export class PreliminaryAnalysisService {
     try {
       const response = await generate.call(llm, prompt, {
         temperature: 0.2,
-        maxTokens: TOKEN_BUDGET.decision,
+        reasoningEffort: 'low',
         jsonMode: true,
         systemPrompt: baseSystemPrompt,
       });
@@ -154,7 +153,7 @@ export class PreliminaryAnalysisService {
     try {
       const response = await generate.call(llm, prompt, {
         temperature: 0.2,
-        maxTokens: TOKEN_BUDGET.decision,
+        reasoningEffort: 'low',
         jsonMode: true,
         systemPrompt: baseSystemPrompt,
       });

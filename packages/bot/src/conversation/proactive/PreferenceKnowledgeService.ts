@@ -3,7 +3,6 @@
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
-import { TOKEN_BUDGET } from '@/ai/tokenBudget';
 import { DITokens } from '@/core/DITokens';
 import type { SearchResult } from '@/services/retrieval';
 import {
@@ -187,7 +186,7 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
     try {
       const response = await this.llmService.generate(prompt, {
         temperature: 0.2,
-        maxTokens: TOKEN_BUDGET.analysis,
+        reasoningEffort: 'none',
       });
       responseText = (response.text || '').trim();
     } catch (err) {

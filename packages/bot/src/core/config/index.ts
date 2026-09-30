@@ -8,7 +8,14 @@ import { getRepoRoot } from '@/utils/repoRoot';
 import { loadConfigAuto } from './loadConfigDir';
 // Import all config types
 import { type AgendaConfig, type AgendaLlmLimits, DEFAULT_AGENDA_LLM_LIMITS } from './types/agenda';
-import type { AIConfig, AIProviderCapability, ContextMemoryConfig, SessionProviderConfig } from './types/ai';
+import {
+  type AIConfig,
+  type AIProviderCapability,
+  type ChatReasoningEfforts,
+  type ContextMemoryConfig,
+  DEFAULT_CHAT_REASONING_EFFORTS,
+  type SessionProviderConfig,
+} from './types/ai';
 import type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';
 import type {
   BotSelfConfig,
@@ -421,6 +428,15 @@ export class Config {
 
   getAIConfig(): AIConfig | undefined {
     return this.config.ai;
+  }
+
+  getChatReasoningEfforts(): ChatReasoningEfforts {
+    const chat = this.config.ai?.chat;
+    return {
+      reasoningEffort: chat?.reasoningEffort ?? DEFAULT_CHAT_REASONING_EFFORTS.reasoningEffort,
+      toolReasoningEffort: chat?.toolReasoningEffort ?? DEFAULT_CHAT_REASONING_EFFORTS.toolReasoningEffort,
+      quickReasoningEffort: chat?.quickReasoningEffort ?? DEFAULT_CHAT_REASONING_EFFORTS.quickReasoningEffort,
+    };
   }
 
   /**

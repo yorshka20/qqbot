@@ -14,7 +14,6 @@ import { logger } from '@/utils/logger';
 import type { AIManager } from '../AIManager';
 import type { Text2ImageOptions } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
-import { TOKEN_BUDGET } from '../tokenBudget';
 
 /** Default and bounds for I2V video duration (seconds) */
 export const DEFAULT_I2V_DURATION_SECONDS = 5;
@@ -103,7 +102,7 @@ export class ImagePromptService {
       llmPrompt,
       {
         temperature: 0.3, // Lower temperature for more consistent JSON output
-        maxTokens: TOKEN_BUDGET.analysis,
+        reasoningEffort: 'none',
         sessionId,
         jsonMode: true,
       },
@@ -161,7 +160,7 @@ export class ImagePromptService {
         llmPrompt,
         {
           temperature: 0.3,
-          maxTokens: TOKEN_BUDGET.analysis,
+          reasoningEffort: 'none',
           sessionId,
           jsonMode: true,
         },
