@@ -699,6 +699,8 @@ Multi-provider support is handled by `AIManager` + `ProviderRouter`:
 
 Nicknames are tried before prefixes, and longer nicknames before shorter ones, so `橙色高手` is never shadowed by the bare `高手`. The bare `高手` is the default nickname: it triggers a reply but names no provider, so the request falls back to the configured default provider and is not treated as an explicit user choice (no paid-tier preference). A name or nickname whose provider is not registered does not route; the request goes to the default provider.
 
+Routing only picks the provider — it never rewrites the message. The LLM receives what the user typed, trigger word included, and the QQ scene prompts (`SceneProducer`, `{{botProviderNicknames}}`) render the nickname table from `ProviderRouter.getNicknameAliasMap()` so the model knows every nickname is a way of calling it and which provider each color picks. The bare default nickname is listed with the configured `messageTrigger.wakeWords`.
+
 ### Failed calls: retry or fallback
 
 `LLMService` accepts every provider completion through one check: a completion with neither text nor tool calls is a failed call (`EmptyCompletionError`) — no caller asks for an empty answer, and a reply stays silent only through `end_turn`. What happens next depends on whether the failure is silent:

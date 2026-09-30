@@ -13,23 +13,16 @@ export interface ProviderRouteResult {
   reason: string;
   /** True only when a concrete provider name was resolved. Drives paid-tier preference. */
   hasExplicitProvider: boolean;
-  strippedMessage: string;
   /** null = the message did not trigger provider routing at all. */
-  triggerKind: ProviderTriggerKind | null;
-}
-
-export interface ProviderReplyRoutingResult {
-  providerName?: string;
-  userMessage: string;
-  reason: string;
-  confidence: ProviderRouteConfidence;
-  usedExplicitProvider: boolean;
   triggerKind: ProviderTriggerKind | null;
 }
 
 /**
  * ProviderRouter performs request-level provider routing for reply generation.
  * It never persists selection; it only suggests provider for current request.
+ *
+ * Routing never rewrites the message: the trigger word is how the user addressed
+ * the bot, so the LLM receives it verbatim and the scene prompt explains it.
  */
 @singleton()
 export class ProviderRouter {
@@ -89,28 +82,11 @@ export class ProviderRouter {
     if (result.providerName) {
       return result;
     }
-    return {
-      providerName: null,
-      confidence: 'low',
-      reason: 'no_match',
-      hasExplicitProvider: false,
-      strippedMessage: text,
-      triggerKind: null,
-    };
+    return ProviderRouter.unrouted('no_match');
   }
 
-  routeReplyInput(message: string): ProviderReplyRoutingResult {
-    const routeResult = this.route(message);
-    const userMessage = routeResult.triggerKind ? routeResult.strippedMessage : (message ?? '');
-
-    return {
-      providerName: routeResult.providerName ?? undefined,
-      userMessage,
-      reason: routeResult.reason,
-      confidence: routeResult.confidence,
-      usedExplicitProvider: routeResult.hasExplicitProvider,
-      triggerKind: routeResult.triggerKind,
-    };
+  private static unrouted(reason: string): ProviderRouteResult {
+    return { providerName: null, confidence: 'low', reason, hasExplicitProvider: false, triggerKind: null };
   }
 
   /**
@@ -120,76 +96,45 @@ export class ProviderRouter {
    */
   private static readonly LEADING_PLACEHOLDERS_RE = /^(?:\s*\[[^\]]+\]\s*)+/;
 
+  private static textForMatch(message: string): string {
+    return message.trimStart().replace(ProviderRouter.LEADING_PLACEHOLDERS_RE, '');
+  }
+
   /**
    * Nickname: a known color nickname appears anywhere in the message.
    * Longer nicknames win so that `橙色高手` is not shadowed by the bare `高手`.
    *
-   * An empty remainder still counts as a match — deciding whether a bare mention
-   * deserves a reply belongs to the trigger layer, not to routing.
+   * A message that is only the nickname still counts as a match — deciding whether
+   * a bare mention deserves a reply belongs to the trigger layer, not to routing.
    */
   private routeByNickname(message: string): ProviderRouteResult {
-    const notMatched: ProviderRouteResult = {
-      providerName: null,
-      confidence: 'low',
-      reason: 'nickname_not_matched',
-      hasExplicitProvider: false,
-      strippedMessage: message,
-      triggerKind: null,
-    };
-
-    const trimmedWithPlaceholders = message.trimStart();
-    if (!trimmedWithPlaceholders) {
-      return notMatched;
+    const lower = ProviderRouter.textForMatch(message).toLowerCase();
+    const nickname = Object.keys(ProviderRouter.NICKNAME_ALIASES)
+      .sort((a, b) => b.length - a.length)
+      .find((candidate) => lower.includes(candidate.toLowerCase()));
+    if (!nickname) {
+      return ProviderRouter.unrouted('nickname_not_matched');
     }
-    const placeholderMatch = trimmedWithPlaceholders.match(ProviderRouter.LEADING_PLACEHOLDERS_RE);
-    const leadingPlaceholders = placeholderMatch ? placeholderMatch[0] : '';
-    const trimmed = leadingPlaceholders
-      ? trimmedWithPlaceholders.slice(leadingPlaceholders.length)
-      : trimmedWithPlaceholders;
-    if (!trimmed) {
-      return notMatched;
-    }
-
-    const lower = trimmed.toLowerCase();
-    const nicknames = Object.keys(ProviderRouter.NICKNAME_ALIASES).sort((a, b) => b.length - a.length);
-    for (const nickname of nicknames) {
-      const idx = lower.indexOf(nickname.toLowerCase());
-      if (idx < 0) {
-        continue;
-      }
-      const rest = (trimmed.slice(0, idx) + trimmed.slice(idx + nickname.length).replace(/^[\s,，:：]+/, '')).trim();
-      const strippedMessage = leadingPlaceholders + rest;
-      const providerName = ProviderRouter.NICKNAME_ALIASES[nickname];
-      if (providerName == null) {
-        return {
-          providerName: null,
-          confidence: 'high',
-          reason: 'nickname_default',
-          hasExplicitProvider: false,
-          strippedMessage,
-          triggerKind: 'nickname',
-        };
-      }
-      if (!this.isLlmProviderAvailable(providerName)) {
-        return {
-          providerName: null,
-          confidence: 'low',
-          reason: 'nickname_provider_unavailable',
-          hasExplicitProvider: false,
-          strippedMessage: message,
-          triggerKind: null,
-        };
-      }
+    const providerName = ProviderRouter.NICKNAME_ALIASES[nickname];
+    if (providerName == null) {
       return {
-        providerName,
+        providerName: null,
         confidence: 'high',
-        reason: 'nickname_match',
-        hasExplicitProvider: true,
-        strippedMessage,
+        reason: 'nickname_default',
+        hasExplicitProvider: false,
         triggerKind: 'nickname',
       };
     }
-    return notMatched;
+    if (!this.isLlmProviderAvailable(providerName)) {
+      return ProviderRouter.unrouted('nickname_provider_unavailable');
+    }
+    return {
+      providerName,
+      confidence: 'high',
+      reason: 'nickname_match',
+      hasExplicitProvider: true,
+      triggerKind: 'nickname',
+    };
   }
 
   /**
@@ -198,78 +143,31 @@ export class ProviderRouter {
    * E.g. "claude xxx", "claude: xxx", "claude，xxx", "claude, xxx", "claude：xxx".
    *
    * Leading `[Reply:xxx]` / `[Image:xxx]` placeholders are skipped during match
-   * (reaction-triggered flows and referenced replies include them before the user text),
-   * but retained in `strippedMessage` so downstream stages still see the full context.
+   * (reaction-triggered flows and referenced replies include them before the user text).
    */
   private routeByExplicitPrefix(message: string): ProviderRouteResult {
-    const trimmedWithPlaceholders = message.trimStart();
-    if (!trimmedWithPlaceholders) {
-      return {
-        providerName: null,
-        confidence: 'low',
-        reason: 'prefix_not_matched',
-        hasExplicitProvider: false,
-        strippedMessage: message,
-        triggerKind: null,
-      };
-    }
-    const placeholderMatch = trimmedWithPlaceholders.match(ProviderRouter.LEADING_PLACEHOLDERS_RE);
-    const leadingPlaceholders = placeholderMatch ? placeholderMatch[0] : '';
-    const trimmed = leadingPlaceholders
-      ? trimmedWithPlaceholders.slice(leadingPlaceholders.length)
-      : trimmedWithPlaceholders;
-    if (!trimmed) {
-      return {
-        providerName: null,
-        confidence: 'low',
-        reason: 'prefix_not_matched',
-        hasExplicitProvider: false,
-        strippedMessage: message,
-        triggerKind: null,
-      };
-    }
-    const lower = trimmed.toLowerCase();
-    const prefixes = ProviderRouter.getProviderTriggerPrefixes();
-    for (const prefix of prefixes) {
+    const text = ProviderRouter.textForMatch(message);
+    const lower = text.toLowerCase();
+    for (const prefix of ProviderRouter.getProviderTriggerPrefixes()) {
       if (!lower.startsWith(prefix)) {
         continue;
       }
-      const afterPrefix = trimmed.slice(prefix.length);
-      if (afterPrefix.length === 0) {
+      if (!ProviderRouter.PREFIX_SEPARATORS.test(text.charAt(prefix.length))) {
         continue;
       }
-      if (!ProviderRouter.PREFIX_SEPARATORS.test(afterPrefix[0])) {
-        continue;
-      }
-      const strippedMessage = leadingPlaceholders + afterPrefix.replace(/^[\s,，:：]+\s*/, '');
       const normalized = this.normalizeProviderName(prefix);
       if (!normalized || !this.isLlmProviderAvailable(normalized)) {
-        return {
-          providerName: null,
-          confidence: 'low',
-          reason: 'prefix_provider_unavailable',
-          hasExplicitProvider: false,
-          strippedMessage: message,
-          triggerKind: null,
-        };
+        return ProviderRouter.unrouted('prefix_provider_unavailable');
       }
       return {
         providerName: normalized,
         confidence: 'high',
         reason: 'explicit_prefix',
         hasExplicitProvider: true,
-        strippedMessage,
         triggerKind: 'prefix',
       };
     }
-    return {
-      providerName: null,
-      confidence: 'low',
-      reason: 'prefix_not_matched',
-      hasExplicitProvider: false,
-      strippedMessage: message,
-      triggerKind: null,
-    };
+    return ProviderRouter.unrouted('prefix_not_matched');
   }
 
   private normalizeProviderName(name: string): string | null {

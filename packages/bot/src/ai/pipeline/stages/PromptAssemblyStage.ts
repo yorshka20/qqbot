@@ -120,7 +120,7 @@ export class PromptAssemblyStage implements ReplyStage {
     const senderIdentity = buildSpeakerTag(senderUserId, senderNickname);
 
     const frameCurrentQuery = this.promptManager.render('llm.reply.user_frame', {
-      userMessage: ctx.userMessage,
+      userMessage: message.message,
       senderIdentity,
       quotedMessage: ctx.quotedText ?? '',
     });

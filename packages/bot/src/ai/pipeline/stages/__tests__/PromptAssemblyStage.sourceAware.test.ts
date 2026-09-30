@@ -46,7 +46,6 @@ function makeContext(source: string): ReplyPipelineContext {
     memoryContextText: '',
     retrievedConversationSection: '',
     providerName: undefined,
-    userMessage: 'hello',
     selectedProviderName: undefined,
     providerHasVision: false,
     effectiveNativeSearchEnabled: false,

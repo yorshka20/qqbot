@@ -22,7 +22,7 @@ export class ReplyPipelineContext {
   // --- ContextResolutionStage ---
   referencedMessage: NormalizedMessageEvent | null = null;
   /**
-   * Text of the message the user quoted, if any. Kept separate from `userMessage`
+   * Text of the message the user quoted, if any. Kept separate from the message text
    * so the prompt template owns how it is labelled and so provider-prefix routing
    * only ever looks at what the user actually typed.
    */
@@ -44,7 +44,6 @@ export class ReplyPipelineContext {
 
   // --- ProviderSelectionStage ---
   providerName: string | undefined;
-  userMessage = '';
   selectedProviderName: string | undefined;
   // User explicitly wake-worded a provider (e.g. `gemini:`); opts into its premium tier.
   usedExplicitProvider = false;

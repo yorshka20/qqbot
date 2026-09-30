@@ -54,7 +54,6 @@ function makeContext(source = 'qq-private'): ReplyPipelineContext {
     memoryContextText: '',
     retrievedConversationSection: '',
     providerName: undefined,
-    userMessage: 'hello',
     selectedProviderName: undefined,
     providerHasVision: false,
     effectiveNativeSearchEnabled: false,
@@ -118,6 +117,19 @@ describe('PromptAssemblyStage producer-driven', () => {
     // Runtime fragments in priority order (already sorted by registry)
     const finalUser = ctx.messages[ctx.messages.length - 1];
     expect(finalUser.content).toContain('STABLE\n\nVOLATILE');
+  });
+
+  it('puts the message into the current query verbatim, trigger word included', async () => {
+    const registry = {
+      gatherByLayer: mock(async () => ({ baseline: [], scene: [], runtime: [], tool: [] })),
+    } as any;
+    const stage = new PromptAssemblyStage(registry, mockPromptManager, {} as any, NO_AI_CONFIG);
+    const ctx = makeContext();
+    ctx.hookContext.message.message = '橙色高手也是触发词吗';
+
+    await stage.execute(ctx);
+
+    expect(ctx.messages[ctx.messages.length - 1].content).toContain('橙色高手也是触发词吗');
   });
 
   it('test 3: empty tool layer → no trailing empty line in sceneSystem', async () => {

@@ -193,7 +193,6 @@ export class MessageTriggerPlugin extends PluginBase {
       if (providerRouteResult.triggerKind) {
         context.metadata.set('resolvedProviderPrefix', {
           providerName: providerRouteResult.providerName ?? undefined,
-          strippedMessage: providerRouteResult.strippedMessage,
         });
       }
       return true;
@@ -268,7 +267,6 @@ export class MessageTriggerPlugin extends PluginBase {
     if (replyTriggerType === 'providerName') {
       context.metadata.set('resolvedProviderPrefix', {
         providerName: providerRouteResult.providerName ?? undefined,
-        strippedMessage: providerRouteResult.strippedMessage,
       });
     }
     context.metadata.set('contextMode', 'normal');

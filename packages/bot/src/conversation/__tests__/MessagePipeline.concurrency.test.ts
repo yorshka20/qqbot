@@ -57,7 +57,7 @@ function makePipeline(lifecycleExecuteImpl: () => Promise<boolean>) {
   } as any;
 
   const providerRouter = {
-    route: mock(() => ({ hasExplicitProvider: false, providerName: null, strippedMessage: '', triggerKind: null })),
+    route: mock(() => ({ hasExplicitProvider: false, providerName: null, triggerKind: null })),
   } as any;
 
   return new MessagePipeline(

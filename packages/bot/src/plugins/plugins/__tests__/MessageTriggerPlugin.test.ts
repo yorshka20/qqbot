@@ -285,7 +285,6 @@ describe('MessageTriggerPlugin', () => {
     expect(context.metadata.get('postProcessOnly')).toBeUndefined();
     expect(context.metadata.get('replyTriggerType')).toBe('providerName');
     expect(context.metadata.get('resolvedProviderPrefix')?.providerName).toBeUndefined();
-    expect(context.metadata.get('resolvedProviderPrefix')?.strippedMessage).toBe('帮我看看这段代码');
   });
 
   it('sets postProcessOnly when no trigger matched (group)', async () => {

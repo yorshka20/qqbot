@@ -43,14 +43,12 @@ export class ProviderSelectionStage implements ReplyStage {
     // Routing: prefer pre-resolved prefix from MessageTriggerPlugin, fallback to ProviderRouter
     const resolvedPrefix = hookContext.metadata.get('resolvedProviderPrefix');
     let providerName: string | undefined;
-    let userMessage: string;
     let reason: string;
     let confidence: string;
     let usedExplicitProvider: boolean;
 
     if (resolvedPrefix) {
       providerName = resolvedPrefix.providerName;
-      userMessage = resolvedPrefix.strippedMessage;
       reason = resolvedPrefix.providerName ? 'explicit_prefix' : 'nickname_default';
       confidence = 'high';
       usedExplicitProvider = resolvedPrefix.providerName != null;
@@ -58,16 +56,14 @@ export class ProviderSelectionStage implements ReplyStage {
       // Routes on what the user typed, never on quoted text: a provider prefix is
       // leading, so a quote pasted in front of it would hide it, and a nickname
       // trigger would fire on words the quoted author wrote.
-      const result = this.providerRouter.routeReplyInput(hookContext.message.message ?? '');
-      providerName = result.providerName;
-      userMessage = result.userMessage;
+      const result = this.providerRouter.route(hookContext.message.message ?? '');
+      providerName = result.providerName ?? undefined;
       reason = result.reason;
       confidence = result.confidence;
-      usedExplicitProvider = result.usedExplicitProvider;
+      usedExplicitProvider = result.hasExplicitProvider;
     }
 
     ctx.providerName = providerName;
-    ctx.userMessage = userMessage;
     ctx.usedExplicitProvider = usedExplicitProvider;
 
     // The provider that answers this turn: the routed one, else the session/default LLM.
