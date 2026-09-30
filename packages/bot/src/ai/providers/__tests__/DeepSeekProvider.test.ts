@@ -7,7 +7,7 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import type { DeepSeekProviderConfig } from '@/core/config/types/ai';
-import type { ToolDefinition } from '../../types';
+import type { AIGenerateOptions, ToolDefinition } from '../../types';
 import { DeepSeekProvider } from '../DeepSeekProvider';
 
 interface Choice {
@@ -125,4 +125,25 @@ describe('DeepSeekProvider reasoning_content on the wire', () => {
       expect(m.reasoning_content).toBe('');
     }
   });
+});
+
+// minimal / medium are compatibility aliases on DeepSeek's side; the request carries the documented values.
+describe('DeepSeekProvider reasoning_effort', () => {
+  const cases: Array<[NonNullable<AIGenerateOptions['reasoningEffort']>, string]> = [
+    ['none', 'none'],
+    ['minimal', 'low'],
+    ['low', 'low'],
+    ['medium', 'high'],
+    ['high', 'high'],
+  ];
+
+  for (const [effort, sent] of cases) {
+    it(`sends reasoningEffort=${effort} as ${sent}`, async () => {
+      const { provider, bodies } = providerCapturing();
+
+      await provider.generate('hi', { reasoningEffort: effort });
+
+      expect(bodies[0].reasoning_effort).toBe(sent);
+    });
+  }
 });

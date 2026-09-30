@@ -61,6 +61,24 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
   override readonly supportsToolUse = true;
   // mapMessagesToApi puts an assistant turn's reasoning_content on the wire field.
   override readonly echoesReasoningNatively = true;
+
+  /**
+   * `reasoning_effort` takes none / low / high / max
+   * (https://api-docs.deepseek.com/api/create-chat-completion); `minimal` and `medium` are
+   * accepted only as compatibility aliases for low and high, so they are mapped here rather
+   * than relying on the aliases.
+   */
+  private static readonly REASONING_EFFORT: Record<
+    NonNullable<AIGenerateOptions['reasoningEffort']>,
+    'none' | 'low' | 'high'
+  > = {
+    none: 'none',
+    minimal: 'low',
+    low: 'low',
+    medium: 'high',
+    high: 'high',
+  };
+
   private config: DeepSeekProviderConfig;
   private baseUrl: string;
   private _capabilities: CapabilityType[];
@@ -322,7 +340,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
       };
 
       if (options?.reasoningEffort) {
-        body.reasoning_effort = options.reasoningEffort;
+        body.reasoning_effort = DeepSeekProvider.REASONING_EFFORT[options.reasoningEffort];
       }
 
       // When jsonMode is set, require valid JSON output (single object; for array output use {"result": [...]} in prompt).
@@ -444,7 +462,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
         stream: true,
       };
       if (options?.reasoningEffort) {
-        streamBody.reasoning_effort = options.reasoningEffort;
+        streamBody.reasoning_effort = DeepSeekProvider.REASONING_EFFORT[options.reasoningEffort];
       }
       if (options?.jsonMode) {
         streamBody.response_format = { type: 'json_object' };

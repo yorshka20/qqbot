@@ -188,9 +188,9 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
         stop: options?.stop,
       };
 
-      if (options?.reasoningEffort && options.reasoningEffort !== 'none') {
-        body.reasoning_effort = options.reasoningEffort;
-      }
+      // No reasoning_effort is sent: SiliconFlow accepts only high / max, defaults to high and maps
+      // low / medium onto high (https://docs.siliconflow.cn/cn/api-reference/chat-completions/chat-completions),
+      // so no level the pipeline asks for can change the result, and `minimal` is not a value it takes.
 
       if (options?.jsonMode) {
         body.response_format = { type: 'json_object' };

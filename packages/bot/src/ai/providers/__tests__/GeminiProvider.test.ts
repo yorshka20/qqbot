@@ -88,7 +88,7 @@ describe('GeminiProvider reasoning effort → thinkingConfig', () => {
   });
 
   const cases: Array<[NonNullable<AIGenerateOptions['reasoningEffort']>, RecordedCall['thinkingConfig']]> = [
-    ['none', { thinkingBudget: 0 }],
+    ['none', { thinkingLevel: 'MINIMAL', includeThoughts: true }],
     ['minimal', { thinkingLevel: 'MINIMAL', includeThoughts: true }],
     ['low', { thinkingLevel: 'LOW', includeThoughts: true }],
     ['medium', { thinkingLevel: 'MEDIUM', includeThoughts: true }],
@@ -105,6 +105,48 @@ describe('GeminiProvider reasoning effort → thinkingConfig', () => {
       expect(calls[0].thinkingConfig).toEqual(expected);
     });
   }
+
+  // Levels a model does not take are a 400, so the provider sends the nearest one the model accepts.
+  const perModelCases: Array<[string, NonNullable<AIGenerateOptions['reasoningEffort']>, string]> = [
+    ['gemini-3.8-flash', 'minimal', 'LOW'],
+    ['gemini-3.8-flash', 'none', 'LOW'],
+    ['gemini-3.5-flash-lite', 'none', 'MINIMAL'],
+    ['gemini-3-pro-preview', 'medium', 'HIGH'],
+    ['gemini-3.1-flash-lite-image', 'low', 'HIGH'],
+  ];
+
+  for (const [model, effort, level] of perModelCases) {
+    it(`sends ${model} a level it accepts for reasoningEffort=${effort} (${level})`, async () => {
+      const provider = new GeminiProvider(baseConfig());
+      const calls = installFakeClient(provider);
+
+      await provider.generate('hi', { ...promptOpts, model, reasoningEffort: effort });
+
+      expect(calls[0].thinkingConfig).toEqual({ thinkingLevel: level, includeThoughts: true });
+    });
+  }
+
+  it('leaves the level to a model missing from the table, since only its default is sure to be accepted', async () => {
+    const provider = new GeminiProvider(baseConfig());
+    const calls = installFakeClient(provider);
+
+    await provider.generate('hi', { ...promptOpts, model: 'gemini-9-unlisted', reasoningEffort: 'minimal' });
+
+    expect(calls[0].thinkingConfig).toEqual({ includeThoughts: true });
+  });
+
+  it('keeps every table row ascending, which the nearest-level-above lookup relies on', () => {
+    const statics = GeminiProvider as unknown as {
+      THINKING_LEVELS_ASCENDING: readonly string[];
+      MODEL_THINKING_LEVELS: Record<string, readonly string[]>;
+    };
+    for (const levels of Object.values(statics.MODEL_THINKING_LEVELS)) {
+      const ranks = levels.map((level) => statics.THINKING_LEVELS_ASCENDING.indexOf(level));
+      expect(ranks.length).toBeGreaterThan(0);
+      expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+      expect(ranks.every((rank) => rank >= 0)).toBe(true);
+    }
+  });
 
   it('requests only thought summaries when no effort is given, leaving the thinking level to the model', async () => {
     const provider = new GeminiProvider(baseConfig());

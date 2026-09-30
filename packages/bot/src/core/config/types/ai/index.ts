@@ -101,10 +101,11 @@ export interface TaskProvidersConfig {
 }
 
 /**
- * Reasoning effort levels passed through to thinking-capable providers
- * (e.g. Groq qwen3-*, OpenAI o-series, Anthropic extended-thinking). `'none'`
- * fully disables thinking on providers that support that switch; `'minimal'`
- * is OpenAI-specific and maps to the smallest thinking budget.
+ * Provider-neutral reasoning effort scale. `'none'` asks for no thinking and
+ * `'minimal'` for the least a model can do. Each provider maps it onto the
+ * values its own API and the target model accept — the sets differ per vendor
+ * and sometimes per model, and an unsupported value is a 400 — so a provider
+ * never forwards it verbatim.
  */
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 

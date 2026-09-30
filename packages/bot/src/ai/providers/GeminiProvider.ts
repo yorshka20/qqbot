@@ -51,6 +51,8 @@ type GeminiRequestContents = Array<{
   }>;
 }>;
 
+type GeminiThinkingLevel = 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH';
+
 interface GeminiGenerateContentOptions {
   temperature?: number;
   maxTokens?: number;
@@ -242,31 +244,77 @@ export class GeminiProvider
     }
   }
 
+  private static readonly THINKING_LEVELS_ASCENDING: readonly GeminiThinkingLevel[] = [
+    'MINIMAL',
+    'LOW',
+    'MEDIUM',
+    'HIGH',
+  ];
+
   /**
-   * Translate the pipeline's reasoning effort into Gemini's thinking controls.
-   *
-   * Gemini 3.x models take `thinkingLevel` (an enum); `thinkingBudget` is the older
-   * token-count dial and 0 is the only way to turn thinking off entirely. Returning
-   * undefined leaves the thinking level unset so the model applies its own default
-   * (the caller still sets `includeThoughts` on the config when thinking is on).
+   * Thinking levels each model accepts, ascending — the model table at
+   * https://ai.google.dev/gemini-api/docs/thinking. The set differs per model, the API does
+   * not report it (models.get exposes only `thinking: boolean`), and a level outside it is a
+   * 400 ("Thinking level MINIMAL is not supported for this model"). gemini-3.1-flash-lite is
+   * not in the table; its row was checked against the API.
+   */
+  private static readonly MODEL_THINKING_LEVELS: Record<string, readonly GeminiThinkingLevel[]> = {
+    'gemini-2.5-flash': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-2.5-flash-lite': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-2.5-pro': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3-flash-preview': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3-pro-preview': ['LOW', 'HIGH'],
+    'gemini-3.1-flash-lite': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3.1-flash-lite-image': ['MINIMAL', 'HIGH'],
+    'gemini-3.1-pro-preview': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3.5-flash': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3.5-flash-lite': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3.6-flash': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3.7-flash': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3.8-flash': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-robotics-er-2-preview': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+  };
+
+  /**
+   * Gemini has no documented way to switch thinking off on these models (`thinkingBudget: 0`
+   * is the legacy dial, and some models reject it), so `none` asks for the lowest level.
+   */
+  private static readonly REQUESTED_THINKING_LEVEL: Record<
+    NonNullable<AIGenerateOptions['reasoningEffort']>,
+    GeminiThinkingLevel
+  > = {
+    none: 'MINIMAL',
+    minimal: 'MINIMAL',
+    low: 'LOW',
+    medium: 'MEDIUM',
+    high: 'HIGH',
+  };
+
+  /**
+   * Translate the pipeline's reasoning effort into a thinking level `model` accepts: the
+   * requested level, else the nearest accepted level above it. A model missing from the table
+   * gets no level, so it runs at its own default — the one value it is sure to accept — and the
+   * effort is not honoured, which is worth a warning.
    */
   private static mapReasoningEffortToThinking(
     effort: AIGenerateOptions['reasoningEffort'],
-  ): Record<string, unknown> | undefined {
-    switch (effort) {
-      case 'none':
-        return { thinkingBudget: 0 };
-      case 'minimal':
-        return { thinkingLevel: 'MINIMAL' };
-      case 'low':
-        return { thinkingLevel: 'LOW' };
-      case 'medium':
-        return { thinkingLevel: 'MEDIUM' };
-      case 'high':
-        return { thinkingLevel: 'HIGH' };
-      default:
-        return undefined;
+    model: string,
+  ): { thinkingLevel?: GeminiThinkingLevel } {
+    if (!effort) {
+      return {};
     }
+    const accepted = GeminiProvider.MODEL_THINKING_LEVELS[model.replace(/^models\//, '')];
+    if (!accepted) {
+      logger.warn(
+        `[GeminiProvider] Model ${model} has no thinking-level entry; reasoningEffort=${effort} not applied, add the model to MODEL_THINKING_LEVELS`,
+      );
+      return {};
+    }
+    const order = GeminiProvider.THINKING_LEVELS_ASCENDING;
+    const requestedRank = order.indexOf(GeminiProvider.REQUESTED_THINKING_LEVEL[effort]);
+    const thinkingLevel =
+      accepted.find((level) => order.indexOf(level) >= requestedRank) ?? accepted[accepted.length - 1];
+    return { thinkingLevel };
   }
 
   /**
@@ -506,11 +554,12 @@ export class GeminiProvider
       // Takes precedence over reasoningEffort: the API rejects the request otherwise.
       config.thinkingConfig = { thinkingBudget: 0 };
     } else {
-      const thinkingConfig = GeminiProvider.mapReasoningEffortToThinking(options?.reasoningEffort);
       // includeThoughts asks the API to return thought-summary parts (part.thought === true) so
       // they can be normalized into reasoningContent; it does not change how much the model thinks.
-      config.thinkingConfig =
-        thinkingConfig?.thinkingBudget === 0 ? thinkingConfig : { ...thinkingConfig, includeThoughts: true };
+      config.thinkingConfig = {
+        ...GeminiProvider.mapReasoningEffortToThinking(options?.reasoningEffort, model),
+        includeThoughts: true,
+      };
     }
     // Per-call HTTP timeout. The @google/genai SDK accepts httpOptions.timeout (ms);
     // we also wrap with Promise.race + setTimeout because the SDK has been observed

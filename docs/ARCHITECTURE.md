@@ -716,6 +716,10 @@ Nicknames are tried before prefixes, and longer nicknames before shorter ones, s
 
 Routing only picks the provider — it never rewrites the message. The LLM receives what the user typed, trigger word included, and the QQ scene prompts (`SceneProducer`, `{{botProviderNicknames}}`) render the nickname table from `ProviderRouter.getNicknameAliasMap()` so the model knows every nickname is a way of calling it and which provider each color picks. The bare default nickname is listed with the configured `messageTrigger.wakeWords`.
 
+### Reasoning effort
+
+The pipeline speaks one provider-neutral scale (`ReasoningEffort`: `none | minimal | low | medium | high`). Each provider maps it onto the values its own API — and sometimes the target model — accepts, because the sets differ and an unsupported value is a 400. This bites hardest on fallback, where a request built for one provider is replayed on another with the same effort. Gemini keeps a per-model table of accepted thinking levels (`GeminiProvider.MODEL_THINKING_LEVELS`, from Google's thinking docs) and sends the requested level or the nearest accepted one above it. A model missing from the table runs at its own default, with a warning. DeepSeek and Groq map to their documented values (Groq per model family: non-reasoning models get no parameter at all), OpenAI and Anthropic map `minimal` to `low`, and SiliconFlow sends nothing, since its only values are `high` / `max`.
+
 ### Failed calls: retry or fallback
 
 `LLMService` accepts every provider completion through one check: a completion with neither text nor tool calls is a failed call (`EmptyCompletionError`) — no caller asks for an empty answer, and a reply stays silent only through `end_turn`. What happens next depends on whether the failure is silent:

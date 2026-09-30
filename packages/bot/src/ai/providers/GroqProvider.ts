@@ -410,13 +410,10 @@ export class GroqProvider extends AIProvider implements LLMCapability {
  * `reasoningEffort: 'none'` to cut TTFT.
  *
  * Behavior:
- * - `reasoning_effort`: normalized to the target model's supported set, then
- *   forwarded. `'none'` fully disables thinking on models that support it
- *   (e.g. Qwen3), but the gpt-oss family rejects `none`/`minimal` and only
- *   accepts `low`/`medium`/`high`, so those are clamped up to `low` (the
- *   minimal valid effort, preserving the TTFT intent). No `reasoning_effort`
- *   key is sent when the caller omitted it (preserves the provider's own
- *   default).
+ * - `reasoning_effort`: mapped onto the values the target model accepts (see
+ *   `mapReasoningEffortToGroq`). No `reasoning_effort` key is sent when the
+ *   caller omitted it (preserves the provider's own default) or the model
+ *   takes none.
  * - `reasoning_format: 'hidden'`: set unconditionally. Groq supports
  *   `raw` (thinking inline as `<think>` XML in content — the default),
  *   `parsed` (separate `reasoning` field), and `hidden` (dropped). We never
@@ -425,21 +422,32 @@ export class GroqProvider extends AIProvider implements LLMCapability {
  *   would otherwise reach downstream consumers (SentenceFlusher → TTS).
  */
 /**
- * Groq's gpt-oss models require `reasoning_effort` ∈ {low,medium,high} and
- * reject `none`/`minimal`. Map those down to `low` (the minimal valid effort)
- * for that family; all other values/models pass through unchanged.
+ * Groq's `reasoning_effort` values differ per model family
+ * (https://console.groq.com/docs/reasoning): gpt-oss takes low / medium / high,
+ * Qwen takes none / default / low / medium / high, and the other models are not
+ * reasoning models and take no `reasoning_effort` at all — an unsupported value
+ * is a 400. `minimal` (and, for gpt-oss, `none`) becomes `low`, the smallest
+ * valid effort, preserving the TTFT intent. Returns undefined when the parameter
+ * must be left out.
  */
-function normalizeReasoningEffort(effort: NonNullable<AIGenerateOptions['reasoningEffort']>, model: unknown): string {
-  const isGptOss = typeof model === 'string' && model.includes('gpt-oss');
-  if (isGptOss && (effort === 'none' || effort === 'minimal')) {
-    return 'low';
+export function mapReasoningEffortToGroq(
+  effort: NonNullable<AIGenerateOptions['reasoningEffort']>,
+  model: unknown,
+): string | undefined {
+  const id = typeof model === 'string' ? model.toLowerCase() : '';
+  if (id.includes('gpt-oss')) {
+    return effort === 'none' || effort === 'minimal' ? 'low' : effort;
   }
-  return effort;
+  if (id.includes('qwen')) {
+    return effort === 'minimal' ? 'low' : effort;
+  }
+  return undefined;
 }
 
 function applyGroqReasoningParams(body: Record<string, unknown>, options: AIGenerateOptions | undefined): void {
-  if (options?.reasoningEffort) {
-    body.reasoning_effort = normalizeReasoningEffort(options.reasoningEffort, body.model);
+  const effort = options?.reasoningEffort ? mapReasoningEffortToGroq(options.reasoningEffort, body.model) : undefined;
+  if (effort) {
+    body.reasoning_effort = effort;
   }
   // Never surface reasoning content — downstream TTS would otherwise speak
   // the model's internal monologue (user-visible regression on thinking models).

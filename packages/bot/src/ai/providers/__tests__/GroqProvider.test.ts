@@ -14,7 +14,7 @@
 
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
-import { createThinkStripper } from '../GroqProvider';
+import { createThinkStripper, mapReasoningEffortToGroq } from '../GroqProvider';
 
 describe('createThinkStripper', () => {
   it('passes content through unchanged when there are no think blocks', () => {
@@ -120,5 +120,24 @@ describe('createThinkStripper', () => {
     const s = createThinkStripper();
     const out = s.push('x < y && y > z') + s.end();
     expect(out).toBe('x < y && y > z');
+  });
+});
+
+// Groq accepts different reasoning_effort values per model family; an unsupported one is a 400.
+describe('mapReasoningEffortToGroq', () => {
+  it('keeps gpt-oss within low / medium / high', () => {
+    expect(mapReasoningEffortToGroq('none', 'openai/gpt-oss-120b')).toBe('low');
+    expect(mapReasoningEffortToGroq('minimal', 'openai/gpt-oss-120b')).toBe('low');
+    expect(mapReasoningEffortToGroq('medium', 'openai/gpt-oss-120b')).toBe('medium');
+  });
+
+  it('lets Qwen switch thinking off but lifts minimal to low', () => {
+    expect(mapReasoningEffortToGroq('none', 'qwen/qwen3.8-27b')).toBe('none');
+    expect(mapReasoningEffortToGroq('minimal', 'qwen/qwen3.8-27b')).toBe('low');
+    expect(mapReasoningEffortToGroq('high', 'qwen/qwen3.8-27b')).toBe('high');
+  });
+
+  it('sends nothing to a model that is not a reasoning model', () => {
+    expect(mapReasoningEffortToGroq('high', 'llama-3.3-70b-versatile')).toBeUndefined();
   });
 });
