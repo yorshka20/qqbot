@@ -1,17 +1,18 @@
 // LLMDumpPlugin - dumps every LLM call (prompt + response + tool calls) to clean
-// markdown files, grouped per message turn, for inspecting what actually hit the model.
+// markdown files, one per message turn, for inspecting what actually hit the model.
 //
 // It subscribes to LLMService's trace observer — the single chokepoint every
 // generation path flows through (generate / generateLite / generateFixed /
-// generateStream; tool-use rounds arrive as separate entries since generateWithTools
-// drives them through generate()). So one turn's file shows the main reply, each
-// tool-calling round (with the model's tool_calls and the tool results fed back),
-// and any sub-agent calls, in order.
+// generateStream). A turn holds several conversations (the main reply, a classifier,
+// each sub-agent), and each gets one section. Tool-use rounds of one conversation
+// arrive as separate entries, each re-sending the whole message list with the earlier
+// rounds' tool_calls and tool results appended, so a conversation's section is
+// re-rendered from its latest round rather than appended to.
 //
 // Day directories older than the retention window are zipped into <outputDir>/archive/,
 // the same shape LogArchivePlugin uses for logs/.
 
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
@@ -39,6 +40,25 @@ export interface LLMDumpPluginConfig {
 /** Rule flanking each transcript entry's header line. */
 const TRANSCRIPT_RULE = '='.repeat(10);
 
+/** A turn idle this long is dropped from memory; a later call of it starts a new file. */
+const TURN_IDLE_MS = 10 * 60_000;
+
+interface ConversationDump {
+  startedAt: Date;
+  /** One stats row per round, oldest first. */
+  rounds: string[];
+  /** The section as rendered from the conversation's latest round. */
+  rendered: string;
+}
+
+interface TurnDump {
+  file: string;
+  title: string;
+  /** In the order the conversations started. */
+  conversations: Map<string, ConversationDump>;
+  lastWriteAt: number;
+}
+
 @RegisterPlugin({
   name: 'llm-dump',
   version: '1.0.0',
@@ -46,8 +66,7 @@ const TRANSCRIPT_RULE = '='.repeat(10);
 })
 export class LLMDumpPlugin extends PluginBase {
   private outputDir = join(getRepoRoot(), 'logs', 'llm-dumps');
-  /** Turn keys we have already written a file header for. */
-  private readonly headerWritten = new Set<string>();
+  private readonly turns = new Map<string, TurnDump>();
   private registered = false;
   private retainDays = 7;
   private archiveCron = '0 4 * * 1';
@@ -114,32 +133,68 @@ export class LLMDumpPlugin extends PluginBase {
   private handleEntry(entry: LLMTraceEntry): void {
     try {
       const now = new Date();
-      const dayDir = join(this.outputDir, this.formatDay(now));
-      if (!existsSync(dayDir)) mkdirSync(dayDir, { recursive: true });
+      this.dropIdleTurns(now.getTime());
+      const turn = this.turnFor(entry, now);
+      const previous = turn.conversations.get(entry.conversationId);
+      const startedAt = previous?.startedAt ?? new Date(now.getTime() - entry.durationMs);
+      const rounds = [...(previous?.rounds ?? []), this.roundStats(entry)];
+      turn.conversations.set(entry.conversationId, {
+        startedAt,
+        rounds,
+        rendered: this.renderConversation(entry, startedAt, rounds),
+      });
+      turn.lastWriteAt = now.getTime();
 
-      const turn = this.sanitize(entry.turnKey ?? 'background');
-      const hhmmss = new Date().toTimeString().split(' ')[0].replace(/:/g, '');
-      const file = join(dayDir, `${hhmmss}-${turn}.md`);
-
-      let out = '';
-      if (!this.headerWritten.has(file)) {
-        this.headerWritten.add(file);
-        if (!existsSync(file)) {
-          out += `# LLM dump — ${entry.turnKey ?? 'background'}\n\n`;
-        }
-      }
-      out += this.renderEntry(entry, now);
-      appendFileSync(file, out, 'utf-8');
+      const sections = [...turn.conversations.values()].map((c) => c.rendered);
+      writeFileSync(turn.file, [`# LLM dump — ${turn.title}\n\n`, ...sections].join(''), 'utf-8');
     } catch (err) {
       logger.warn('[LLMDumpPlugin] Failed to write dump:', err);
     }
   }
 
-  private renderEntry(entry: LLMTraceEntry, at: Date): string {
+  /**
+   * A message turn's calls share one file. A call outside any message turn is keyed by
+   * its conversation instead, so a background tool loop still keeps to one file.
+   */
+  private turnFor(entry: LLMTraceEntry, now: Date): TurnDump {
+    const key = entry.turnKey ?? `background:${entry.conversationId}`;
+    const existing = this.turns.get(key);
+    if (existing) return existing;
+
+    const dayDir = join(this.outputDir, this.formatDay(now));
+    mkdirSync(dayDir, { recursive: true });
+    const name = entry.turnKey ? this.sanitize(entry.turnKey) : `background-${entry.conversationId.slice(0, 8)}`;
+    const turn: TurnDump = {
+      file: join(dayDir, `${this.formatTime(now).replace(/:/g, '')}-${name}.md`),
+      title: entry.turnKey ?? 'background',
+      conversations: new Map(),
+      lastWriteAt: now.getTime(),
+    };
+    this.turns.set(key, turn);
+    return turn;
+  }
+
+  private dropIdleTurns(now: number): void {
+    for (const [key, turn] of this.turns) {
+      if (now - turn.lastWriteAt > TURN_IDLE_MS) this.turns.delete(key);
+    }
+  }
+
+  private roundStats(entry: LLMTraceEntry): string {
+    const stats: string[] = [];
+    if (entry.response.usage) {
+      const u = entry.response.usage;
+      stats.push(`tokens: prompt=${u.promptTokens} completion=${u.completionTokens} total=${u.totalTokens}`);
+    }
+    stats.push(`elapsed: ${this.formatDuration(entry.durationMs)}`);
+    return stats.join(' · ');
+  }
+
+  private renderConversation(entry: LLMTraceEntry, startedAt: Date, rounds: string[]): string {
     const model = entry.resolvedModel ? ` · ${entry.resolvedModel}` : '';
     // The h2 call header is the ONLY heading that survives — message contents are
     // fenced (below) so the prompt's own markdown headers can't hijack the outline.
-    const lines: string[] = [`## ${this.formatTime(at)} · ${entry.opLabel} · ${entry.provider}${model}`, ''];
+    const lines: string[] = [`## ${this.formatTime(startedAt)} · ${entry.opLabel} · ${entry.provider}${model}`, ''];
 
     // options.systemPrompt is sent even alongside messages (providers prepend it
     // as a system message — generateFixed callers use that shape), so it renders
@@ -165,13 +220,10 @@ export class LLMDumpPlugin extends PluginBase {
         lines.push(`- \`${fc.name}\``, '', this.fence(this.pretty(fc.arguments), 'json'), '');
       }
     }
-    const stats: string[] = [];
-    if (entry.response.usage) {
-      const u = entry.response.usage;
-      stats.push(`tokens: prompt=${u.promptTokens} completion=${u.completionTokens} total=${u.totalTokens}`);
+    // One blockquote per row: consecutive `>` lines would merge into one paragraph.
+    for (const [i, row] of rounds.entries()) {
+      lines.push(`> round ${i + 1} · ${row}`, '');
     }
-    stats.push(`elapsed: ${this.formatDuration(entry.durationMs)}`);
-    lines.push(`> ${stats.join(' · ')}`, '');
 
     lines.push('---', '');
     return lines.join('\n');
@@ -217,6 +269,12 @@ export class LLMDumpPlugin extends PluginBase {
         flushTranscript();
         lines.push(`### tool ← ${msg.tool_call_id ?? ''}`, '', this.fence(this.contentToText(msg.content)), '');
         continue;
+      }
+
+      // An earlier round's output, echoed back in the tool loop with its thinking.
+      if (msg.reasoning_content?.trim()) {
+        flushTranscript();
+        lines.push('### ⟵ thinking', '', this.fence(msg.reasoning_content), '');
       }
 
       const content = this.contentToText(msg.content).trim();

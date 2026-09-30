@@ -26,14 +26,19 @@ function EntryCard({ entry, index, total }: { entry: DumpEntry; index: number; t
       </div>
 
       {entry.stats.length > 0 && (
-        <footer className="flex flex-wrap gap-2 mt-2">
-          {entry.stats.map((s) => (
-            <span
-              key={s}
-              className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-            >
-              {s}
-            </span>
+        <footer className="flex flex-col gap-1 mt-2">
+          {entry.stats.map((row, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: row order is the round order
+            <div key={i} className="flex flex-wrap gap-2">
+              {row.map((s) => (
+                <span
+                  key={s}
+                  className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
           ))}
         </footer>
       )}

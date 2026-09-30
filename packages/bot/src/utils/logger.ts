@@ -15,6 +15,21 @@ export interface Logger {
   error(message: string, ...args: unknown[]): void;
 }
 
+export interface LogSection {
+  label: string;
+  content: string;
+}
+
+/**
+ * Body of a log entry made of labelled parts, appended to the entry's header line so the whole
+ * block is one log call. Each part opens with a `── [label] ──` line; the WebUI log viewer
+ * (packages/webui/src/pages/docs/log/parseLog.ts) matches that exact marker to fold the parts
+ * one by one, so the two must change together.
+ */
+export function formatLogSections(sections: LogSection[]): string {
+  return sections.map((s) => `── [${s.label}] ──\n${s.content}`).join('\n');
+}
+
 /**
  * Per-message log filter. When set, every log call checks the current async
  * message context: if a message context exists and the message's group/user

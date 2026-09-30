@@ -6,10 +6,11 @@
 
 import 'reflect-metadata';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { LLMTraceEntry } from '@/ai/types';
+import { randomUUID } from '@/utils/randomUUID';
 import { LLMDumpPlugin } from '../LLMDumpPlugin';
 
 let dir: string;
@@ -20,30 +21,27 @@ function makePlugin(): LLMDumpPlugin {
   return plugin;
 }
 
-function emit(plugin: LLMDumpPlugin, entry: LLMTraceEntry): void {
-  (plugin as unknown as { handleEntry: (e: LLMTraceEntry) => void }).handleEntry(entry);
+/** Emits a trace entry; one without a conversation id is a single-call conversation of its own. */
+function emit(plugin: LLMDumpPlugin, entry: Omit<LLMTraceEntry, 'conversationId'> & { conversationId?: string }): void {
+  (plugin as unknown as { handleEntry: (e: LLMTraceEntry) => void }).handleEntry({
+    ...entry,
+    conversationId: entry.conversationId ?? randomUUID(),
+  });
 }
 
 /**
- * Read the markdown written for a turn (searches the day dir). Files are named
- * `<HHMMSS>-<turn>.md` so same-turn dumps sort chronologically; calls in
- * different seconds land in different files, so concatenate all matches in
- * name (= time) order.
+ * Read the one markdown file written for a turn: `<HHMMSS>-<turn>.md`, where a
+ * call outside any turn is named `background-<conversation id prefix>`.
  */
 function readTurnFile(turn: string): string {
-  const fs = require('node:fs') as typeof import('node:fs');
-  const days = fs.readdirSync(dir);
-  for (const day of days) {
-    const dayDir = join(dir, day);
-    const files = fs
-      .readdirSync(dayDir)
-      .filter((f) => f.endsWith(`-${turn}.md`))
-      .sort();
-    if (files.length > 0) {
-      return files.map((f) => readFileSync(join(dayDir, f), 'utf-8')).join('');
-    }
-  }
-  throw new Error(`turn file *-${turn}.md not found under ${dir}`);
+  const name = new RegExp(`^\\d{6}-${turn}(-[0-9a-f]{8})?\\.md$`);
+  const files = readdirSync(dir).flatMap((day) =>
+    readdirSync(join(dir, day))
+      .filter((f) => name.test(f))
+      .map((f) => join(dir, day, f)),
+  );
+  expect(files.length).toBe(1);
+  return readFileSync(files[0], 'utf-8');
 }
 
 beforeEach(() => {
@@ -87,7 +85,7 @@ describe('LLMDumpPlugin', () => {
     expect(md).not.toContain('### user');
     expect(md).toMatch(/^=+ user =+\nhello$/m);
     expect(md).toContain('hi there');
-    expect(md).toContain('> tokens: prompt=10 completion=5 total=15 · elapsed: 1.2s');
+    expect(md).toContain('> round 1 · tokens: prompt=10 completion=5 total=15 · elapsed: 1.2s');
     // The content header must sit inside a code fence, not start a real markdown heading.
     expect(md).toMatch(/```\n[\s\S]*## 运行环境/);
     // Providers ignore the positional prompt when messages are present, so the dump must too.
@@ -151,30 +149,65 @@ describe('LLMDumpPlugin', () => {
     expect(md).toContain('`send_card`');
   });
 
-  it('appends multiple calls of the same turn in chronological order', () => {
+  it('gives each conversation of a turn its own section, in the order they started, in one file', () => {
     const plugin = makePlugin();
-    const base = { provider: 'deepseek', prompt: '', turnKey: 'msg:same' } as const;
-    emit(plugin, {
-      ...base,
-      opLabel: 'generate',
-      durationMs: 1234,
-      messages: [{ role: 'user', content: 'first' }, { role: 'assistant', content: 'seen' }],
-      response: { text: 'r1' },
-    });
-    emit(plugin, {
-      ...base,
-      opLabel: 'generate',
-      durationMs: 1234,
-      messages: [{ role: 'user', content: 'second' }, { role: 'assistant', content: 'seen' }],
-      response: { text: 'r2' },
-    });
+    const base = { provider: 'deepseek', prompt: '', turnKey: 'msg:same', opLabel: 'generate', durationMs: 1234 } as const;
+    emit(plugin, { ...base, messages: [{ role: 'user', content: 'first' }], response: { text: 'r1' } });
+    emit(plugin, { ...base, messages: [{ role: 'user', content: 'second' }], response: { text: 'r2' } });
 
     const md = readTurnFile('msg-same');
+    expect(md.match(/# LLM dump/g)?.length).toBe(1);
+    expect(md.match(/^## /gm)?.length).toBe(2);
     expect(md.indexOf('first')).toBeLessThan(md.indexOf('second'));
     expect(md.indexOf('r1')).toBeLessThan(md.indexOf('r2'));
-    // Calls in the same second share one file (single header); a call landing
-    // in the next second starts a new time-prefixed file with its own header.
-    expect(md.match(/# LLM dump/g)?.length).toBeLessThanOrEqual(2);
+  });
+
+  it('re-renders a tool loop from its latest round and keeps a stats row per round', () => {
+    const plugin = makePlugin();
+    const base = { provider: 'deepseek', prompt: '', turnKey: 'msg:loop', opLabel: 'generate' } as const;
+    const firstRound = [{ role: 'system', content: 'rules' }, { role: 'user', content: 'look it up' }] as const;
+    emit(plugin, { ...base, conversationId: 'loop-1', messages: [{ role: 'user', content: 'classify' }], durationMs: 300, response: { text: 'deep' } });
+    emit(plugin, {
+      ...base,
+      conversationId: 'loop-2',
+      durationMs: 2000,
+      messages: [...firstRound],
+      response: {
+        text: '',
+        reasoningContent: 'need a search',
+        functionCalls: [{ toolCallId: 'call_1', name: 'search', arguments: '{}' }],
+        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      },
+    });
+    emit(plugin, {
+      ...base,
+      conversationId: 'loop-2',
+      durationMs: 1000,
+      messages: [
+        ...firstRound,
+        {
+          role: 'assistant',
+          content: '',
+          reasoning_content: 'need a search',
+          tool_calls: [{ id: 'call_1', name: 'search', arguments: '{}' }],
+        },
+        { role: 'tool', tool_call_id: 'call_1', content: 'found it' },
+      ],
+      response: { text: 'here you go', usage: { promptTokens: 20, completionTokens: 3, totalTokens: 23 } },
+    });
+
+    const md = readTurnFile('msg-loop');
+    // The classifier's section stays; the loop's two rounds collapse into one section.
+    expect(md.match(/^## /gm)?.length).toBe(2);
+    expect(md.indexOf('classify')).toBeLessThan(md.indexOf('look it up'));
+    expect(md.match(/look it up/g)?.length).toBe(1);
+    // Round 1's thinking survives as the echoed assistant turn's, ahead of its tool call.
+    expect(md.match(/need a search/g)?.length).toBe(1);
+    expect(md.indexOf('need a search')).toBeLessThan(md.indexOf('`search` (call_1)'));
+    expect(md).toContain('found it');
+    expect(md).toContain('here you go');
+    expect(md).toContain('> round 1 · tokens: prompt=10 completion=5 total=15 · elapsed: 2.0s');
+    expect(md).toContain('> round 2 · tokens: prompt=20 completion=3 total=23 · elapsed: 1.0s');
   });
 
   it('lifts the time and speaker labels onto the entry header line', () => {
@@ -301,6 +334,6 @@ describe('LLMDumpPlugin', () => {
     expect(md).toContain('classify');
     expect(md).toContain('quick');
     // No usage reported: the stats line still carries elapsed, sub-second in ms.
-    expect(md).toContain('> elapsed: 820ms');
+    expect(md).toContain('> round 1 · elapsed: 820ms');
   });
 });

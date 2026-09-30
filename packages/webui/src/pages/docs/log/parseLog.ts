@@ -5,11 +5,22 @@
  * written by other producers (pm2 stdout in `logs/webui.log`) have no headers
  * at all, so a header-less line stands as its own entry instead of being
  * folded into the previous one.
+ *
+ * An entry written with `formatLogSections()` (packages/bot/src/utils/logger.ts)
+ * carries `── [label] ──` marker lines in its body; each marker opens a
+ * section so the viewer can fold the parts one by one.
  */
 
 const HEADER = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[([A-Za-z]+)\] ?/;
 const LEADING_TAG = /^\[([^[\]\n]{1,48})\]\s*/;
+const SECTION_MARKER = /^── \[(.+)\] ──$/;
 const MAX_TAGS = 3;
+
+export interface LogSection {
+  /** `null` for body lines that sit before any section marker, i.e. a plain multi-line body. */
+  label: string | null;
+  lines: string[];
+}
 
 export interface LogEntry {
   time: string | null;
@@ -17,7 +28,7 @@ export interface LogEntry {
   /** Leading `[Scope]` groups of the message, e.g. `[12345] [ReplySystem]`. */
   tags: string[];
   message: string;
-  body: string[];
+  sections: LogSection[];
   /** Lowercased entry text, precomputed so filtering stays cheap on 40k-line files. */
   haystack: string;
 }
@@ -41,6 +52,20 @@ function splitTags(rest: string): { tags: string[]; message: string } {
   return { tags, message };
 }
 
+function appendBodyLine(entry: LogEntry, line: string): void {
+  const marker = SECTION_MARKER.exec(line);
+  if (marker) {
+    entry.sections.push({ label: marker[1], lines: [] });
+    return;
+  }
+  const last = entry.sections[entry.sections.length - 1];
+  if (last) {
+    last.lines.push(line);
+  } else {
+    entry.sections.push({ label: null, lines: [line] });
+  }
+}
+
 export function parseLog(raw: string): LogFile {
   const lines = raw.split('\n');
   if (lines.length > 0 && lines[lines.length - 1] === '') {
@@ -60,21 +85,22 @@ export function parseLog(raw: string): LogFile {
         time: m[1],
         level,
         ...splitTags(line.slice(m[0].length)),
-        body: [],
+        sections: [],
         haystack: '',
       };
       entries.push(open);
       continue;
     }
     if (open) {
-      open.body.push(line);
+      appendBodyLine(open, line);
       continue;
     }
-    entries.push({ time: null, level: null, tags: [], message: line, body: [], haystack: '' });
+    entries.push({ time: null, level: null, tags: [], message: line, sections: [], haystack: '' });
   }
 
   for (const e of entries) {
-    e.haystack = [...e.tags, e.message, ...e.body].join('\n').toLowerCase();
+    const body = e.sections.flatMap((s) => (s.label === null ? s.lines : [s.label, ...s.lines]));
+    e.haystack = [...e.tags, e.message, ...body].join('\n').toLowerCase();
   }
 
   const levels = [...counts.entries()]

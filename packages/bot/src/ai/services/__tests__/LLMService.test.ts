@@ -1,9 +1,10 @@
 import 'reflect-metadata';
 
-import { describe, expect, it, test } from 'bun:test';
+import { describe, expect, it, spyOn, test } from 'bun:test';
 import type { AIManager } from '@/ai/AIManager';
 import type { AIGenerateOptions, AIGenerateResponse, ToolDefinition } from '@/ai/types';
 import { HttpClientError } from '@/api/http/HttpClient';
+import { logger } from '@/utils/logger';
 import { EmptyCompletionError, isTransientLLMError, LLMService } from '../LLMService';
 import {
   createAIManagerWithProvider,
@@ -270,6 +271,45 @@ describe('LLMService trace observers', () => {
     expect(seen[0].response.usage?.totalTokens).toBe(5);
   });
 
+  it('gives every round of one tool loop the same conversation id, and other calls their own', async () => {
+    let round = 0;
+    const provider = {
+      name: 'mock',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      supportsToolUse: true,
+      generate: async (): Promise<AIGenerateResponse> => {
+        round++;
+        return round === 1
+          ? { text: '', functionCalls: [{ name: 'noop', arguments: '{}', toolCallId: 'call_1' }] }
+          : { text: 'done' };
+      },
+    };
+    const aiManager = {
+      getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+      getProvidersForCapability: () => [],
+      getDefaultProvider: () => provider,
+    } as unknown as AIManager;
+    const service = createLLMService(aiManager, { toolUseProviders: ['mock'], fallback: { fallbackOrder: [] } });
+    const seen: import('@/ai/types').LLMTraceEntry[] = [];
+    service.addTraceObserver((e) => seen.push(e));
+    const tools: ToolDefinition[] = [
+      { name: 'noop', description: 'does nothing', parameters: { type: 'object', properties: {} } },
+    ];
+
+    await service.generateWithTools(
+      [{ role: 'user', content: 'hi' }],
+      tools,
+      { reasoningEffort: 'none', toolExecutor: async () => 'ok' },
+      'mock',
+    );
+    await service.generate('again', { reasoningEffort: 'none' }, 'mock');
+
+    expect(seen.length).toBe(3);
+    expect(seen[1].conversationId).toBe(seen[0].conversationId);
+    expect(seen[2].conversationId).not.toBe(seen[0].conversationId);
+  });
+
   it('a throwing observer never breaks generation', async () => {
     const provider = {
       name: 'mock',
@@ -289,6 +329,101 @@ describe('LLMService trace observers', () => {
 
     const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
     expect(res.text).toBe('ok');
+  });
+});
+
+describe('LLMService prompt log', () => {
+  const tools: ToolDefinition[] = [
+    { name: 'noop', description: 'does nothing', parameters: { type: 'object', properties: {} } },
+  ];
+
+  function createService(provider: unknown) {
+    const aiManager = {
+      getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+      getProvidersForCapability: () => [],
+      getDefaultProvider: () => provider,
+    } as unknown as AIManager;
+    return createLLMService(aiManager, { toolUseProviders: ['mock'], fallback: { fallbackOrder: [] } });
+  }
+
+  /** Runs `fn` and returns the prompt-log entries it wrote, one string per logger call. */
+  async function capturePromptLog(fn: () => Promise<unknown>): Promise<string[]> {
+    const written: string[] = [];
+    const info = spyOn(logger, 'info').mockImplementation((message: string) => {
+      written.push(message);
+    });
+    try {
+      await fn();
+      return written.filter((m) => m.startsWith('[LLMService] prompt |'));
+    } finally {
+      info.mockRestore();
+    }
+  }
+
+  it('writes each call as one entry, skips system messages and only adds what a tool round appended', async () => {
+    let round = 0;
+    const provider = {
+      name: 'mock',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      supportsToolUse: true,
+      generate: async (): Promise<AIGenerateResponse> => {
+        round++;
+        return round === 1
+          ? { text: '', functionCalls: [{ name: 'noop', arguments: '{"q":1}', toolCallId: 'call_1' }] }
+          : { text: 'final answer' };
+      },
+    };
+    const service = createService(provider);
+
+    const entries = await capturePromptLog(() =>
+      service.generateWithTools(
+        [
+          { role: 'system', content: 'TEMPLATE RULES' },
+          { role: 'user', content: '[speaker:甲:10000001] 在吗' },
+          { role: 'assistant', content: '在的' },
+          { role: 'user', content: '<current_query>\n乙问了个问题\n</current_query>' },
+        ],
+        tools,
+        { reasoningEffort: 'none', toolExecutor: async () => 'tool output' },
+        'mock',
+      ),
+    );
+
+    expect(entries).toEqual([
+      [
+        '[LLMService] prompt | provider=mock | messages=4',
+        '── [user] ──',
+        '[speaker:甲:10000001] 在吗',
+        '── [assistant] ──',
+        '在的',
+        '── [user] ──',
+        '<current_query>',
+        '乙问了个问题',
+        '</current_query>',
+      ].join('\n'),
+      [
+        '[LLMService] prompt | provider=mock | messages=6 | new=2',
+        '── [assistant] ──',
+        '→ noop {"q":1}',
+        '── [tool:noop] ──',
+        'tool output',
+      ].join('\n'),
+    ]);
+  });
+
+  it('logs only the header for a bare template-rendered prompt', async () => {
+    const provider = {
+      name: 'mock',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      generate: async () => ({ text: 'ok' }),
+    };
+    const service = createService(provider);
+
+    const entries = await capturePromptLog(() => service.generate('RENDERED TEMPLATE', { reasoningEffort: 'none' }, 'mock'));
+
+    expect(entries).toEqual(['[LLMService] prompt | provider=mock | messages=0']);
   });
 });
 

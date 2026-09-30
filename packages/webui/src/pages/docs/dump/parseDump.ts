@@ -33,7 +33,8 @@ export interface DumpEntry {
   provider: string;
   model: string | null;
   sections: DumpSection[];
-  stats: string[];
+  /** One row per `>` stats line (one per tool-loop round), each split into its `·` parts. */
+  stats: string[][];
 }
 
 export interface DumpFile {
@@ -211,7 +212,7 @@ export function parseDump(raw: string): DumpFile {
     }
 
     if (line.startsWith('> ')) {
-      entry.stats = line.slice(2).split(' · ');
+      entry.stats.push(line.slice(2).split(' · '));
     }
   }
 

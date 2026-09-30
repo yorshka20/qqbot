@@ -7,7 +7,8 @@ import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { HealthCheckManager } from '@/core/health/HealthCheckManager';
-import { logger } from '@/utils/logger';
+import { formatLogSections, type LogSection, logger } from '@/utils/logger';
+import { randomUUID } from '@/utils/randomUUID';
 import type { AIManager } from '../AIManager';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import { isLLMCapability } from '../capabilities/LLMCapability';
@@ -166,6 +167,27 @@ export function isTransientLLMError(err: Error, opts?: { retryOnTimeout?: boolea
 }
 
 /**
+ * Where a call sits in its conversation. generateWithTools sends one growing message
+ * list every round under one id; any other call is a conversation of its own.
+ */
+interface ConversationRound {
+  conversationId: string;
+  /** Leading messages that earlier rounds of the conversation already sent. */
+  sentCount: number;
+}
+
+function newConversation(): ConversationRound {
+  return { conversationId: randomUUID(), sentCount: 0 };
+}
+
+function promptLogSection(message: ChatMessage, toolNames: Map<string, string>): LogSection {
+  const toolName = message.tool_call_id ? toolNames.get(message.tool_call_id) : undefined;
+  const text = message.content === undefined ? '' : contentToPlainString(message.content);
+  const lines = [...(text ? [text] : []), ...(message.tool_calls ?? []).map((c) => `→ ${c.name} ${c.arguments}`)];
+  return { label: toolName ? `${message.role}:${toolName}` : message.role, content: lines.join('\n') };
+}
+
+/**
  * LLM Service
  * Provides LLM text generation capability
  */
@@ -196,10 +218,12 @@ export class LLMService {
     options: AIGenerateOptions | undefined,
     result: AIGenerateResponse,
     startedAt: number,
+    conversationId: string,
   ): void {
     if (this.traceObservers.length === 0) return;
     const entry = {
       opLabel,
+      conversationId,
       provider,
       resolvedModel: result.resolvedModel,
       systemPrompt: options?.systemPrompt,
@@ -526,7 +550,7 @@ export class LLMService {
 
     const estimatedTokens = this.estimatePromptTokens(prompt, options);
     await this.rateLimiter.waitForCapacity(estimatedTokens, providerName);
-    this.logLLMPrompt(providerName, prompt, options);
+    this.logLLMPrompt(providerName, options, 0);
 
     const startedAt = Date.now();
     try {
@@ -546,7 +570,7 @@ export class LLMService {
         this.rateLimiter.recordUsage(result.usage.totalTokens, providerName);
       }
       this.logLLMUsage(providerName, prompt, options, result);
-      this.emitTrace('generateFixed', providerName, prompt, options, result, startedAt);
+      this.emitTrace('generateFixed', providerName, prompt, options, result, startedAt, randomUUID());
       this.healthCheckManager.markServiceHealthy(providerName);
       result.resolvedProviderName = providerName;
       this.stampResolvedModel(result, provider, options);
@@ -564,6 +588,16 @@ export class LLMService {
    * Updates provider health status based on success/failure.
    */
   async generate(prompt: string, options: LLMCallOptions, providerName?: string): Promise<AIGenerateResponse> {
+    return this.generateInRound(prompt, options, providerName, newConversation());
+  }
+
+  /** `generate()` for one round of a conversation, possibly a later round of a tool loop. */
+  private async generateInRound(
+    prompt: string,
+    options: LLMCallOptions,
+    providerName: string | undefined,
+    round: ConversationRound,
+  ): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
     const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
 
@@ -580,7 +614,7 @@ export class LLMService {
     // Estimate prompt tokens from content length (rough: 1 token ≈ 3 chars for CJK, 4 for latin).
     const estimatedTokens = this.estimatePromptTokens(prompt, effectiveOptions);
     await this.rateLimiter.waitForCapacity(estimatedTokens, resolvedName);
-    this.logLLMPrompt(resolvedName, prompt, effectiveOptions);
+    this.logLLMPrompt(resolvedName, effectiveOptions, round.sentCount);
 
     const startedAt = Date.now();
     try {
@@ -603,7 +637,7 @@ export class LLMService {
         this.rateLimiter.recordUsage(result.usage.totalTokens, resolvedName);
       }
       this.logLLMUsage(resolvedName, prompt, effectiveOptions, result);
-      this.emitTrace('generate', resolvedName, prompt, effectiveOptions, result, startedAt);
+      this.emitTrace('generate', resolvedName, prompt, effectiveOptions, result, startedAt, round.conversationId);
       // Mark provider as healthy on success
       this.healthCheckManager.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
@@ -655,7 +689,7 @@ export class LLMService {
       ...incomingOptions,
     };
 
-    this.logLLMPrompt(resolvedName, prompt, mergedOptions);
+    this.logLLMPrompt(resolvedName, mergedOptions, 0);
 
     const startedAt = Date.now();
     try {
@@ -672,7 +706,7 @@ export class LLMService {
         { opLabel: 'generateLite' },
       );
       this.logLLMUsage(resolvedName, prompt, mergedOptions, result);
-      this.emitTrace('generateLite', resolvedName, prompt, mergedOptions, result, startedAt);
+      this.emitTrace('generateLite', resolvedName, prompt, mergedOptions, result, startedAt, randomUUID());
       this.healthCheckManager.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
       this.stampResolvedModel(result, provider, mergedOptions);
@@ -714,11 +748,12 @@ export class LLMService {
   private async generateFromMessages(
     messages: ChatMessage[],
     options: Omit<LLMCallOptions, 'messages'>,
-    providerName?: string,
+    providerName: string | undefined,
+    round: ConversationRound,
   ): Promise<AIGenerateResponse> {
     const lastContent = messages[messages.length - 1]?.content;
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
-    return this.generate(prompt, { ...options, messages }, providerName);
+    return this.generateInRound(prompt, { ...options, messages }, providerName, round);
   }
 
   /**
@@ -745,7 +780,7 @@ export class LLMService {
 
     const { provider, resolvedName, swapped } = resolved;
     const effectiveOptions = this.stripModelIfSwapped(options, swapped);
-    this.logLLMPrompt(resolvedName, prompt, effectiveOptions);
+    this.logLLMPrompt(resolvedName, effectiveOptions, 0);
 
     const startedAt = Date.now();
     try {
@@ -758,7 +793,7 @@ export class LLMService {
       this.healthCheckManager.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
       this.stampResolvedModel(result, provider, effectiveOptions);
-      this.emitTrace('generateStream', resolvedName, prompt, effectiveOptions, result, startedAt);
+      this.emitTrace('generateStream', resolvedName, prompt, effectiveOptions, result, startedAt, randomUUID());
       return result;
     } catch (err) {
       // Mark provider as failed
@@ -788,7 +823,7 @@ export class LLMService {
   ): Promise<ToolUseGenerateResponse> {
     // No tools — short-circuit to plain generate.
     if (tools.length === 0) {
-      const response = await this.generateFromMessages(messages, options, providerName);
+      const response = await this.generateFromMessages(messages, options, providerName, newConversation());
       await this.emitReasoning(response, options, [], new Set(), providerName);
       return { ...response, stopReason: 'end_turn' };
     }
@@ -832,7 +867,7 @@ export class LLMService {
       if (!foundToolUseProvider) {
         logger.warn('[LLMService] No tool-use capable provider available, will proceed without tool use');
         // Proceed without tool use - just generate normally
-        const response = await this.generateFromMessages(messages, options, providerName);
+        const response = await this.generateFromMessages(messages, options, providerName, newConversation());
         await this.emitReasoning(response, options, [], new Set(), providerName);
         // Strip text-based tool calls the model may emit when it sees tool instructions in the prompt
         if (response.text && containsTextToolCalls(response.text)) {
@@ -856,6 +891,8 @@ export class LLMService {
 
     const currentMessages = [...messages];
     let round = 0;
+    const conversationId = randomUUID();
+    let sentCount = 0;
     const allToolCalls: ToolResult[] = [];
     // Accumulate token usage across every round so the returned response reports
     // the full cost of the tool-augmented generation, not just the final round.
@@ -870,7 +907,14 @@ export class LLMService {
 
     while (maxRounds === undefined || round < maxRounds) {
       // Generate with tools
-      const response = await this.generateMessagesWithToolSupport(currentMessages, tools, options, currentProviderName);
+      const response = await this.generateMessagesWithToolSupport(
+        currentMessages,
+        tools,
+        options,
+        currentProviderName,
+        { conversationId, sentCount },
+      );
+      sentCount = currentMessages.length;
       sawUsage = this.accumulateUsage(accUsage, response.usage) || sawUsage;
       await this.emitReasoning(response, options, accReasoning, seenReasoning, currentProviderName);
 
@@ -1065,7 +1109,10 @@ export class LLMService {
     // Max rounds reached, force final generation with explicit instruction to produce text answer
     logger.warn(`[LLMService] Max tool rounds (${maxRounds}) reached, forcing final response`);
     currentMessages.push({ role: 'user', content: TOOL_ROUNDS_EXHAUSTED_NOTICE });
-    const finalResponse = await this.generateFromMessages(currentMessages, options, currentProviderName);
+    const finalResponse = await this.generateFromMessages(currentMessages, options, currentProviderName, {
+      conversationId,
+      sentCount,
+    });
     sawUsage = this.accumulateUsage(accUsage, finalResponse.usage) || sawUsage;
     await this.emitReasoning(finalResponse, options, accReasoning, seenReasoning, currentProviderName);
 
@@ -1325,43 +1372,25 @@ export class LLMService {
   }
 
   /**
-   * Log the full prompt and messages sent to LLM for conversation inspection.
-   * Each part is logged as a separate line to avoid PM2 line-splitting corruption.
+   * Log one entry per LLM call: a header line, then the part of the request that is
+   * not already on record, one section per message.
    *
-   * NOTE: when `options.messages` is provided, providers IGNORE the `prompt`
-   * argument and build the request body from `options.messages` alone (see
-   * e.g. DeepSeekProvider.generateStream). Logging the unused `prompt` as a
-   * pseudo-`[system]` line misrepresents what actually hits the wire, so we
-   * suppress it in that case. When messages are absent (legacy callers that
-   * rely on provider-side history loading), the `prompt` IS the user turn
-   * and we log it under its real role.
+   * System messages and a bare `prompt` are template renders whose text lives in
+   * `prompts/`, so only the header records them; the dynamic part of a request is
+   * its user / assistant / tool messages. When `options.messages` is set, providers
+   * ignore `prompt` altogether. The first `sentCount` messages were logged by an
+   * earlier round of the same tool loop, which re-sends the whole conversation.
    */
-  private logLLMPrompt(provider: string, prompt: string, options?: AIGenerateOptions): void {
-    const msgCount = options?.messages?.length ?? 0;
-    logger.info(`[LLMService] prompt | provider=${provider} | messages=${msgCount}`);
-    // Caller opted out of the verbose body dump (boilerplate prompts where the
-    // template noise has no diagnostic value). Meta line above is still emitted
-    // so call counts remain traceable; the caller logs its own context line.
-    if (options?.verbosePromptLog === false) return;
-    const messages = options?.messages;
-    if (messages && messages.length > 0) {
-      for (const msg of messages) {
-        const content =
-          typeof msg.content === 'string'
-            ? msg.content
-            : Array.isArray(msg.content)
-              ? msg.content
-                  .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
-                  .map((p) => p.text)
-                  .join('')
-              : '';
-        logger.info(`[LLMService] prompt [${msg.role}] ${content}`);
-      }
-      return;
-    }
-    if (prompt) {
-      logger.info(`[LLMService] prompt [user] ${prompt}`);
-    }
+  private logLLMPrompt(provider: string, options: AIGenerateOptions, sentCount: number): void {
+    const messages = options.messages ?? [];
+    const fresh = sentCount > 0 ? ` | new=${messages.length - sentCount}` : '';
+    const header = `[LLMService] prompt | provider=${provider} | messages=${messages.length}${fresh}`;
+    const toolNames = new Map(messages.flatMap((m) => (m.tool_calls ?? []).map((c) => [c.id, c.name] as const)));
+    const sections = messages
+      .slice(sentCount)
+      .filter((m) => m.role !== 'system')
+      .map((m) => promptLogSection(m, toolNames));
+    logger.info(sections.length > 0 ? `${header}\n${formatLogSections(sections)}` : header);
   }
 
   /** Count total prompt character length including messages. */
@@ -1412,10 +1441,11 @@ export class LLMService {
     tools: ToolDefinition[],
     options: ToolUseCallOptions,
     providerName: string,
+    round: ConversationRound,
   ): Promise<ToolUseGenerateResponse> {
     const lastContent = messages[messages.length - 1]?.content;
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
-    const response = await this.generate(prompt, { ...options, messages, tools }, providerName);
+    const response = await this.generateInRound(prompt, { ...options, messages, tools }, providerName, round);
 
     // Fallback: if no structured functionCalls but text contains DSML, parse it
     if (!response.functionCalls?.length && response.text && containsDSML(response.text)) {

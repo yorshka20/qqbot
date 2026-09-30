@@ -1,7 +1,7 @@
 import { ChevronRight } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
-import type { LogEntry, LogFile } from './parseLog';
+import type { LogEntry, LogFile, LogSection } from './parseLog';
 
 const LEVEL_CHIP: Record<string, string> = {
   ERROR: 'bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300',
@@ -17,6 +17,60 @@ const ROW_ACCENT: Record<string, string> = {
 };
 
 const PAGE = 500;
+
+const BODY_BOX =
+  'mt-1 whitespace-pre-wrap break-all rounded border border-zinc-200 bg-white p-2 text-[11px] text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300';
+
+function LabeledSection({ label, lines }: { label: string; lines: string[] }) {
+  const [first = '', ...rest] = lines;
+  const head = (
+    <>
+      <span className="shrink-0 text-sky-600 dark:text-sky-400">[{label}]</span>
+      <span className="min-w-0 flex-1 whitespace-pre-wrap break-all">{first}</span>
+    </>
+  );
+
+  if (rest.length === 0) {
+    return <div className="flex items-baseline gap-x-2 pl-4">{head}</div>;
+  }
+  return (
+    <details className="group/section">
+      <summary className="flex cursor-pointer select-none items-baseline gap-x-2 list-none [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="w-3 h-3 shrink-0 self-center text-zinc-400 transition-transform group-open/section:rotate-90" />
+        {head}
+        <span className="shrink-0 text-zinc-400 dark:text-zinc-500">+{rest.length} 行</span>
+      </summary>
+      <pre className={`ml-4 ${BODY_BOX}`}>{rest.join('\n')}</pre>
+    </details>
+  );
+}
+
+function EntryBody({ sections }: { sections: LogSection[] }) {
+  const labeled = sections.filter((s) => s.label !== null).length;
+  const summary = labeled > 0 ? `${labeled} 段` : `${sections.reduce((n, s) => n + s.lines.length, 0)} 行详情`;
+
+  return (
+    <details className="group mt-0.5">
+      <summary className="flex cursor-pointer select-none items-center gap-1 text-[11px] text-zinc-400 dark:text-zinc-500 list-none [&::-webkit-details-marker]:hidden hover:text-zinc-600 dark:hover:text-zinc-300">
+        <ChevronRight className="w-3 h-3 transition-transform group-open:rotate-90" />
+        {summary}
+      </summary>
+      <div className="mt-1 flex flex-col gap-0.5 text-[11px] text-zinc-700 dark:text-zinc-300">
+        {sections.map((s, i) =>
+          s.label === null ? (
+            // biome-ignore lint/suspicious/noArrayIndexKey: section order is the identity
+            <pre key={i} className={BODY_BOX}>
+              {s.lines.join('\n')}
+            </pre>
+          ) : (
+            // biome-ignore lint/suspicious/noArrayIndexKey: section order is the identity
+            <LabeledSection key={i} label={s.label} lines={s.lines} />
+          ),
+        )}
+      </div>
+    </details>
+  );
+}
 
 function EntryRow({ entry }: { entry: LogEntry }) {
   const chip = entry.level ? (LEVEL_CHIP[entry.level] ?? FALLBACK_CHIP) : null;
@@ -48,17 +102,7 @@ function EntryRow({ entry }: { entry: LogEntry }) {
         </span>
       </div>
 
-      {entry.body.length > 0 && (
-        <details className="group mt-0.5">
-          <summary className="flex cursor-pointer select-none items-center gap-1 text-[11px] text-zinc-400 dark:text-zinc-500 list-none [&::-webkit-details-marker]:hidden hover:text-zinc-600 dark:hover:text-zinc-300">
-            <ChevronRight className="w-3 h-3 transition-transform group-open:rotate-90" />
-            {entry.body.length} 行详情
-          </summary>
-          <pre className="mt-1 whitespace-pre-wrap break-all rounded border border-zinc-200 bg-white p-2 text-[11px] text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-            {entry.body.join('\n')}
-          </pre>
-        </details>
-      )}
+      {entry.sections.length > 0 && <EntryBody sections={entry.sections} />}
     </div>
   );
 }
