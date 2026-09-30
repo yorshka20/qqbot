@@ -210,6 +210,29 @@ describe('LLMDumpPlugin', () => {
     expect(md).toContain('> round 2 · tokens: prompt=20 completion=3 total=23 · elapsed: 1.0s');
   });
 
+  it('keeps a history reply\'s replayed reasoning out of the transcript', () => {
+    const plugin = makePlugin();
+    emit(plugin, {
+      opLabel: 'generate',
+      durationMs: 900,
+      provider: 'deepseek',
+      prompt: '',
+      messages: [
+        { role: 'user', content: '[speaker:甲:10000001] 昨天聊的那个呢' },
+        { role: 'assistant', content: '在这', reasoning_content: 'earlier turn thinking about 乙 的问题' },
+        { role: 'user', content: '<current_query>\n当前问题：q\n</current_query>' },
+      ],
+      response: { text: 'now', reasoningContent: 'this turn thinking' },
+      turnKey: 'msg:history',
+    });
+
+    const md = readTurnFile('msg-history');
+    expect(md).not.toContain('earlier turn thinking');
+    // This turn's own thinking still renders, once, after the request.
+    expect(md.match(/### ⟵ thinking/g)?.length).toBe(1);
+    expect(md).toContain('this turn thinking');
+  });
+
   it('lifts the time and speaker labels onto the entry header line', () => {
     const plugin = makePlugin();
     emit(plugin, {

@@ -271,8 +271,11 @@ export class LLMDumpPlugin extends PluginBase {
         continue;
       }
 
-      // An earlier round's output, echoed back in the tool loop with its thinking.
-      if (msg.reasoning_content?.trim()) {
+      // Only a tool-loop echo of an earlier round shows its thinking. History bot replies
+      // carry reasoning_content too (cross-turn replay), and rendering it would splice every
+      // past reply's thinking into this turn's transcript. The loop only appends assistant
+      // turns that carry tool_calls; history turns never do.
+      if (msg.tool_calls?.length && msg.reasoning_content?.trim()) {
         flushTranscript();
         lines.push('### ⟵ thinking', '', this.fence(msg.reasoning_content), '');
       }
