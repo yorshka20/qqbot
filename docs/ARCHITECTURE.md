@@ -643,9 +643,10 @@ The reply pipeline inside `ReplyPipelineOrchestrator` is composed of ordered sta
 The reply-stage agentic loop separates content from control. The model has these
 delivery actions with non-overlapping semantics:
 
-- **Final text output** — always delivered (long structured text may auto-render
-  as a card image). After `send_card`, trailing text is appended as a follow-up
-  after the card instead of being dropped.
+- **Final text output** — always delivered (long markdown-formatted text
+  auto-renders as a card image, long plain prose goes out as a forward message).
+  After `send_card`, trailing text is appended as a follow-up after the card
+  instead of being dropped. See [Delivery markers](#delivery-markers).
 - **Text written alongside tool calls** — delivered immediately, before that
   round's tools run: it is the heads-up for a slow tool. `LLMService.generateWithTools`
   hands each tool round's text to `onToolRoundText` (awaited, failures swallowed)
@@ -677,6 +678,20 @@ the hook context, leaked tool-call blocks are stripped and `[表情:名字]` /
 `[表情：名字]` expanded as in `ReplyPrepareSystem`, and the delivered text is
 persisted in canonical form via `ConversationHistoryService.appendBotMessageToSession`
 — these sends bypass SendSystem, so nothing else would record them.
+
+#### Delivery markers
+
+The model can steer how its text is delivered by writing a marker anywhere in it:
+`/skip_card` sends the text instead of rendering it as a card (a long reply is still
+forwarded), `/skip_forward` sends it directly instead of as a forward message (the
+card decision is unaffected, and the group's `useForwardMsg` default is overridden
+too). The two combine. `parseDeliveryMarkers` (`utils/contentMarkers.ts`) is the only
+code that knows them: it returns the text with every marker removed together with the
+two flags, and each path that delivers model text calls it once before deciding on card
+or forward — `ResponseDispatchStage` (skip-forward becomes `explicitSendAsForward=false`),
+the proactive and agenda replies, subagent results, and `ConversationMessageSender`, which
+never renders cards or forwards and only drops them. `CardRenderingHelper.shouldUseCardReply`
+is a length gate and does not look at markers.
 
 Tool rounds are capped by `ai.chat.maxToolRounds` (default 15).
 

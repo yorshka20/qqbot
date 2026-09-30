@@ -5,6 +5,7 @@ import { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { HookContext } from '@/hooks/types';
 import { expandFaceMarkers } from '@/message/qqFace';
+import { parseDeliveryMarkers } from '@/utils/contentMarkers';
 import { logger } from '@/utils/logger';
 
 /**
@@ -14,6 +15,9 @@ import { logger } from '@/utils/logger';
  * writes the delivered message to that session's history, because a send that bypasses
  * SendSystem never reaches `onMessageSent` — without the write, the next turn's LLM would
  * see a conversation missing its own words.
+ *
+ * Delivery markers are dropped: this path always sends text directly, so they have nothing
+ * to act on, but they must not reach the chat as literal text.
  */
 @singleton()
 export class ConversationMessageSender {
@@ -28,7 +32,7 @@ export class ConversationMessageSender {
    * `viaTool` marks the history row with the tool that sent it.
    */
   async sendText(context: HookContext, text: string, viaTool?: string): Promise<string | null> {
-    const { segments, unresolved } = expandFaceMarkers(stripLeakedToolCalls(text).trim());
+    const { segments, unresolved } = expandFaceMarkers(parseDeliveryMarkers(stripLeakedToolCalls(text)).text);
     if (unresolved.length > 0) {
       logger.warn(`[ConversationMessageSender] Dropped unknown face marker(s): ${unresolved.join(', ')}`);
     }

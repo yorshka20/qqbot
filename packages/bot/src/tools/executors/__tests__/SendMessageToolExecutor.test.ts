@@ -7,6 +7,7 @@ import type { Config } from '@/core/config';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { MessageSegment } from '@/message/types';
 import type { ToolCall, ToolExecutionContext } from '@/tools/types';
+import { SKIP_CARD_MARKER, SKIP_FORWARD_MARKER } from '@/utils/contentMarkers';
 import { SendMessageToolExecutor } from '../SendMessageToolExecutor';
 
 function setup() {
@@ -83,6 +84,16 @@ describe('send_message QQ faces', () => {
     expect(result.success).toBe(true);
     expect(sent).toEqual([[{ type: 'text', data: { text: '好耶' } }]]);
     expect(history).toEqual(['好耶']);
+  });
+
+  it('drops delivery markers from delivery and history', async () => {
+    const { executor, context, call, sent, history } = setup();
+
+    const result = await executor.execute(call(`稍等 ${SKIP_CARD_MARKER}${SKIP_FORWARD_MARKER}`), context);
+
+    expect(result.success).toBe(true);
+    expect(sent).toEqual([[{ type: 'text', data: { text: '稍等' } }]]);
+    expect(history).toEqual(['稍等']);
   });
 
   it('does not send a message reduced to an unknown marker', async () => {

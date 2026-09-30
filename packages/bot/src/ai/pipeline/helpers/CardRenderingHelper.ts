@@ -10,7 +10,6 @@ import type { MessageSegment } from '@/message/types';
 import { CardRenderingService } from '@/services/card';
 import { cardDeckToText } from '@/services/card/cardText';
 import { type CardData, parseCardDeck } from '@/services/card/cardTypes';
-import { hasSkipCardMarker } from '@/utils/contentMarkers';
 import { logger } from '@/utils/logger';
 import { extractExpectedJsonFromLlmText } from '../../utils/llmJsonExtract';
 
@@ -117,9 +116,11 @@ export class CardRenderingHelper {
   // Detection / extraction utilities
   // ---------------------------------------------------------------------------
 
+  /**
+   * Length gate only. Delivery markers (`/skip_card`) are the caller's to parse — the caller
+   * has to strip them from the text it sends anyway, so it decides skipping from the same parse.
+   */
   shouldUseCardReply(responseText: string): boolean {
-    // skip if marker is detected: /skip_card
-    if (hasSkipCardMarker(responseText)) return false;
     return responseText.length >= CardRenderingService.getThreshold();
   }
 

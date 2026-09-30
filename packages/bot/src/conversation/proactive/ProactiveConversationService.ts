@@ -26,6 +26,7 @@ import { parseSubtextTags } from '@/persona/prompt/subtextTagParser';
 import { PluginManager } from '@/plugins/PluginManager';
 import type { ReactionPlugin } from '@/plugins/plugins/ReactionPlugin';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
+import { parseDeliveryMarkers } from '@/utils/contentMarkers';
 import { logger } from '@/utils/logger';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { groupHasWhitelistCapability, WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
@@ -786,9 +787,11 @@ export class ProactiveConversationService {
       return;
     }
     const parsed = parseSubtextTags(replyText);
-    const cleanReplyText = parsed.visible;
+    const { text: cleanReplyText, skipCard } = parseDeliveryMarkers(parsed.visible);
     // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
-    const cardResult = await this.aiService.processReplyMaybeCard(cleanReplyText, groupId, this.analysisProviderName);
+    const cardResult = skipCard
+      ? null
+      : await this.aiService.processReplyMaybeCard(cleanReplyText, groupId, this.analysisProviderName);
     const toSend = cardResult ? cardResult.segments : cleanReplyText;
     const toAppend = cardResult ? cardResult.textForHistory : cleanReplyText;
     // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).
@@ -838,13 +841,11 @@ export class ProactiveConversationService {
     }
 
     const parsed = parseSubtextTags(replyText);
-    const cleanReplyText = parsed.visible;
+    const { text: cleanReplyText, skipCard } = parseDeliveryMarkers(parsed.visible);
     // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
-    const cardResult = await this.aiService.processReplyMaybeCard(
-      cleanReplyText,
-      thread.groupId,
-      this.analysisProviderName,
-    );
+    const cardResult = skipCard
+      ? null
+      : await this.aiService.processReplyMaybeCard(cleanReplyText, thread.groupId, this.analysisProviderName);
     const toSend = cardResult ? cardResult.segments : cleanReplyText;
     const toAppend = cardResult ? cardResult.textForHistory : cleanReplyText;
     // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).

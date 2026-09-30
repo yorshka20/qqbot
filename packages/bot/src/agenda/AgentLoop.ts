@@ -19,7 +19,7 @@ import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
 import type { ToolManager } from '@/tools/ToolManager';
-import { stripSkipCardMarker } from '@/utils/contentMarkers';
+import { parseDeliveryMarkers } from '@/utils/contentMarkers';
 import { getCurrentDateTimeForPrompt } from '@/utils/dateTime';
 import { logger } from '@/utils/logger';
 import type { ActionHandlerRegistry } from './ActionHandlerRegistry';
@@ -266,22 +266,21 @@ export class AgentLoop {
     reply: GeneratedReply,
     contextId: string,
   ): Promise<{ message: string | MessageSegment[]; isCard: boolean; length: number } | null> {
-    const { text, hookContext } = reply;
+    const { hookContext } = reply;
+    const { text: cleanReply, skipCard } = parseDeliveryMarkers(reply.text);
 
     const queued = hookContext?.reply?.segments;
     if (hookContext?.metadata.get('cardSent') === true && queued?.length) {
-      const followUp = stripSkipCardMarker(text).trim();
-      const message: MessageSegment[] = followUp ? [...queued, { type: 'text', data: { text: followUp } }] : queued;
+      const message: MessageSegment[] = cleanReply ? [...queued, { type: 'text', data: { text: cleanReply } }] : queued;
       return { message, isCard: true, length: message.length };
     }
 
-    const cardSegments = await this.tryRenderCard(text, contextId);
+    const cardSegments = skipCard ? null : await this.tryRenderCard(cleanReply, contextId);
     if (cardSegments) {
       return { message: cardSegments, isCard: true, length: cardSegments.length };
     }
 
-    const cleanReply = stripSkipCardMarker(text);
-    if (!cleanReply.trim()) return null;
+    if (!cleanReply) return null;
     return { message: cleanReply, isCard: false, length: cleanReply.length };
   }
 

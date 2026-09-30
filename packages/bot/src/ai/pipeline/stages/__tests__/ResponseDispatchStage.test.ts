@@ -9,6 +9,7 @@ import type { HookManager } from '@/hooks/HookManager';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
+import { SKIP_CARD_MARKER, SKIP_FORWARD_MARKER } from '@/utils/contentMarkers';
 import { ReplyPipelineContext } from '../../ReplyPipelineContext';
 import { ResponseDispatchStage } from '../ResponseDispatchStage';
 
@@ -256,6 +257,92 @@ describe('ResponseDispatchStage', () => {
 
       expect(cardHelper.extractReadableTextFromCardJson).toHaveBeenCalledWith(rawDeckJson);
       expect(hookManager.execute).toHaveBeenCalledWith('onAIGenerationComplete', hookContext);
+    });
+  });
+
+  describe('delivery markers', () => {
+    function replyText(hookContext: HookContext): string {
+      const texts = hookContext.reply?.segments.filter((s) => s.type === 'text') ?? [];
+      return texts.map((s) => (s as { data: { text: string } }).data.text).join('');
+    }
+
+    it('skip-card anywhere keeps long markdown as text, still forwards it, and strips the marker', async () => {
+      const hookContext = makeHookContext();
+      const cardHelper = makeCardHelper({
+        shouldUseCardReply: vi.fn().mockReturnValue(true),
+        looksLikeMarkdown: vi.fn().mockReturnValue(true),
+      });
+      const stage = new ResponseDispatchStage(cardHelper, makeHookManager());
+      const ctx = makePipelineContext(`# 标题\n正文 ${SKIP_CARD_MARKER} 继续`, hookContext);
+
+      await stage.execute(ctx);
+
+      expect(cardHelper.renderMarkdownDirect).not.toHaveBeenCalled();
+      expect(hookContext.metadata.get('explicitSendAsForward')).toBe(true);
+      expect(replyText(hookContext)).toBe('# 标题\n正文 继续');
+    });
+
+    it('a leading skip-card is not mistaken for a command', async () => {
+      const hookContext = makeHookContext();
+      const cardHelper = makeCardHelper();
+      const stage = new ResponseDispatchStage(cardHelper, makeHookManager());
+      const ctx = makePipelineContext(`${SKIP_CARD_MARKER} 正文`, hookContext);
+
+      await stage.execute(ctx);
+
+      expect(cardHelper.shouldUseCardReply).toHaveBeenCalledWith('正文');
+      expect(replyText(hookContext)).toBe('正文');
+    });
+
+    it('skip-forward keeps long prose out of a forward and strips the marker', async () => {
+      const hookContext = makeHookContext();
+      const cardHelper = makeCardHelper({
+        shouldUseCardReply: vi.fn().mockReturnValue(true),
+        looksLikeMarkdown: vi.fn().mockReturnValue(false),
+      });
+      const stage = new ResponseDispatchStage(cardHelper, makeHookManager());
+      const ctx = makePipelineContext(`长文 ${SKIP_FORWARD_MARKER} 继续`, hookContext);
+
+      await stage.execute(ctx);
+
+      expect(hookContext.metadata.get('explicitSendAsForward')).toBe(false);
+      expect(replyText(hookContext)).toBe('长文 继续');
+    });
+
+    it('skip-forward overrides the group forward default for a short reply', async () => {
+      const hookContext = makeHookContext({ groupUseForwardMsg: true });
+      const stage = new ResponseDispatchStage(makeCardHelper(), makeHookManager());
+      const ctx = makePipelineContext(`短句 ${SKIP_FORWARD_MARKER}`, hookContext);
+
+      await stage.execute(ctx);
+
+      expect(hookContext.metadata.get('explicitSendAsForward')).toBe(false);
+      expect(replyText(hookContext)).toBe('短句');
+    });
+
+    it('skip-forward leaves the markdown card decision alone', async () => {
+      const hookContext = makeHookContext();
+      const cardHelper = makeCardHelper({
+        shouldUseCardReply: vi.fn().mockReturnValue(true),
+        looksLikeMarkdown: vi.fn().mockReturnValue(true),
+        renderMarkdownDirect: vi.fn().mockResolvedValue({ segments: makeSegments(), textForHistory: '# 标题' }),
+      });
+      const stage = new ResponseDispatchStage(cardHelper, makeHookManager());
+      const ctx = makePipelineContext(`# 标题 ${SKIP_FORWARD_MARKER}`, hookContext);
+
+      await stage.execute(ctx);
+
+      expect(cardHelper.renderMarkdownDirect).toHaveBeenCalledWith('# 标题', 'deepseek');
+    });
+
+    it('strips markers from the follow-up text after a send_card', async () => {
+      const hookContext = makeHookContext({ cardSent: true });
+      const stage = new ResponseDispatchStage(makeCardHelper(), makeHookManager());
+      const ctx = makePipelineContext(`补充一句 ${SKIP_CARD_MARKER}`, hookContext);
+
+      await stage.execute(ctx);
+
+      expect(replyText(hookContext)).toBe('补充一句');
     });
   });
 });

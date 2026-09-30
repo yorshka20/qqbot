@@ -9,7 +9,7 @@ import type { SendMessageResult } from '@/api/types';
 import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { hasSkipCardMarker, stripSkipCardMarker } from '@/utils/contentMarkers';
+import { parseDeliveryMarkers } from '@/utils/contentMarkers';
 import { logger } from '@/utils/logger';
 import type { SubAgentTriggerRule } from './types';
 
@@ -359,11 +359,12 @@ export class SubAgentTriggerHandler {
    * Deliver the subagent result to the target group.
    *
    * Decision order:
-   *   1. Card rendering — if result is long enough and provider supports it, convert to card image.
+   *   1. Card rendering — if result is long enough and provider supports it, convert to card image
+   *      (`/skip_card` in the result opts out).
    *   2. Forward vs direct:
    *      - Card image segments: always sent directly (images in forward messages are unreliable).
    *      - Plain text: use forward (合并转发) when group has useForwardMsg enabled and protocol is Milky.
-   *        This prevents long bot outputs from flooding the chat.
+   *        This prevents long bot outputs from flooding the chat. `/skip_forward` opts out.
    */
   private async sendResult(
     groupId: number | string,
@@ -373,8 +374,7 @@ export class SubAgentTriggerHandler {
     const groupIdStr = groupId.toString();
 
     try {
-      const skipCard = hasSkipCardMarker(resultText);
-      const cleanText = skipCard ? stripSkipCardMarker(resultText) : resultText;
+      const { text: cleanText, skipCard, skipForward } = parseDeliveryMarkers(resultText);
 
       const cardResult = skipCard ? null : await this.aiService.processReplyMaybeCard(cleanText, groupIdStr);
       const isCard = cardResult !== null;
@@ -382,7 +382,7 @@ export class SubAgentTriggerHandler {
 
       const useForward =
         !isCard &&
-        !skipCard &&
+        !skipForward &&
         this.protocol === 'milky' &&
         this.botSelfId > 0 &&
         (await this.conversationConfigService.getUseForwardMsg(groupIdStr, 'group'));

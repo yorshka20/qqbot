@@ -5,6 +5,7 @@ import { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
 import { replaceReply, setReplyWithSegments } from '@/context/HookContextHelpers';
 import { HookManager } from '@/hooks/HookManager';
 import { MessageUtils } from '@/message/MessageUtils';
+import { parseDeliveryMarkers } from '@/utils/contentMarkers';
 import { logger } from '@/utils/logger';
 import { containsTextToolCalls, stripTextToolCalls } from '../../utils/dsmlParser';
 import { extractExpectedJsonFromLlmText } from '../../utils/llmJsonExtract';
@@ -13,7 +14,10 @@ import type { ReplyStage } from '../types';
 
 /**
  * Pipeline stage 8: response dispatch.
- * Routes the LLM response to the appropriate output path:
+ * Routes the LLM response to the appropriate output path. Delivery markers are parsed
+ * first and every path works on the marker-free text: `/skip_card` rules out Path 2a,
+ * `/skip_forward` rules out Path 2b and pins explicitSendAsForward=false so the group's
+ * forward default does not apply either.
  *
  * Path 0: end_turn with no trailing text → no reply at all (explicit silent finish).
  * Path 1: send_card executor already rendered and queued the card (cardSent=true).
@@ -21,11 +25,11 @@ import type { ReplyStage } from '../types';
  *         promises the model that final text is ALWAYS sent, so nothing is dropped.
  * Path 1.5: send_card was called but rendering failed (cardSendFailedReason set) → fall through to Path 2
  * Path 2a: Long + markdown-formatted text → render as markdown card image.
- * Path 2b: Long + plain prose → force sendAsForward (override group config) and ship
- *          the original prose. Long plain text shouldn't be stuffed into a card —
+ * Path 2b: Long + plain prose (or markdown under `/skip_card`) → force sendAsForward
+ *          (override group config) and ship the original prose. Long plain text shouldn't be stuffed into a card —
  *          that's what forward messages are for. Falls through to Path 3 for the
  *          actual reply assembly.
- * Path 3: Plain text reply — uses ctx.responseText (never outputs failed/repaired JSON).
+ * Path 3: Plain text reply — uses the LLM's own text (never outputs failed/repaired JSON).
  *         ReplyPrepareSystem reads explicitSendAsForward set in Path 2b.
  *
  * Fires `onAIGenerationComplete` hook on EVERY path and appends task result images when present.
@@ -41,13 +45,17 @@ export class ResponseDispatchStage implements ReplyStage {
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
     const { hookContext } = ctx;
+    const { text, skipCard, skipForward } = parseDeliveryMarkers(ctx.responseText);
+    if (skipForward) {
+      hookContext.metadata.set('explicitSendAsForward', false);
+    }
     const cardSent = hookContext.metadata.get('cardSent') === true;
     const cardSendFailedReason = hookContext.metadata.get('cardSendFailedReason') as string | undefined;
 
     // Path 1: send_card executor already rendered and queued the card.
     // Trailing text is a deliberate follow-up under the delivery contract — append it.
     if (cardSent) {
-      const followUp = this.sanitizeFinalText(ctx.responseText);
+      const followUp = this.sanitizeFinalText(text);
       if (followUp) {
         setReplyWithSegments(hookContext, [{ type: 'text', data: { text: followUp } }], 'ai');
         // Keep the history text complete: card text + follow-up, so the next turn
@@ -63,7 +71,7 @@ export class ResponseDispatchStage implements ReplyStage {
     }
 
     // Path 0: explicit end_turn with nothing left to say → no reply queued at all.
-    if (ctx.endTurnRequested && !ctx.responseText.trim()) {
+    if (ctx.endTurnRequested && !text) {
       logger.info('[ResponseDispatchStage] Path 0: end_turn with no trailing text — no reply');
       await this.hookManager.execute('onAIGenerationComplete', hookContext);
       return;
@@ -78,18 +86,16 @@ export class ResponseDispatchStage implements ReplyStage {
     }
 
     // Skip card rendering when the response contains a command (e.g. /nai-plus ...)
-    const containsCommand = MessageUtils.isCommand(ctx.responseText);
+    const containsCommand = MessageUtils.isCommand(text);
 
     // Path 2: Long text. Only markdown-formatted content gets card-rendered;
     // plain prose is forwarded instead so we don't stuff every long reply into
     // a card image. The send_card tool is the model's lever for "I want a
     // structured card"; not using it means "ship as prose".
-    if (!containsCommand && this.cardHelper.shouldUseCardReply(ctx.responseText)) {
-      if (this.cardHelper.looksLikeMarkdown(ctx.responseText)) {
+    if (!containsCommand && this.cardHelper.shouldUseCardReply(text)) {
+      if (!skipCard && this.cardHelper.looksLikeMarkdown(text)) {
         // Path 2a: markdown → card
-        const mdResult = await this.cardHelper
-          .renderMarkdownDirect(ctx.responseText, ctx.actualProvider)
-          .catch(() => null);
+        const mdResult = await this.cardHelper.renderMarkdownDirect(text, ctx.actualProvider).catch(() => null);
         if (mdResult) {
           this.cardHelper.setCardReplyOnContext(hookContext, mdResult.segments, mdResult.textForHistory);
           await this.hookManager.execute('onAIGenerationComplete', hookContext);
@@ -98,16 +104,18 @@ export class ResponseDispatchStage implements ReplyStage {
         }
         logger.warn('[ResponseDispatchStage] Path 2a markdown 渲染失败，fallback 到 Path 2b forward');
       }
-      // Path 2b: long plain prose → force forward (overrides groupUseForwardMsg=false);
+      // Path 2b: long prose, or markdown kept as text → force forward (overrides groupUseForwardMsg=false);
       // fall through to Path 3 which assembles the final text reply. Forward keeps
       // long replies from spamming the group while preserving the original prose.
-      hookContext.metadata.set('explicitSendAsForward', true);
-      logger.info('[ResponseDispatchStage] Path 2b: long plain prose → explicitSendAsForward=true');
+      if (!skipForward) {
+        hookContext.metadata.set('explicitSendAsForward', true);
+        logger.info('[ResponseDispatchStage] Path 2b: long plain prose → explicitSendAsForward=true');
+      }
     }
 
-    // Path 3: plain prose — always use ctx.responseText (original LLM prose), never output failed JSON
+    // Path 3: plain prose — always the LLM's own text (markers removed), never output failed JSON
     await this.hookManager.execute('onAIGenerationComplete', hookContext);
-    replaceReply(hookContext, this.sanitizeFinalText(ctx.responseText), 'ai');
+    replaceReply(hookContext, this.sanitizeFinalText(text), 'ai');
   }
 
   /**

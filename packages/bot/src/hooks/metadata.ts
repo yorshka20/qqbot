@@ -77,7 +77,7 @@ export interface HookContextMetadata {
   cardSent?: boolean;
   /** Set by send_card executor when LLM called the tool but rendering failed (Path 1 → Path 2 fall-through trigger). */
   cardSendFailedReason?: string;
-  /** Explicit sendAsForward hint from command handler; consumed by ReplyPrepareSystem. */
+  /** Explicit sendAsForward decision from a command handler or the AI reply dispatcher (long prose, `/skip_forward`); consumed by ReplyPrepareSystem. */
   explicitSendAsForward?: boolean;
   /** Caller-provided callback for sources with responseHandler === 'callback' (e.g. avatar-cmd). Receives the final ReplyContent. */
   responseCallback?: (reply: import('./types').ReplyContent) => void;
