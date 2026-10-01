@@ -91,7 +91,7 @@ Edit `.env`:
 
 - `LLBOT_AUTH_TOKEN` — from [auth.luckylillia.com](https://auth.luckylillia.com). Current images will not sign in without it.
 - Leave `AUTO_LOGIN_QQ` empty the first time. After a successful login you can set it to recover that account across restarts.
-- Pin `LLBOT_TAG` and `PMHQ_TAG` once a pair is known-good. `latest` tracks upstream.
+- Leave `LLBOT_TAG` and `PMHQ_TAG` empty to use the LLBot / PMHQ pair pinned in `docker-compose.yml`. Override them together: llbot 8.x needs pmhq 8.x. `latest` tracks upstream.
 - `LLBOT_IMAGE_PREFIX` stays empty for Docker Hub (`linyuchen/llbot`, `linyuchen/pmhq`). Set it only if you pull through a mirror, and include the trailing slash.
 
 The WebUI password is one line in a file:

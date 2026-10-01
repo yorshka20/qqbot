@@ -5,10 +5,13 @@ name: qqbot
 # Secrets live in docker/.env (gitignored). See README → Deploy.
 #
 # PMHQ is privileged because the image runs the QQ desktop client.
+#
+# LLBot and PMHQ are pinned as a pair: llbot 8.x only talks to pmhq 8.x.
+# LLBOT_TAG / PMHQ_TAG in docker/.env override the pin.
 
 services:
   pmhq:
-    image: ${LLBOT_IMAGE_PREFIX:-}linyuchen/pmhq:${PMHQ_TAG:-latest}
+    image: ${LLBOT_IMAGE_PREFIX:-}linyuchen/pmhq:${PMHQ_TAG:-8.1.1}
     container_name: pmhq
     privileged: true
     environment:
@@ -27,7 +30,7 @@ services:
     restart: unless-stopped
 
   llbot:
-    image: ${LLBOT_IMAGE_PREFIX:-}linyuchen/llbot:${LLBOT_TAG:-latest}
+    image: ${LLBOT_IMAGE_PREFIX:-}linyuchen/llbot:${LLBOT_TAG:-8.2.1}
     container_name: llbot
     ports:
       - "${LLBOT_WEBUI_PORT:-3080}:${LLBOT_WEBUI_PORT:-3080}"
