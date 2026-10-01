@@ -208,7 +208,11 @@ export class MilkyAdapter extends WebSocketProtocolAdapter {
       throw unansweredCallError(context, detail, Date.now() - startedAt);
     }
 
-    // A non-zero retcode is also a verdict, and carries the server's own wording.
+    // A non-zero retcode is also a verdict, and carries the server's own wording — unless the
+    // implementation only gave up waiting on QQ, which decides nothing about the request.
+    if (MilkyAPIResponseHandler.isAbandonedWait(rawData)) {
+      throw unansweredCallError(context, `retcode ${rawData.retcode}: ${rawData.message}`, Date.now() - startedAt);
+    }
     return MilkyAPIResponseHandler.handleParsedResponse<TResponse>(rawData);
   }
 }

@@ -4,6 +4,18 @@
 import type { MilkyAPIResponse } from './types';
 
 /**
+ * LLBot answers any exception escaping an API handler with retcode 500 `Internal error: <message>`
+ * (LuckyLilliaBot src/milky/common/api.ts), including the expiry of its own wait on QQ. That wait
+ * does not cancel the call — QQ goes on to deliver a send after LLBot has given up on it — so such
+ * a response is a lost answer, not a refusal:
+ * - v7: `invoke timeout, <NT method>, <args>` (src/ntqqapi/ntcall.ts); for sendMsg the deadline is
+ *   10s plus the attached file size at 256 KiB/s (src/ntqqapi/core.ts), however slow the upload is
+ * - v8: `waitForSelfEcho timeout` (src/ntqqapi/api/msg.ts), raised after QQ accepted the send
+ */
+const ABANDONED_WAIT_RETCODE = 500;
+const ABANDONED_WAIT_MESSAGE = /^Internal error: (?:invoke timeout|waitForSelfEcho timeout)\b/;
+
+/**
  * Utility class for handling Milky API responses
  * Provides type-safe response parsing and error handling
  */
@@ -19,6 +31,15 @@ export class MilkyAPIResponseHandler {
       data !== null &&
       'retcode' in data &&
       typeof (data as { retcode: unknown }).retcode === 'number'
+    );
+  }
+
+  /** Whether the failure only reports that the implementation stopped waiting for QQ's answer. */
+  static isAbandonedWait(data: unknown): data is MilkyAPIResponse<unknown> & { message: string } {
+    return (
+      MilkyAPIResponseHandler.isMilkyAPIResponse(data) &&
+      data.retcode === ABANDONED_WAIT_RETCODE &&
+      ABANDONED_WAIT_MESSAGE.test(data.message ?? '')
     );
   }
 
