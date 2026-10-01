@@ -7,7 +7,25 @@ import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import type { Connection } from '@/core/connection';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
+import { APIError, SendDeliveryUnknownError } from '@/utils/errors';
 import type { BaseEvent } from './types';
+
+/** The calls that can take effect even though the caller never sees the answer. */
+const NON_IDEMPOTENT_ACTIONS = new Set(['send_group_msg', 'send_private_msg']);
+
+/**
+ * Build the error for a call the server never answered — a lost acknowledgement, not a
+ * verdict. For a non-idempotent action the request may well have been carried out, so the
+ * outcome is unknown rather than failed; `elapsedMs` tells whether our own deadline fired
+ * or something upstream gave up earlier.
+ */
+export function unansweredCallError(context: APIContext, detail: string, elapsedMs: number): Error {
+  const message = `No acknowledgement for ${context.action} (protocol: ${context.protocol}, echo: ${context.echo}, elapsed: ${elapsedMs}ms): ${detail}`;
+  if (NON_IDEMPOTENT_ACTIONS.has(context.action)) {
+    return new SendDeliveryUnknownError(message, context.action, elapsedMs);
+  }
+  return new APIError(message, context.action);
+}
 
 /** Resolve API action and params from a SendTarget. Shared by all adapters. */
 export function resolveAction(target: SendTarget): { action: string; params: Record<string, unknown> } {

@@ -31,6 +31,23 @@ export class APIError extends BotError {
   }
 }
 
+/**
+ * A send request was written to the transport but never answered, so whether the
+ * message reached the chat is unknown. QQ sends are not idempotent and their
+ * acknowledgement is routinely lost after delivery, so this must never be reported
+ * as a failed send and the call must not be repeated.
+ */
+export class SendDeliveryUnknownError extends BotError {
+  constructor(
+    message: string,
+    public readonly action: string,
+    public readonly elapsedMs: number,
+  ) {
+    super(message, 'SEND_DELIVERY_UNKNOWN');
+    this.name = 'SendDeliveryUnknownError';
+  }
+}
+
 export class ProtocolError extends BotError {
   constructor(
     message: string,

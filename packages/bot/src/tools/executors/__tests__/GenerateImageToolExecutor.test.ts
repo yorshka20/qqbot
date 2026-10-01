@@ -5,16 +5,31 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { ToolCall, ToolExecutionContext } from '@/tools/types';
+import { APIError, SendDeliveryUnknownError } from '@/utils/errors';
 import { describeGenerateImageForModel, GenerateImageToolExecutor } from '../GenerateImageToolExecutor';
 
-function executorWith(aiService: Partial<AIService>): GenerateImageToolExecutor {
+function executorWith(
+  aiService: Partial<AIService>,
+  overrides: {
+    sendFromContext?: MessageAPI['sendFromContext'];
+    appendBotMessageToSession?: ConversationHistoryService['appendBotMessageToSession'];
+  } = {},
+): GenerateImageToolExecutor {
   return new GenerateImageToolExecutor(
     aiService as AIService,
-    { sendFromContext: async () => ({ message_seq: 1 }) } as unknown as MessageAPI,
+    {
+      sendFromContext: overrides.sendFromContext ?? (async () => ({ message_seq: 1 })),
+    } as unknown as MessageAPI,
     {} as DatabaseManager,
-    { appendBotMessageToSession: async () => {} } as unknown as ConversationHistoryService,
+    {
+      appendBotMessageToSession: overrides.appendBotMessageToSession ?? (async () => {}),
+    } as unknown as ConversationHistoryService,
   );
 }
+
+const oneImage: Partial<AIService> = {
+  generateImg: async () => ({ images: [{ url: 'https://example.com/out.png' }] }),
+};
 
 function contextWith(imageUrls: string[]): ToolExecutionContext {
   return {
@@ -129,6 +144,37 @@ describe('generate_image reference inputs', () => {
     const result = await executor.execute(call({ prompt: '一只橘猫坐在窗台上，午后阳光' }), contextWith([]));
     expect(result.success).toBe(true);
     expect(seen).toEqual([{ prompt: '一只橘猫坐在窗台上，午后阳光', skipLLMProcess: true, templateName: undefined }]);
+  });
+});
+
+describe('generate_image delivery reporting', () => {
+  it('reports an unacknowledged send as delivered and forbids a resend', async () => {
+    const seqs: (number | undefined)[] = [];
+    const executor = executorWith(oneImage, {
+      sendFromContext: async () => {
+        throw new SendDeliveryUnknownError('no acknowledgement', 'send_group_msg', 20000);
+      },
+      appendBotMessageToSession: async (_session, _content, _protocol, options) => {
+        seqs.push(options?.messageSeq);
+      },
+    });
+
+    const result = await executor.execute(call({ prompt: '一只橘猫' }), contextWith([]));
+
+    expect(result.success).toBe(true);
+    expect(result.data?.delivery).toBe('unacknowledged');
+    expect(result.reply).toContain('不要重发');
+    expect(seqs).toEqual([undefined]);
+  });
+
+  it('fails the tool when the server rejected the send', async () => {
+    const executor = executorWith(oneImage, {
+      sendFromContext: async () => {
+        throw new APIError('Milky API error [-403]: forbidden', 'send_group_msg', -403);
+      },
+    });
+
+    await expect(executor.execute(call({ prompt: '一只橘猫' }), contextWith([]))).rejects.toThrow('forbidden');
   });
 });
 

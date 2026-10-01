@@ -5,7 +5,7 @@ import type { APIContext } from '@/api/types';
 import type { ProtocolConfig } from '@/core/config';
 import type { Connection, WebSocketConnection } from '@/core/connection';
 import { logger } from '@/utils/logger';
-import { ProtocolAdapter } from './ProtocolAdapter';
+import { ProtocolAdapter, unansweredCallError } from './ProtocolAdapter';
 import type { BaseAPIRequest, BaseAPIResponse, BaseEvent } from './types';
 
 export abstract class WebSocketProtocolAdapter extends ProtocolAdapter {
@@ -54,10 +54,11 @@ export abstract class WebSocketProtocolAdapter extends ProtocolAdapter {
       echo,
     };
 
+    const startedAt = Date.now();
     return new Promise<TResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRequests.delete(echo);
-        reject(new Error(`API request timeout: ${context.action} (protocol: ${context.protocol})`));
+        reject(unansweredCallError(context, `no response within ${context.timeout}ms`, Date.now() - startedAt));
       }, context.timeout);
 
       this.pendingRequests.set(echo, {

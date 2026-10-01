@@ -1,7 +1,7 @@
 // Milky protocol adapter implementation
 
 import type { IncomingForwardedMessage } from '@saltify/milky-types';
-import { HttpClient } from '@/api/http/HttpClient';
+import { HttpClient, HttpClientError } from '@/api/http/HttpClient';
 import type { ForwardedMessageNode, ForwardMessageInput, SendMessageResult, SendTarget } from '@/api/types';
 import { APIContext } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
@@ -9,8 +9,9 @@ import type { WebSocketConnection } from '@/core/connection';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { MessageParser } from '@/message/MessageParser';
 import type { MessageSegment } from '@/message/types';
+import { APIError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
-import { resolveAction } from '../base/ProtocolAdapter';
+import { resolveAction, unansweredCallError } from '../base/ProtocolAdapter';
 import type { BaseEvent } from '../base/types';
 import { WebSocketProtocolAdapter } from '../base/WebSocketProtocolAdapter';
 import { MilkyAPIConverter } from './MilkyAPIConverter';
@@ -187,22 +188,27 @@ export class MilkyAdapter extends WebSocketProtocolAdapter {
       return { message_seq: Date.now() } as TResponse;
     }
 
+    const startedAt = Date.now();
+    let rawData: unknown;
     try {
-      // use MilkyAPIResponseHandler to handle Milky-specific response format
-      const rawData = await this.httpClient.post<unknown>(`/${milkyAction}`, milkyParams, {
+      rawData = await this.httpClient.post<unknown>(`/${milkyAction}`, milkyParams, {
         timeout: context.timeout,
       });
-
-      // Handle Milky API response format using MilkyAPIResponseHandler
-      return MilkyAPIResponseHandler.handleParsedResponse<TResponse>(rawData);
     } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes('timeout')) {
-          throw new Error(`API request timeout: ${context.action} (protocol: milky, echo: ${context.echo})`);
-        }
-        throw error;
+      const detail = error instanceof Error ? error.message : String(error);
+      // An HTTP status is the server's verdict: it read the request and refused it, so the
+      // call did not take effect. Everything else (abort, read timeout, socket error) leaves
+      // the request's fate unknown — see unansweredCallError.
+      if (error instanceof HttpClientError && error.status !== undefined) {
+        throw new APIError(
+          `${context.action} rejected (protocol: milky, echo: ${context.echo}): ${detail}`,
+          context.action,
+        );
       }
-      throw new Error(`Unknown error: ${String(error)}`);
+      throw unansweredCallError(context, detail, Date.now() - startedAt);
     }
+
+    // A non-zero retcode is also a verdict, and carries the server's own wording.
+    return MilkyAPIResponseHandler.handleParsedResponse<TResponse>(rawData);
   }
 }

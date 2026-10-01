@@ -21,9 +21,11 @@ import { AIService } from '@/ai/AIService';
 import { ImageRequestAssembler } from '@/ai/services/ImageRequestAssembler';
 import { extractImagesFromMessageAndReply, visionImageToString } from '@/ai/utils/imageUtils';
 import { MessageAPI } from '@/api/methods/MessageAPI';
+import type { SendMessageResult } from '@/api/types';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
+import { SendDeliveryUnknownError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolModelDescription, ToolResult } from '../types';
@@ -209,26 +211,40 @@ export class GenerateImageToolExecutor extends BaseToolExecutor {
       );
     }
 
-    const segments = buildMessageFromResponse(response, '[GenerateImageToolExecutor]').build();
-    const sendResult = await this.messageAPI.sendFromContext(segments, hookContext.message, 60000);
-
     const mode = useReferences ? `图生图（消息图${messageImages.length}张，preset ${presetIds.length}个）` : '文生图';
+    const segments = buildMessageFromResponse(response, '[GenerateImageToolExecutor]').build();
+
+    // An unacknowledged send is not a failed one: the picture is usually already in the
+    // chat, and the model must not answer by generating and sending it a second time.
+    let sendResult: SendMessageResult | null = null;
+    try {
+      sendResult = await this.messageAPI.sendFromContext(segments, hookContext.message, 60000);
+    } catch (error) {
+      if (!(error instanceof SendDeliveryUnknownError)) {
+        throw error;
+      }
+      logger.warn(`[GenerateImageToolExecutor] Send unacknowledged, treating image as delivered: ${error.message}`);
+    }
+
     logger.info(
-      `[GenerateImageToolExecutor] Sent ${response.images.length} image(s) | provider=${providerName} | mode=${mode}`,
+      `[GenerateImageToolExecutor] Sent ${response.images.length} image(s) | provider=${providerName} | mode=${mode} | delivery=${sendResult ? 'acknowledged' : 'unacknowledged'}`,
     );
 
     // This send bypasses SendSystem/onMessageSent — persist explicitly so the
     // conversation history keeps a record of the delivered image (as text).
-    await this.persistSentImage(hookContext, prompt, mode, sendResult.message_seq);
+    await this.persistSentImage(hookContext, prompt, mode, sendResult?.message_seq);
 
     return this.success(
-      `已用 ${providerKey} 完成${mode}并把图片发给用户了。你只需补一句简短自然的说明即可，不要重复描述画面内容。`,
+      sendResult
+        ? `已用 ${providerKey} 完成${mode}并把图片发给用户了。你只需补一句简短自然的说明即可，不要重复描述画面内容。`
+        : `已用 ${providerKey} 完成${mode}并把图片发出去了，发送通道没回确认，但这种情况图基本都已经到了。按已发送处理：补一句简短自然的说明，不要重新生成、不要重发，也不要说图没发出去。`,
       {
         provider: providerKey,
         mode,
         sourceImageCount: messageImages.length,
         presetIds,
         imageCount: response.images.length,
+        delivery: sendResult ? 'acknowledged' : 'unacknowledged',
       },
     );
   }
