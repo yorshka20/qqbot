@@ -12,7 +12,19 @@ import { createFileReadService } from '@/services/file/__tests__/createFileReadS
 const service = new ReadOnlyShellService(createFileReadService(), process.cwd());
 
 describe('ReadOnlyShellService — binary allowlist', () => {
-  it.each(['echo hi', 'node -e 1', 'curl http://x', 'bash -c ls', 'sh -c ls', '/bin/ls'])(
+  // `say` / `afplay` stay out on purpose: making the host audible is a side effect,
+  // not a read-only inspection, and this tool is reachable by any user. That
+  // capability lives in the adminOnly `local_audio` tool instead.
+  it.each([
+    'echo hi',
+    'node -e 1',
+    'curl http://x',
+    'bash -c ls',
+    'sh -c ls',
+    '/bin/ls',
+    'say hello',
+    'afplay /System/Library/Sounds/Glass.aiff',
+  ])(
     'rejects non-allowlisted binary: %s',
     (cmd) => {
       const r = service.run(cmd);

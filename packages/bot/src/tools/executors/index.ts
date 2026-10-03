@@ -22,6 +22,7 @@ export { GenerateImageToolExecutor } from './GenerateImageToolExecutor';
 export { GetGroupMemberListToolExecutor } from './GetGroupMemberListToolExecutor';
 export { GetMemoryToolExecutor } from './GetMemoryToolExecutor';
 export { ListBotFeaturesToolExecutor } from './ListBotFeaturesToolExecutor';
+export { LocalAudioToolExecutor } from './LocalAudioToolExecutor';
 export { MemoryNoteToolExecutor } from './MemoryNoteToolExecutor';
 export { RagSearchToolExecutor } from './RagSearchToolExecutor';
 export { ReactToolExecutor } from './ReactToolExecutor';
