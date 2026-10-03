@@ -5,23 +5,24 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 
 export const END_TURN_TOOL_NAME = 'end_turn';
 
-// The agentic loop's only other exit is "emit a response with no tool calls",
-// i.e. speaking IS stopping. After send_card / send_message the model often has
-// nothing left to say, but the API still demands a response — this tool gives
-// that state an explicit, non-content exit so the model never has to emit
-// throwaway text (or agonize over whether its text will be delivered).
+// A loop that offers this tool ends only through it (LLMService.generateWithTools).
+// "Emit text and no tool call" cannot be the exit: a heads-up the model failed to
+// follow with its tool call is indistinguishable from a final reply, so such a round
+// is followed by a question instead. The tool is also a non-content exit: after
+// send_card / send_message the model ends without emitting throwaway text.
 @Tool({
   name: END_TURN_TOOL_NAME,
   description:
-    '结束本次回复，不再发送任何内容。当你要说的内容已经全部发出（例如已用 send_card 发出卡片、或已用 send_message 说完），且没有需要补充的话时调用。调用后本次回复立即结束。注意：若你仍有内容想说，直接输出文本即可（输出的文本一定会被发送），不要调用本工具。',
+    '结束本次回复。本次回复只有调用它才会结束：最终文本写完时，在同一轮调用它（同一轮的文字作为最终回复发出）；已用 send_card / send_message 把该说的都发出去、没有要补充的话时，单独调用它。调用后本次回复立即结束。',
   executor: 'end_turn',
   visibility: {
     reply: { sources: ['qq-private', 'qq-group', 'discord'] },
   },
   parameters: {},
   whenToUse:
-    '仅当本次回复不需要再发送任何内容时调用（通常发生在 send_card 或 send_message 已把该说的都发出去之后）。它是"我说完了"的明确信号；与输出文本二选一——输出文本表示"这是我要发送的回复"，调用 end_turn 表示"没有更多要发送的了"。',
+    '每次回复都以它结束，它是"我说完了"的明确信号。只写了文字却没调用它时，系统会追问你是否说完：说完就调用它，不要把写过的话再写一遍。',
   examples: [
+    '写完最终回复 → 同一轮调用 end_turn',
     'send_card 发出卡片后无需补充说明 → 调用 end_turn 结束',
     '已用 send_message 发完全部内容 → 调用 end_turn 结束',
   ],

@@ -355,7 +355,9 @@ export interface ToolUseGenerateOptions extends AIGenerateOptions {
    * send and while a slow tool is still working. Only the final round's text (or the
    * text of a round that ends the turn via end_turn) is returned as `text`; this is
    * the only place every other round's text surfaces. `calls` lets the caller tell a
-   * round that ends the turn, whose text also comes back as `text`.
+   * round that ends the turn, whose text also comes back as `text`. In a loop that
+   * offers end_turn, a round that wrote text and called nothing is held: its text comes
+   * with the next round's — here if that round calls tools, as `text` if it ends the turn.
    */
   onToolRoundText?: (text: string, calls: FunctionCall[]) => void | Promise<void>;
 }
@@ -367,10 +369,12 @@ export interface ToolUseGenerateResponse extends AIGenerateResponse {
   toolCalls?: ToolResult[]; // All tool calls made during generation
   /**
    * Why generation stopped:
-   * - 'end_turn': model produced a response with no tool calls (the normal exit)
-   * - 'end_turn_tool': model called the `end_turn` tool to end the turn explicitly
+   * - 'end_turn': a round with no tool calls, in a loop that does not offer `end_turn`
+   * - 'end_turn_tool': model called the `end_turn` tool — the only normal exit of a loop
+   *   that offers it
    * - 'tool_use': tool calls returned to the caller (no executor was supplied)
-   * - 'max_rounds': round cap hit; a forced final text generation was appended
+   * - 'max_rounds': round cap hit; a forced final text generation was appended, or the
+   *   last round wrote text with no round left to ask whether the turn was done
    */
   stopReason?: 'end_turn' | 'end_turn_tool' | 'tool_use' | 'max_rounds';
 }

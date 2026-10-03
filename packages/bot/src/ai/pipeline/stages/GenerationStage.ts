@@ -165,8 +165,8 @@ export class GenerationStage implements ReplyStage {
   // ---------------------------------------------------------------------------
 
   /**
-   * Deliver the text a tool round wrote, now, before that round's tools run — it is the
-   * heads-up for work that may take minutes, and the loop already records it as said.
+   * Deliver the text a tool round wrote, now, before that round's tools run — the loop
+   * already records it as said, so holding it back would drop it silently.
    * A round that calls end_turn is the exception: its text is the final reply and leaves
    * through ResponseDispatchStage, after any card queued earlier in the turn.
    */

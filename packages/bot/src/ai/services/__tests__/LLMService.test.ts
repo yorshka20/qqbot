@@ -3,7 +3,9 @@ import 'reflect-metadata';
 import { describe, expect, it, spyOn, test } from 'bun:test';
 import type { AIManager } from '@/ai/AIManager';
 import type { AIGenerateOptions, AIGenerateResponse, ToolDefinition } from '@/ai/types';
+import { contentToPlainString } from '@/ai/utils/contentUtils';
 import { HttpClientError } from '@/api/http/HttpClient';
+import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
 import { logger } from '@/utils/logger';
 import { EmptyCompletionError, isTransientLLMError, LLMService } from '../LLMService';
 import {
@@ -716,6 +718,115 @@ describe('LLMService resolvedModel stamping', () => {
 
       expect(toolRuns).toBe(1);
       expect(res.text).toBe('结论如下');
+    });
+  });
+
+  describe('generateWithTools end_turn requirement', () => {
+    const noop: ToolDefinition = {
+      name: 'noop',
+      description: 'does nothing',
+      parameters: { type: 'object', properties: {} },
+    };
+    const endTurn: ToolDefinition = {
+      name: END_TURN_TOOL_NAME,
+      description: 'ends the turn',
+      parameters: { type: 'object', properties: {} },
+    };
+
+    type ScriptedRound = { text?: string; calls?: string[] };
+
+    /** Provider that replays `rounds` in order and records the tail of every request. */
+    function createService(rounds: ScriptedRound[]) {
+      const requests: Array<Array<{ role: string; content: string }>> = [];
+      let round = 0;
+      const provider = {
+        name: 'mock',
+        getCapabilities: () => ['llm'],
+        isAvailable: () => true,
+        supportsToolUse: true,
+        generate: async (_p: string, o?: AIGenerateOptions): Promise<AIGenerateResponse> => {
+          requests.push((o?.messages ?? []).map((m) => ({ role: m.role, content: contentToPlainString(m.content) })));
+          const { text = '', calls = [] } = rounds[round];
+          round++;
+          return {
+            text,
+            functionCalls: calls.map((name, i) => ({ name, arguments: '{}', toolCallId: `call_${round}_${i}` })),
+          };
+        },
+      };
+      const aiManager = {
+        getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+        getProvidersForCapability: () => [],
+        getDefaultProvider: () => provider,
+      } as unknown as AIManager;
+      const service = createLLMService(aiManager, { toolUseProviders: ['mock'], fallback: { fallbackOrder: [] } });
+      return { service, requests };
+    }
+
+    function run(service: LLMService, tools: ToolDefinition[], seen: string[] = [], maxToolRounds?: number) {
+      return service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        reasoningEffort: 'none',
+        maxToolRounds,
+        toolExecutor: async (call) => {
+          seen.push(`<${call.name}>`);
+          return call.name === END_TURN_TOOL_NAME ? { __endTurn: true, result: 'ended' } : 'ok';
+        },
+        onToolRoundText: async (text, calls) => {
+          seen.push(`${text} → ${calls.map((c) => c.name).join(',')}`);
+        },
+      });
+    }
+
+    it('asks whether a text-only round is done and returns its text once end_turn is called', async () => {
+      const { service, requests } = createService([{ text: '结论如下' }, { calls: [END_TURN_TOOL_NAME] }]);
+      const res = await run(service, [noop, endTurn]);
+
+      expect(requests).toHaveLength(2);
+      const [said, notice] = requests[1].slice(-2);
+      expect(said).toEqual({ role: 'assistant', content: '结论如下' });
+      expect(notice.role).toBe('user');
+      expect(notice.content).toContain(END_TURN_TOOL_NAME);
+      expect(res.text).toBe('结论如下');
+      expect(res.stopReason).toBe('end_turn_tool');
+    });
+
+    it('delivers a held heads-up before the tools the next round calls', async () => {
+      const { service } = createService([
+        { text: '稍等，我查一下' },
+        { calls: ['noop'] },
+        { text: '查到了', calls: [END_TURN_TOOL_NAME] },
+      ]);
+      const seen: string[] = [];
+      const res = await run(service, [noop, endTurn], seen);
+
+      expect(seen.slice(0, 2)).toEqual(['稍等，我查一下 → noop', '<noop>']);
+      expect(res.text).toBe('查到了');
+      expect(res.stopReason).toBe('end_turn_tool');
+    });
+
+    it('keeps holding text across text-only rounds until end_turn', async () => {
+      const { service } = createService([{ text: '甲' }, { text: '乙' }, { calls: [END_TURN_TOOL_NAME] }]);
+      const res = await run(service, [noop, endTurn]);
+
+      expect(res.text).toBe('甲\n\n乙');
+    });
+
+    it('ends with the held text when no round is left to ask', async () => {
+      const { service, requests } = createService([{ text: '结论如下' }]);
+      const res = await run(service, [noop, endTurn], [], 1);
+
+      expect(requests).toHaveLength(1);
+      expect(res.text).toBe('结论如下');
+      expect(res.stopReason).toBe('max_rounds');
+    });
+
+    it('ends on the first text-only round when the loop does not offer end_turn', async () => {
+      const { service, requests } = createService([{ text: '结论如下' }]);
+      const res = await run(service, [noop]);
+
+      expect(requests).toHaveLength(1);
+      expect(res.text).toBe('结论如下');
+      expect(res.stopReason).toBe('end_turn');
     });
   });
 

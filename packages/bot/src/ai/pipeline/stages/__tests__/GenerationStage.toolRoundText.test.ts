@@ -79,7 +79,7 @@ const research: FunctionCall = { name: 'research', arguments: '{}' };
 const endTurn: FunctionCall = { name: END_TURN_TOOL_NAME, arguments: '{}' };
 
 describe('GenerationStage tool-round text', () => {
-  it('sends the heads-up written alongside a tool call and records it in history', async () => {
+  it('sends the text written alongside a tool call and records it in history', async () => {
     const { sent, history, ctx } = await runStage([{ text: '稍等，我查一下[表情:笑哭]', calls: [research] }], {
       text: '查到了',
       stopReason: 'end_turn',

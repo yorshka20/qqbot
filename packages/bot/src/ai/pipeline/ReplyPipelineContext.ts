@@ -67,7 +67,7 @@ export class ReplyPipelineContext {
   // --- GenerationStage ---
   responseText = '';
   actualProvider: string | undefined;
-  /** True when the model ended the turn via the end_turn tool (nothing more to send). */
+  /** True when the model ended the turn via the end_turn tool. */
   endTurnRequested = false;
 
   // --- Control ---

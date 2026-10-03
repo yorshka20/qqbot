@@ -646,20 +646,23 @@ delivery actions with non-overlapping semantics:
 - **Final text output** — always delivered (long markdown-formatted text
   auto-renders as a card image, long plain prose goes out as a forward message).
   After `send_card`, trailing text is appended as a follow-up after the card
-  instead of being dropped. See [Delivery markers](#delivery-markers).
+  instead of being dropped. See [Delivery markers](#delivery-markers). The text
+  becomes final when the model calls `end_turn` — in the same round or after being
+  asked (see [Turn termination](#turn-termination)).
+- **`send_message`** — the heads-up before a slow tool, delivered immediately,
+  capped per run (`agenda.llmLimits.maxSendsPerRun`, shared across provider-fallback
+  retries because the sends are real).
 - **Text written alongside tool calls** — delivered immediately, before that
-  round's tools run: it is the heads-up for a slow tool. `LLMService.generateWithTools`
-  hands each tool round's text to `onToolRoundText` (awaited, failures swallowed)
-  and keeps it in the loop transcript; `GenerationStage` sends it through
-  `ConversationMessageSender`. A round that calls `end_turn` is the exception — its
-  text is the final text and leaves through `ResponseDispatchStage`, after any card
-  queued earlier in the turn. Only the reply flow wires the callback: agenda and
-  proactive runs have no one waiting on a heads-up.
-- **`send_message`** — an explicit immediate message, capped per run
-  (`agenda.llmLimits.maxSendsPerRun`, shared across provider-fallback retries
-  because the sends are real). It is delivered even when the same round's text
-  already said the same thing; the scene prompt tells the model to use one or the
-  other.
+  round's tools run, so text the loop records as said is never dropped. It is not a
+  heads-up channel; the scene prompt tells the model to leave tool rounds without
+  text. `LLMService.generateWithTools` hands each tool round's text to
+  `onToolRoundText` (awaited, failures swallowed) and keeps it in the loop
+  transcript; `GenerationStage` sends it through `ConversationMessageSender`. A
+  round that calls `end_turn` is the exception — its text is the final text and
+  leaves through `ResponseDispatchStage`, after any card queued earlier in the turn.
+  Only the reply flow wires the callback: agenda and proactive runs have no one
+  waiting on it. It is delivered even when a `send_message` in the same round says
+  the same thing.
 - **`send_card`** — renders a card image and queues it on the context
   (`cardSent`); history stores the deck as readable text (`cardDeckToHistoryText`),
   never raw JSON.
@@ -667,17 +670,40 @@ delivery actions with non-overlapping semantics:
   (real send, like `send_message`), capped by `tts.voiceReply.maxPerReply`.
   Present only when a cue-capable TTS backend is configured and healthy. See
   [Voice replies](#voice-replies-speak-tool).
-- **`end_turn`** — explicit "nothing more to send". The tool sets
-  `ToolResult.endTurn`, which `LLMService.generateWithTools` turns into
-  stopReason `end_turn_tool` — the loop exits without demanding another model
-  response. With no trailing text, `ResponseDispatchStage` queues no reply at
-  all (Path 0).
+- **`end_turn`** — the only way the turn ends. The tool sets `ToolResult.endTurn`,
+  which `LLMService.generateWithTools` turns into stopReason `end_turn_tool` — the
+  loop exits without demanding another model response. Text in the same round is
+  the final text; with no text, `ResponseDispatchStage` queues no reply at all
+  (Path 0).
 
 Tool-round text and `send_message` both go through `ConversationMessageSender`: the target comes from
 the hook context, leaked tool-call blocks are stripped and `[表情:名字]` /
 `[表情：名字]` expanded as in `ReplyPrepareSystem`, and the delivered text is
 persisted in canonical form via `ConversationHistoryService.appendBotMessageToSession`
 — these sends bypass SendSystem, so nothing else would record them.
+
+##### Turn termination
+
+A loop whose tool list includes `end_turn` ends only through it. A round that writes
+text and calls no tool is ambiguous — the model may have finished, or written a
+heads-up and failed to emit the tool call it planned (content and `tool_calls` are
+separate output channels, and a model does not reliably produce both in one
+response). Treating that round as the end delivers a dangling "稍等，我查一下" as the
+whole reply. So `generateWithTools` holds the text, appends it to the transcript
+followed by a `[系统提示]` notice asking whether the turn is done, and lets the next
+round decide:
+
+- `end_turn` — the held text (plus that round's text) is returned as `text`, the
+  final reply.
+- other tools — the held text joins that round's text in `onToolRoundText`, so it is
+  delivered before the tools run, as a heads-up.
+- text again — held as well, and asked again.
+
+A text-only round with no round left under `maxToolRounds` ends the turn with its
+text (stopReason `max_rounds`). The scene prompt has the model write its final text
+in the same round as `end_turn`, so the extra model call — and the wait it adds
+before the reply goes out — is spent only when it does not. Loops without `end_turn`
+(subagents, reflection, fanout) keep ending on the first round without tool calls.
 
 #### Delivery markers
 
@@ -785,9 +811,8 @@ The pipeline itself sets no deadline on that wait; the only limits are the
 provider request timeout and the tool's own `timeoutMs`. A tool that takes
 minutes by construction (`generate_image`, `research` beyond a single URL,
 `bilibili action=analyze`) declares a budget that fits and says in its
-description roughly how long it takes, so the model sends a heads-up first — as
-text in the same round as the call, or with `send_message` (see
-[Reply delivery contract](#reply-delivery-contract)).
+description roughly how long it takes, so the model sends a heads-up with
+`send_message` first (see [Reply delivery contract](#reply-delivery-contract)).
 
 A tool may still deliver its *product* directly when the product is not text the
 model reasons over — `generate_image` sends the picture and returns a confirmation

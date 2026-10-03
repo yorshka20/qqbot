@@ -7,6 +7,7 @@ import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { HealthCheckManager } from '@/core/health/HealthCheckManager';
+import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
 import { formatLogSections, type LogSection, logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
 import type { AIManager } from '../AIManager';
@@ -119,6 +120,12 @@ const TOOL_VISION_NOTICE =
   '[工具补充材料] 以下是工具取回图片的 AI 视觉分析结果，不是新的用户发言。结合它继续回答 <current_query> 里的问题。';
 const TOOL_ROUNDS_EXHAUSTED_NOTICE =
   '[系统提示] 工具调用轮次已用尽，不要再调用任何工具。现在直接基于已获得的信息，回答 <current_query> 里的问题。';
+const END_TURN_REQUIRED_NOTICE =
+  '[系统提示] 你上一条只写了文字、没有调用工具，这段文字会照常发出。本次回复要调用 end_turn 才会结束：已经说完就调用 end_turn；还要做别的（比如刚才说要去查的事），现在调用对应的工具。不要把写过的话再写一遍。';
+
+function joinRoundText(held: string, text: string | undefined): string {
+  return [held, text?.trim() ?? ''].filter(Boolean).join('\n\n');
+}
 
 /**
  * Errors that warrant a same-provider retry before falling back. Covers
@@ -904,6 +911,12 @@ export class LLMService {
     // emitReasoning (before that round's tools run) rather than joined at the end.
     const accReasoning: string[] = [];
     const seenReasoning = new Set<string>();
+    // A loop that offers end_turn ends only through it. Writing text and stopping is
+    // ambiguous: a heads-up the model failed to follow with its tool call looks exactly
+    // like a final reply. Such a round is held and the model is asked whether it is done;
+    // the next round decides what the text was.
+    const requiresEndTurn = toolExecutor !== undefined && tools.some((tool) => tool.name === END_TURN_TOOL_NAME);
+    let heldText = '';
 
     while (maxRounds === undefined || round < maxRounds) {
       // Generate with tools
@@ -931,20 +944,43 @@ export class LLMService {
       const calls = response.functionCalls ?? [];
 
       if (calls.length === 0) {
-        // No tool calls, return final response
-        return {
-          ...response,
-          usage: sawUsage ? { ...accUsage } : response.usage,
-          reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
-          resolvedProviderName: currentProviderName,
-          toolCalls: allToolCalls,
-          stopReason: 'end_turn',
-        };
+        if (!requiresEndTurn) {
+          return {
+            ...response,
+            usage: sawUsage ? { ...accUsage } : response.usage,
+            reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
+            resolvedProviderName: currentProviderName,
+            toolCalls: allToolCalls,
+            stopReason: 'end_turn',
+          };
+        }
+        heldText = joinRoundText(heldText, response.text);
+        if (maxRounds !== undefined && round + 1 >= maxRounds) {
+          logger.warn(
+            `[LLMService] Round ${round + 1} wrote text without end_turn and no round is left to ask; ending`,
+          );
+          return {
+            ...response,
+            text: heldText,
+            usage: sawUsage ? { ...accUsage } : response.usage,
+            reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
+            resolvedProviderName: currentProviderName,
+            toolCalls: allToolCalls,
+            stopReason: 'max_rounds',
+          };
+        }
+        logger.info(`[LLMService] Round ${round + 1} wrote text without end_turn; asking whether the turn is done`);
+        currentMessages.push(LLMService.assistantTurn(response, currentProviderName));
+        currentMessages.push({ role: 'user', content: END_TURN_REQUIRED_NOTICE });
+        round++;
+        continue;
       }
 
       // Execute tools if executor is provided
       if (toolExecutor) {
-        await this.emitToolRoundText(response, calls, options);
+        const roundText = joinRoundText(heldText, response.text);
+        heldText = '';
+        await this.emitToolRoundText(roundText, calls, options);
 
         // Build assistant message with all tool_calls for this round
         const assistantToolCalls: ChatMessageToolCall[] = [];
@@ -1029,19 +1065,7 @@ export class LLMService {
         // Stamp the serving provider so a later provider (after mid-loop fallback) can tell
         // foreign tool_calls turns (fold/degrade for signature compatibility) from its own
         // (replay verbatim so the model keeps its first-person action record).
-        const assistantMsg: ChatMessage = {
-          role: 'assistant',
-          content: response.text ?? '',
-          tool_calls: assistantToolCalls,
-          provider: currentProviderName,
-        };
-        if (response.reasoningContent) {
-          assistantMsg.reasoning_content = response.reasoningContent;
-        }
-        if (response.thinkingBlocks?.length) {
-          assistantMsg.thinking_blocks = response.thinkingBlocks;
-        }
-        currentMessages.push(assistantMsg);
+        currentMessages.push(LLMService.assistantTurn(response, currentProviderName, assistantToolCalls));
         for (const msg of toolMessages) {
           currentMessages.push(msg);
         }
@@ -1084,7 +1108,7 @@ export class LLMService {
           logger.info(`[LLMService] end_turn called in round ${round + 1}, ending turn`);
           return {
             ...response,
-            text: response.text ?? '',
+            text: roundText,
             usage: sawUsage ? { ...accUsage } : response.usage,
             reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
             resolvedProviderName: currentProviderName,
@@ -1167,17 +1191,36 @@ export class LLMService {
     }
   }
 
+  /** The loop-transcript entry for what a round said, with what each provider needs to replay it. */
+  private static assistantTurn(
+    response: AIGenerateResponse,
+    provider: string,
+    toolCalls?: ChatMessageToolCall[],
+  ): ChatMessage {
+    const message: ChatMessage = { role: 'assistant', content: response.text ?? '', provider };
+    if (toolCalls) {
+      message.tool_calls = toolCalls;
+    }
+    if (response.reasoningContent) {
+      message.reasoning_content = response.reasoningContent;
+    }
+    if (response.thinkingBlocks?.length) {
+      message.thinking_blocks = response.thinkingBlocks;
+    }
+    return message;
+  }
+
   /**
    * Hand the text a tool round wrote to the caller before the round's tools run. A
    * failing callback is logged and swallowed: whatever the caller does with the text,
    * it must not cost the turn its tools or its reply.
    */
   private async emitToolRoundText(
-    response: AIGenerateResponse,
+    roundText: string,
     calls: FunctionCall[],
     options: ToolUseGenerateOptions | undefined,
   ): Promise<void> {
-    const text = response.text?.trim();
+    const text = roundText.trim();
     if (!text || !options?.onToolRoundText) {
       return;
     }
