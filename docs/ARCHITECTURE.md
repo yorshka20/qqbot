@@ -629,7 +629,7 @@ Presets are directories under `image-presets/<id>/preset.json` at the repo root,
 
 The reply pipeline inside `ReplyPipelineOrchestrator` is composed of ordered stages (injected into the orchestrator's constructor, which fixes the order):
 
-1. `GateCheckStage` — Run `onMessageBeforeAI` / `onAIGenerationStart` hooks, whitelist gate (only writer of `ctx.interrupted`)
+1. `GateCheckStage` — Whitelist gate, per-user budget gate, then `onMessageBeforeAI` / `onAIGenerationStart` hooks (only writer of `ctx.interrupted`)
 2. `ContextResolutionStage` — Resolve referenced (quoted) message, extract images
 3. `HistoryStage` — Load and compress conversation history (episode cache)
 4. `ContextEnrichmentStage` — Attach memory / RAG / glossary / session memo / recent actions
@@ -720,6 +720,38 @@ never renders cards or forwards and only drops them. `CardRenderingHelper.should
 is a length gate and does not look at markers.
 
 Tool rounds are capped by `ai.chat.maxToolRounds` (default 5).
+
+#### Usage controls
+
+`ai.usage` turns on spend controls priced with `ai.modelPricing` over the rows in
+`token_usage` (the numbers `/usage` reports). Each key is active only while set; a day is
+the server's local calendar day. Text rows price uncached prompt tokens at `input`, cached
+ones at `cachedInput` (only DeepSeek reports them; most of its input is cache hits) and
+completion at `output`; image rows price at `perImage`, since image providers report no
+token counts.
+
+- **Per-user cap** (`userDailyLimitUsd`, `userDailyLimitOverrides`) — `GateCheckStage` asks
+  `UsageBudgetService.checkUser` after the whitelist gate and before `onMessageBeforeAI`
+  (whose reply-mode classifier is itself an LLM call). An over-budget sender gets a fixed
+  one-line reply and no LLM runs. Admins are never capped, but their usage is recorded.
+- **Group spend steps** (`groupSpendStepUsd`) and **prompt alerts** (`promptAlertTokens`,
+  `promptAlertCooldownMinutes`) — `UsageTrackingPlugin` records each `aiUsage` through
+  `UsageNoticeService.record`, which returns the notices the row earns. A step crossing is
+  read off the group's spend before and after that one row, so a group's rows are stored
+  and summed one at a time. The prompt alert compares `openingPromptTokens` — the first
+  round's prompt, i.e. the context the reply was asked with, which
+  `LLMService.generateWithTools` reports beside the summed usage. `onAIGenerationComplete`
+  fires before SEND, so the plugin holds the notices per context and sends them through
+  `ConversationMessageSender` in `onMessageComplete`, after the reply.
+- **`/compress`** folds the session's live episode window now, keeping the last few
+  entries verbatim (`EpisodeCacheManager.compressSession`, the same fold the background
+  pass runs). `/compress clear` empties the window and moves the session's context floor
+  (`NormalEpisodeService.moveContextFloor`): later episodes never look back past it, which
+  their 10-minute lookback would otherwise do.
+
+Usage of research subagents and background jobs (memory extraction, summaries, the
+nightly group_day fan-out, proactive analysis) is not recorded in `token_usage`, so caps and
+notices cover reply generation and image generation only.
 
 ### AI Providers
 

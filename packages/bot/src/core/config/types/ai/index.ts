@@ -201,7 +201,7 @@ export interface ImagePricing {
  * days `/usage` reports.
  */
 export interface AIUsageConfig {
-  /** Per-user spend cap per day, in USD. Past it the user's replies are refused. The bot owner is never capped. */
+  /** Per-user spend cap per day, in USD. Past it the user's replies are refused. Admins are never capped. */
   userDailyLimitUsd?: number;
   /** Per-user caps keyed by user id; an entry wins over `userDailyLimitUsd`. */
   userDailyLimitOverrides?: Record<string, number>;

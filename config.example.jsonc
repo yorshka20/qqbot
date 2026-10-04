@@ -925,7 +925,8 @@
     // server's local calendar day.
     // "usage": {
     //   // Per-user cap per day (USD). Past it the user's replies are refused with a
-    //   // one-line notice until the day turns. The bot owner is never capped.
+    //   // one-line notice until the day turns. Admins (and the owner) are never capped,
+    //   // but their usage is still recorded.
     //   "userDailyLimitUsd": 0.3,
     //   // Per-user caps by user id, winning over userDailyLimitUsd.
     //   "userDailyLimitOverrides": { "10000001": 1.5 },
