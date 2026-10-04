@@ -15,9 +15,13 @@ export interface AIUsageMetadata {
   /** Origin of the call: 'reply' | 'nsfw' | 'image' ... */
   source: string;
   promptTokens?: number;
+  /** Part of promptTokens served from the provider's prefix cache, when the provider reports it. */
+  cachedPromptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
   imageCount?: number;
+  /** Reply calls only: prompt tokens of the opening round, the size of the context the reply was asked with. */
+  openingPromptTokens?: number;
 }
 
 /**

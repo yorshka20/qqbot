@@ -377,6 +377,11 @@ export interface ToolUseGenerateResponse extends AIGenerateResponse {
    *   last round wrote text with no round left to ask whether the turn was done
    */
   stopReason?: 'end_turn' | 'end_turn_tool' | 'tool_use' | 'max_rounds';
+  /**
+   * Prompt tokens of the first round: the context the turn was asked with. `usage` sums
+   * every round, and later rounds only add this turn's own tool traffic on top of it.
+   */
+  openingPromptTokens?: number;
 }
 
 /**

@@ -247,6 +247,7 @@ export interface TokenUsageRecord extends BaseModel {
   type: 'llm' | 'image';
   source: string; // 'reply' | 'subagent' | 'command:gpt2' | 'tool:generate_image' ...
   promptTokens: number; // 0 for image rows
+  cachedPromptTokens: number; // part of promptTokens served from the provider's cache; 0 when not reported
   completionTokens: number; // 0 for image rows
   totalTokens: number; // 0 for image rows
   imageCount: number; // 0 for llm rows

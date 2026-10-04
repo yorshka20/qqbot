@@ -469,6 +469,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
         type TEXT NOT NULL CHECK(type IN ('llm', 'image')),
         source TEXT NOT NULL,
         promptTokens INTEGER NOT NULL DEFAULT 0,
+        cachedPromptTokens INTEGER NOT NULL DEFAULT 0,
         completionTokens INTEGER NOT NULL DEFAULT 0,
         totalTokens INTEGER NOT NULL DEFAULT 0,
         imageCount INTEGER NOT NULL DEFAULT 0,
@@ -608,6 +609,16 @@ export class SQLiteAdapter implements DatabaseAdapter {
       }
     } catch (error) {
       logger.warn(`[SQLiteAdapter] Failed to add agenda action columns: ${error}`);
+    }
+
+    try {
+      const usageInfo = this.db.query(`PRAGMA table_info(token_usage)`).all() as Array<{ name: string }>;
+      if (Array.isArray(usageInfo) && !usageInfo.some((col) => col.name === 'cachedPromptTokens')) {
+        this.db.run(`ALTER TABLE token_usage ADD COLUMN cachedPromptTokens INTEGER NOT NULL DEFAULT 0`);
+        logger.info('[SQLiteAdapter] Added cachedPromptTokens column to token_usage');
+      }
+    } catch (error) {
+      logger.warn(`[SQLiteAdapter] Failed to add token_usage cachedPromptTokens column: ${error}`);
     }
 
     // The original agenda_items CHECK constraint predates the 'onMessage' trigger

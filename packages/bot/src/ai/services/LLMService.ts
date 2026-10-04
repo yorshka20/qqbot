@@ -832,7 +832,7 @@ export class LLMService {
     if (tools.length === 0) {
       const response = await this.generateFromMessages(messages, options, providerName, newConversation());
       await this.emitReasoning(response, options, [], new Set(), providerName);
-      return { ...response, stopReason: 'end_turn' };
+      return { ...response, stopReason: 'end_turn', openingPromptTokens: response.usage?.promptTokens };
     }
 
     const sessionId = options?.sessionId;
@@ -884,6 +884,7 @@ export class LLMService {
         return {
           ...response,
           stopReason: 'end_turn',
+          openingPromptTokens: response.usage?.promptTokens,
         };
       }
     }
@@ -905,6 +906,7 @@ export class LLMService {
     // the full cost of the tool-augmented generation, not just the final round.
     const accUsage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
     let sawUsage = false;
+    let openingPromptTokens: number | undefined;
     // Thinking from every round, not just the last: on a tool-using turn the
     // reasoning that chose the tools is usually the interesting part, and the
     // final round's `reasoningContent` alone would drop it. Reported per round via
@@ -929,6 +931,9 @@ export class LLMService {
       );
       sentCount = currentMessages.length;
       sawUsage = this.accumulateUsage(accUsage, response.usage) || sawUsage;
+      if (round === 0) {
+        openingPromptTokens = response.usage?.promptTokens;
+      }
       await this.emitReasoning(response, options, accReasoning, seenReasoning, currentProviderName);
 
       // Always use the resolved provider for subsequent rounds (handles internal fallback)
@@ -951,6 +956,7 @@ export class LLMService {
             reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
             resolvedProviderName: currentProviderName,
             toolCalls: allToolCalls,
+            openingPromptTokens,
             stopReason: 'end_turn',
           };
         }
@@ -966,6 +972,7 @@ export class LLMService {
             reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
             resolvedProviderName: currentProviderName,
             toolCalls: allToolCalls,
+            openingPromptTokens,
             stopReason: 'max_rounds',
           };
         }
@@ -1113,6 +1120,7 @@ export class LLMService {
             reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
             resolvedProviderName: currentProviderName,
             toolCalls: allToolCalls,
+            openingPromptTokens,
             stopReason: 'end_turn_tool',
           };
         }
@@ -1123,6 +1131,7 @@ export class LLMService {
           usage: sawUsage ? { ...accUsage } : response.usage,
           reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
           toolCalls: allToolCalls,
+          openingPromptTokens,
           stopReason: 'tool_use',
         };
       }
@@ -1156,6 +1165,7 @@ export class LLMService {
       reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
       resolvedProviderName: currentProviderName,
       toolCalls: allToolCalls,
+      openingPromptTokens,
       stopReason: 'max_rounds',
     };
   }

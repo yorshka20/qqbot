@@ -1,12 +1,12 @@
 // Per-user token / image consumption tracking.
 //
 // One row is written per user-triggered LLM call (incl. subagent / tool-loop
-// iterations) and per image-generation call. Recording is fire-and-forget: a
+// iterations) and per image-generation call. Recording never throws: a
 // persistence failure must never break reply generation. Aggregation happens at
 // read time (modest volume; keeps the schema flexible and adapter-agnostic).
 
 import { inject, singleton } from 'tsyringe';
-import type { Config } from '@/core/config';
+import type { Config, ModelPricingEntry } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { TokenUsageRecord } from '@/database/models/types';
@@ -23,10 +23,16 @@ export interface TokenUsageEvent {
   /** Origin of the call: 'reply' | 'subagent' | 'command:gpt2' | 'tool:generate_image' ... */
   source: string;
   promptTokens?: number;
+  cachedPromptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
   imageCount?: number;
 }
+
+type PricedUsage = Pick<
+  TokenUsageRecord,
+  'model' | 'promptTokens' | 'cachedPromptTokens' | 'completionTokens' | 'imageCount'
+>;
 
 export interface ProviderUsageAgg {
   provider: string;
@@ -63,6 +69,18 @@ export interface DailyReport {
   topUsers: UserUsageAgg[];
 }
 
+export interface UserSpend {
+  userId: string;
+  nickname?: string;
+  cost: number;
+}
+
+/** One group's priced spend for a day, with each user's share (highest first). */
+export interface GroupSpend {
+  cost: number;
+  users: UserSpend[];
+}
+
 export interface DailyUsageAgg {
   date: string;
   promptTokens: number;
@@ -91,17 +109,17 @@ export class TokenUsageService {
   }
 
   /**
-   * Record one usage event. Fire-and-forget — never throws into the caller and
-   * never blocks the reply path. Skips no-op events (zero tokens AND zero images)
-   * so failed/empty provider responses don't pollute the stats.
+   * Record one usage event and return the priced cost of the stored row. Never throws:
+   * resolves null when the row was not stored. Skips no-op events (zero tokens AND zero
+   * images) so failed/empty provider responses don't pollute the stats.
    */
-  record(event: TokenUsageEvent): void {
+  async record(event: TokenUsageEvent): Promise<number | null> {
     const promptTokens = event.promptTokens ?? 0;
     const completionTokens = event.completionTokens ?? 0;
     const totalTokens = event.totalTokens ?? promptTokens + completionTokens;
     const imageCount = event.imageCount ?? 0;
     if (totalTokens <= 0 && imageCount <= 0) {
-      return;
+      return null;
     }
 
     const record: Omit<TokenUsageRecord, 'id' | 'createdAt' | 'updatedAt'> = {
@@ -115,16 +133,41 @@ export class TokenUsageService {
       type: event.type,
       source: event.source,
       promptTokens,
+      cachedPromptTokens: event.cachedPromptTokens ?? 0,
       completionTokens,
       totalTokens,
       imageCount,
     };
 
-    void this.databaseManager
-      .getAdapter()
-      .getModel('tokenUsage')
-      .create(record)
-      .catch((err) => logger.warn('[TokenUsageService] Failed to persist usage record:', err));
+    try {
+      await this.databaseManager.getAdapter().getModel('tokenUsage').create(record);
+    } catch (err) {
+      logger.warn('[TokenUsageService] Failed to persist usage record:', err);
+      return null;
+    }
+    return this.priceUsage(record);
+  }
+
+  /** One user's priced spend on `date`, across every group and private chat. */
+  async getUserCost(userId: string, date: string): Promise<number> {
+    const rows = await this.databaseManager.getAdapter().getModel('tokenUsage').find({ date, userId });
+    return rows.reduce((sum, row) => sum + this.priceUsage(row), 0);
+  }
+
+  async getGroupSpend(groupId: string, date: string): Promise<GroupSpend> {
+    const rows = await this.databaseManager.getAdapter().getModel('tokenUsage').find({ date, groupId });
+    const byUser = new Map<string, UserSpend>();
+    // Oldest first, so the latest non-empty nickname is the one left standing.
+    for (const row of [...rows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())) {
+      const spend = byUser.get(row.userId) ?? { userId: row.userId, cost: 0 };
+      spend.cost += this.priceUsage(row);
+      if (row.nickname) {
+        spend.nickname = row.nickname;
+      }
+      byUser.set(row.userId, spend);
+    }
+    const users = [...byUser.values()].sort((a, b) => b.cost - a.cost);
+    return { cost: users.reduce((sum, u) => sum + u.cost, 0), users };
   }
 
   /**
@@ -195,7 +238,7 @@ export class TokenUsageService {
   }
 
   /** Look up pricing for a model name, supporting trailing-wildcard prefix match. */
-  private getModelPricing(modelName: string | undefined): { input: number; output: number } | undefined {
+  private getModelPricing(modelName: string | undefined): ModelPricingEntry | undefined {
     const pricing = this.config.getAIConfig()?.modelPricing;
     if (!pricing || !modelName) return undefined;
 
@@ -211,11 +254,20 @@ export class TokenUsageService {
     return undefined;
   }
 
-  /** Calculate cost for a single row based on model pricing config. */
-  private calculateRowCost(row: TokenUsageRecord): number {
-    const price = this.getModelPricing(row.model);
+  /** USD for one call priced with `modelPricing`; 0 when the model has no price. */
+  private priceUsage(usage: PricedUsage): number {
+    const price = this.getModelPricing(usage.model);
     if (!price) return 0;
-    return (row.promptTokens * price.input + row.completionTokens * price.output) / 1_000_000;
+    if ('perImage' in price) {
+      return usage.imageCount * price.perImage;
+    }
+    const uncachedPromptTokens = usage.promptTokens - usage.cachedPromptTokens;
+    return (
+      (uncachedPromptTokens * price.input +
+        usage.cachedPromptTokens * (price.cachedInput ?? price.input) +
+        usage.completionTokens * price.output) /
+      1_000_000
+    );
   }
 
   private aggregateByProvider(rows: TokenUsageRecord[]): ProviderUsageAgg[] {
@@ -241,7 +293,7 @@ export class TokenUsageService {
       agg.completionTokens += row.completionTokens;
       agg.totalTokens += row.totalTokens;
       agg.imageCount += row.imageCount;
-      agg.cost += this.calculateRowCost(row);
+      agg.cost += this.priceUsage(row);
     }
     return Array.from(map.values()).sort((a, b) => b.totalTokens - a.totalTokens || b.imageCount - a.imageCount);
   }

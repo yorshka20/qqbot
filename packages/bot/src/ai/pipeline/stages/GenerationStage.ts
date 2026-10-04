@@ -257,8 +257,10 @@ export class GenerationStage implements ReplyStage {
         model: actualModel,
         source: 'reply',
         promptTokens: r.usage.promptTokens,
+        cachedPromptTokens: r.usage.cachedPromptTokens,
         completionTokens: r.usage.completionTokens,
         totalTokens: r.usage.totalTokens,
+        openingPromptTokens: r.openingPromptTokens,
       });
     }
 

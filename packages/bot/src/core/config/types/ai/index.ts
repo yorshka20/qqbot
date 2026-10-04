@@ -174,14 +174,43 @@ export const DEFAULT_CHAT_REASONING_EFFORTS: ChatReasoningEfforts = {
 };
 
 /**
- * Per-model token pricing (USD per 1M tokens).
+ * Per-model pricing. Text models are priced per 1M tokens; image models per generated image,
+ * because image providers report no token counts.
  * Keys are model name strings matching the `model` field persisted in TokenUsageRecord.
  * Glob-style trailing wildcard (`*`) is supported for prefix matching
  * (e.g. `"gpt-4o*"` covers `gpt-4o`, `gpt-4o-mini`, etc.).
  */
-export interface ModelPricingEntry {
+export type ModelPricingEntry = TokenPricing | ImagePricing;
+
+/** USD per 1M tokens. */
+export interface TokenPricing {
   input: number;
   output: number;
+  /** Prompt tokens served from the provider's prefix cache; without it they cost `input`. */
+  cachedInput?: number;
+}
+
+export interface ImagePricing {
+  /** USD per generated image. */
+  perImage: number;
+}
+
+/**
+ * Spend controls, all priced with `modelPricing` over the recorded usage. Each one
+ * is active only when its key is set. Days are the server's local calendar days, the same
+ * days `/usage` reports.
+ */
+export interface AIUsageConfig {
+  /** Per-user spend cap per day, in USD. Past it the user's replies are refused. The bot owner is never capped. */
+  userDailyLimitUsd?: number;
+  /** Per-user caps keyed by user id; an entry wins over `userDailyLimitUsd`. */
+  userDailyLimitOverrides?: Record<string, number>;
+  /** A group is told each time its spend for the day passes another multiple of this, in USD. */
+  groupSpendStepUsd?: number;
+  /** A session is told when a reply's opening prompt reaches this many tokens. */
+  promptAlertTokens?: number;
+  /** Minimum gap between two prompt alerts in one session, in minutes. Default 30. */
+  promptAlertCooldownMinutes?: number;
 }
 
 export interface AIConfig {
@@ -194,6 +223,7 @@ export interface AIConfig {
    * Key = model name (or prefix with trailing `*`); value = USD per 1M tokens.
    */
   modelPricing?: Record<string, ModelPricingEntry>;
+  usage?: AIUsageConfig;
   // Session-level provider overrides (key is sessionId)
   sessionProviders?: Record<string, SessionProviderConfig>;
   // Auto-switch configuration

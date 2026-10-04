@@ -655,6 +655,58 @@ describe('LLMService resolvedModel stamping', () => {
     });
   });
 
+  describe('generateWithTools usage', () => {
+    /** Each round's prompt is the previous one plus its tool traffic, as on the wire. */
+    function createGrowingPromptProvider(toolRounds: number) {
+      let round = 0;
+      return {
+        name: 'mock',
+        getCapabilities: () => ['llm'],
+        isAvailable: () => true,
+        supportsToolUse: true,
+        generate: async (): Promise<AIGenerateResponse> => {
+          round++;
+          const usage = { promptTokens: 1000 * round, completionTokens: 10, totalTokens: 1000 * round + 10 };
+          if (round <= toolRounds) {
+            return { text: '', usage, functionCalls: [{ name: 'noop', arguments: '{}', toolCallId: `call_${round}` }] };
+          }
+          return { text: 'final answer', usage };
+        },
+      };
+    }
+
+    function createService(provider: unknown) {
+      const aiManager = {
+        getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+        getProvidersForCapability: () => [],
+        getDefaultProvider: () => provider,
+      } as unknown as AIManager;
+      return createLLMService(aiManager, { toolUseProviders: ['mock'], fallback: { fallbackOrder: [] } });
+    }
+
+    const tools: ToolDefinition[] = [
+      { name: 'noop', description: 'does nothing', parameters: { type: 'object', properties: {} } },
+    ];
+
+    it('sums every round but reports the opening prompt on its own', async () => {
+      const service = createService(createGrowingPromptProvider(2));
+      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        reasoningEffort: 'none',
+        toolExecutor: async () => 'ok',
+      });
+
+      expect(res.usage?.promptTokens).toBe(1000 + 2000 + 3000);
+      expect(res.openingPromptTokens).toBe(1000);
+    });
+
+    it('reports the single call as the opening prompt on the no-tools path', async () => {
+      const service = createService(createGrowingPromptProvider(0));
+      const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], [], { reasoningEffort: 'none' });
+
+      expect(res.openingPromptTokens).toBe(1000);
+    });
+  });
+
   describe('generateWithTools tool-round text', () => {
     const tools: ToolDefinition[] = [
       { name: 'noop', description: 'does nothing', parameters: { type: 'object', properties: {} } },
