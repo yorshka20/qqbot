@@ -711,14 +711,14 @@
     //
     // `maxToolRounds`: max tool-calling rounds per reply generation (one round =
     // one LLM call that may run several parallel tool calls). Past the cap the
-    // loop forces a final text-only answer. Default 15.
+    // loop forces a final text-only answer. Default 5.
     // "chat": {
     //   "reasoningEffort": "medium",
     //   "toolReasoningEffort": "medium",
     //   "quickReasoningEffort": "minimal",
     //   "replyModeProviders": ["deepseek", "openai", "gemini"],
     //   "lowEffortProviders": ["doubao"],
-    //   "maxToolRounds": 15
+    //   "maxToolRounds": 5
     // },
     // Task-specific provider overrides (optional)
     // Override provider for specific internal LLM tasks
@@ -923,8 +923,9 @@
   "contextMemory": {
     // Maximum number of messages to store in memory buffer (default: 30)
     "maxBufferSize": 30,
-    // Maximum number of history messages to include in AI prompt (default: 10)
-    // This limits the prompt length to prevent excessive token usage
+    // History messages included by the NSFW reply path (default: 10). The normal
+    // reply path does not read this: its history is the episode window, sized in
+    // EpisodeCacheManager.
     "maxHistoryMessages": 10
   },
   // Prompt templates configuration (required)

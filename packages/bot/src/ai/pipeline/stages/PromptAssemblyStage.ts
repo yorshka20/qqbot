@@ -28,7 +28,7 @@ import type { ReplyStage } from '../types';
  */
 const DEFAULT_REPLY_MODE_PROVIDERS = ['deepseek', 'openai', 'gemini'];
 const DEFAULT_LOW_EFFORT_PROVIDERS = ['doubao'];
-const DEFAULT_MAX_TOOL_ROUNDS = 15;
+const DEFAULT_MAX_TOOL_ROUNDS = 5;
 
 @singleton()
 export class PromptAssemblyStage implements ReplyStage {

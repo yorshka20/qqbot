@@ -719,7 +719,7 @@ the proactive and agenda replies, subagent results, and `ConversationMessageSend
 never renders cards or forwards and only drops them. `CardRenderingHelper.shouldUseCardReply`
 is a length gate and does not look at markers.
 
-Tool rounds are capped by `ai.chat.maxToolRounds` (default 15).
+Tool rounds are capped by `ai.chat.maxToolRounds` (default 5).
 
 ### AI Providers
 

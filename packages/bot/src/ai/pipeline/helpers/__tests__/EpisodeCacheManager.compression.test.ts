@@ -23,8 +23,13 @@ import {
 } from '../EpisodeCacheManager';
 
 const SESSION_ID = 'group:1';
-/** Entry count comfortably past the compress trigger but under the read-path hard max. */
-const OVER_TRIGGER_ENTRIES = EPISODE_WINDOW_COMPRESS_TRIGGER_ENTRIES + 40;
+/**
+ * Entry count comfortably past the compress trigger but under the read-path hard max, with room
+ * left for the seeded first build and a latecomer appended on top of the whole backlog.
+ */
+const OVER_TRIGGER_ENTRIES =
+  EPISODE_WINDOW_COMPRESS_TRIGGER_ENTRIES +
+  Math.floor((EPISODE_WINDOW_HARD_MAX_ENTRIES - EPISODE_WINDOW_COMPRESS_TRIGGER_ENTRIES) / 2);
 
 function makeEntry(index: number, contentLength = 20): ConversationMessageEntry {
   return {

@@ -152,7 +152,7 @@ export interface AIChatConfig {
   /**
    * Max tool-calling rounds per reply generation (one round = one LLM call
    * that may execute several parallel tool calls). Past the cap the loop
-   * forces a final text-only generation. Default 15.
+   * forces a final text-only generation. Default 5.
    */
   maxToolRounds?: number;
 }
