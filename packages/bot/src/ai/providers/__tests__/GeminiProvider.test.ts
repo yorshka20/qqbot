@@ -34,6 +34,7 @@ interface RecordedCall {
 function installFakeClient(
   provider: GeminiProvider,
   responseParts: Array<{ text?: string; thought?: boolean }> = [{ text: 'hi' }],
+  usageMetadata: Record<string, number> = { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 },
 ): RecordedCall[] {
   const calls: RecordedCall[] = [];
   const fakeClient = {
@@ -50,7 +51,7 @@ function installFakeClient(
         return {
           candidates: [{ content: { parts: responseParts }, finishReason: 'STOP' }],
           text: 'hi',
-          usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 },
+          usageMetadata,
         };
       },
     },
@@ -235,5 +236,32 @@ describe('GeminiProvider output budget', () => {
     await provider.generate('hi', { ...promptOpts, reasoningEffort: 'low' });
 
     expect(calls[0].maxOutputTokens).toBe(clampMaxTokens(undefined));
+  });
+});
+
+describe('GeminiProvider usage', () => {
+  beforeEach(() => {
+    container.register(ResourceCleanupService, {
+      useValue: { registerFileCleanup: () => {} } as unknown as ResourceCleanupService,
+    });
+  });
+
+  it('reports implicitly cached prompt tokens as the cached part of the prompt', async () => {
+    const provider = new GeminiProvider(baseConfig());
+    installFakeClient(provider, [{ text: 'hi' }], {
+      promptTokenCount: 10_000,
+      cachedContentTokenCount: 8_000,
+      candidatesTokenCount: 20,
+      totalTokenCount: 10_020,
+    });
+
+    const res = await provider.generate('hi', promptOpts);
+
+    expect(res.usage).toEqual({
+      promptTokens: 10_000,
+      cachedPromptTokens: 8_000,
+      completionTokens: 20,
+      totalTokens: 10_020,
+    });
   });
 });

@@ -105,12 +105,28 @@ interface ArkResponsesResponse {
       tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>;
     };
   }>;
-  usage?: {
-    input_tokens?: number;
-    output_tokens?: number;
-    total_tokens?: number;
-    prompt_tokens?: number;
-    completion_tokens?: number;
+  usage?: ArkUsage;
+}
+
+/** Ark reports usage in the Responses shape (input/output) or the chat-completions shape (prompt/completion). */
+interface ArkUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  input_tokens_details?: { cached_tokens?: number };
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+  total_tokens?: number;
+}
+
+function toUsage(usage: ArkUsage): NonNullable<AIGenerateResponse['usage']> {
+  const promptTokens = usage.prompt_tokens ?? usage.input_tokens ?? 0;
+  const completionTokens = usage.completion_tokens ?? usage.output_tokens ?? 0;
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: usage.total_tokens ?? promptTokens + completionTokens,
+    cachedPromptTokens: usage.prompt_tokens_details?.cached_tokens ?? usage.input_tokens_details?.cached_tokens,
   };
 }
 
@@ -119,11 +135,7 @@ interface ArkChatCompletionsResponse {
   choices?: Array<{
     message?: { content?: string };
   }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
+  usage?: ArkUsage;
 }
 
 /** Parsed result from Ark response (text, reasoning, usage, optional tool call). */
@@ -141,13 +153,7 @@ interface ResponsesStreamChunk {
     delta?: { content?: string; reasoning_content?: string };
     finish_reason?: string | null;
   }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-    input_tokens?: number;
-    output_tokens?: number;
-  };
+  usage?: ArkUsage;
 }
 
 /** Default model when config.model is not set (config should set e.g. doubao-seed-1-8-251228). */
@@ -208,16 +214,7 @@ function parseArkResponse(response: ArkResponsesResponse): ArkParsedResult {
     text = typeof c === 'string' ? c : '';
   }
 
-  const usage = response.usage
-    ? {
-        promptTokens: response.usage.prompt_tokens ?? response.usage.input_tokens ?? 0,
-        completionTokens: response.usage.completion_tokens ?? response.usage.output_tokens ?? 0,
-        totalTokens:
-          response.usage.total_tokens ??
-          (response.usage.prompt_tokens ?? response.usage.input_tokens ?? 0) +
-            (response.usage.completion_tokens ?? response.usage.output_tokens ?? 0),
-      }
-    : undefined;
+  const usage = response.usage ? toUsage(response.usage) : undefined;
 
   let functionCalls: ArkParsedResult['functionCalls'];
   const fnCallItems = response.output?.filter(
@@ -379,13 +376,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     );
 
     const text = data.choices?.[0]?.message?.content ?? '';
-    const usage = data.usage
-      ? {
-          promptTokens: data.usage.prompt_tokens ?? 0,
-          completionTokens: data.usage.completion_tokens ?? 0,
-          totalTokens: data.usage.total_tokens ?? 0,
-        }
-      : undefined;
+    const usage = data.usage ? toUsage(data.usage) : undefined;
 
     return {
       text,
@@ -656,13 +647,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
             }
 
             if (data.usage) {
-              const promptTokens = data.usage.prompt_tokens ?? data.usage.input_tokens ?? 0;
-              const completionTokens = data.usage.completion_tokens ?? data.usage.output_tokens ?? 0;
-              usage = {
-                promptTokens,
-                completionTokens,
-                totalTokens: data.usage.total_tokens ?? promptTokens + completionTokens,
-              };
+              usage = toUsage(data.usage);
             }
           } catch (parseError) {
             logger.debug('[DoubaoProvider] Failed to parse stream chunk:', parseError);

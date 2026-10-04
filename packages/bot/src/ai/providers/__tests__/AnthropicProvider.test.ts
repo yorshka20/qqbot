@@ -109,3 +109,23 @@ describe('AnthropicProvider thinking round-trip', () => {
     expect(blocks.some((b) => b.type === 'thinking' || b.type === 'redacted_thinking')).toBe(false);
   });
 });
+
+describe('AnthropicProvider usage', () => {
+  it('counts cache reads and writes into the prompt and reports the reads as cached', async () => {
+    const { provider } = providerReturning({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 9_000, cache_creation_input_tokens: 900 },
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'end_turn',
+    });
+
+    const res = await provider.generate('hi');
+
+    expect(res.usage).toEqual({
+      promptTokens: 10_000,
+      completionTokens: 20,
+      totalTokens: 10_020,
+      cachedPromptTokens: 9_000,
+    });
+  });
+});

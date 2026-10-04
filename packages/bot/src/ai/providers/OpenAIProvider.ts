@@ -119,6 +119,15 @@ function mapToolsToResponses(tools: ToolDefinition[]): OpenAI.Responses.Function
   }));
 }
 
+function toUsage(usage: OpenAI.Responses.ResponseUsage): NonNullable<AIGenerateResponse['usage']> {
+  return {
+    promptTokens: usage.input_tokens,
+    completionTokens: usage.output_tokens,
+    totalTokens: usage.total_tokens,
+    cachedPromptTokens: usage.input_tokens_details?.cached_tokens,
+  };
+}
+
 /** Extract text, tool calls, reasoning summaries, and usage from a Responses API result. */
 function parseResponsesOutput(response: OpenAI.Responses.Response): {
   text: string;
@@ -150,13 +159,7 @@ function parseResponsesOutput(response: OpenAI.Responses.Response): {
     }
   }
 
-  const usage = response.usage
-    ? {
-        promptTokens: response.usage.input_tokens,
-        completionTokens: response.usage.output_tokens,
-        totalTokens: response.usage.total_tokens,
-      }
-    : undefined;
+  const usage = response.usage ? toUsage(response.usage) : undefined;
 
   return {
     text,
@@ -368,11 +371,7 @@ export class OpenAIProvider
           handler(event.delta);
         } else if (event.type === 'response.completed') {
           if (event.response.usage) {
-            usage = {
-              promptTokens: event.response.usage.input_tokens,
-              completionTokens: event.response.usage.output_tokens,
-              totalTokens: event.response.usage.total_tokens,
-            };
+            usage = toUsage(event.response.usage);
           }
           reasoningContent = parseResponsesOutput(event.response).reasoningContent;
         }
@@ -743,11 +742,7 @@ export class OpenAIProvider
           handler(event.delta);
         } else if (event.type === 'response.completed') {
           if (event.response.usage) {
-            usage = {
-              promptTokens: event.response.usage.input_tokens,
-              completionTokens: event.response.usage.output_tokens,
-              totalTokens: event.response.usage.total_tokens,
-            };
+            usage = toUsage(event.response.usage);
           }
           reasoningContent = parseResponsesOutput(event.response).reasoningContent;
         }

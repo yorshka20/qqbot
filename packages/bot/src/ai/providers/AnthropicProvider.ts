@@ -66,9 +66,32 @@ interface AnthropicVisionRequestBody {
   system?: AnthropicSystemBlock[];
 }
 
+interface AnthropicUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+/**
+ * Anthropic's `input_tokens` counts only the prompt after the last cache breakpoint; cache
+ * reads and writes are reported beside it. `promptTokens` is the whole prompt, as every other
+ * provider reports it, with the cache reads as its cached part.
+ */
+function toUsage(usage: AnthropicUsage): NonNullable<AIGenerateResponse['usage']> {
+  const cachedPromptTokens = usage.cache_read_input_tokens ?? 0;
+  const promptTokens = usage.input_tokens + cachedPromptTokens + (usage.cache_creation_input_tokens ?? 0);
+  return {
+    promptTokens,
+    completionTokens: usage.output_tokens,
+    totalTokens: promptTokens + usage.output_tokens,
+    cachedPromptTokens,
+  };
+}
+
 interface AnthropicMessagesResponse {
   content: AnthropicContentBlock[];
-  usage?: { input_tokens: number; output_tokens: number };
+  usage?: AnthropicUsage;
   model: string;
   stop_reason?: string | null;
 }
@@ -76,7 +99,7 @@ interface AnthropicMessagesResponse {
 interface AnthropicStreamChunk {
   type: string;
   delta?: { text?: string; thinking?: string };
-  usage?: { input_tokens: number; output_tokens: number };
+  usage?: AnthropicUsage;
 }
 
 function isAnthropicStreamChunk(value: unknown): value is AnthropicStreamChunk {
@@ -372,13 +395,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       }
 
       const text = extractAnthropicText(data.content);
-      const usage = data.usage
-        ? {
-            promptTokens: data.usage.input_tokens,
-            completionTokens: data.usage.output_tokens,
-            totalTokens: data.usage.input_tokens + data.usage.output_tokens,
-          }
-        : undefined;
+      const usage = data.usage ? toUsage(data.usage) : undefined;
 
       const result: AIGenerateResponse = {
         text,
@@ -486,11 +503,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
               }
 
               if (parsed.type === 'message_stop' && parsed.usage) {
-                usage = {
-                  promptTokens: parsed.usage.input_tokens,
-                  completionTokens: parsed.usage.output_tokens,
-                  totalTokens: parsed.usage.input_tokens + parsed.usage.output_tokens,
-                };
+                usage = toUsage(parsed.usage);
               }
             } catch (parseError) {
               logger.debug('[AnthropicProvider] Failed to parse stream chunk:', parseError);
@@ -584,13 +597,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       const data = await this.httpClient.post<AnthropicMessagesResponse>('/messages', requestBody);
 
       const text = extractAnthropicText(data.content);
-      const usage = data.usage
-        ? {
-            promptTokens: data.usage.input_tokens,
-            completionTokens: data.usage.output_tokens,
-            totalTokens: data.usage.input_tokens + data.usage.output_tokens,
-          }
-        : undefined;
+      const usage = data.usage ? toUsage(data.usage) : undefined;
 
       return {
         text,

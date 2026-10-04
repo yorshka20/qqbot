@@ -612,7 +612,12 @@ export class GeminiProvider
       .trim();
     const meta = (
       response as {
-        usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+        usageMetadata?: {
+          promptTokenCount?: number;
+          cachedContentTokenCount?: number;
+          candidatesTokenCount?: number;
+          totalTokenCount?: number;
+        };
       }
     ).usageMetadata;
     const out: {
@@ -626,6 +631,7 @@ export class GeminiProvider
       usage: meta
         ? {
             promptTokens: meta.promptTokenCount ?? 0,
+            cachedPromptTokens: meta.cachedContentTokenCount,
             completionTokens: meta.candidatesTokenCount ?? 0,
             totalTokens: meta.totalTokenCount ?? 0,
           }
