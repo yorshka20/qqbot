@@ -59,8 +59,32 @@ export const EPISODE_WINDOW_MIN_RECENT_ENTRIES = 8;
  * survives, so this is degradation, not the routine path.
  */
 export const EPISODE_WINDOW_HARD_MAX_ENTRIES = 150;
+/**
+ * Recent entries a manual compress keeps verbatim. The next question usually refers to the
+ * last exchange, whose exact wording a summary would blur.
+ */
+export const EPISODE_COMPRESS_COMMAND_KEEP_ENTRIES = 4;
 /** Per-turn DB fetch bound for appending: must exceed what an active group produces between two triggers. */
 const EPISODE_APPEND_FETCH_LIMIT = 60;
+
+export type SessionCompression =
+  /** The session has no live window, so the next turn starts from a fresh one anyway. */
+  | { status: 'no-window' }
+  | { status: 'too-short'; entries: number }
+  /** A background fold of the same window is in flight. */
+  | { status: 'busy' }
+  /** The summarizer produced nothing, or the window changed under the fold; nothing was replaced. */
+  | { status: 'failed' }
+  | { status: 'compressed'; foldedEntries: number; charsBefore: number; charsAfter: number };
+
+/** Chars an entry puts into the prompt: its text plus the reasoning replayed with it. */
+function entryChars(entry: ConversationMessageEntry): number {
+  return entry.content.length + (entry.reasoning?.length ?? 0);
+}
+
+function windowChars(entries: ConversationMessageEntry[]): number {
+  return entries.reduce((sum, e) => sum + entryChars(e), 0);
+}
 
 /**
  * Manages episode-based conversation history caching.
@@ -219,8 +243,7 @@ export class EpisodeCacheManager {
    * then stands for.
    */
   private planFold(entries: ConversationMessageEntry[]): number | null {
-    const entryChars = (e: ConversationMessageEntry): number => e.content.length + (e.reasoning?.length ?? 0);
-    const totalChars = entries.reduce((sum, e) => sum + entryChars(e), 0);
+    const totalChars = windowChars(entries);
     if (
       entries.length <= EPISODE_WINDOW_COMPRESS_TRIGGER_ENTRIES &&
       totalChars <= EPISODE_WINDOW_COMPRESS_TRIGGER_CHARS
@@ -253,21 +276,83 @@ export class EpisodeCacheManager {
     episodeKey: string,
     foldedSpan: ConversationMessageEntry[],
     summaryEntry: ConversationMessageEntry,
-  ): void {
+  ): boolean {
     const current = this.episodeHistoryCache.get(episodeKey);
     if (!current || current.length < foldedSpan.length) {
-      return;
+      return false;
     }
     const prefixMatches = foldedSpan.every((entry, i) => current[i].messageId === entry.messageId);
     if (!prefixMatches) {
       logger.debug(`[EpisodeCacheManager] Window moved during compression, discarding fold | episodeKey=${episodeKey}`);
-      return;
+      return false;
     }
     this.episodeHistoryCache.set(episodeKey, [summaryEntry, ...current.slice(foldedSpan.length)]);
     logger.debug(
       `[EpisodeCacheManager] Folded ${foldedSpan.length} entries into summary | ` +
         `episodeKey=${episodeKey} windowSize=${current.length - foldedSpan.length + 1}`,
     );
+    return true;
+  }
+
+  /**
+   * Fold the session's live window now, on request, keeping only the last
+   * {@link EPISODE_COMPRESS_COMMAND_KEEP_ENTRIES} entries verbatim. Same fold as the
+   * background pass, just not waiting for the window to outgrow its budget.
+   */
+  async compressSession(sessionId: string, now: Date): Promise<SessionCompression> {
+    const episodeKey = this.liveEpisodeKey(sessionId, now);
+    const snapshot = episodeKey != null ? this.episodeHistoryCache.get(episodeKey) : undefined;
+    if (episodeKey == null || snapshot == null) {
+      return { status: 'no-window' };
+    }
+    const targetSize = EPISODE_COMPRESS_COMMAND_KEEP_ENTRIES + 1;
+    if (snapshot.length <= targetSize) {
+      return { status: 'too-short', entries: snapshot.length };
+    }
+    if (this.compressingEpisodeKeys.has(episodeKey)) {
+      return { status: 'busy' };
+    }
+
+    this.compressingEpisodeKeys.add(episodeKey);
+    try {
+      const roll = await this.conversationHistoryService.replaceOldestWithSummary(snapshot, targetSize, now);
+      if (
+        roll.replacedCount === 0 ||
+        !this.commitFold(episodeKey, snapshot.slice(0, roll.replacedCount), roll.entries[0])
+      ) {
+        return { status: 'failed' };
+      }
+      return {
+        status: 'compressed',
+        foldedEntries: roll.replacedCount,
+        charsBefore: windowChars(snapshot),
+        charsAfter: windowChars(roll.entries),
+      };
+    } finally {
+      this.compressingEpisodeKeys.delete(episodeKey);
+    }
+  }
+
+  /**
+   * Drop the session's context and start it again from `at`: the live window empties, and
+   * neither it nor any later episode reaches back past that point.
+   */
+  clearSession(sessionId: string, at: Date): void {
+    this.episodeService.moveContextFloor(sessionId, at);
+    const episodeKey = this.activeEpisodeKeyBySession.get(sessionId);
+    if (episodeKey != null) {
+      this.episodeHistoryCache.set(episodeKey, []);
+    }
+  }
+
+  /** The cached episode the session's next message would continue, if any. */
+  private liveEpisodeKey(sessionId: string, now: Date): string | undefined {
+    const episodeKey = this.activeEpisodeKeyBySession.get(sessionId);
+    const episode = this.episodeService.getLiveEpisode(sessionId, now);
+    if (episodeKey == null || episode == null) {
+      return undefined;
+    }
+    return this.episodeService.buildEpisodeKey(sessionId, episode) === episodeKey ? episodeKey : undefined;
   }
 
   /**

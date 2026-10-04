@@ -6,7 +6,10 @@ export interface NormalEpisodeState {
   id: string;
   sessionId: string;
   startedAt: Date;
-  /** Context window start: initial history is [contextWindowStart, startedAt], max N entries. Kept so context is stable for the whole episode. */
+  /**
+   * Context window start: initial history is [contextWindowStart, startedAt], max N entries. Kept so
+   * context is stable for the whole episode; only an explicit cut (`moveContextFloor`) moves it.
+   */
   contextWindowStart: Date;
   startMessageId: string;
   lastTriggerAt: Date;
@@ -27,6 +30,8 @@ export interface NormalEpisodeDecisionInput {
 export class NormalEpisodeService {
   private readonly RESET_KEYWORDS = ['新话题', '重置上下文', 'reset context', 'new topic'];
   private states = new Map<string, NormalEpisodeState>();
+  /** Per session: no episode's context reaches back before this point. */
+  private contextFloors = new Map<string, Date>();
 
   /** Default 10 min: initial context for new episode is [contextWindowStart, startedAt], max N entries. */
   private static readonly CONTEXT_WINDOW_MS = 10 * 60 * 1000;
@@ -47,7 +52,7 @@ export class NormalEpisodeService {
         id: randomUUID(),
         sessionId: input.sessionId,
         startedAt: input.now,
-        contextWindowStart: new Date(input.now.getTime() - NormalEpisodeService.CONTEXT_WINDOW_MS),
+        contextWindowStart: this.windowStartFor(input.sessionId, input.now),
         startMessageId: input.messageId,
         lastTriggerAt: input.now,
         turnCount: 1,
@@ -65,16 +70,45 @@ export class NormalEpisodeService {
     return this.states.get(sessionId);
   }
 
+  /** The session's episode if the next message would continue it rather than start a new one. */
+  getLiveEpisode(sessionId: string, now: Date): NormalEpisodeState | undefined {
+    const existing = this.states.get(sessionId);
+    return existing && !this.isSpent(existing, now) ? existing : undefined;
+  }
+
+  /**
+   * Cut the session's context at `at`: the live episode's window restarts there, and episodes
+   * opened later never look back past it — their usual lookback would otherwise pull the
+   * discarded messages straight back in.
+   */
+  moveContextFloor(sessionId: string, at: Date): void {
+    this.contextFloors.set(sessionId, at);
+    const existing = this.states.get(sessionId);
+    if (existing && existing.contextWindowStart < at) {
+      existing.contextWindowStart = at;
+    }
+  }
+
   buildEpisodeKey(sessionId: string, episode: NormalEpisodeState): string {
     return `${sessionId}:episode:${episode.id}`;
   }
 
+  private windowStartFor(sessionId: string, now: Date): Date {
+    const lookback = new Date(now.getTime() - NormalEpisodeService.CONTEXT_WINDOW_MS);
+    const floor = this.contextFloors.get(sessionId);
+    return floor && floor > lookback ? floor : lookback;
+  }
+
+  private isSpent(existing: NormalEpisodeState, now: Date): boolean {
+    return (
+      now.getTime() - existing.lastTriggerAt.getTime() > this.idleTimeoutMs ||
+      existing.turnCount >= this.maxTurnsPerEpisode
+    );
+  }
+
   private shouldResetEpisode(existing: NormalEpisodeState | undefined, input: NormalEpisodeDecisionInput): boolean {
     if (!existing) return true;
-    if (input.now.getTime() - existing.lastTriggerAt.getTime() > this.idleTimeoutMs) {
-      return true;
-    }
-    if (existing.turnCount >= this.maxTurnsPerEpisode) {
+    if (this.isSpent(existing, input.now)) {
       return true;
     }
     const lower = input.userMessage.toLowerCase();

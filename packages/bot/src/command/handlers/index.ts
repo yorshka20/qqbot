@@ -6,6 +6,7 @@ export * from './BilibiliCommandHandler';
 export * from './BuiltinCommandHandler';
 export * from './ClusterCommandHandler';
 export * from './ClusterTicketsSyncCommandHandler';
+export * from './CompressCommandHandler';
 export * from './FileCommandHandler';
 export * from './Gpt2CommandHandler';
 export * from './GroupDedupCommandHandler';

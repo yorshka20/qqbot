@@ -50,7 +50,9 @@ export class SummarizeService {
       prompt,
       {
         temperature: options?.temperature ?? DEFAULT_TEMPERATURE,
-        reasoningEffort: 'low',
+        // A summary needs no reasoning, and only 'none' turns it off: at 'low' DeepSeek
+        // still thought 5–20K tokens to write a 1–3K-char summary, most of each call's cost.
+        reasoningEffort: 'none',
       },
       options?.provider ?? this.defaultProvider,
     );
