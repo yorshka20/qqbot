@@ -880,6 +880,50 @@ describe('LLMService resolvedModel stamping', () => {
       expect(res.text).toBe('结论如下');
       expect(res.stopReason).toBe('end_turn');
     });
+
+    /** Same as `run`, but the `noop` tool reports failure the way executeToolCall does. */
+    function runWithFailingNoop(service: LLMService, tools: ToolDefinition[], maxToolRounds?: number) {
+      return service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        reasoningEffort: 'none',
+        maxToolRounds,
+        toolExecutor: async (call) =>
+          call.name === END_TURN_TOOL_NAME
+            ? { __endTurn: true, result: 'ended' }
+            : { __failed: true, result: '卡片渲染失败：boom' },
+      });
+    }
+
+    it('ends in the same round as the last action when that action succeeds', async () => {
+      const { service, requests } = createService([{ text: '补一句', calls: ['noop', END_TURN_TOOL_NAME] }]);
+      const res = await run(service, [noop, endTurn]);
+
+      expect(requests).toHaveLength(1);
+      expect(res.text).toBe('补一句');
+      expect(res.stopReason).toBe('end_turn_tool');
+    });
+
+    it('voids an end_turn beside a failed call and keeps that round’s text for the final reply', async () => {
+      const { service, requests } = createService([
+        { text: '先看卡片', calls: ['noop', END_TURN_TOOL_NAME] },
+        { text: '卡片没出来，文字版：要点如下', calls: [END_TURN_TOOL_NAME] },
+      ]);
+      const res = await runWithFailingNoop(service, [noop, endTurn]);
+
+      expect(requests).toHaveLength(2);
+      const toolResults = requests[1].filter((m) => m.role === 'tool').map((m) => m.content);
+      expect(toolResults[0]).toBe('卡片渲染失败：boom');
+      expect(toolResults[1]).toContain('end_turn 没有生效');
+      expect(res.text).toBe('先看卡片\n\n卡片没出来，文字版：要点如下');
+      expect(res.stopReason).toBe('end_turn_tool');
+    });
+
+    it('keeps a voided round’s text when the forced final answer closes the loop', async () => {
+      const { service } = createService([{ text: '先看卡片', calls: ['noop', END_TURN_TOOL_NAME] }, { text: '文字版' }]);
+      const res = await runWithFailingNoop(service, [noop, endTurn], 1);
+
+      expect(res.text).toBe('先看卡片\n\n文字版');
+      expect(res.stopReason).toBe('max_rounds');
+    });
   });
 
   describe('reasoning echo at the provider boundary', () => {

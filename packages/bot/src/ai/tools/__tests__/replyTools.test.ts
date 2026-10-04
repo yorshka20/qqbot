@@ -287,6 +287,24 @@ describe('replyTools', () => {
       expect(result).toBe('Search result text');
     });
 
+    it('marks a failed result so the loop can void an end_turn beside it', async () => {
+      const toolManager = new ToolManager();
+      toolManager.registerTool(searchToolSpec);
+      toolManager.registerExecutor({
+        name: 'search',
+        execute: async (): Promise<ToolResult> => ({ success: false, reply: '搜索失败：timeout', error: 'timeout' }),
+      });
+
+      const result = await executeToolCall(
+        { name: 'search', arguments: '{"query":"test"}' },
+        makeHookContext('search'),
+        toolManager,
+        { execute: async () => true } as never,
+      );
+
+      expect(result).toEqual({ __failed: true, result: '搜索失败：timeout' });
+    });
+
     it('throws when task type not found', async () => {
       const toolManager = new ToolManager();
       const hookManager = { execute: async () => true } as never;

@@ -11,7 +11,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 @Tool({
   name: 'react',
   description:
-    '给当前这条群消息贴一个 QQ 表情回应（就是群里长按消息贴表情那个功能）。这是"说话"和"沉默"之间的第三档：某条消息值得表个态，但不值得专门回一句话时用它。贴完如果没有别的要说，直接 end_turn。',
+    '给当前这条群消息贴一个 QQ 表情回应（就是群里长按消息贴表情那个功能）。这是"说话"和"沉默"之间的第三档：某条消息值得表个态，但不值得专门回一句话时用它。没有别的要说就和 end_turn 在同一轮调用。',
   executor: 'react',
   visibility: {
     reply: { sources: ['qq-group'] },
@@ -24,7 +24,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
         '表情名字（如 笑哭 / 头秃 / 暗中观察），取值范围与回复正文里 [表情:名字] 的词表相同；也可以直接给一个 emoji 字符。',
     },
   },
-  examples: ['群友讲了个好笑的事，不需要接话 → face=笑哭 然后 end_turn', '有人吐槽加班，想表示共情 → face=头秃'],
+  examples: ['群友讲了个好笑的事，不需要接话 → face=笑哭，同一轮调用 end_turn', '有人吐槽加班，想表示共情 → face=头秃'],
   whenToUse:
     '当前消息值得一个轻量表态、但接一句话反而打断群聊节奏时。每个群有冷却时间，被限流会在返回里说明——那就是"这次别贴了"，不要改用文字硬凑一句。',
 })

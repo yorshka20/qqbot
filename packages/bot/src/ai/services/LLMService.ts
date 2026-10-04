@@ -120,6 +120,8 @@ const TOOL_VISION_NOTICE =
   '[工具补充材料] 以下是工具取回图片的 AI 视觉分析结果，不是新的用户发言。结合它继续回答 <current_query> 里的问题。';
 const TOOL_ROUNDS_EXHAUSTED_NOTICE =
   '[系统提示] 工具调用轮次已用尽，不要再调用任何工具。现在直接基于已获得的信息，回答 <current_query> 里的问题。';
+const END_TURN_VOIDED_NOTICE =
+  '[系统提示] 同一轮里有工具调用失败，所以 end_turn 没有生效，本次回复还没结束。先看失败原因，能补救就补救（比如卡片渲染失败就改用文字回复），再和最终内容一起调用 end_turn。那一轮写的文字没有丢，会和你之后的最终文本一起发出，不要重写。';
 const END_TURN_REQUIRED_NOTICE =
   '[系统提示] 你上一条只写了文字、没有调用工具，这段文字会照常发出。本次回复要调用 end_turn 才会结束：已经说完就调用 end_turn；还要做别的（比如刚才说要去查的事），现在调用对应的工具。不要把写过的话再写一遍。';
 
@@ -1006,6 +1008,8 @@ export class LLMService {
         // Set when a tool signalled end-of-turn (end_turn): finish this round's
         // bookkeeping, then exit the loop without asking the model for more.
         let endTurnRequested = false;
+        let endTurnMessageIndex = -1;
+        let roundHadFailure = false;
 
         for (let idx = 0; idx < executionResults.length; idx++) {
           const settlement = executionResults[idx];
@@ -1030,7 +1034,13 @@ export class LLMService {
             if (toolResult && typeof toolResult === 'object' && '__endTurn' in (toolResult as object)) {
               const wrapped = toolResult as { __endTurn: boolean; result: unknown };
               endTurnRequested = endTurnRequested || wrapped.__endTurn;
+              endTurnMessageIndex = toolMessages.length;
               toolResult = wrapped.result;
+            }
+
+            if (toolResult && typeof toolResult === 'object' && '__failed' in (toolResult as object)) {
+              roundHadFailure = true;
+              toolResult = (toolResult as { __failed: true; result: unknown }).result;
             }
 
             // Extract vision content parts from wrapped tool results
@@ -1055,6 +1065,7 @@ export class LLMService {
             const errorMessage =
               settlement.reason instanceof Error ? settlement.reason.message : String(settlement.reason);
             logger.error(`[LLMService] Tool execution error (${fc.name}):`, settlement.reason);
+            roundHadFailure = true;
             allToolCalls.push({ tool: fc.name, result: null, error: errorMessage });
             toolMessages.push({
               role: 'tool',
@@ -1062,6 +1073,17 @@ export class LLMService {
               content: `Tool execution failed: ${errorMessage}`,
             });
           }
+        }
+
+        // The model calls end_turn beside its last actions on the assumption they go through.
+        // When one fails, ending would drop it silently (a failed card leaves no reply at all),
+        // so the end is void: the model sees the failure and closes the turn again. The
+        // round's text was not delivered (it was meant as the final text), so it is held.
+        if (endTurnRequested && roundHadFailure) {
+          logger.info(`[LLMService] end_turn in round ${round + 1} voided by a failed tool call in the same round`);
+          endTurnRequested = false;
+          toolMessages[endTurnMessageIndex] = { ...toolMessages[endTurnMessageIndex], content: END_TURN_VOIDED_NOTICE };
+          heldText = roundText;
         }
 
         // Append single assistant message with all tool_calls, then all tool result messages.
@@ -1161,6 +1183,7 @@ export class LLMService {
 
     return {
       ...finalResponse,
+      text: joinRoundText(heldText, finalResponse.text),
       usage: sawUsage ? { ...accUsage } : finalResponse.usage,
       reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
       resolvedProviderName: currentProviderName,

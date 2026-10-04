@@ -173,6 +173,11 @@ export async function executeToolCall(
     return { __endTurn: true, result: baseResult };
   }
 
+  // Loop-control sentinel: a failed call voids an end_turn issued in the same round.
+  if (!result.success) {
+    return { __failed: true, result: baseResult };
+  }
+
   // When tool returns multimodal content (e.g. images), wrap with sentinel so LLMService
   // can inject ContentPart[] into the conversation for vision providers.
   if (result.contentParts?.length) {

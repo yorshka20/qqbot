@@ -674,7 +674,8 @@ delivery actions with non-overlapping semantics:
   which `LLMService.generateWithTools` turns into stopReason `end_turn_tool` — the
   loop exits without demanding another model response. Text in the same round is
   the final text; with no text, `ResponseDispatchStage` queues no reply at all
-  (Path 0).
+  (Path 0). A failed call in the same round voids it (see
+  [Turn termination](#turn-termination)).
 
 Tool-round text and `send_message` both go through `ConversationMessageSender`: the target comes from
 the hook context, leaked tool-call blocks are stripped and `[表情:名字]` /
@@ -700,9 +701,15 @@ round decide:
 - text again — held as well, and asked again.
 
 A text-only round with no round left under `maxToolRounds` ends the turn with its
-text (stopReason `max_rounds`). The scene prompt has the model write its final text
-in the same round as `end_turn`, so the extra model call — and the wait it adds
-before the reply goes out — is spent only when it does not. Loops without `end_turn`
+text (stopReason `max_rounds`). The scene prompt and tool descriptions have the model
+call `end_turn` in the same round as the turn's last content — its final text, or a
+last `send_card` / `speak` / `react` — so a round spent on `end_turn` alone, which
+re-sends the whole conversation and delays the reply, happens only when it does not.
+That makes `end_turn` a claim that the round's other calls went through. When one of
+them fails (`executeToolCall` marks a `success: false` result with `__failed`; a thrown
+call counts too), the end is void: the `end_turn` result is replaced with a notice, the
+round's text is held for the final reply, and the loop continues so the model can
+recover — otherwise a failed card would leave no reply at all. Loops without `end_turn`
 (subagents, reflection, fanout) keep ending on the first round without tool calls.
 
 #### Delivery markers
