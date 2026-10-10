@@ -3,13 +3,14 @@
  * To add a backend: register in `buildBackendRegistry()` with a stable `id` string.
  *
  * Valid `id` values (for `lanRelay.*.disabledStaticBackends` in config.d):
- *   files, cluster, lan, tickets, reports, persona, insights, moments, zhihu, qdrant, stats, memory, output, docs, logs
+ *   files, cluster, lan, tickets, reports, persona, insights, moments, zhihu, qdrant, stats, memory, output, docs, logs, agents
  */
 
 import { join } from 'node:path';
 import type { Config } from '@/core/config';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { ClusterAPIBackend } from './ClusterAPIBackend';
+import { CodingAgentAPIBackend } from './CodingAgentAPIBackend';
 import { DailyStatsBackend } from './DailyStatsBackend';
 import { DocsPreviewBackend } from './DocsPreviewBackend';
 import { FileManagerBackend } from './FileManagerBackend';
@@ -47,6 +48,7 @@ function buildBackendRegistry(): BackendFactory[] {
   return [
     { id: 'files', create: (ctx) => new FileManagerBackend(ctx.baseDir) },
     { id: 'cluster', create: () => new ClusterAPIBackend() },
+    { id: 'agents', create: () => new CodingAgentAPIBackend() },
     { id: 'lan', create: () => new LanAPIBackend() },
     {
       id: 'tickets',

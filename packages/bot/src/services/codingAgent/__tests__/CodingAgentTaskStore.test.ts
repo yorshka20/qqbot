@@ -145,6 +145,45 @@ describe('CodingAgentTaskStore reads', () => {
     expect(store.readOutput(join(root, 'nowhere'))).toEqual({ stdout: '', stderr: '' });
   });
 
+  test('a task left running by a previous process is closed, not left claiming to run', () => {
+    const root = mkdtempSync(join(tmpdir(), 'coding-agent-store-'));
+    const store = new CodingAgentTaskStore(root);
+    const open = (overrides: Partial<AgentTask>) => {
+      const task = makeTask(overrides);
+      const dir = store.claimDirectory(task);
+      task.recordDirectory = dir;
+      store.create(task, dir);
+      return { task, dir };
+    };
+
+    const running = open({});
+    running.task.status = 'running';
+    store.record(running.task, { kind: 'running', at: CREATED_AT.getTime() + 1_000, message: '开始执行' });
+    const ended = open({ id: 'finished', prompt: '乙', status: 'completed' });
+    store.record(ended.task, { kind: 'completed', at: CREATED_AT.getTime() + 1_000, message: '执行完成' });
+    const directory = running.dir;
+
+    expect(store.closeInterruptedTasks('服务重启，任务中断')).toBe(1);
+
+    const closed = JSON.parse(readFileSync(join(directory, TASK_STATE_FILE), 'utf8'));
+    expect(closed.status).toBe('failed');
+    expect(closed.error).toBe('服务重启，任务中断');
+    expect(closed.finishedAt).toBeDefined();
+    expect(readFileSync(join(directory, TASK_RECORD_FILE), 'utf8')).toContain('## 错误\n\n服务重启，任务中断');
+    expect(store.readEvents(directory).at(-1)).toMatchObject({ kind: 'failed', message: '服务重启，任务中断' });
+    // A record that already ended is left alone.
+    expect(store.get('finished')?.status).toBe('completed');
+  });
+
+  test('closing interrupted tasks twice is a no-op the second time', () => {
+    const { store, task } = openTask();
+    task.status = 'running';
+    store.record(task, { kind: 'running', at: CREATED_AT.getTime() + 1_000 });
+
+    expect(store.closeInterruptedTasks('中断')).toBe(1);
+    expect(store.closeInterruptedTasks('中断')).toBe(0);
+  });
+
   test('listing a root that does not exist yet is empty, not an error', () => {
     const store = new CodingAgentTaskStore(join(tmpdir(), 'coding-agent-store-missing', 'nested'));
     expect(store.list()).toEqual([]);

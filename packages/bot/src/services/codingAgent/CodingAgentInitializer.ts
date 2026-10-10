@@ -34,6 +34,13 @@ export class CodingAgentInitializer {
 
     serviceInstance = new CodingAgentService(agentConfig);
 
+    // Nothing survives a restart to finish a task that was mid-flight, so close those
+    // records now rather than let them claim forever that they are still running.
+    const interrupted = serviceInstance.getTaskStore().closeInterruptedTasks('服务重启，任务中断');
+    if (interrupted > 0) {
+      logger.warn(`[CodingAgentInitializer] Closed ${interrupted} task record(s) interrupted by a restart`);
+    }
+
     const container = getContainer();
     const registry = container.resolve(ProjectRegistry);
     serviceInstance.setProjectRegistry(registry);

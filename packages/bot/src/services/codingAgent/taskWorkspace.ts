@@ -140,8 +140,12 @@ export function taskRecordLine(at: Date, message: string): string {
   return `- ${localClock(at)} ${message}`;
 }
 
-/** The final state appended once a task stops running. */
-export function renderTaskOutcome(task: AgentTask, at: Date): string {
+/**
+ * The final state appended once a task stops running. Takes just the outcome fields so a
+ * task closed after the fact (see `CodingAgentTaskStore.closeInterruptedTasks`) can be
+ * rendered from its stored state too.
+ */
+export function renderTaskOutcome(task: Pick<AgentTask, 'status' | 'result' | 'error'>, at: Date): string {
   if (task.status === 'completed') {
     return ['', taskRecordLine(at, '执行完成'), '', '## 结果', '', task.result || '（无输出）', ''].join('\n');
   }

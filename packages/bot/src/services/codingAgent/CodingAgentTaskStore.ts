@@ -153,6 +153,33 @@ export class CodingAgentTaskStore {
     return null;
   }
 
+  /**
+   * Close records a previous process left mid-flight. Nothing survives a restart to finish
+   * them, so a `running` record would otherwise claim forever that a task is still working.
+   */
+  closeInterruptedTasks(reason: string): number {
+    let closed = 0;
+    for (const listing of this.list()) {
+      if (listing.status !== 'running') {
+        continue;
+      }
+      const at = new Date();
+      listing.status = 'failed';
+      listing.error = reason;
+      listing.finishedAt = at.toISOString();
+
+      try {
+        writeFileSync(join(listing.directory, TASK_STATE_FILE), `${JSON.stringify(listing, null, 2)}\n`);
+        appendFileSync(join(listing.directory, TASK_RECORD_FILE), renderTaskOutcome(listing, at));
+        this.appendEvent(listing.directory, { kind: 'failed', at: at.getTime(), message: reason });
+        closed++;
+      } catch (error) {
+        logger.warn(`[CodingAgentTaskStore] Could not close interrupted task ${listing.id}:`, error);
+      }
+    }
+    return closed;
+  }
+
   /** A task's timeline, oldest first. */
   readEvents(directory: string): TaskRecordEvent[] {
     const events: TaskRecordEvent[] = [];
