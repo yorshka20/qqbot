@@ -1,6 +1,6 @@
 /**
  * CodingAgentMcpServer — exposes bot capabilities to the spawned coding-agent
- * CLI (claude or codex) as MCP tools over Streamable HTTP.
+ * CLI (claude, codex or dsh) as MCP tools over Streamable HTTP.
  *
  * ## Multi-session architecture
  *

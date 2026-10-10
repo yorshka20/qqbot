@@ -3,7 +3,7 @@
  *
  * Integrates the MCP tool server and the task manager with the bot:
  * - Starting/stopping the MCP server
- * - Triggering coding tasks from bot commands, run by the claude or codex CLI
+ * - Triggering coding tasks from bot commands, run by the claude, codex or dsh CLI
  * - Sending task results back to users
  */
 

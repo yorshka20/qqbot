@@ -26,7 +26,7 @@ export interface ProjectContext {
 export type AgentTaskType = 'dev' | 'new-project' | 'workspace';
 
 /** The CLIs a task can be executed by. The prompt and requirements are the same for all of them. */
-export const AGENT_EXECUTOR_NAMES = ['claude', 'codex'] as const;
+export const AGENT_EXECUTOR_NAMES = ['claude', 'codex', 'dsh'] as const;
 export type AgentExecutorName = (typeof AGENT_EXECUTOR_NAMES)[number];
 
 /** Per-task overrides of the executor's model and reasoning effort, validated against its catalog. */

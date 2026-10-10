@@ -1,7 +1,7 @@
 /**
  * Coding Agent Plugin
  *
- * Registers one command per executor (`/claude`, `/codex`). The commands are
+ * Registers one command per executor (`/claude`, `/codex`, `/dsh`). The commands are
  * identical — same subcommands, prompt, project registry and task queue — and
  * differ only in which CLI runs the task they create.
  */
@@ -62,7 +62,7 @@ function runOptionsRejected(executor: AgentExecutorName, error: AgentRunOptionsE
 @RegisterPlugin({
   name: 'codingAgent',
   version: '1.0.0',
-  description: 'Coding agent integration - trigger and manage claude / codex development tasks',
+  description: 'Coding agent integration - trigger and manage claude / codex / dsh development tasks',
 })
 export class CodingAgentPlugin extends PluginBase {
   private commandManager!: CommandManager;

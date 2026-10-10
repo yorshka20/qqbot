@@ -37,7 +37,7 @@ export interface ToolVisibility {
   internal?: boolean;
   reflection?: boolean; // reserved; not consumed yet
   /**
-   * Callable by a local coding agent (claude / codex CLI) over the coding-agent
+   * Callable by a local coding agent (claude / codex / dsh CLI) over the coding-agent
    * MCP server, scoped to the conversation that requested the task. Only for
    * tools that run without a reply turn (no `hookContext` reads) and never for
    * `adminOnly` ones.

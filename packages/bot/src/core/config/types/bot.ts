@@ -41,15 +41,26 @@ export interface ProjectRegistryConfig {
 }
 
 export interface AgentExecutorConfig {
-  // CLI binary (default: the executor name, 'claude' / 'codex')
+  // CLI binary (default: the executor name, 'claude' / 'codex' / 'dsh')
   cliPath?: string;
-  // Model passed to the CLI (default: 'claude-opus-5' for claude, 'gpt-6-sol' for codex)
+  // Model passed to the CLI (default: 'claude-opus-5' for claude, 'gpt-6-sol' for codex,
+  // 'deepseek-flash' for dsh)
   model?: string;
   // Reasoning effort when a task does not set one (default: the CLI's own default)
   effort?: string;
-  // Extra models `--model` may select. Only read for claude, whose CLI has no model
-  // catalog; codex models come from `codex debug models`.
+  // Extra models `--model` may select. Read for claude and dsh, whose CLIs expose no
+  // model catalog to query; codex models come from `codex debug models`.
   models?: string[];
+}
+
+// DSH reaches its models through a named provider route, so it carries one field the
+// other executors do not: which route authenticates the run.
+export interface DshExecutorConfig extends AgentExecutorConfig {
+  // Provider route (default: 'deepseek-account'). 'deepseek-account' spends the credits
+  // of the DeepSeek Harness Desktop login already stored under $DSH_HOME and needs no
+  // secret in the bot's environment; 'deepseek-official' bills an API key and therefore
+  // needs DEEPSEEK_API_KEY exported to the bot.
+  provider?: string;
 }
 
 export interface CodingAgentConfig {
@@ -57,10 +68,11 @@ export interface CodingAgentConfig {
   port: number;
   host?: string;
   // Executor used when a task does not name one (default: 'claude')
-  defaultExecutor?: 'claude' | 'codex';
+  defaultExecutor?: 'claude' | 'codex' | 'dsh';
   executors?: {
     claude?: AgentExecutorConfig;
     codex?: AgentExecutorConfig;
+    dsh?: DshExecutorConfig;
   };
   // Working directory for tasks that do not resolve to a registered project
   workingDirectory?: string;

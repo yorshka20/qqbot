@@ -30,7 +30,7 @@ function createManager(config: Partial<CodingAgentConfig> = {}) {
   const executor = shellExecutor();
   const manager = new CodingAgentTaskManager(
     { enabled: true, port: 0, idleTimeout: '1s', timeout: '1h', ...config },
-    { claude: executor, codex: executor },
+    { claude: executor, codex: executor, dsh: executor },
     'http://127.0.0.1:0/mcp',
   );
   const updates: AgentTask[] = [];
@@ -143,7 +143,7 @@ describe('CodingAgentTaskManager workspace tasks', () => {
     };
     const manager = new CodingAgentTaskManager(
       { enabled: true, port: 0, idleTimeout: '30s', workspaceRoot },
-      { claude: executor, codex: executor },
+      { claude: executor, codex: executor, dsh: executor },
       'http://127.0.0.1:0/mcp',
     );
     manager.setPromptManager(new PromptManager());

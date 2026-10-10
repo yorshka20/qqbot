@@ -1159,6 +1159,26 @@
         "model": "gpt-6-sol"
         // Default reasoning effort (default: model_reasoning_effort in ~/.codex/config.toml)
         // "effort": "high"
+      },
+      "dsh": {
+        // CLI path (default: 'dsh'). The DeepSeek Harness desktop app installs
+        // this onto PATH; without that, point it at the launcher inside the
+        // app bundle (macOS: /Applications/DeepSeek Harness.app/Contents/
+        // Resources/runtime/cli/bin/dsh).
+        "cliPath": "dsh",
+        // Provider route (default: 'deepseek-account'). 'deepseek-account'
+        // spends the Desktop app's stored login under $DSH_HOME and needs no
+        // secret in the bot's environment; 'deepseek-official' bills an API key
+        // and therefore needs DEEPSEEK_API_KEY exported to the bot.
+        "provider": "deepseek-account",
+        // Passed to the run (default: 'deepseek-flash'). `/dsh --model` may pick
+        // any model on the route; `/dsh models` lists them.
+        "model": "deepseek-flash",
+        // Default reasoning effort (off / low / high / max; default: route default)
+        // "effort": "high",
+        // Extra models `/dsh --model` may select beyond the default and the
+        // route's advisory catalog (deepseek-flash / deepseek-v4-pro)
+        "models": ["deepseek-v4-pro"]
       }
     },
     // Kill a task whose CLI shows no activity (output or MCP call) for this long (default: '15m')

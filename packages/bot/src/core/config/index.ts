@@ -69,6 +69,7 @@ export type {
   AgentExecutorConfig,
   BotSelfConfig,
   CodingAgentConfig,
+  DshExecutorConfig,
   ProjectRegistryConfig,
   StaticServerConfig,
 } from './types/bot';

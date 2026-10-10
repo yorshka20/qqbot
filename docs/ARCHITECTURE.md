@@ -152,7 +152,7 @@ The system is organized into the following layers:
 12. **Context Layer** (`src/context/`): HookContext building, conversation context management
 13. **Database Layer** (`src/database/`): SQLite and MongoDB adapters
 14. **Plugin Layer** (`src/plugins/`): Config-based plugin system
-15. **Services Layer** (`src/services/`): coding agent (claude / codex), card rendering, retrieval (search/RAG/fetch), TTS, static server
+15. **Services Layer** (`src/services/`): coding agent (claude / codex / dsh), card rendering, retrieval (search/RAG/fetch), TTS, static server
 16. **Cluster Layer** (`src/cluster/`): Agent cluster for multi-worker coordination
 17. **Message Layer** (`src/message/`): Message construction, parsing, and caching
 18. **Agenda Layer** (`src/agenda/`): Scheduled and event/message-triggered task execution (`cron` / `once` / `onEvent` / `onMessage` triggers, with optional TTL + fire-budget lifecycle; the LLM can self-register ephemeral tasks via `schedule_task` / `watch_messages` tools)
@@ -866,7 +866,7 @@ so it returns once the task is queued.
 | `reply` | Main reply generation loop |
 | `subagent` | Sub-agent spawned by the bot |
 | `internal` | Internal system use only |
-| `agent` | A local coding agent (claude / codex CLI) over the coding-agent MCP server, run in the requesting conversation's scope. Only tools that need no reply turn; `adminOnly` tools never qualify |
+| `agent` | A local coding agent (claude / codex / dsh CLI) over the coding-agent MCP server, run in the requesting conversation's scope. Only tools that need no reply turn; `adminOnly` tools never qualify |
 
 ### ToolManager
 
@@ -1022,16 +1022,16 @@ Schema introspection travels through the same read-only runner (`SELECT`s over `
 
 ## Coding Agent Service
 
-`src/services/codingAgent/` runs one-off development tasks requested from chat (`/claude …`, `/codex …`) and by agenda todo workers. The two commands are the same command: one `CodingAgentPlugin` registers a command per executor, and both share the subcommands, the project registry, the task prompt templates (`prompts/coding-agent/`), the per-project serial queue, the MCP callback server and result delivery. They differ only in which CLI executes the task.
+`src/services/codingAgent/` runs one-off development tasks requested from chat (`/claude …`, `/codex …`, `/dsh …`) and by agenda todo workers. The commands are the same command: one `CodingAgentPlugin` registers a command per executor, and all of them share the subcommands, the project registry, the task prompt templates (`prompts/coding-agent/`), the per-project serial queue, the MCP callback server and result delivery. They differ only in which CLI executes the task.
 
 | Component | Responsibility |
 |-----------|---------------|
 | `CodingAgentService` | Entry point: trigger / cancel / status, delivers results to the requester |
 | `CodingAgentTaskManager` | Task records, per-project queue (serial per working tree, across executors), prompt rendering, process lifecycle |
-| `executors/` | `ClaudeExecutor` / `CodexExecutor` — translate a task into a CLI invocation, including how that CLI is pointed at the MCP server with `X-Task-Id` |
+| `executors/` | `ClaudeExecutor` / `CodexExecutor` / `DshExecutor` — translate a task into a CLI invocation, including how that CLI is pointed at the MCP server with `X-Task-Id` |
 | `CodingAgentMcpServer` | `bot_*` tools the running CLI calls back (see MCP Surfaces) |
 
-Adding an executor means adding its name to `AGENT_EXECUTOR_NAMES` and an `AgentExecutor` implementation; the command, queue and prompt come with it. An executor supplies its model catalog (`listModels`: codex reads `codex debug models`; claude, which has no catalog, offers its CLI aliases plus `executors.claude.models`) and recovers the final answer from stdout (`finalMessage`; claude runs in `stream-json` so it is never silent).
+Adding an executor means adding its name to `AGENT_EXECUTOR_NAMES` and an `AgentExecutor` implementation; the command, queue and prompt come with it. An executor supplies its model catalog (`listModels`: codex reads `codex debug models`; claude and dsh, whose CLIs expose no catalog to query, offer their own known ids plus `executors.<name>.models`) and recovers the final answer from stdout (`finalMessage`; claude runs in `stream-json` and dsh writes `--json` run events, so neither is silent while it works).
 
 - **Run options** — `/codex --model <id> --effort <level> …` (also `-m` / `-e` / `--model=`). Explicit options are checked against the catalog before the task is created; a typo or an effort the model does not support is refused with the valid values. `/codex models` lists them.
 - **Progress** — the agent's `bot_notify_task` `started` / `progress` reports are relayed to the requester's chat as they arrive. A `completed` / `failed` report does not change the task: the process exit is the only thing that finalizes it. The shared `prompts/coding-agent/progress-protocol.md` tells every task template when to report.
@@ -1040,7 +1040,7 @@ Adding an executor means adding its name to `AGENT_EXECUTOR_NAMES` and an `Agent
 - **Workspace tasks** — `taskType: 'workspace'` does whatever was asked from chat — research, a web page, a script, a document — without touching a project. `/claude <task>` / `/codex <task>` and the `delegate_agent_task` tool create one; only an explicit `@project` makes a `dev` task inside that repository. Each runs in its own directory under `workspaceRoot` (default `<tmpdir>/qqbot-agent-workspaces`, deliberately outside any repository because both CLIs load `CLAUDE.md` / `AGENTS.md` from parent directories), uses `prompts/coding-agent/task.workspace.md`, and all of them share one serial queue because they spend the same subscription quota. codex gets `-c web_search="live"`; `codex exec` has no web search otherwise.
 - **Delegation from chat** — the `delegate_agent_task` reply tool (`adminOnly`) lets the chat LLM hand a long task to an agent and end its turn; the report and any files arrive later in the same conversation. Opening it to non-admins needs an isolated execution environment first: the agent runs as the operator's account and can read the whole disk, including every credential.
 - **What the agent can send** — `bot_send_message`, `bot_send_card` (a card deck rendered like `send_card`) and `bot_send_file` (workspace tasks only — a dev task's directory is a repository, which can hold secrets; the path is resolved through symlinks and must stay in the task directory; `maxFileMB`, default 30) always go to the task's requester — the agent cannot choose a recipient. `bot_command` (restart / reload) is refused to workspace tasks.
-- **Bot tools** — `AgentToolBridge` offers every `agent`-scoped tool (chat history, memory, RAG) over MCP and runs it through `ToolManager.execute` with a synthetic hook context for the requester's conversation (`hooks/syntheticHookContext.ts`, shared with the subagent `ToolRunner`), so an agent only sees the requesting chat's data. Codex authenticates with the ChatGPT login only: `CODEX_API_KEY` / `OPENAI_API_KEY` are removed from its environment (`utils/codexCli.ts`), and its MCP server is registered per process with `-c mcp_servers.…` overrides rather than in `~/.codex/config.toml`.
+- **Bot tools** — `AgentToolBridge` offers every `agent`-scoped tool (chat history, memory, RAG) over MCP and runs it through `ToolManager.execute` with a synthetic hook context for the requester's conversation (`hooks/syntheticHookContext.ts`, shared with the subagent `ToolRunner`), so an agent only sees the requesting chat's data. Codex authenticates with the ChatGPT login only: `CODEX_API_KEY` / `OPENAI_API_KEY` are removed from its environment (`utils/codexCli.ts`), and its MCP server is registered per process with `-c mcp_servers.…` overrides rather than in `~/.codex/config.toml`. DSH authenticates in the same spirit — the default `executors.dsh.provider` is `deepseek-account`, which spends the DeepSeek Harness Desktop login under `$DSH_HOME` and needs no API key in the bot's environment — and points at the MCP server through a per-task `--patch` overlay instead of a stored profile.
 
 ## Cluster System
 
@@ -1091,7 +1091,7 @@ The bot talks MCP on three surfaces — once as a client, twice as a server.
 |---|---|---|---|
 | `SearxngMcpClient` | Bot is the **client** | `src/services/retrieval/searxng/mcp/` | Spawns a stdio MCP server (`mcp-searxng`) and calls its `searxng_web_search` tool. This is not a general MCP client — it is one of SearXNG's two transports, the sibling of `SearXNGClient`'s direct HTTP. |
 | `HubMCPServer` | Bot is the **server** | `src/cluster/hub/` | Streamable-HTTP endpoint at `/mcp`, consumed by cluster workers' CLI MCP clients. Caller identity comes from an `X-Worker-Id` header. |
-| `CodingAgentMcpServer` | Bot is the **server** | `src/services/codingAgent/` | Streamable-HTTP endpoint at `/mcp` on its own port, consumed by the `claude` / `codex` CLI that `CodingAgentTaskManager` spawns through its executor. Exposes only what the CLI cannot do for itself: `bot_notify_task` / `bot_send_message` (the channel back to the requester) and `bot_info` / `bot_command`. Caller identity comes from an `X-Task-Id` header. |
+| `CodingAgentMcpServer` | Bot is the **server** | `src/services/codingAgent/` | Streamable-HTTP endpoint at `/mcp` on its own port, consumed by the `claude` / `codex` / `dsh` CLI that `CodingAgentTaskManager` spawns through its executor. Exposes only what the CLI cannot do for itself: `bot_notify_task` / `bot_send_message` (the channel back to the requester) and `bot_info` / `bot_command`. Caller identity comes from an `X-Task-Id` header. |
 
 MCP earns its place only at process boundaries. Inside the bot's own reply
 pipeline the `@Tool()` registry is strictly better — same-process calls need no

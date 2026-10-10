@@ -1,5 +1,5 @@
 // Hands a long, multi-step task — an investigation or something to build — to a
-// local coding-agent CLI (claude / codex).
+// local coding-agent CLI (claude / codex / dsh).
 // The reply ends right away; the agent's progress and final report arrive in this
 // conversation later through CodingAgentService.
 
@@ -21,7 +21,7 @@ function isExecutorName(value: unknown): value is AgentExecutorName {
 @Tool({
   name: 'delegate_agent_task',
   description:
-    '把一个需要长时间、多步骤完成的任务交给本地 agent（claude / codex）异步执行：深度调研，或做出一个东西（网页、脚本、文档、数据）。agent 在独立工作区里运行，能联网搜索、抓取网页、写代码并实际运行验证，产物可以作为文件发回，耗时几分钟到几十分钟。调用后立即返回；agent 的进度、汇报和文件会自动发到当前会话，不需要你等待或转述。',
+    '把一个需要长时间、多步骤完成的任务交给本地 agent（claude / codex / dsh）异步执行：深度调研，或做出一个东西（网页、脚本、文档、数据）。agent 在独立工作区里运行，能联网搜索、抓取网页、写代码并实际运行验证，产物可以作为文件发回，耗时几分钟到几十分钟。调用后立即返回；agent 的进度、汇报和文件会自动发到当前会话，不需要你等待或转述。',
   whenToUse:
     '只用于你自己和 research 工具做不了的重任务：需要多来源综合对比的调研、需要跑代码或实验验证、需要产出完整报告或文件（网页、脚本、文档等）。简单查询、单个网页、几句话能答的问题用 research 或直接回答。调用后用一句话告诉对方已经安排、大概要多久，然后结束本次回复，不要自己去完成这个任务。',
   examples: [
