@@ -4,7 +4,7 @@
  * delegated to its executor.
  */
 
-import { mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type Subprocess, spawn } from 'bun';
@@ -15,6 +15,13 @@ import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
 import type { AgentExecutor } from './executors';
 import type { AgentInvocation } from './executors/AgentExecutor';
+import {
+  renderTaskOutcome,
+  renderTaskRecord,
+  TASK_RECORD_FILE,
+  taskRecordLine,
+  workspaceDirectoryName,
+} from './taskWorkspace';
 import type { AgentExecutorName, AgentTask, AgentTaskType, ProjectContext, TaskNotification } from './types';
 
 type TaskUpdateCallback = (task: AgentTask) => void;
@@ -34,6 +41,9 @@ const MAX_ERROR_CHARS = 2000;
  * collide on files, but every one of them spends the same subscription quota.
  */
 const WORKSPACE_QUEUE_KEY = 'workspace';
+
+/** Bounded only to turn a pathological name collision into a loud failure instead of a spin. */
+const MAX_WORKSPACE_NAME_ATTEMPTS = 50;
 
 const DEFAULT_IDLE_TIMEOUT = '15m';
 const DEFAULT_TIMEOUT = '3h';
@@ -90,6 +100,10 @@ function collectOutput(stream: ReadableStream<Uint8Array>, onActivity: () => voi
 
 function formatMinutes(ms: number): string {
   return `${Math.round(ms / 60_000)} 分钟`;
+}
+
+function isAlreadyExists(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | null)?.code === 'EEXIST';
 }
 
 export interface CreateTaskOptions {
@@ -232,22 +246,24 @@ export class CodingAgentTaskManager {
     options: CreateTaskOptions,
   ): AgentTask {
     const id = randomUUID();
-    const taskDirectory =
-      options.taskType === 'workspace' ? this.createWorkspace(id) : workingDirectory || this.config.workingDirectory;
+    const createdAt = new Date();
     const task: AgentTask = {
       id,
       executor: options.executor,
       model: options.model,
       effort: options.effort,
       prompt,
-      workingDirectory: taskDirectory,
-      createdAt: new Date(),
+      workingDirectory: '',
+      createdAt,
       status: 'pending',
       requestedBy,
       taskType: options.taskType || 'dev',
       projectContext: options.projectContext,
       suppressDefaultNotification: options.suppressDefaultNotification,
     };
+
+    task.workingDirectory =
+      task.taskType === 'workspace' ? this.createWorkspace(task) : workingDirectory || this.config.workingDirectory;
 
     this.tasks.set(task.id, task);
     logger.info(
@@ -256,10 +272,46 @@ export class CodingAgentTaskManager {
     return task;
   }
 
-  private createWorkspace(taskId: string): string {
-    const workspace = join(this.workspaceRoot, taskId);
-    mkdirSync(workspace, { recursive: true });
-    return workspace;
+  /**
+   * Give a workspace task its own directory and leave the request in it, so the
+   * directory answers "what was this?" long after the task is gone from memory.
+   * The directory is created non-recursively in a loop rather than with an
+   * existence check first: two tasks created in the same second would otherwise
+   * race their way into the same name.
+   */
+  private createWorkspace(task: AgentTask): string {
+    mkdirSync(this.workspaceRoot, { recursive: true });
+    const base = workspaceDirectoryName(task.prompt, task.id, task.createdAt);
+
+    for (let attempt = 1; attempt <= MAX_WORKSPACE_NAME_ATTEMPTS; attempt++) {
+      const workspace = join(this.workspaceRoot, attempt === 1 ? base : `${base}-${attempt}`);
+      try {
+        mkdirSync(workspace);
+        writeFileSync(join(workspace, TASK_RECORD_FILE), renderTaskRecord(task));
+        return workspace;
+      } catch (error) {
+        if (!isAlreadyExists(error)) {
+          throw error;
+        }
+      }
+    }
+
+    throw new Error(
+      `[CodingAgentTaskManager] Could not create a workspace directory for task ${task.id}: ` +
+        `${MAX_WORKSPACE_NAME_ATTEMPTS} directories named ${base}* already exist under ${this.workspaceRoot}`,
+    );
+  }
+
+  /** Append one line to a workspace task's record. Never fatal: the record is for the operator, not the task. */
+  private appendTaskRecord(task: AgentTask, content: string): void {
+    if (task.taskType !== 'workspace' || !task.workingDirectory) {
+      return;
+    }
+    try {
+      appendFileSync(join(task.workingDirectory, TASK_RECORD_FILE), content);
+    } catch (error) {
+      logger.warn(`[CodingAgentTaskManager] Could not write the task record for ${task.id}:`, error);
+    }
   }
 
   /**
@@ -601,6 +653,7 @@ export class CodingAgentTaskManager {
   }
 
   private notifyTaskUpdate(task: AgentTask): void {
+    this.recordTaskTransition(task);
     if (this.taskUpdateCallback) {
       this.taskUpdateCallback(task);
     }
@@ -611,6 +664,19 @@ export class CodingAgentTaskManager {
         this.taskCompletionResolvers.delete(task.id);
         resolver(task);
       }
+    }
+  }
+
+  /**
+   * The record's lifecycle lines. Every status change passes through
+   * {@link notifyTaskUpdate}, so a task cancelled while still queued is recorded
+   * even though it never started.
+   */
+  private recordTaskTransition(task: AgentTask): void {
+    if (task.status === 'running') {
+      this.appendTaskRecord(task, `${taskRecordLine(new Date(), '开始执行')}\n`);
+    } else if (task.status === 'completed' || task.status === 'failed') {
+      this.appendTaskRecord(task, renderTaskOutcome(task, new Date()));
     }
   }
 
