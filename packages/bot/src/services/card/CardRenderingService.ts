@@ -5,6 +5,7 @@ import type { AIManager } from '@/ai/AIManager';
 import { extractExpectedJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
+import { CardAppearanceService } from './CardAppearanceService';
 import { CardRenderer } from './CardRenderer';
 import { type CardData, parseCardDeck } from './cardTypes';
 
@@ -17,7 +18,10 @@ export class CardRenderingService {
   private cardRenderer: CardRenderer;
   private static readonly CARD_RENDERING_THRESHOLD = 150; // characters
 
-  constructor(@inject(DITokens.AI_MANAGER) private aiManager: AIManager) {
+  constructor(
+    @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
+    @inject(CardAppearanceService) private appearance: CardAppearanceService,
+  ) {
     this.cardRenderer = CardRenderer.getInstance();
   }
 
@@ -70,6 +74,7 @@ export class CardRenderingService {
       provider: providerName,
       // The actually-used runtime model wins over the static config default.
       model: model ?? this.resolveModelName(providerName),
+      appearance: this.appearance.resolve(),
     });
     return imageBuffer.toString('base64');
   }
@@ -87,6 +92,7 @@ export class CardRenderingService {
       const imageBuffer = await this.cardRenderer.render(cards, {
         provider: providerName,
         model: this.resolveModelName(providerName),
+        appearance: this.appearance.resolve(),
       });
 
       // Convert buffer to base64

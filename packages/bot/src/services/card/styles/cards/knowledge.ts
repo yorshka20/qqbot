@@ -2,18 +2,18 @@
 
 export const KNOWLEDGE_STYLES = `
   .knowledge-card {
-    background: linear-gradient(180deg, #faf8f5 0%, #f0ebe3 100%);
+    background: var(--card-knowledge-bg);
     border-radius: 16px;
     padding: 28px 30px;
     margin: 0;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 8px 24px var(--card-surface-shadow);
   }
   .term-header {
     display: flex;
     align-items: center;
     margin-bottom: 22px;
     padding-bottom: 16px;
-    border-bottom: 2px solid rgba(216, 67, 21, 0.15);
+    border-bottom: 2px solid var(--card-rose-chip-line);
   }
   .term-icon {
     font-size: 32px;
@@ -21,14 +21,14 @@ export const KNOWLEDGE_STYLES = `
     flex-shrink: 0;
   }
   .term-header h2 {
-    color: #c62828;
+    color: var(--card-rose-ink);
     font-size: 22px;
     font-weight: 700;
     line-height: 1.35;
     letter-spacing: 0.02em;
   }
   .definition {
-    background: #ffffff;
+    background: var(--card-surface);
     padding: 26px 28px;
     border-radius: 12px;
     line-height: 1.85;
@@ -37,10 +37,8 @@ export const KNOWLEDGE_STYLES = `
     font-size: 15px;
     white-space: pre-wrap;
     word-wrap: break-word;
-    box-shadow:
-      0 4px 16px rgba(0, 0, 0, 0.06),
-      0 1px 3px rgba(0, 0, 0, 0.04);
-    border: 1px solid rgba(0, 0, 0, 0.04);
+    box-shadow: 0 4px 16px var(--card-surface-shadow);
+    border: 1px solid var(--card-hairline-soft);
   }
   .definition p {
     margin: 0 0 12px 0;
@@ -54,31 +52,29 @@ export const KNOWLEDGE_STYLES = `
     margin-top: 0.5em;
   }
   .definition strong {
-    color: #1e3a5f;
+    color: var(--card-ink-strong);
     font-weight: 700;
   }
   .definition em {
-    color: #5b21b6;
+    color: var(--card-purple-ink-soft);
     font-style: normal;
-    background: rgba(91, 33, 182, 0.08);
+    background: var(--card-purple-wash);
     padding: 3px 8px;
     border-radius: 4px;
     font-weight: 500;
   }
   .examples {
-    background: #ffffff;
+    background: var(--card-surface);
     padding: 24px 28px;
     border-radius: 12px;
-    box-shadow:
-      0 4px 16px rgba(0, 0, 0, 0.06),
-      0 1px 3px rgba(0, 0, 0, 0.04);
-    border: 1px solid rgba(0, 0, 0, 0.04);
+    box-shadow: 0 4px 16px var(--card-surface-shadow);
+    border: 1px solid var(--card-hairline-soft);
   }
   .examples-title {
     display: flex;
     align-items: center;
     font-weight: 700;
-    color: #c62828;
+    color: var(--card-rose-ink);
     margin-bottom: 16px;
     font-size: 15px;
   }
@@ -87,8 +83,8 @@ export const KNOWLEDGE_STYLES = `
     font-size: 18px;
   }
   .examples strong {
-    background: #e3f2fd;
-    color: #1565c0;
+    background: var(--card-blue-chip);
+    color: var(--card-blue-ink-soft);
     padding: 2px 6px;
     border-radius: 4px;
     font-weight: 600;
@@ -109,7 +105,7 @@ export const KNOWLEDGE_STYLES = `
     content: "▸";
     position: absolute;
     left: 0;
-    color: #c62828;
+    color: var(--card-rose-ink);
     font-size: 14px;
     font-weight: bold;
   }

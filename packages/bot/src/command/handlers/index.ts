@@ -4,6 +4,7 @@ export * from './AvatarCommandHandler';
 export * from './BananaCommandHandler';
 export * from './BilibiliCommandHandler';
 export * from './BuiltinCommandHandler';
+export * from './CardModeCommandHandler';
 export * from './ClusterCommandHandler';
 export * from './ClusterTicketsSyncCommandHandler';
 export * from './CompressCommandHandler';

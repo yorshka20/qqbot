@@ -24,6 +24,7 @@ import type {
   ProjectRegistryConfig,
   StaticServerConfig,
 } from './types/bot';
+import type { CardRenderConfig } from './types/cardRender';
 import type { DatabaseConfig } from './types/database';
 import type { DocsPreviewConfig } from './types/docsPreview';
 import type { LanRelayConfig } from './types/lanRelay';
@@ -73,6 +74,7 @@ export type {
   ProjectRegistryConfig,
   StaticServerConfig,
 } from './types/bot';
+export type { CardAppearanceMode, CardRenderConfig } from './types/cardRender';
 export type { LogLevel } from './types/const';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './types/database';
 export type { DocsPreviewConfig, DocsPreviewRootConfig } from './types/docsPreview';
@@ -157,6 +159,8 @@ export interface BotConfig {
   logging?: LoggingConfig;
   /** Keyword-driven personal portrait (radar chart) system; optional. */
   portrait?: PortraitConfig;
+  /** Light/dark appearance of rendered cards; optional. */
+  cardRender?: CardRenderConfig;
 }
 
 export class Config {
@@ -570,5 +574,9 @@ export class Config {
 
   getDocsPreviewConfig(): DocsPreviewConfig | undefined {
     return this.config.docsPreview;
+  }
+
+  getCardRenderConfig(): CardRenderConfig | undefined {
+    return this.config.cardRender;
   }
 }

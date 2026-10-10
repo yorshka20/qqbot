@@ -4,8 +4,7 @@ import { basename } from 'node:path';
 import { inject, injectable } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import type { InfoCardData } from '@/services/card';
-import { CardRenderer } from '@/services/card';
+import { CardRenderingService, type InfoCardData } from '@/services/card';
 import { FileReadService } from '@/services/file/FileReadService';
 import { logger } from '@/utils/logger';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
@@ -73,7 +72,10 @@ export class CatCommand implements CommandHandler {
     },
   };
 
-  constructor(@inject(FileReadService) private fileReadService: FileReadService) {}
+  constructor(
+    @inject(FileReadService) private fileReadService: FileReadService,
+    @inject(CardRenderingService) private cardRenderingService: CardRenderingService,
+  ) {}
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     const { text: pathArg, options } = CommandArgsParser.parse<{ plainText?: boolean }>(args, this.argsConfig);
@@ -112,9 +114,7 @@ export class CatCommand implements CommandHandler {
       content,
       level: 'info',
     };
-    const cardRenderer = CardRenderer.getInstance();
-    const buffer = await cardRenderer.render(cardData, { provider: 'system' });
-    const imageBase64 = buffer.toString('base64');
+    const imageBase64 = await this.cardRenderingService.renderCardData([cardData], 'system');
 
     const messageBuilder = new MessageBuilder();
     messageBuilder.image({ data: imageBase64 });

@@ -11,7 +11,7 @@ export const STEPS_STYLES = `
     font-weight: 700;
     padding-bottom: 12px;
     border-bottom: 3px solid;
-    border-image: linear-gradient(90deg, #0d9488, #06b6d4) 1;
+    border-image: var(--card-teal-rule) 1;
   }
   .steps-list {
     list-style: none;
@@ -23,17 +23,17 @@ export const STEPS_STYLES = `
     align-items: flex-start;
     padding: 14px 18px;
     margin: 10px 0;
-    background: linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%);
+    background: var(--card-teal-bg);
     border-radius: 12px;
-    border-left: 4px solid #0d9488;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    border-left: 4px solid var(--card-teal-line);
+    box-shadow: 0 2px 8px var(--card-surface-shadow);
   }
   .steps-list .step-number {
     flex-shrink: 0;
     width: 28px;
     height: 28px;
     margin-right: 14px;
-    background: linear-gradient(135deg, #0d9488, #06b6d4);
+    background: var(--card-teal-fill);
     color: white;
     border-radius: 50%;
     display: flex;

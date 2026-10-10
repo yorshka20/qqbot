@@ -7,7 +7,8 @@ The CSS that `CardRenderer` injects into the Puppeteer page. It used to be a sin
 
 | Layer | File(s) | Owns |
 |---|---|---|
-| Tokens | `tokens.ts` | CSS custom properties derived from the provider theme, plus the shared ink/hairline scale. The only place theme values are interpolated. |
+| Tokens | `tokens.ts` | Emits the `:root` block: the provider theme plus every palette role as `--card-<kebab-role>`. The only place values are interpolated. |
+| Palette | `palette.ts` | The light and dark value sets. No CSS, no selectors — one field per colour role. |
 | Theme | `theme.ts` | `CardTheme` and the provider → colour registry. No CSS. |
 | Base | `base.ts` | Reset, `body`, `.container` + watermark, `.card-inner`, deck spacing, `.footer`, bare-element defaults (`strong`/`em`/`h2`/`p`), emoji sizing. |
 | Cards | `cards/*.ts` | One file per card type, styling only that card's own block. |
@@ -38,11 +39,17 @@ applied to the block they modify (`.stat-row.highlight`, `.stat-rows.metric`,
 `.info-box.warning`) — never a second element class.
 
 **Tokens** — `--card-<role>[-<variant>]`, named for what the value *means*, not where
-it is used (`--card-ink-muted`, not `--card-stat-label`). A literal earns a token once
-two or more modules use it for the same role; a value only one card uses stays inline
-in that card. Provider colours are always read through `var(--card-primary)` /
+it is used (`--card-ink-muted`, not `--card-stat-label`). Any colour that depends on
+whether the card surface is light or dark must be a palette role, even when a single
+card uses it — a literal there is a card that cannot go dark. Only appearance-neutral
+values (white text over the frame, an `rgba(var(--card-primary-rgb), …)` tint) stay
+inline. Provider colours are always read through `var(--card-primary)` /
 `var(--card-secondary)` / `var(--card-accent-gradient)`; a style module never takes the
 theme as an argument.
+
+**Appearance** — `getCardStyles(theme, appearance)` picks the palette; nothing below the
+token layer knows which one is active, and there is no `.theme-dark` override sheet.
+Adding a dark value means adding a field to `CardPalette`, not a second rule.
 
 ## Specificity traps
 
@@ -53,3 +60,5 @@ put a grey pill behind every line of a code block.
 
 When changing anything here, render a deck of all card types before and after and diff
 the computed styles; a cascade break in this file is invisible in a type check.
+`NO_FILE_LOG=1 bun run packages/bot/scripts/dev/render-card-deck.ts <outDir>` writes
+that deck in both appearances.

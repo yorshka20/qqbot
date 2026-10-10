@@ -10,7 +10,7 @@ export const COMPARISON_STYLES = `
     color: #fff;
     margin-bottom: 20px;
     padding-bottom: 16px;
-    border-bottom: 2px solid #f0f0f0;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.4);
     letter-spacing: 0.01em;
   }
   .card-inner .comparison-card-title {
@@ -33,14 +33,14 @@ export const COMPARISON_STYLES = `
     border-radius: 8px;
   }
   .comparison-col-header.left-header {
-    background: #edfaf1;
-    color: #1a7a3c;
-    border: 1px solid #b7eacb;
+    background: var(--card-green-chip);
+    color: var(--card-green-ink-soft);
+    border: 1px solid var(--card-green-chip-line);
   }
   .comparison-col-header.right-header {
-    background: #fff1f2;
-    color: #b91c2c;
-    border: 1px solid #fecdd3;
+    background: var(--card-rose-chip);
+    color: var(--card-rose-ink);
+    border: 1px solid var(--card-rose-chip-line);
   }
   .col-header-icon {
     font-size: 14px;
@@ -78,16 +78,16 @@ export const COMPARISON_STYLES = `
     padding: 14px 16px;
     font-size: 14px;
     line-height: 1.75;
-    color: #374151;
+    color: var(--card-ink);
     border-radius: 8px;
   }
   .comparison-cell.left-cell {
-    background: #f6fef9;
-    border: 1px solid #d1fae5;
+    background: var(--card-green-cell);
+    border: 1px solid var(--card-green-cell-line);
   }
   .comparison-cell.right-cell {
-    background: #fff9f9;
-    border: 1px solid #fee2e2;
+    background: var(--card-rose-cell);
+    border: 1px solid var(--card-rose-cell-line);
   }
   .comparison-cell.empty-cell {
     background: transparent;
@@ -112,7 +112,7 @@ export const COMPARISON_STYLES = `
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: #34d399;
+    background: var(--card-green-dot);
   }
   .right-cell ul li::before {
     content: "";
@@ -122,14 +122,14 @@ export const COMPARISON_STYLES = `
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: #f87171;
+    background: var(--card-rose-dot);
   }
   .comparison-cell p {
     margin: 0;
     line-height: 1.8;
   }
   .comparison-cell strong {
-    color: #111827;
+    color: var(--card-ink-strong);
     font-weight: 700;
   }
 `;

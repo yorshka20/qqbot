@@ -17,10 +17,12 @@ import { QA_STYLES } from './cards/qa';
 import { QUOTE_STYLES } from './cards/quote';
 import { STATS_STYLES } from './cards/stats';
 import { STEPS_STYLES } from './cards/steps';
+import { type CardAppearance, getCardPalette } from './palette';
 import { RICH_TEXT_STYLES } from './richText';
 import type { CardTheme } from './theme';
 import { tokenStyles } from './tokens';
 
+export type { CardAppearance, CardPalette } from './palette';
 export type { CardTheme } from './theme';
 export {
   CANONICAL_THEME_KEYS,
@@ -47,6 +49,12 @@ const CARD_STYLES = [
   IMAGE_STYLES,
 ];
 
-export function getCardStyles(theme: CardTheme): string {
-  return [tokenStyles(theme), BASE_STYLES, ...CARD_STYLES, RICH_TEXT_STYLES, MARKDOWN_STYLES].join('\n');
+export function getCardStyles(theme: CardTheme, appearance: CardAppearance): string {
+  return [
+    tokenStyles(theme, getCardPalette(appearance)),
+    BASE_STYLES,
+    ...CARD_STYLES,
+    RICH_TEXT_STYLES,
+    MARKDOWN_STYLES,
+  ].join('\n');
 }

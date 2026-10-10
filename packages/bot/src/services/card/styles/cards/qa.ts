@@ -2,11 +2,11 @@
 
 export const QA_STYLES = `
   .qa-card {
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    background: var(--card-qa-bg);
     border-radius: 16px;
     padding: 28px;
     margin: 0;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 4px 12px var(--card-surface-shadow);
   }
   .question {
     display: flex;
@@ -63,17 +63,17 @@ export const QA_STYLES = `
     margin-top: 0.6em;
   }
   .question strong {
-    color: #1a1f36;
+    color: var(--card-ink-strong);
     font-weight: 700;
   }
   .answer-content strong {
-    color: #1e3a5f;
+    color: var(--card-ink-strong);
     font-weight: 700;
   }
   .answer-content em {
-    color: #5b21b6;
+    color: var(--card-purple-ink-soft);
     font-style: normal;
-    background: rgba(91, 33, 182, 0.12);
+    background: var(--card-purple-wash);
     padding: 3px 8px;
     border-radius: 4px;
     font-weight: 500;

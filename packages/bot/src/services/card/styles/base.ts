@@ -15,7 +15,7 @@ export const BASE_STYLES = `
   }
 
   .container {
-    background: var(--card-primary);
+    background: var(--card-frame);
     border-radius: 24px;
     padding: 24px;
     padding-bottom: 0;
@@ -42,11 +42,15 @@ export const BASE_STYLES = `
     user-select: none;
     line-height: 1;
   }
+  /* The ink default has to live on the surface, not on body: without it any
+     element that declares no colour of its own (e.g. .info-header) falls back to
+     the UA's black, which is invisible on a dark card. */
   .card-inner {
-    background: white;
+    background: var(--card-surface);
+    color: var(--card-ink);
     border-radius: 16px;
     padding: 35px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 32px var(--card-surface-shadow);
     position: relative;
     z-index: 1;
   }
@@ -87,8 +91,8 @@ export const BASE_STYLES = `
     letter-spacing: 0.04em;
   }
   .card-inner .footer {
-    border-top-color: #e8e8e8;
-    color: #999;
+    border-top-color: var(--card-hairline);
+    color: var(--card-ink-muted);
   }
   img.emoji {
     height: 1.25em;

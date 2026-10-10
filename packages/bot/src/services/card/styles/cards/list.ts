@@ -24,10 +24,10 @@ export const LIST_STYLES = `
     align-items: flex-start;
     padding: 16px 18px;
     margin: 12px 0;
-    background: #f6f7f9;
+    background: var(--card-surface-sunken);
     border-radius: 12px;
     transition: all 0.3s;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 8px var(--card-surface-shadow);
   }
   .styled-list > li > .number {
     background: var(--card-accent-gradient);
@@ -51,7 +51,7 @@ export const LIST_STYLES = `
     min-width: 0;
   }
   .styled-list > li > span:last-child strong {
-    color: #334155;
+    color: var(--card-ink-strong);
     font-weight: 700;
   }
   /* Nested lists inside an item's content: keep them as normal block lists with

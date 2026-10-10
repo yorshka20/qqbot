@@ -9,7 +9,7 @@ import { BrowserService } from '@/services/browser/BrowserService';
 import { logger } from '@/utils/logger';
 import { renderCardDeck } from './cardTemplates';
 import type { CardData } from './cardTypes';
-import { getCardStyles, getProviderTheme } from './styles';
+import { type CardAppearance, getCardStyles, getProviderTheme } from './styles';
 
 /** Pre-load twemoji JS from local libs/ so it never depends on a CDN at render time. */
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -35,9 +35,12 @@ export class CardRenderer {
    * @param cardData - Single card or array of cards to render
    * @param options - provider drives the theme + the large watermark (e.g. "Claude"); model, when
    *   given, is the full model name shown after "AI Assistant" in the footer (falls back to the
-   *   provider display name when absent).
+   *   provider display name when absent); appearance selects the light or dark palette.
    */
-  async render(cardData: CardData | CardData[], options: { provider: string; model?: string }): Promise<Buffer> {
+  async render(
+    cardData: CardData | CardData[],
+    options: { provider: string; model?: string; appearance: CardAppearance },
+  ): Promise<Buffer> {
     const cards = Array.isArray(cardData) ? cardData : [cardData];
     const cardHTML = renderCardDeck(cards);
 
@@ -59,7 +62,7 @@ export class CardRenderer {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <script>${TWEMOJI_JS}</script>
-            <style>${getCardStyles(theme)}</style>
+            <style>${getCardStyles(theme, options.appearance)}</style>
           </head>
           <body>
             <div class="container" data-provider="${theme.displayName}">

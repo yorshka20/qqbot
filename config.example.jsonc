@@ -1608,6 +1608,16 @@
   "tickets": {
     "dir": "/absolute/path/to/cluster-tickets"
   },
+  // Card appearance (optional) — light/dark palette for rendered cards.
+  // "appearance": "auto" renders dark inside "darkHours" and light outside it;
+  // "light" / "dark" pin it. "darkHours" is a half-open hour range in
+  // Asia/Tokyo and wraps past midnight when from > to, so 18 → 9 means 18:00
+  // through 08:59. `/cardmode` overrides the mode until the next restart.
+  // Omit this block for auto + 18:00-09:00.
+  "cardRender": {
+    "appearance": "auto",
+    "darkHours": { "from": 18, "to": 9 }
+  },
   // WebUI docs preview (optional) — adds extra browse roots to the
   // `/api/docs/*` backend that powers the WebUI 文档 page.
   //

@@ -192,6 +192,20 @@ export function formatTimeOnly(date: Date | string | number): string {
   return `${get('hour')}:${get('minute')}:${get('second')}`;
 }
 
+/**
+ * Hour of day (0-23) in Asia/Tokyo. Read the hour through this rather than
+ * `Date.getHours()`, which answers in the machine's timezone.
+ */
+export function getHourInTimezone(date: Date = new Date()): number {
+  const hour = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIMEZONE,
+    hour: '2-digit',
+    hour12: false,
+  }).format(date);
+  // en-US with hour12:false renders midnight as "24".
+  return Number.parseInt(hour, 10) % 24;
+}
+
 /** The timezone used for all date formatting and data queries (matches stored data). */
 export const DATE_TIMEZONE = TIMEZONE;
 

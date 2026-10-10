@@ -34,7 +34,7 @@ export const RICH_TEXT_STYLES = `
   ${INLINE_CODE} {
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 0.9em;
-    background: rgba(0, 0, 0, 0.06);
+    background: var(--card-overlay);
     padding: 2px 6px;
     border-radius: 4px;
     word-break: break-all;
@@ -42,7 +42,7 @@ export const RICH_TEXT_STYLES = `
   ${CONTENT} pre {
     margin: 12px 0;
     padding: 14px 16px;
-    background: rgba(0, 0, 0, 0.06);
+    background: var(--card-overlay);
     border-radius: 8px;
     overflow-x: auto;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
@@ -92,13 +92,13 @@ export const RICH_TEXT_STYLES = `
     border-collapse: collapse;
     margin: 12px 0;
     font-size: 14px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 2px 8px var(--card-surface-shadow);
     border-radius: 8px;
     overflow: hidden;
   }
   ${CONTENT} :is(th, td) {
     padding: 10px 14px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--card-hairline);
     text-align: left;
   }
   ${CONTENT} thead th {

@@ -1,5 +1,6 @@
 // Card service - types, templates, rendering
 
+export { CardAppearanceService } from './CardAppearanceService';
 export { CardRenderer } from './CardRenderer';
 export { CardRenderingService } from './CardRenderingService';
 export {
@@ -20,4 +21,5 @@ export type {
   StatsCardData,
   StepsCardData,
 } from './cardTypes';
+export type { CardAppearance } from './styles';
 export { getCardStyles } from './styles';

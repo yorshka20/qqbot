@@ -34,7 +34,7 @@ export const STATS_STYLES = `
   .stat-value {
     font-size: 17px;
     font-weight: 600;
-    color: #1f2937;
+    color: var(--card-ink-strong);
     line-height: 1.65;
   }
   .stat-row.highlight {
@@ -45,7 +45,7 @@ export const STATS_STYLES = `
     color: var(--card-secondary);
   }
   .stat-row.highlight .stat-value {
-    color: #111827;
+    color: var(--card-ink-strong);
     font-weight: 700;
   }
   /* Cards whose values are all short read as a metric board: label left, number right. */
