@@ -43,7 +43,15 @@ export interface AgentTask {
   effort?: string;
   prompt: string;
   workingDirectory?: string;
+  /**
+   * Directory holding this task's record (`TASK.md`, `task.json`, `events.jsonl`, the raw
+   * output). Equals `workingDirectory` for a workspace task; for a dev task the record sits
+   * outside the repository it edits.
+   */
+  recordDirectory?: string;
   createdAt: Date;
+  startedAt?: Date;
+  finishedAt?: Date;
   status: 'pending' | 'running' | 'completed' | 'failed';
   requestedBy: {
     type: 'user' | 'group';

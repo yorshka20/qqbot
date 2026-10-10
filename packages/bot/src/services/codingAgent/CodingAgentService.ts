@@ -17,6 +17,7 @@ import { AgentDelivery, type AgentDeliveryDeps, type DeliveryResult } from './Ag
 import type { AgentToolBridge } from './AgentToolBridge';
 import { CodingAgentMcpServer } from './CodingAgentMcpServer';
 import { CodingAgentTaskManager, type TaskProgressUpdate } from './CodingAgentTaskManager';
+import type { CodingAgentTaskStore } from './CodingAgentTaskStore';
 import { type AgentExecutor, createAgentExecutors } from './executors';
 import type { ProjectRegistry } from './ProjectRegistry';
 import { resolveRunOptions } from './runOptions';
@@ -237,10 +238,15 @@ export class CodingAgentService {
   }
 
   /**
-   * Get task status
+   * Get task status. In-memory: a task from a previous process is only in the record store.
    */
   getTask(taskId: string): AgentTask | undefined {
     return this.taskManager.getTask(taskId);
+  }
+
+  /** The on-disk task record store, read by the WebUI's task views. */
+  getTaskStore(): CodingAgentTaskStore {
+    return this.taskManager.getTaskStore();
   }
 
   /**

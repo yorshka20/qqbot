@@ -7,7 +7,7 @@ import type { CodingAgentConfig } from '@/core/config';
 import { CodingAgentTaskManager, type TaskProgressUpdate } from '../CodingAgentTaskManager';
 import type { AgentExecutor } from '../executors';
 import type { AgentInvocationInput } from '../executors/AgentExecutor';
-import { TASK_RECORD_FILE, workspaceDirectoryName } from '../taskWorkspace';
+import { TASK_RECORD_FILE, TASK_STATE_FILE, taskDirectoryName } from '../taskWorkspace';
 import type { AgentTask } from '../types';
 
 /** Runs the task's prompt as a shell script, so each test controls the process's output and lifetime. */
@@ -166,8 +166,8 @@ describe('CodingAgentTaskManager workspace tasks', () => {
     const a = workspaceTask(manager, '调研甲').task;
     const b = workspaceTask(manager, '调研乙').task;
     const aDirectory = a.workingDirectory ?? '';
-    expect(aDirectory).toBe(join(root, workspaceDirectoryName(a.prompt, a.id, a.createdAt)));
-    expect(b.workingDirectory).toBe(join(root, workspaceDirectoryName(b.prompt, b.id, b.createdAt)));
+    expect(aDirectory).toBe(join(root, taskDirectoryName(a.prompt, a.id, a.createdAt)));
+    expect(b.workingDirectory).toBe(join(root, taskDirectoryName(b.prompt, b.id, b.createdAt)));
     expect(aDirectory).not.toBe(b.workingDirectory);
     expect(existsSync(aDirectory)).toBe(true);
   });
@@ -196,16 +196,37 @@ describe('CodingAgentTaskManager workspace tasks', () => {
     await manager.awaitTaskCompletion(first.task.id);
   });
 
-  test('a dev task never writes a record into the repository it runs in', () => {
-    const root = mkdtempSync(join(tmpdir(), 'coding-agent-repo-'));
-    const { manager } = recordingManager(mkdtempSync(join(tmpdir(), 'coding-agent-ws-')));
-    const task = manager.createTask('改一下代码', { type: 'user', id: '10000001' }, root, {
+  test('a dev task records outside the repository it runs in', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'coding-agent-repo-'));
+    const root = mkdtempSync(join(tmpdir(), 'coding-agent-ws-'));
+    const { manager } = recordingManager(root);
+    const task = manager.createTask('改一下代码', { type: 'user', id: '10000001' }, repo, {
       executor: 'codex',
       model: 'sh',
     });
 
-    expect(task.workingDirectory).toBe(root);
-    expect(existsSync(join(root, TASK_RECORD_FILE))).toBe(false);
+    expect(task.workingDirectory).toBe(repo);
+    expect(existsSync(join(repo, TASK_RECORD_FILE))).toBe(false);
+    expect(task.recordDirectory?.startsWith(root)).toBe(true);
+    expect(existsSync(join(task.recordDirectory ?? '', TASK_STATE_FILE))).toBe(true);
+  });
+
+  test('the raw output survives the task and is readable through the store', async () => {
+    const { manager } = recordingManager(mkdtempSync(join(tmpdir(), 'coding-agent-ws-')));
+    const { task } = workspaceTask(manager, '调研甲');
+    await manager.awaitTaskCompletion(task.id);
+
+    const store = manager.getTaskStore();
+    const listing = store.get(task.id);
+    expect(listing?.status).toBe('completed');
+    expect(listing?.startedAt).toBeDefined();
+    expect(listing?.finishedAt).toBeDefined();
+    expect(store.readOutput(listing?.directory ?? '').stdout).toContain('DONE');
+    expect(store.readEvents(listing?.directory ?? '').map((e) => e.kind)).toEqual([
+      'created',
+      'running',
+      'completed',
+    ]);
   });
 
   test('workspace tasks share one serial queue', async () => {

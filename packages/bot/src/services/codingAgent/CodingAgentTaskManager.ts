@@ -4,7 +4,6 @@
  * delegated to its executor.
  */
 
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type Subprocess, spawn } from 'bun';
@@ -13,15 +12,10 @@ import type { CodingAgentConfig } from '@/core/config';
 import { parseDuration } from '@/utils/duration';
 import { logger } from '@/utils/logger';
 import { randomUUID } from '@/utils/randomUUID';
+import { CodingAgentTaskStore } from './CodingAgentTaskStore';
 import type { AgentExecutor } from './executors';
 import type { AgentInvocation } from './executors/AgentExecutor';
-import {
-  renderTaskOutcome,
-  renderTaskRecord,
-  TASK_RECORD_FILE,
-  taskRecordLine,
-  workspaceDirectoryName,
-} from './taskWorkspace';
+import type { TaskRecordEvent } from './taskWorkspace';
 import type { AgentExecutorName, AgentTask, AgentTaskType, ProjectContext, TaskNotification } from './types';
 
 type TaskUpdateCallback = (task: AgentTask) => void;
@@ -41,9 +35,6 @@ const MAX_ERROR_CHARS = 2000;
  * collide on files, but every one of them spends the same subscription quota.
  */
 const WORKSPACE_QUEUE_KEY = 'workspace';
-
-/** Bounded only to turn a pathological name collision into a loud failure instead of a spin. */
-const MAX_WORKSPACE_NAME_ATTEMPTS = 50;
 
 const DEFAULT_IDLE_TIMEOUT = '15m';
 const DEFAULT_TIMEOUT = '3h';
@@ -71,7 +62,7 @@ interface OutputCollector {
   cancel(): void;
 }
 
-function collectOutput(stream: ReadableStream<Uint8Array>, onActivity: () => void): OutputCollector {
+function collectOutput(stream: ReadableStream<Uint8Array>, onChunk: (chunk: string) => void): OutputCollector {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   const chunks: string[] = [];
@@ -82,8 +73,9 @@ function collectOutput(stream: ReadableStream<Uint8Array>, onActivity: () => voi
         if (finished) {
           return;
         }
-        chunks.push(decoder.decode(value, { stream: true }));
-        onActivity();
+        const chunk = decoder.decode(value, { stream: true });
+        chunks.push(chunk);
+        onChunk(chunk);
       }
     } catch {
       // Reader cancelled after the drain grace period.
@@ -100,10 +92,6 @@ function collectOutput(stream: ReadableStream<Uint8Array>, onActivity: () => voi
 
 function formatMinutes(ms: number): string {
   return `${Math.round(ms / 60_000)} 分钟`;
-}
-
-function isAlreadyExists(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException | null)?.code === 'EEXIST';
 }
 
 export interface CreateTaskOptions {
@@ -125,7 +113,7 @@ export class CodingAgentTaskManager {
   private readonly idleTimeoutMs: number;
   private readonly timeoutMs: number;
   private readonly watchdogIntervalMs: number;
-  private readonly workspaceRoot: string;
+  private readonly taskStore: CodingAgentTaskStore;
 
   // Per-project queue: projectKey → ordered list of pending task IDs
   private projectQueues = new Map<string, string[]>();
@@ -142,7 +130,7 @@ export class CodingAgentTaskManager {
     this.idleTimeoutMs = parseDuration(config.idleTimeout || DEFAULT_IDLE_TIMEOUT);
     this.timeoutMs = parseDuration(config.timeout || DEFAULT_TIMEOUT);
     this.watchdogIntervalMs = Math.min(MAX_WATCHDOG_INTERVAL_MS, this.idleTimeoutMs / 2, this.timeoutMs / 2);
-    this.workspaceRoot = config.workspaceRoot || join(tmpdir(), 'qqbot-agent-workspaces');
+    this.taskStore = new CodingAgentTaskStore(config.workspaceRoot || join(tmpdir(), 'qqbot-agent-workspaces'));
   }
 
   /**
@@ -262,56 +250,19 @@ export class CodingAgentTaskManager {
       suppressDefaultNotification: options.suppressDefaultNotification,
     };
 
+    // Every task gets a record directory; a workspace task also works inside it, so its
+    // output lands next to the record instead of in a throwaway place.
+    const recordDirectory = this.taskStore.claimDirectory(task);
+    task.recordDirectory = recordDirectory;
     task.workingDirectory =
-      task.taskType === 'workspace' ? this.createWorkspace(task) : workingDirectory || this.config.workingDirectory;
+      task.taskType === 'workspace' ? recordDirectory : workingDirectory || this.config.workingDirectory;
+    this.taskStore.create(task, recordDirectory);
 
     this.tasks.set(task.id, task);
     logger.info(
       `[CodingAgentTaskManager] Task created: ${task.id} (executor: ${task.executor}, type: ${task.taskType})`,
     );
     return task;
-  }
-
-  /**
-   * Give a workspace task its own directory and leave the request in it, so the
-   * directory answers "what was this?" long after the task is gone from memory.
-   * The directory is created non-recursively in a loop rather than with an
-   * existence check first: two tasks created in the same second would otherwise
-   * race their way into the same name.
-   */
-  private createWorkspace(task: AgentTask): string {
-    mkdirSync(this.workspaceRoot, { recursive: true });
-    const base = workspaceDirectoryName(task.prompt, task.id, task.createdAt);
-
-    for (let attempt = 1; attempt <= MAX_WORKSPACE_NAME_ATTEMPTS; attempt++) {
-      const workspace = join(this.workspaceRoot, attempt === 1 ? base : `${base}-${attempt}`);
-      try {
-        mkdirSync(workspace);
-        writeFileSync(join(workspace, TASK_RECORD_FILE), renderTaskRecord(task));
-        return workspace;
-      } catch (error) {
-        if (!isAlreadyExists(error)) {
-          throw error;
-        }
-      }
-    }
-
-    throw new Error(
-      `[CodingAgentTaskManager] Could not create a workspace directory for task ${task.id}: ` +
-        `${MAX_WORKSPACE_NAME_ATTEMPTS} directories named ${base}* already exist under ${this.workspaceRoot}`,
-    );
-  }
-
-  /** Append one line to a workspace task's record. Never fatal: the record is for the operator, not the task. */
-  private appendTaskRecord(task: AgentTask, content: string): void {
-    if (task.taskType !== 'workspace' || !task.workingDirectory) {
-      return;
-    }
-    try {
-      appendFileSync(join(task.workingDirectory, TASK_RECORD_FILE), content);
-    } catch (error) {
-      logger.warn(`[CodingAgentTaskManager] Could not write the task record for ${task.id}:`, error);
-    }
   }
 
   /**
@@ -434,6 +385,7 @@ export class CodingAgentTaskManager {
 
     const workingDirectory = task.workingDirectory || process.cwd();
     task.status = 'running';
+    task.startedAt = new Date();
     this.notifyTaskUpdate(task);
 
     let invocation: AgentInvocation | undefined;
@@ -458,13 +410,14 @@ export class CodingAgentTaskManager {
       const now = Date.now();
       const running: RunningProcess = { proc, startedAt: now, lastActivity: now };
       this.running.set(taskId, running);
-      const markActive = () => {
+      const capture = (stream: 'stdout' | 'stderr') => (chunk: string) => {
         running.lastActivity = Date.now();
+        this.taskStore.appendOutput(task, stream, chunk);
       };
       // Both pipes are drained at once: a CLI that fills the stderr pipe
       // buffer while stdout is still open blocks forever otherwise.
-      const stdout = collectOutput(proc.stdout, markActive);
-      const stderr = collectOutput(proc.stderr, markActive);
+      const stdout = collectOutput(proc.stdout, capture('stdout'));
+      const stderr = collectOutput(proc.stderr, capture('stderr'));
       const watchdog = setInterval(() => this.checkLiveness(taskId), this.watchdogIntervalMs);
 
       let exitCode: number;
@@ -501,6 +454,7 @@ export class CodingAgentTaskManager {
       });
     }
 
+    task.finishedAt = new Date();
     this.notifyTaskUpdate(task);
     this.processNextInQueue(this.getProjectKey(task));
   }
@@ -562,8 +516,14 @@ export class CodingAgentTaskManager {
     switch (notification.status) {
       case 'started':
       case 'progress':
-        if (notification.message && this.taskProgressCallback) {
-          this.taskProgressCallback(task, {
+        if (notification.message) {
+          this.taskStore.record(task, {
+            kind: 'progress',
+            at: Date.now(),
+            message: notification.message,
+            progress: notification.progress,
+          });
+          this.taskProgressCallback?.(task, {
             status: notification.status,
             message: notification.message,
             progress: notification.progress,
@@ -585,10 +545,16 @@ export class CodingAgentTaskManager {
   }
 
   /**
-   * Get all tasks
+   * Get all tasks. In-memory only — it forgets everything on restart, which is what
+   * {@link getTaskStore} is for.
    */
   getAllTasks(): AgentTask[] {
     return Array.from(this.tasks.values());
+  }
+
+  /** The on-disk record store: the same tasks, plus everything previous processes ran. */
+  getTaskStore(): CodingAgentTaskStore {
+    return this.taskStore;
   }
 
   /**
@@ -674,9 +640,13 @@ export class CodingAgentTaskManager {
    */
   private recordTaskTransition(task: AgentTask): void {
     if (task.status === 'running') {
-      this.appendTaskRecord(task, `${taskRecordLine(new Date(), '开始执行')}\n`);
+      this.taskStore.record(task, { kind: 'running', at: Date.now(), message: '开始执行' });
     } else if (task.status === 'completed' || task.status === 'failed') {
-      this.appendTaskRecord(task, renderTaskOutcome(task, new Date()));
+      this.taskStore.record(task, {
+        kind: task.status,
+        at: Date.now(),
+        message: task.status === 'completed' ? '执行完成' : '执行失败',
+      });
     }
   }
 
