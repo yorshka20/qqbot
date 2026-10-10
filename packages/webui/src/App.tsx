@@ -10,6 +10,7 @@ import {
   BarChart3,
   BookMarked,
   BookOpen,
+  Bot,
   Brain,
   Database,
   FileText,
@@ -26,6 +27,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 
 import {
+  AgentsPage,
   ClusterPage,
   DailyStatsPage,
   DocsPage,
@@ -193,6 +195,18 @@ export default function App() {
             </button>
             <button
               type="button"
+              onClick={() => navigate({ page: 'agents' })}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                isActivePage(route, 'agents')
+                  ? 'bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+              }`}
+            >
+              <Bot className="w-4 h-4" />
+              Agents
+            </button>
+            <button
+              type="button"
               onClick={() => navigate({ page: 'cluster' })}
               className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
                 isActivePage(route, 'cluster')
@@ -271,6 +285,7 @@ export default function App() {
       {route.page === 'stats' && <DailyStatsPage />}
       {route.page === 'memory' && <MemoryStatusPage />}
       {route.page === 'persona' && <PersonaPage />}
+      {route.page === 'agents' && <AgentsPage />}
       {route.page === 'cluster' && <ClusterPage />}
       {route.page === 'tickets' && <TicketsPage />}
       {route.page === 'lan' && <LanPage />}

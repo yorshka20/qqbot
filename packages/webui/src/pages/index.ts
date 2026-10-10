@@ -3,6 +3,7 @@
  * Each route lives in its own folder; **`index.tsx` is the route entry** (exported `*Page` component).
  */
 
+export { AgentsPage } from './agents';
 export { ClusterPage } from './cluster';
 export { DailyStatsPage } from './daily-stats';
 export { DocsPage } from './docs';

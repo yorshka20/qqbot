@@ -868,3 +868,73 @@ export interface TicketPlan {
 export interface TicketsListResponse {
   tickets: TicketFrontmatter[];
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Coding-agent task records (/api/agents/*)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** One task's stored state, as `CodingAgentTaskStore` writes it to `task.json`. */
+export interface AgentTaskRecord {
+  id: string;
+  executor: string;
+  model: string;
+  effort?: string;
+  taskType: string;
+  projectAlias?: string;
+  workingDirectory: string;
+  prompt: string;
+  requestedBy: { type: string; id: string; userId?: string; messageId?: string };
+  status: AgentTaskStatus;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  result?: string;
+  error?: string;
+  /** The record directory on disk — the task's working directory for a workspace task. */
+  directory: string;
+}
+
+export type AgentTaskStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+/** One line of a task's timeline. */
+export interface AgentTaskEvent {
+  kind: 'created' | 'running' | 'progress' | 'completed' | 'failed';
+  at: number;
+  message?: string;
+  progress?: number;
+}
+
+/** A task's raw transcript, tail-capped by the backend. */
+export interface AgentTaskOutput {
+  stdout: string;
+  stderr: string;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+}
+
+export interface AgentExecutorInfo {
+  name: string;
+  displayName: string;
+}
+
+export interface AgentQueueEntry {
+  project: string;
+  running: string | null;
+  queued: number;
+}
+
+/** Returned by `/api/agents/status`; `enabled: false` when the service is off. */
+export interface AgentsStatusResponse {
+  enabled: boolean;
+  defaultExecutor?: string;
+  executors: AgentExecutorInfo[];
+  runningTasks?: number;
+  pendingTasks?: number;
+  queue?: AgentQueueEntry[];
+}
+
+/** Returned by `/api/agents/tasks`. */
+export interface AgentTasksResponse {
+  enabled: boolean;
+  tasks: AgentTaskRecord[];
+}

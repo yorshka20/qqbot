@@ -177,6 +177,12 @@ export function getLogsApiBase(): string {
   return serverBase ? `${serverBase}/api/logs` : '/api/logs';
 }
 
+/** Base URL for coding-agent task records — per-machine state, like cluster and tickets. */
+export function getAgentsApiBase(): string {
+  const serverBase = getLocalApiBase();
+  return serverBase ? `${serverBase}/api/agents` : '/api/agents';
+}
+
 /** Base URL for Projects API requests (ProjectRegistry). */
 export function getProjectsApiBase(): string {
   const serverBase = getLocalApiBase();

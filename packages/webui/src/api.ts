@@ -1,4 +1,5 @@
 import {
+  getAgentsApiBase,
   getClusterApiBase,
   getDocsApiBase,
   getFileApiBase,
@@ -15,6 +16,11 @@ import {
   getZhihuApiBase,
 } from './config';
 import type {
+  AgentsStatusResponse,
+  AgentTaskEvent,
+  AgentTaskOutput,
+  AgentTaskRecord,
+  AgentTasksResponse,
   BehaviorResponse,
   ClusterEventListResponse,
   ClusterHelpRequest,
@@ -1183,4 +1189,72 @@ export async function fetchPersonaState(): Promise<PersonaStateResponse> {
     throw new Error(`Failed to fetch persona state: ${res.status} ${res.statusText}`);
   }
   return res.json();
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Coding-agent task records API
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Service state plus the executors it can run. Always answers; `enabled: false` when off. */
+export async function getAgentsStatus(): Promise<AgentsStatusResponse> {
+  const res = await fetch(`${getAgentsApiBase()}/status`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get agents status failed: ${res.status}`);
+  }
+  return res.json() as Promise<AgentsStatusResponse>;
+}
+
+/** Task records, newest first. The prompt and result are shortened for the list. */
+export async function listAgentTasks(params?: { limit?: number; status?: string }): Promise<AgentTasksResponse> {
+  const query = new URLSearchParams();
+  if (params?.limit !== undefined) query.set('limit', String(params.limit));
+  if (params?.status) query.set('status', params.status);
+  const suffix = query.size > 0 ? `?${query}` : '';
+  const res = await fetch(`${getAgentsApiBase()}/tasks${suffix}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `List agent tasks failed: ${res.status}`);
+  }
+  return res.json() as Promise<AgentTasksResponse>;
+}
+
+/** One task record, whole — the list's copy is shortened. */
+export async function getAgentTask(id: string): Promise<AgentTaskRecord> {
+  const res = await fetch(`${getAgentsApiBase()}/tasks/${encodeURIComponent(id)}`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get agent task failed: ${res.status}`);
+  }
+  return res.json() as Promise<AgentTaskRecord>;
+}
+
+/** A task's lifecycle / progress timeline, oldest first. */
+export async function getAgentTaskEvents(id: string): Promise<AgentTaskEvent[]> {
+  const res = await fetch(`${getAgentsApiBase()}/tasks/${encodeURIComponent(id)}/events`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get agent task events failed: ${res.status}`);
+  }
+  return res.json() as Promise<AgentTaskEvent[]>;
+}
+
+/** A task's raw transcript, tail-capped by the backend. */
+export async function getAgentTaskOutput(id: string): Promise<AgentTaskOutput> {
+  const res = await fetch(`${getAgentsApiBase()}/tasks/${encodeURIComponent(id)}/output`);
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get agent task output failed: ${res.status}`);
+  }
+  return res.json() as Promise<AgentTaskOutput>;
+}
+
+/** Cancel a task this bot process is running. `cancelled: false` when it is not running. */
+export async function cancelAgentTask(id: string): Promise<{ cancelled: boolean }> {
+  const res = await fetch(`${getAgentsApiBase()}/tasks/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Cancel agent task failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ cancelled: boolean }>;
 }
