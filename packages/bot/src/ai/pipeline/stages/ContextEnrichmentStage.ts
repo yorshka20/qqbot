@@ -20,6 +20,17 @@ const RAG_LIMIT = 5;
 const RAG_MIN_SCORE = 0.7;
 
 /**
+ * Budget for one enrichment branch. Each retrieval is a single bounded round trip
+ * (embedding + Qdrant, or one VKB call), so a branch that is still running after
+ * this long is not going to answer in time to be worth the turn's latency — the
+ * embedding endpoint's own timeout is sized for batch indexing (60s), which is an
+ * eternity on an interactive reply.
+ */
+const BRANCH_BUDGET_MS = 5000;
+
+const EMPTY_MEMORY_VARS = { groupMemoryText: '', userMemoryText: '' };
+
+/**
  * Pipeline stage 4: context enrichment.
  * Fetches group/user memory (with RAG-based semantic filtering) and RAG-retrieved
  * conversation context in parallel. Also exposes {@link getMemoryVarsForReply} for
@@ -41,9 +52,9 @@ export class ContextEnrichmentStage implements ReplyStage {
 
   async execute(ctx: ReplyPipelineContext): Promise<void> {
     const [memoryContextText, retrievedConversationSection, glossaryText] = await Promise.all([
-      this.getMemoryContextTextAsync(ctx.hookContext),
-      this.getRetrievedConversationSection(ctx.hookContext),
-      this.getGlossary(ctx.hookContext),
+      this.bestEffort('memory', '', () => this.getMemoryContextTextAsync(ctx.hookContext)),
+      this.bestEffort('retrieved-conversation', '', () => this.getRetrievedConversationSection(ctx.hookContext)),
+      this.bestEffort('glossary', '', () => this.getGlossary(ctx.hookContext)),
     ]);
     ctx.memoryContextText = memoryContextText;
     ctx.retrievedConversationSection = retrievedConversationSection;
@@ -62,13 +73,39 @@ export class ContextEnrichmentStage implements ReplyStage {
     context: HookContext,
   ): Promise<{ groupMemoryText: string; userMemoryText: string; retrievedConversationSection: string }> {
     const [memoryVars, retrievedConversationSection] = await Promise.all([
-      this.getMemoryVarsAsync(context),
-      this.getRetrievedConversationSection(context),
+      this.bestEffort('memory', EMPTY_MEMORY_VARS, () => this.getMemoryVarsAsync(context)),
+      this.bestEffort('retrieved-conversation', '', () => this.getRetrievedConversationSection(context)),
     ]);
     return { ...memoryVars, retrievedConversationSection };
   }
 
   // --- Private helpers ---
+
+  /**
+   * Everything this stage produces is reference material the turn reads if it is
+   * there: losing a section costs the reply some context, while propagating the
+   * failure costs the user the reply itself. So every branch degrades to its empty
+   * value — the assembler renders nothing for an empty section — and no retrieval
+   * dependency can fail or stall a turn.
+   */
+  private async bestEffort<T>(branch: string, fallback: T, run: () => Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        run(),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error(`budget of ${BRANCH_BUDGET_MS}ms spent`)), BRANCH_BUDGET_MS);
+        }),
+      ]);
+    } catch (err) {
+      logger.warn(`[ContextEnrichmentStage] ${branch} skipped:`, err);
+      return fallback;
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
+  }
 
   private async getGlossary(context: HookContext): Promise<string> {
     if (!this.vkbContextEngine.isEnabled()) {
@@ -101,25 +138,20 @@ export class ContextEnrichmentStage implements ReplyStage {
     if (!rawMessage) {
       return '';
     }
-    try {
-      const hits = await this.retrievalService.vectorSearch(collectionName, rawMessage, {
-        limit: RAG_LIMIT,
-        minScore: RAG_MIN_SCORE,
-      });
-      if (hits.length === 0) {
-        return '';
-      }
-      const formatted = formatRAGConversationContext(hits);
-      if (!formatted) {
-        return '';
-      }
-      return this.promptManager.render('rag.conversation_context', {
-        retrievedConversationContext: formatted,
-      });
-    } catch (err) {
-      logger.warn('[ContextEnrichmentStage] RAG vectorSearch failed, skipping retrieved section:', err);
+    const hits = await this.retrievalService.vectorSearch(collectionName, rawMessage, {
+      limit: RAG_LIMIT,
+      minScore: RAG_MIN_SCORE,
+    });
+    if (hits.length === 0) {
       return '';
     }
+    const formatted = formatRAGConversationContext(hits);
+    if (!formatted) {
+      return '';
+    }
+    return this.promptManager.render('rag.conversation_context', {
+      retrievedConversationContext: formatted,
+    });
   }
 
   /** A group chat reads that group's memory; a private chat reads the person's memory from every group. */
