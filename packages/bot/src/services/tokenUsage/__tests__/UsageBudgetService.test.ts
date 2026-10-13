@@ -11,7 +11,7 @@ const ADMIN_ID = '10000001';
 function makeBudget(usage: AIUsageConfig | undefined, spentByUser: Record<string, number>) {
   const usageService = {
     getLocalDate: () => '2026-01-01',
-    getUserCost: vi.fn(async (userId: string) => spentByUser[userId] ?? 0),
+    getUserBudgetSpend: vi.fn(async (userId: string) => spentByUser[userId] ?? 0),
   } as unknown as TokenUsageService;
   const permissionChecker = { isAdmin: (userId: string) => userId === ADMIN_ID } as unknown as PermissionChecker;
   const config = { getAIConfig: () => ({ providers: {}, usage }) } as unknown as Config;
@@ -35,7 +35,7 @@ describe('UsageBudgetService', () => {
     const { budget, usageService } = makeBudget({ userDailyLimitUsd: 0.5 }, { [ADMIN_ID]: 50 });
 
     expect(await budget.checkUser(ADMIN_ID, 'milky')).toBeNull();
-    expect(usageService.getUserCost).not.toHaveBeenCalled();
+    expect(usageService.getUserBudgetSpend).not.toHaveBeenCalled();
   });
 
   it('applies a per-user override over the default cap', async () => {
@@ -52,6 +52,6 @@ describe('UsageBudgetService', () => {
     const { budget, usageService } = makeBudget(undefined, { '20000001': 50 });
 
     expect(await budget.checkUser('20000001', 'milky')).toBeNull();
-    expect(usageService.getUserCost).not.toHaveBeenCalled();
+    expect(usageService.getUserBudgetSpend).not.toHaveBeenCalled();
   });
 });

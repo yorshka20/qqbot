@@ -101,6 +101,8 @@ export interface ProviderImageGenerationResponse {
     base64?: string; // Base64 encoded image (fallback if file save fails)
   }>;
   text?: string; // Text response from provider
+  /** Token counts for the call, when the provider reports them (gpt-image models do). */
+  usage?: AIGenerateResponse['usage'];
   metadata?: Record<string, unknown>;
 }
 
@@ -115,6 +117,8 @@ export interface ImageGenerationResponse {
     base64?: string; // Base64 encoded image (fallback if URL conversion fails)
   }>;
   text?: string; // Text response from provider
+  /** Token counts for the call, when the provider reports them (gpt-image models do). */
+  usage?: AIGenerateResponse['usage'];
   metadata?: Record<string, unknown>;
   prompt?: string; // Processed prompt used for generation (useful for batch generation)
   resolvedProviderName?: string; // The provider that actually generated the images (for usage attribution)

@@ -12,6 +12,15 @@ export interface BudgetExceeded {
   limitUsd: number;
 }
 
+export interface BudgetReset {
+  date: string;
+  /** Spend that no longer counts against the cap. Still reported by `/usage`. */
+  waivedUsd: number;
+  waivedRows: number;
+  /** The cap the user is now measured against; null when no cap is configured. */
+  limitUsd: number | null;
+}
+
 @singleton()
 export class UsageBudgetService {
   private readonly defaultLimitUsd: number | undefined;
@@ -36,7 +45,23 @@ export class UsageBudgetService {
     if (limitUsd == null) {
       return null;
     }
-    const spentUsd = await this.usageService.getUserCost(userId, this.usageService.getLocalDate());
+    const spentUsd = await this.usageService.getUserBudgetSpend(userId, this.usageService.getLocalDate());
     return spentUsd >= limitUsd ? { spentUsd, limitUsd } : null;
+  }
+
+  /**
+   * Give the user their full cap back for today, keeping the day's usage records intact:
+   * what is already recorded stops counting against the cap, and spending from here on
+   * is measured from zero again.
+   */
+  async resetUser(userId: string): Promise<BudgetReset> {
+    const date = this.usageService.getLocalDate();
+    const { waivedRows, waivedCost } = await this.usageService.waiveUserBudget(userId, date);
+    return {
+      date,
+      waivedRows,
+      waivedUsd: waivedCost,
+      limitUsd: this.limitOverrides[userId] ?? this.defaultLimitUsd ?? null,
+    };
   }
 }

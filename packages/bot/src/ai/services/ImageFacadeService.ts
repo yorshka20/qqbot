@@ -131,6 +131,10 @@ export class ImageFacadeService {
       model: response.resolvedModel,
       source: 'image',
       imageCount: response.images?.length ?? 0,
+      promptTokens: response.usage?.promptTokens,
+      cachedPromptTokens: response.usage?.cachedPromptTokens,
+      completionTokens: response.usage?.completionTokens,
+      totalTokens: response.usage?.totalTokens,
     });
   }
 

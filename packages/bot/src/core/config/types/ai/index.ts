@@ -174,8 +174,9 @@ export const DEFAULT_CHAT_REASONING_EFFORTS: ChatReasoningEfforts = {
 };
 
 /**
- * Per-model pricing. Text models are priced per 1M tokens; image models per generated image,
- * because image providers report no token counts.
+ * Per-model pricing, per 1M tokens. `perImage` is the fallback for image models whose
+ * provider reports no token counts; a model that does report them (gpt-image) is priced
+ * per token like any text model.
  * Keys are model name strings matching the `model` field persisted in TokenUsageRecord.
  * Glob-style trailing wildcard (`*`) is supported for prefix matching
  * (e.g. `"gpt-4o*"` covers `gpt-4o`, `gpt-4o-mini`, etc.).

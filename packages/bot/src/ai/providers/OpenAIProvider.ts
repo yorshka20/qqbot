@@ -128,6 +128,22 @@ function toUsage(usage: OpenAI.Responses.ResponseUsage): NonNullable<AIGenerateR
   };
 }
 
+/**
+ * The Images API reports its own token counts (text + image input, image output), which is
+ * what gpt-image calls are billed on — the flat per-image estimate they used to be priced
+ * with is several times the real amount.
+ */
+function toImageUsage(usage: OpenAI.ImagesResponse.Usage | undefined): AIGenerateResponse['usage'] {
+  if (!usage) {
+    return undefined;
+  }
+  return {
+    promptTokens: usage.input_tokens,
+    completionTokens: usage.output_tokens,
+    totalTokens: usage.total_tokens,
+  };
+}
+
 /** Extract text, tool calls, reasoning summaries, and usage from a Responses API result. */
 function parseResponsesOutput(response: OpenAI.Responses.Response): {
   text: string;
@@ -565,13 +581,13 @@ export class OpenAIProvider
 
       return {
         images,
+        usage: toImageUsage(response.usage),
         metadata: {
           prompt,
           model,
           size,
           quality,
           numImages,
-          usage: response.usage,
         },
       };
     } catch (error) {
@@ -658,12 +674,12 @@ export class OpenAIProvider
 
       return {
         images,
+        usage: toImageUsage(response.usage),
         metadata: {
           prompt,
           model,
           size,
           quality,
-          usage: response.usage,
         },
       };
     } catch (error) {

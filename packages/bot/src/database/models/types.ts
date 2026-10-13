@@ -246,11 +246,17 @@ export interface TokenUsageRecord extends BaseModel {
   model?: string;
   type: 'llm' | 'image';
   source: string; // 'reply' | 'subagent' | 'command:gpt2' | 'tool:generate_image' ...
-  promptTokens: number; // 0 for image rows
+  promptTokens: number; // 0 for image rows whose provider reports no token counts
   cachedPromptTokens: number; // part of promptTokens served from the provider's cache; 0 when not reported
-  completionTokens: number; // 0 for image rows
-  totalTokens: number; // 0 for image rows
+  completionTokens: number; // 0 for image rows whose provider reports no token counts
+  totalTokens: number; // 0 for image rows whose provider reports no token counts
   imageCount: number; // 0 for llm rows
+  /**
+   * Set when an admin resets the user's daily budget: the row still counts in every usage
+   * report, but no longer against the per-user daily cap. Absent on rows written before
+   * budget resets existed, which reads as not waived.
+   */
+  budgetWaived?: boolean;
 }
 
 /**

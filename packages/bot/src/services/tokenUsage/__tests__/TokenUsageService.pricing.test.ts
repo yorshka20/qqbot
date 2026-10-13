@@ -9,6 +9,7 @@ const PRICING: Record<string, ModelPricingEntry> = {
   'text-model': { input: 1, cachedInput: 0.1, output: 4 },
   'uncached-model': { input: 1, output: 4 },
   'image-model': { perImage: 0.15 },
+  'token-image-model': { input: 8, cachedInput: 2, output: 30 },
   'family-*': { input: 2, output: 2 },
 };
 
@@ -24,6 +25,12 @@ function makeService() {
       return rows.filter((row) =>
         Object.entries(filter).every(([key, value]) => row[key as keyof TokenUsageRecord] === value),
       );
+    },
+    async update(id: string, data: Partial<TokenUsageRecord>) {
+      const row = rows.find((candidate) => candidate.id === id);
+      if (!row) throw new Error(`no row ${id}`);
+      Object.assign(row, data);
+      return row;
     },
   };
   const databaseManager = { getAdapter: () => ({ getModel: () => model }) } as unknown as DatabaseManager;
@@ -73,6 +80,24 @@ describe('TokenUsageService pricing', () => {
     expect(cost).toBeCloseTo(0.3, 10);
   });
 
+  it('prices an image model that reports tokens by its token rates, not per image', async () => {
+    const service = makeService();
+
+    const cost = await service.record(
+      event({
+        model: 'token-image-model',
+        type: 'image',
+        source: 'image',
+        imageCount: 1,
+        promptTokens: 1000,
+        completionTokens: 1056,
+      }),
+    );
+
+    // 1000 input × $8/1M + 1056 output × $30/1M — nowhere near a flat $0.15 per image
+    expect(cost).toBeCloseTo(0.008 + 0.03168, 10);
+  });
+
   it('matches a trailing-wildcard entry and leaves unknown models free', async () => {
     const service = makeService();
 
@@ -94,6 +119,20 @@ describe('TokenUsageService pricing', () => {
       ['乙', 0.3],
       ['甲', 0.15],
     ]);
-    expect(await service.getUserCost('b', date)).toBeCloseTo(1.05, 10);
+    expect(await service.getUserBudgetSpend('b', date)).toBeCloseTo(1.05, 10);
+  });
+
+  it('waiving a user’s budget drops their spend from the cap but keeps it in the report', async () => {
+    const service = makeService();
+    const date = service.getLocalDate();
+    await service.record(event({ userId: 'a', model: 'text-model', promptTokens: 1_000_000 }));
+
+    const waived = await service.waiveUserBudget('a', date);
+
+    expect(waived).toEqual({ waivedRows: 1, waivedCost: 1 });
+    expect(await service.getUserBudgetSpend('a', date)).toBe(0);
+    expect((await service.getDailyReport(date, 10)).cost).toBeCloseTo(1, 10);
+    // A second reset has nothing left to waive.
+    expect(await service.waiveUserBudget('a', date)).toEqual({ waivedRows: 0, waivedCost: 0 });
   });
 });

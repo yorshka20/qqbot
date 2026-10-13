@@ -734,13 +734,17 @@ Tool rounds are capped by `ai.chat.maxToolRounds` (default 5).
 `token_usage` (the numbers `/usage` reports). Each key is active only while set; a day is
 the server's local calendar day. Text rows price uncached prompt tokens at `input`, cached
 ones at `cachedInput` (only DeepSeek reports them; most of its input is cache hits) and
-completion at `output`; image rows price at `perImage`, since image providers report no
-token counts.
+completion at `output`. An image row prices the same way when its provider reports token
+counts — the Images API does, and gpt-image is billed on exactly those tokens — and falls
+back to `perImage` for providers that report none (Gemini image, local backends).
 
 - **Per-user cap** (`userDailyLimitUsd`, `userDailyLimitOverrides`) — `GateCheckStage` asks
   `UsageBudgetService.checkUser` after the whitelist gate and before `onMessageBeforeAI`
   (whose reply-mode classifier is itself an LLM call). An over-budget sender gets a fixed
   one-line reply and no LLM runs. Admins are never capped, but their usage is recorded.
+  `/usage_reset <id>` (admin) gives one user their cap back for today through
+  `UsageBudgetService.resetUser`: the day's rows are flagged `budgetWaived`, which stops
+  them counting against the cap while they stay in every usage report.
 - **Group spend steps** (`groupSpendStepUsd`) and **prompt alerts** (`promptAlertTokens`,
   `promptAlertCooldownMinutes`) — `UsageTrackingPlugin` records each `aiUsage` through
   `UsageNoticeService.record`, which returns the notices the row earns. A step crossing is

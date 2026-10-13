@@ -473,6 +473,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
         completionTokens INTEGER NOT NULL DEFAULT 0,
         totalTokens INTEGER NOT NULL DEFAULT 0,
         imageCount INTEGER NOT NULL DEFAULT 0,
+        budgetWaived INTEGER NOT NULL DEFAULT 0,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`,
@@ -617,8 +618,12 @@ export class SQLiteAdapter implements DatabaseAdapter {
         this.db.run(`ALTER TABLE token_usage ADD COLUMN cachedPromptTokens INTEGER NOT NULL DEFAULT 0`);
         logger.info('[SQLiteAdapter] Added cachedPromptTokens column to token_usage');
       }
+      if (Array.isArray(usageInfo) && !usageInfo.some((col) => col.name === 'budgetWaived')) {
+        this.db.run(`ALTER TABLE token_usage ADD COLUMN budgetWaived INTEGER NOT NULL DEFAULT 0`);
+        logger.info('[SQLiteAdapter] Added budgetWaived column to token_usage');
+      }
     } catch (error) {
-      logger.warn(`[SQLiteAdapter] Failed to add token_usage cachedPromptTokens column: ${error}`);
+      logger.warn(`[SQLiteAdapter] Failed to add token_usage columns: ${error}`);
     }
 
     // The original agenda_items CHECK constraint predates the 'onMessage' trigger
@@ -809,7 +814,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
         'mentionsStreamer',
       ]),
       userPortraitScore: new SQLiteModelAccessor<UserPortraitScore>(this.db, 'user_portrait_score'),
-      tokenUsage: new SQLiteModelAccessor<TokenUsageRecord>(this.db, 'token_usage'),
+      tokenUsage: new SQLiteModelAccessor<TokenUsageRecord>(this.db, 'token_usage', ['budgetWaived']),
     };
   }
 }

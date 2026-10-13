@@ -137,6 +137,7 @@ export class TokenUsageService {
       completionTokens,
       totalTokens,
       imageCount,
+      budgetWaived: false,
     };
 
     try {
@@ -148,10 +149,30 @@ export class TokenUsageService {
     return this.priceUsage(record);
   }
 
-  /** One user's priced spend on `date`, across every group and private chat. */
-  async getUserCost(userId: string, date: string): Promise<number> {
+  /**
+   * One user's priced spend on `date` that counts against their daily cap, across every
+   * group and private chat. Rows waived by {@link waiveUserBudget} are left out — they
+   * stay in the reports, they just no longer hold the cap down.
+   */
+  async getUserBudgetSpend(userId: string, date: string): Promise<number> {
     const rows = await this.databaseManager.getAdapter().getModel('tokenUsage').find({ date, userId });
-    return rows.reduce((sum, row) => sum + this.priceUsage(row), 0);
+    return rows.reduce((sum, row) => (row.budgetWaived ? sum : sum + this.priceUsage(row)), 0);
+  }
+
+  /**
+   * Clear one user's daily cap for `date` by waiving every row recorded so far, and
+   * return the spend that no longer counts. The rows stay exactly as they are in the
+   * usage reports; only the cap is released, so the day's stats remain truthful.
+   */
+  async waiveUserBudget(userId: string, date: string): Promise<{ waivedRows: number; waivedCost: number }> {
+    const model = this.databaseManager.getAdapter().getModel('tokenUsage');
+    const rows = (await model.find({ date, userId })).filter((row) => !row.budgetWaived);
+    let waivedCost = 0;
+    for (const row of rows) {
+      await model.update(row.id, { budgetWaived: true });
+      waivedCost += this.priceUsage(row);
+    }
+    return { waivedRows: rows.length, waivedCost };
   }
 
   async getGroupSpend(groupId: string, date: string): Promise<GroupSpend> {
