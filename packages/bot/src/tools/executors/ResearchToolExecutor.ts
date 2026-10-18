@@ -52,7 +52,7 @@ function detectQuickPathUrl(task: string): string | null {
 @Tool({
   name: 'research',
   description:
-    '调研工具：唯一的"读取外部信息"入口。需要联网搜索、抓取任何 URL 的网页正文、查询知识库或记忆时，都通过本工具发起。底层会自动选择 fetch_page / search / rag_search / search_memory 等工具，并把过程折叠为精炼结论返回。对单 URL 抓取场景会走快路径直接抓取，不再发起额外 LLM 推理；其余情况由子代理多步调研，通常要一到几分钟。',
+    '多步调研工具：需要抓取 URL 网页正文，或需要"先搜索再逐个读页面"的多步调查时用本工具。底层会自动选择 fetch_page / search / rag_search / search_memory 等工具，并把过程折叠为精炼结论返回。对单 URL 抓取场景会走快路径直接抓取；其余情况由子代理多步调研，通常要一到几分钟。**只想查事实不需要读网页正文时，直接用 search 更快。**',
   executor: 'research',
   // `RESEARCH_TIMEOUT` bounds one provider request of the subagent; up to
   // `maxToolRounds` of them plus their tool calls run under this ceiling.
@@ -74,7 +74,7 @@ function detectQuickPathUrl(task: string): string | null {
   ],
   triggerKeywords: ['搜索', 'search', '查', '找', '调研', '了解', '查询', '搜一下', '抓取', 'fetch', '网页', 'URL'],
   whenToUse:
-    '凡是需要读取外部 URL 内容、联网搜索、查询知识库 / 记忆，必须用本工具——禁止用 execute_code 自己 fetch URL。一次调研可完成多步信息收集（先搜索再抓页面），避免多轮工具调用膨胀上下文。**任务描述要聚焦单一主题/单一问题**：宽泛或多子主题的需求请拆开多次调用（如不要把 "TC39 + 浏览器 API + CSS + React 路线图" 塞进一个 task），否则 subagent 会按"每个子话题 ≥2 来源验证"展开导致工具调用爆炸。视频站 URL（YouTube / B站 / Vimeo / TikTok 等）默认不主动抓取，除非用户明确要求读取该视频内容；图片 URL 不受此限。',
+    '需要读取外部 URL 正文，或需要多步调查（先搜索、再挑来源读正文、再汇总）时用本工具——禁止用 execute_code 自己 fetch URL。**只是要查事实、数字、日期、新闻时用 search，不要用本工具**：search 不占用本轮工具调用预算，而本工具要起一个子代理、通常耗时一到几分钟。**任务描述要聚焦单一主题/单一问题**：宽泛或多子主题的需求请拆开多次调用（如不要把 "TC39 + 浏览器 API + CSS + React 路线图" 塞进一个 task）。视频站 URL（YouTube / B站 / Vimeo / TikTok 等）默认不主动抓取，除非用户明确要求读取该视频内容；图片 URL 不受此限。',
 })
 @injectable()
 export class ResearchToolExecutor extends BaseToolExecutor {

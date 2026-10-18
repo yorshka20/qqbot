@@ -71,8 +71,13 @@ export class RetrievalService {
     return this.searchService.search(query, options);
   }
 
-  formatSearchResults(results: SearchResult[]): string {
-    return this.searchService.formatSearchResults(results);
+  /** Several independent queries as one step; results come back in query order. */
+  async searchBatch(queries: string[], options?: SearchOptions): Promise<SearchResult[][]> {
+    return this.searchService.searchBatch(queries, options);
+  }
+
+  formatSearchResults(results: SearchResult[], maxItems?: number): string {
+    return this.searchService.formatSearchResults(results, maxItems);
   }
 
   /**

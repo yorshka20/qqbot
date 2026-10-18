@@ -120,6 +120,16 @@ const TOOL_VISION_NOTICE =
   '[工具补充材料] 以下是工具取回图片的 AI 视觉分析结果，不是新的用户发言。结合它继续回答 <current_query> 里的问题。';
 const TOOL_ROUNDS_EXHAUSTED_NOTICE =
   '[系统提示] 工具调用轮次已用尽，不要再调用任何工具。现在直接基于已获得的信息，回答 <current_query> 里的问题。';
+const EXEMPT_ROUNDS_EXHAUSTED_NOTICE =
+  '[系统提示] 检索类工具的额外轮次已用完，后续检索会开始占用总轮次预算。请基于已查到的内容继续，只在确实缺少关键事实时才再检索。';
+
+/**
+ * Ceiling on rounds spent purely on `roundExempt` tools, which are otherwise not
+ * charged to the turn's budget. Without it a model that only ever retrieves
+ * never advances `round` and the loop cannot terminate — the exemption buys
+ * retrieval room, it does not remove the bound.
+ */
+const DEFAULT_MAX_EXEMPT_ROUNDS = 4;
 const END_TURN_VOIDED_NOTICE =
   '[系统提示] 同一轮里有工具调用失败，所以 end_turn 没有生效，本次回复还没结束。先看失败原因，能补救就补救（比如卡片渲染失败就改用文字回复），再和最终内容一起调用 end_turn。那一轮写的文字没有丢，会和你之后的最终文本一起发出，不要重写。';
 const END_TURN_REQUIRED_NOTICE =
@@ -921,6 +931,11 @@ export class LLMService {
     // the next round decides what the text was.
     const requiresEndTurn = toolExecutor !== undefined && tools.some((tool) => tool.name === END_TURN_TOOL_NAME);
     let heldText = '';
+    // Rounds spent only on roundExempt (retrieval) tools are charged here instead
+    // of to `round`, so looking something up never costs the model the room to act
+    // on it. Bounded separately — see DEFAULT_MAX_EXEMPT_ROUNDS.
+    const exemptToolNames = new Set(tools.filter((tool) => tool.roundExempt).map((tool) => tool.name));
+    let exemptRoundsUsed = 0;
 
     while (maxRounds === undefined || round < maxRounds) {
       // Generate with tools
@@ -1156,6 +1171,21 @@ export class LLMService {
           openingPromptTokens,
           stopReason: 'tool_use',
         };
+      }
+
+      // A round that only retrieved is charged to the exempt budget, not to `round`.
+      // "Only": one non-exempt call alongside means the model also acted, so the
+      // round is ordinary — otherwise pairing any tool with a search would make it free.
+      const retrievalOnlyRound = calls.every((fc) => exemptToolNames.has(fc.name));
+      if (retrievalOnlyRound && exemptRoundsUsed < DEFAULT_MAX_EXEMPT_ROUNDS) {
+        exemptRoundsUsed++;
+        logger.debug(
+          `[LLMService] Round ${round + 1} was retrieval-only; charged to exempt budget (${exemptRoundsUsed}/${DEFAULT_MAX_EXEMPT_ROUNDS})`,
+        );
+        if (exemptRoundsUsed === DEFAULT_MAX_EXEMPT_ROUNDS) {
+          currentMessages.push({ role: 'user', content: EXEMPT_ROUNDS_EXHAUSTED_NOTICE });
+        }
+        continue;
       }
 
       round++;

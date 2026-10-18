@@ -194,11 +194,28 @@ export class SearchService {
    * found" is a different claim, not a degraded one.
    */
   async search(query: string, options?: SearchOptions): Promise<SearchResult[]> {
+    const [results] = await this.searchBatch([query], options);
+    return results ?? [];
+  }
+
+  /**
+   * Run several independent queries as one step, answering in the same order.
+   *
+   * Exists because the per-query cost is identical either way — Serper bills each
+   * query in a batch exactly as if sent alone — while the per-*step* cost is not:
+   * batched, N queries take one round trip, one timeout and one fallback
+   * decision. So breadth is free in latency terms, and asking several angles at
+   * once is strictly better than guessing which single query will land.
+   */
+  async searchBatch(queries: string[], options?: SearchOptions): Promise<SearchResult[][]> {
     if (!this.config?.enabled) {
       throw new Error('Search is not enabled or configured');
     }
     if (this.providerOrder.length === 0) {
       throw new Error('No search provider is usable (check mcp.search.provider / fallbackOrder and credentials)');
+    }
+    if (queries.length === 0) {
+      return [];
     }
 
     const maxResults = options?.maxResults || this.maxResults;
@@ -213,15 +230,15 @@ export class SearchService {
     const skipped: string[] = [];
     for (const name of this.providerOrder) {
       try {
-        const results = await this.runProvider(name, query, mergedOptions);
+        const batches = await this.runProviderBatch(name, queries, mergedOptions);
         if (skipped.length > 0) {
           logger.info(`[SearchService] Served by fallback provider "${name}" after: ${skipped.join('; ')}`);
         }
-        return results.slice(0, maxResults);
+        return batches.map((results) => results.slice(0, maxResults));
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         skipped.push(`${name}: ${reason}`);
-        logger.warn(`[SearchService] Provider "${name}" could not serve the query: ${reason}`);
+        logger.warn(`[SearchService] Provider "${name}" could not serve the queries: ${reason}`);
       }
     }
 
@@ -229,20 +246,30 @@ export class SearchService {
   }
 
   /**
-   * Attempt one provider. No pre-flight health probe: with a provider order in
-   * place the request itself is the probe, and for a metered backend a probe is
-   * a billed call that answers a question the next real search answers for
-   * free. A provider that fails here simply yields to the next one.
+   * Attempt one provider for the whole batch. No pre-flight health probe: with a
+   * provider order in place the request itself is the probe, and for a metered
+   * backend a probe is a billed call that answers a question the next real search
+   * answers for free. A provider that fails here simply yields to the next one.
    */
-  private async runProvider(name: SearchProvider, query: string, options: SearchOptions): Promise<SearchResult[]> {
+  private async runProviderBatch(
+    name: SearchProvider,
+    queries: string[],
+    options: SearchOptions,
+  ): Promise<SearchResult[][]> {
     if (name === 'serper') {
       const client = this.serperClient;
       if (!client) {
         throw new Error('serper client was not initialized');
       }
-      return client.webSearch(query, options);
+      return client.webSearchBatch(queries, options);
     }
 
+    // SearXNG has no batch endpoint on either transport, so the batch is only a
+    // concurrency hint there. The caller's contract is unchanged either way.
+    return Promise.all(queries.map((query) => this.runSearxngQuery(query, options)));
+  }
+
+  private async runSearxngQuery(query: string, options: SearchOptions): Promise<SearchResult[]> {
     if (this.searxngClient) {
       return this.searxngClient.webSearch(query, options);
     }
@@ -281,7 +308,8 @@ export class SearchService {
         } catch {
           domain = '未知来源';
         }
-        return `${index + 1}. **${result.title}**\n   来源: ${domain}\n   摘要: ${snippet}\n   链接: ${result.url}`;
+        const dateLine = result.date ? `\n   日期: ${result.date}` : '';
+        return `${index + 1}. **${result.title}**\n   来源: ${domain}${dateLine}\n   摘要: ${snippet}\n   链接: ${result.url}`;
       })
       .join('\n\n');
 
@@ -467,17 +495,15 @@ export class SearchService {
           continue;
         }
 
-        const searchPromises = searchQueries.map(async (queryInfo, index) => {
-          try {
-            const results = await this.search(queryInfo.query);
-            return { ...queryInfo, queryIndex: index + 1, results };
-          } catch (error) {
-            logger.warn(`[SearchService] Search failed for query "${queryInfo.query}":`, error);
-            return { ...queryInfo, queryIndex: index + 1, results: [] };
-          }
-        });
-        const searchResultsArray = await Promise.all(searchPromises);
-        const roundResults = searchResultsArray.flatMap((s) => s.results);
+        // One batch rather than a search() per query: same credits, but a single
+        // round trip and a single fallback decision for the whole round.
+        let roundResults: SearchResult[] = [];
+        try {
+          const batches = await this.searchBatch(searchQueries.map((q) => q.query));
+          roundResults = batches.flat();
+        } catch (error) {
+          logger.warn(`[SearchService] Round ${iteration} multi-search failed:`, error);
+        }
         allResults.push(...roundResults);
         if (roundResults.length === 0) {
           logger.warn(`[SearchService] Round ${iteration}: no results, stopping`);

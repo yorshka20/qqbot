@@ -34,8 +34,15 @@ function serviceWith(config: MCPConfig): SearchService {
 
 const hit = (title: string): SearchResult[] => [{ title, url: `https://x.test/${title}`, snippet: '' }];
 
+/**
+ * `serper` is declared per query even though the client is asked for a batch:
+ * these cases are about which provider answers, and a batch of one is the shape
+ * every single-query search now takes.
+ */
 function stub(service: SearchService, serper: () => Promise<SearchResult[]>, searxng: () => Promise<SearchResult[]>) {
-  (service as never as { serperClient: unknown }).serperClient = { webSearch: serper };
+  (service as never as { serperClient: unknown }).serperClient = {
+    webSearchBatch: (queries: string[]) => Promise.all(queries.map(() => serper())),
+  };
   (service as never as { searxngClient: unknown }).searxngClient = { webSearch: searxng };
 }
 

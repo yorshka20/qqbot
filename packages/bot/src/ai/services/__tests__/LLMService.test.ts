@@ -2,7 +2,7 @@ import 'reflect-metadata';
 
 import { describe, expect, it, spyOn, test } from 'bun:test';
 import type { AIManager } from '@/ai/AIManager';
-import type { AIGenerateOptions, AIGenerateResponse, ToolDefinition } from '@/ai/types';
+import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, ToolDefinition } from '@/ai/types';
 import { contentToPlainString } from '@/ai/utils/contentUtils';
 import { HttpClientError } from '@/api/http/HttpClient';
 import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
@@ -652,6 +652,103 @@ describe('LLMService resolvedModel stamping', () => {
       });
 
       expect(res.reasoningContent).toBeUndefined();
+    });
+  });
+
+  // A round spent looking something up must not cost the model the rounds it needs
+  // to act on what it found — otherwise it skips the lookup to stay in budget.
+  describe('generateWithTools round exemption', () => {
+    /**
+     * Plays a scripted sequence of rounds — one entry per round, holding the tool
+     * names that round calls — then answers with plain text.
+     */
+    function createScriptedProvider(script: string[][]) {
+      let call = 0;
+      const prompts: string[] = [];
+      const provider = {
+        name: 'mock',
+        getCapabilities: () => ['llm'],
+        isAvailable: () => true,
+        supportsToolUse: true,
+        generate: async (_prompt: string, options?: { messages?: ChatMessage[] }): Promise<AIGenerateResponse> => {
+          const messages = options?.messages ?? [];
+          const last = messages[messages.length - 1];
+          prompts.push(typeof last?.content === 'string' ? last.content : '');
+          const names = script[call++];
+          if (!names) {
+            return { text: 'final answer' };
+          }
+          return {
+            text: '',
+            functionCalls: names.map((name, idx) => ({ name, arguments: '{}', toolCallId: `c${call}_${idx}` })),
+          };
+        },
+      };
+      return { provider, prompts, calls: () => call };
+    }
+
+    function createService(provider: unknown) {
+      const aiManager = {
+        getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+        getProvidersForCapability: () => [],
+        getDefaultProvider: () => provider,
+      } as unknown as AIManager;
+      return createLLMService(aiManager, {
+        toolUseProviders: ['mock'],
+        fallback: { fallbackOrder: [] },
+      });
+    }
+
+    const tools: ToolDefinition[] = [
+      {
+        name: 'search',
+        description: 'retrieves',
+        parameters: { type: 'object', properties: {} },
+        roundExempt: true,
+      },
+      { name: 'noop', description: 'acts', parameters: { type: 'object', properties: {} } },
+    ];
+
+    const run = (service: ReturnType<typeof createService>, maxToolRounds: number) =>
+      service.generateWithTools([{ role: 'user', content: 'hi' }], tools, {
+        reasoningEffort: 'none',
+        maxToolRounds,
+        toolExecutor: async () => 'ok',
+      });
+
+    it('does not charge a retrieval-only round to the round budget', async () => {
+      const { provider } = createScriptedProvider([['search'], ['search'], ['noop']]);
+      const res = await run(createService(provider), 2);
+
+      // Three tool rounds under a two-round budget: the two searches were free.
+      expect(res.stopReason).toBe('end_turn');
+      expect(res.text).toBe('final answer');
+      expect(res.toolCalls?.map((t) => t.tool)).toEqual(['search', 'search', 'noop']);
+    });
+
+    it('charges a round that acted alongside its retrieval', async () => {
+      const { provider } = createScriptedProvider([['search', 'noop'], ['search']]);
+      const res = await run(createService(provider), 1);
+
+      expect(res.stopReason).toBe('max_rounds');
+    });
+
+    it('stops exempting once the retrieval allowance runs out, so the loop still ends', async () => {
+      const script = Array.from({ length: 20 }, () => ['search']);
+      const { provider, calls } = createScriptedProvider(script);
+      const res = await run(createService(provider), 2);
+
+      expect(res.stopReason).toBe('max_rounds');
+      // 4 exempt rounds + 2 charged rounds + the forced final generation.
+      expect(calls()).toBe(7);
+    });
+
+    it('warns the model when its retrieval allowance is spent', async () => {
+      const script = Array.from({ length: 20 }, () => ['search']);
+      const { provider, prompts } = createScriptedProvider(script);
+      await run(createService(provider), 2);
+
+      expect(prompts.some((p) => p.includes('检索类工具的额外轮次已用完'))).toBe(true);
     });
   });
 

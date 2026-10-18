@@ -6,6 +6,13 @@ export interface SearchResult {
   snippet?: string;
   content?: string;
   engine?: string;
+  /**
+   * Publication date as the backend reported it, free-form ("2 days ago",
+   * "Oct 14, 2026"). Carried because a dateless snippet gives the model no way
+   * to tell a current page from an archived one, which is how stale facts get
+   * quoted as current.
+   */
+  date?: string;
 }
 
 export interface SearchOptions {

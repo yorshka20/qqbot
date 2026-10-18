@@ -13,6 +13,8 @@ import type { SerperSearchResponse } from './types';
 
 const DEFAULT_ENDPOINT = 'https://google.serper.dev/search';
 const DEFAULT_TIMEOUT_MS = 10000;
+/** Added to the budget per extra query in a batch (upstream work grows with the batch). */
+const BATCH_TIMEOUT_STEP_MS = 2000;
 
 export class SerperClient {
   private apiKey: string;
@@ -34,25 +36,45 @@ export class SerperClient {
    * Serper is Google-only — `engines` / `categories` options are ignored.
    */
   async webSearch(query: string, options?: SearchOptions): Promise<SearchResult[]> {
+    const [results] = await this.webSearchBatch([query], options);
+    return results ?? [];
+  }
+
+  /**
+   * Run several queries in **one** request. Serper accepts an array body and
+   * answers with an array in the same order, billing each query exactly as if it
+   * had been sent alone — so N queries cost N credits either way, but batched
+   * they cost one round trip and one timeout instead of N.
+   *
+   * Independent sub-questions should therefore always come through here: serial
+   * searching is strictly worse, never cheaper.
+   */
+  async webSearchBatch(queries: string[], options?: SearchOptions): Promise<SearchResult[][]> {
+    if (queries.length === 0) return [];
+
     const page = options?.pageno ?? 1;
-    const num = options?.maxResults ?? 10;
+    // Google stopped honouring num > 10 in 2025; asking for more returns the same
+    // ten and can be billed as a deeper page. Pagination is the only way deeper.
+    const num = Math.min(options?.maxResults ?? 10, 10);
     const language = options?.language;
 
     const hl = this.hlOverride ?? (language ? language.toLowerCase() : 'zh-cn');
     const gl = this.glOverride ?? this.deriveCountryFromLanguage(language) ?? 'cn';
     const tbs = this.mapTimeRange(options?.timeRange);
 
-    const body: Record<string, unknown> = {
-      q: query,
-      gl,
-      hl,
-      num,
-      page,
-      autocorrect: true,
-    };
-    if (tbs) body.tbs = tbs;
+    const payload = queries.map((q) => {
+      const entry: Record<string, unknown> = { q, gl, hl, num, page, autocorrect: true };
+      if (tbs) entry.tbs = tbs;
+      return entry;
+    });
 
-    logger.debug(`[SerperClient] Searching: ${query} (gl=${gl}, hl=${hl}, num=${num}, page=${page})`);
+    // A batch is one request but N queries' worth of work upstream, so the single
+    // -query timeout would make large batches fail by construction.
+    const timeoutMs = this.timeoutMs + (queries.length - 1) * BATCH_TIMEOUT_STEP_MS;
+
+    logger.debug(
+      `[SerperClient] Searching ${queries.length} quer${queries.length === 1 ? 'y' : 'ies'} (gl=${gl}, hl=${hl}, num=${num}, page=${page}): ${queries.join(' | ')}`,
+    );
 
     const maxRetries = 2;
     let lastError: Error | null = null;
@@ -65,8 +87,10 @@ export class SerperClient {
             'X-API-KEY': this.apiKey,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(this.timeoutMs),
+          // Serper distinguishes batch from single by the body being an array, so a
+          // one-element batch must still be sent wrapped to get an array back.
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(timeoutMs),
         });
 
         if (!response.ok) {
@@ -74,11 +98,14 @@ export class SerperClient {
           throw new Error(`Serper API error: ${response.status} ${response.statusText} ${text}`);
         }
 
-        const data = (await response.json()) as SerperSearchResponse;
-        const results = this.mapResults(data);
-        const credits = data.credits;
-        logger.debug(`[SerperClient] Search completed: ${results.length} results, credits used=${credits ?? '?'}`);
-        return results;
+        const parsed = (await response.json()) as SerperSearchResponse | SerperSearchResponse[];
+        const responses = Array.isArray(parsed) ? parsed : [parsed];
+        const mapped = responses.map((data) => this.mapResults(data));
+        const credits = responses.reduce((sum, data) => sum + (data.credits ?? 0), 0);
+        logger.debug(
+          `[SerperClient] Batch completed: ${mapped.map((r) => r.length).join('+')} results, credits used=${credits || '?'}`,
+        );
+        return mapped;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         const isRetryable = this.isRetryableError(lastError);
@@ -98,26 +125,77 @@ export class SerperClient {
     throw lastError || new Error('Serper search failed');
   }
 
-  /** Convert Serper organic results to unified SearchResult shape. answerBox prepended when present (treated like a top result with no engine attribution). */
+  /**
+   * Flatten one SERP into the unified `SearchResult` shape.
+   *
+   * Google answers a single query with far more than the organic ten, and every
+   * block below is already paid for by the same credit — dropping them meant
+   * paying for an encyclopaedia entry and reading only the bibliography. Each
+   * block is tagged in `engine` so the model can weigh a direct answer against a
+   * page it would still have to read, following the existing `google (answerBox)`
+   * convention.
+   */
   private mapResults(data: SerperSearchResponse): SearchResult[] {
     const results: SearchResult[] = [];
 
-    if (data.answerBox?.link && (data.answerBox.snippet || data.answerBox.title)) {
+    const answer = data.answerBox?.answer || data.answerBox?.snippet;
+    if (data.answerBox && answer) {
       results.push({
-        title: data.answerBox.title || data.answerBox.snippet || '',
-        url: data.answerBox.link,
-        snippet: data.answerBox.snippet || '',
+        title: data.answerBox.title || answer,
+        url: data.answerBox.link || '',
+        snippet: answer,
         engine: 'google (answerBox)',
+      });
+    }
+
+    const kg = data.knowledgeGraph;
+    if (kg?.title && (kg.description || kg.attributes)) {
+      const attributes = Object.entries(kg.attributes ?? {})
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('；');
+      results.push({
+        title: [kg.title, kg.type].filter(Boolean).join(' — '),
+        url: kg.website || kg.descriptionLink || '',
+        snippet: [kg.description, attributes].filter(Boolean).join('\n'),
+        engine: 'google (knowledgeGraph)',
+      });
+    }
+
+    for (const story of data.topStories ?? []) {
+      if (!story.link || !story.title) continue;
+      results.push({
+        title: story.title,
+        url: story.link,
+        snippet: story.snippet || '',
+        engine: `google (topStories${story.source ? `, ${story.source}` : ''})`,
+        date: story.date,
       });
     }
 
     for (const item of data.organic || []) {
       if (!item.link) continue;
+      const sitelinks = (item.sitelinks ?? [])
+        .map((s) => s.title)
+        .filter(Boolean)
+        .join(' / ');
       results.push({
         title: item.title || '',
         url: item.link,
-        snippet: item.snippet || '',
+        snippet: sitelinks ? `${item.snippet || ''}\n（站内条目：${sitelinks}）` : item.snippet || '',
         engine: 'google',
+        date: item.date,
+      });
+    }
+
+    // Question/answer pairs Google already resolved. Often the fact itself, which
+    // is why they are worth more than the link they came with.
+    for (const paa of data.peopleAlsoAsk ?? []) {
+      if (!paa.question || !paa.snippet) continue;
+      results.push({
+        title: paa.question,
+        url: paa.link || '',
+        snippet: paa.snippet,
+        engine: 'google (peopleAlsoAsk)',
       });
     }
 

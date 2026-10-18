@@ -248,6 +248,7 @@ export class ToolManager {
           properties,
           required,
         },
+        ...(spec.roundExempt ? { roundExempt: true as const } : {}),
       };
     });
   }

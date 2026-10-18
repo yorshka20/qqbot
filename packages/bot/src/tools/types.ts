@@ -157,6 +157,20 @@ export interface ToolSpec {
    * stall a reply.
    */
   timeoutMs?: number;
+
+  /**
+   * Excludes a round spent entirely on this tool from the turn's tool-round
+   * budget, which is instead charged against a separate, smaller exempt budget.
+   *
+   * Reserved for tools that only *acquire* information. Under one shared budget
+   * a round spent looking something up is a round not available for acting on
+   * it, so the model trades away accuracy to keep room to finish — it answers
+   * from stale parametric memory rather than risk running out. Retrieval must
+   * not compete with the work it informs.
+   *
+   * Not a licence for an unbounded loop: see {@link DEFAULT_MAX_EXEMPT_ROUNDS}.
+   */
+  roundExempt?: boolean;
 }
 
 /**

@@ -27,6 +27,8 @@ export interface ToolOptions {
   describeForModel?: () => ToolModelDescription;
   /** See {@link ToolSpec.timeoutMs} — this tool's own wall-clock budget. */
   timeoutMs?: number;
+  /** See {@link ToolSpec.roundExempt} — retrieval-only rounds get their own budget. */
+  roundExempt?: boolean;
 }
 
 /**
@@ -109,5 +111,6 @@ export function metadataToToolSpec(metadata: ToolMetadata): ToolSpec {
     available: metadata.available,
     describeForModel: metadata.describeForModel,
     timeoutMs: metadata.timeoutMs,
+    roundExempt: metadata.roundExempt,
   };
 }
