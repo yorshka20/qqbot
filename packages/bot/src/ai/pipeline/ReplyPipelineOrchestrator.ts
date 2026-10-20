@@ -22,6 +22,12 @@ import { ReplyPipelineContext } from './ReplyPipelineContext';
 import type { ReplyStage } from './types';
 
 /**
+ * Assembling the prompt is local work plus bounded retrievals, so spending longer than this
+ * before the model is even called is a stall worth attributing to a stage.
+ */
+const SLOW_ASSEMBLY_MS = 2000;
+
+/**
  * Reply generation pipeline orchestrator.
  * Executes a sequence of {@link ReplyStage} instances to produce a reply,
  * with early exit when a stage sets `ctx.interrupted = true`.
@@ -68,9 +74,27 @@ export class ReplyPipelineOrchestrator {
     const ctx = new ReplyPipelineContext(context, taskResults);
 
     try {
+      // Stages are timed until the prompt exists, which is where the pipeline stops doing our
+      // own work and starts waiting on the model. A slow turn is otherwise only visible as a
+      // gap between two unrelated log lines, which is how a retrieval stall gets mistaken for
+      // a slow provider.
+      const timings: string[] = [];
+      let assemblyMs = 0;
+      let assembled = false;
       for (const stage of this.stages) {
         if (ctx.interrupted) return;
+        const startedAt = Date.now();
         await stage.execute(ctx);
+        if (assembled) {
+          continue;
+        }
+        const elapsed = Date.now() - startedAt;
+        timings.push(`${stage.name}=${elapsed}ms`);
+        assemblyMs += elapsed;
+        assembled = ctx.messages.length > 0;
+        if (assembled && assemblyMs >= SLOW_ASSEMBLY_MS) {
+          logger.warn(`[ReplyPipelineOrchestrator] prompt assembled in ${assemblyMs}ms | ${timings.join(' ')}`);
+        }
       }
       // Fire-and-forget episode maintenance
       void this.episodeCacheManager.maintainEpisodeContext(ctx.episodeKey).catch(() => {});

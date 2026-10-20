@@ -30,6 +30,14 @@ const DEFAULT_REPLY_MODE_PROVIDERS = ['deepseek', 'openai', 'gemini'];
 const DEFAULT_LOW_EFFORT_PROVIDERS = ['doubao'];
 const DEFAULT_MAX_TOOL_ROUNDS = 5;
 
+/**
+ * Budget for resolving the images in the whole history window, and for each download inside
+ * it. A history image costs a protocol round trip for a fresh temp URL, a download and a
+ * re-compress, and the window is re-resolved every turn, so this is the one number that keeps
+ * an unreachable or slow resource from holding up the turn's prompt.
+ */
+const HISTORY_IMAGE_BUDGET_MS = 5000;
+
 @singleton()
 export class PromptAssemblyStage implements ReplyStage {
   readonly name = 'prompt-assembly';
@@ -129,35 +137,7 @@ export class PromptAssemblyStage implements ReplyStage {
 
     // When selected provider has vision, replace history entries that contain images with ContentPart[] (text + base64 image_url).
     if (ctx.providerHasVision && ctx.historyEntries.length > 0) {
-      const getResourceUrl = (resourceId: string) =>
-        this.messageAPI.getResourceTempUrl(resourceId, hookContext.message);
-      for (let i = 0; i < ctx.historyEntries.length; i++) {
-        const entry = ctx.historyEntries[i];
-        const viewableImages = collectViewableImageSegments(entry.segments);
-        if (viewableImages.length === 0) {
-          continue;
-        }
-        try {
-          const visionImages = await extractImagesFromSegmentsAsync(viewableImages, getResourceUrl);
-          if (visionImages.length === 0) {
-            continue;
-          }
-          const normalized = await normalizeVisionImages(visionImages, {
-            timeout: 15000,
-            maxSize: 5 * 1024 * 1024,
-          });
-          const parts = this.buildContentPartsForEntry(entry, normalized);
-          const msgIndex = historyMessageIndices[i];
-          if (msgIndex >= 0 && msgIndex < messages.length) {
-            messages[msgIndex] = { ...messages[msgIndex], content: parts };
-          }
-        } catch (err) {
-          logger.warn(
-            `[PromptAssemblyStage] Failed to resolve history images for entry ${entry.messageId}, keeping text placeholder:`,
-            err instanceof Error ? err.message : err,
-          );
-        }
-      }
+      await this.attachHistoryImages(ctx, messages, historyMessageIndices);
     }
 
     // When selected provider has vision and current message has images, attach to last user message.
@@ -243,6 +223,69 @@ export class PromptAssemblyStage implements ReplyStage {
         2,
       )}`,
     );
+  }
+
+  /**
+   * Replace the history messages whose entry carries images with their vision parts.
+   *
+   * Every entry is independent, so they resolve concurrently against one shared deadline
+   * rather than one after another — resolving them in sequence made the prompt wait for the
+   * sum of every image in the window. An entry that does not make the deadline keeps the
+   * text placeholder the assembler already built for it, which is also what a failed
+   * resolve leaves behind.
+   */
+  private async attachHistoryImages(
+    ctx: ReplyPipelineContext,
+    messages: ChatMessage[],
+    historyMessageIndices: number[],
+  ): Promise<void> {
+    const getResourceUrl = (resourceId: string) =>
+      this.messageAPI.getResourceTempUrl(resourceId, ctx.hookContext.message);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const deadline = new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), HISTORY_IMAGE_BUDGET_MS);
+      });
+      const resolvedParts = await Promise.all(
+        ctx.historyEntries.map((entry) => Promise.race([this.resolveEntryImages(entry, getResourceUrl), deadline])),
+      );
+      resolvedParts.forEach((parts, i) => {
+        const msgIndex = historyMessageIndices[i];
+        if (parts && msgIndex >= 0 && msgIndex < messages.length) {
+          messages[msgIndex] = { ...messages[msgIndex], content: parts };
+        }
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Vision parts for one history entry, or null when it has no image or none could be resolved. */
+  private async resolveEntryImages(
+    entry: ConversationMessageEntry,
+    getResourceUrl: (resourceId: string) => Promise<string | null>,
+  ): Promise<ContentPart[] | null> {
+    const viewableImages = collectViewableImageSegments(entry.segments);
+    if (viewableImages.length === 0) {
+      return null;
+    }
+    try {
+      const visionImages = await extractImagesFromSegmentsAsync(viewableImages, getResourceUrl);
+      if (visionImages.length === 0) {
+        return null;
+      }
+      const normalized = await normalizeVisionImages(visionImages, {
+        timeout: HISTORY_IMAGE_BUDGET_MS,
+        maxSize: 5 * 1024 * 1024,
+      });
+      return this.buildContentPartsForEntry(entry, normalized);
+    } catch (err) {
+      logger.warn(
+        `[PromptAssemblyStage] Failed to resolve history images for entry ${entry.messageId}, keeping text placeholder:`,
+        err instanceof Error ? err.message : err,
+      );
+      return null;
+    }
   }
 
   /** Build ContentPart[] for one history entry when provider has vision: text + image_url (data URL). */
