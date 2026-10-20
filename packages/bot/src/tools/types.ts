@@ -171,6 +171,17 @@ export interface ToolSpec {
    * Not a licence for an unbounded loop: see {@link DEFAULT_MAX_EXEMPT_ROUNDS}.
    */
   roundExempt?: boolean;
+
+  /**
+   * The tool delivers user-visible output (text, a card, a voice message, a
+   * reaction, an image) rather than returning material only the model sees.
+   *
+   * The tool loop reads this to tell a turn that ended after saying something
+   * from one that ended having said nothing. Without it, a provider that drops
+   * its final text but still calls `end_turn` is indistinguishable from a
+   * deliberate silent finish.
+   */
+  deliversContent?: boolean;
 }
 
 /**

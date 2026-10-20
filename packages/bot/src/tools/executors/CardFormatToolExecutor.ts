@@ -20,6 +20,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
     '科普一个梗/术语 → knowledge 或 qa',
   ],
   executor: 'send_card',
+  deliversContent: true,
   // A cold Puppeteer launch, the render itself and the image upload are none of
   // them internally bounded.
   timeoutMs: 60_000,

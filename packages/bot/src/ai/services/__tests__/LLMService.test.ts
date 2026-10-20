@@ -882,7 +882,7 @@ describe('LLMService resolvedModel stamping', () => {
       parameters: { type: 'object', properties: {} },
     };
 
-    type ScriptedRound = { text?: string; calls?: string[] };
+    type ScriptedRound = { text?: string; calls?: string[]; reasoning?: string };
 
     /** Provider that replays `rounds` in order and records the tail of every request. */
     function createService(rounds: ScriptedRound[]) {
@@ -895,10 +895,11 @@ describe('LLMService resolvedModel stamping', () => {
         supportsToolUse: true,
         generate: async (_p: string, o?: AIGenerateOptions): Promise<AIGenerateResponse> => {
           requests.push((o?.messages ?? []).map((m) => ({ role: m.role, content: contentToPlainString(m.content) })));
-          const { text = '', calls = [] } = rounds[round];
+          const { text = '', calls = [], reasoning } = rounds[round];
           round++;
           return {
             text,
+            reasoningContent: reasoning,
             functionCalls: calls.map((name, i) => ({ name, arguments: '{}', toolCallId: `call_${round}_${i}` })),
           };
         },
@@ -936,6 +937,50 @@ describe('LLMService resolvedModel stamping', () => {
       expect(notice.role).toBe('user');
       expect(notice.content).toContain(END_TURN_TOOL_NAME);
       expect(res.text).toBe('结论如下');
+      expect(res.stopReason).toBe('end_turn_tool');
+    });
+
+    it('retries a round that calls end_turn without emitting any visible content', async () => {
+      // Gemini 3 can leave the whole answer in a thought part while the visible
+      // text stays empty and the only call is end_turn. Treated as a silent
+      // finish, the user would get nothing; it must fail like an empty completion.
+      const { service, requests } = createService([
+        { calls: ['noop', END_TURN_TOOL_NAME], reasoning: '完整答案留在思考里，正文为空' },
+        { text: '这是答案', calls: [END_TURN_TOOL_NAME] },
+      ]);
+      const seen: string[] = [];
+      const res = await run(service, [noop, endTurn], seen);
+
+      expect(requests).toHaveLength(2);
+      expect(seen).toEqual(['这是答案 → end_turn', '<end_turn>']);
+      expect(res.text).toBe('这是答案');
+      expect(res.stopReason).toBe('end_turn_tool');
+    });
+
+    const card: ToolDefinition = {
+      name: 'card',
+      description: 'sends a card',
+      parameters: { type: 'object', properties: {} },
+      deliversContent: true,
+    };
+
+    it('accepts a silent end_turn after an earlier round delivered content', async () => {
+      const { service, requests } = createService([{ calls: ['card'] }, { calls: [END_TURN_TOOL_NAME] }]);
+      const seen: string[] = [];
+      const res = await run(service, [card, endTurn], seen);
+
+      expect(requests).toHaveLength(2);
+      expect(seen).toEqual(['<card>', '<end_turn>']);
+      expect(res.text).toBe('');
+      expect(res.stopReason).toBe('end_turn_tool');
+    });
+
+    it('accepts end_turn in the same round as a content tool without text', async () => {
+      const { service, requests } = createService([{ calls: ['card', END_TURN_TOOL_NAME] }]);
+      const res = await run(service, [card, endTurn]);
+
+      expect(requests).toHaveLength(1);
+      expect(res.text).toBe('');
       expect(res.stopReason).toBe('end_turn_tool');
     });
 

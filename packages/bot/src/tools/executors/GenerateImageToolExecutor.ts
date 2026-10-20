@@ -83,6 +83,7 @@ export function describeGenerateImageForModel(): ToolModelDescription {
   description:
     '根据自然语言描述生成图片并直接发送给用户，一张图通常要一分钟左右。prompt 会原样交给绘图模型，不会再经一轮改写，所以把画面写完整：主体、动作、表情、构图；多格要写明格数、阅读顺序和每一格。消息里带了图，或填了 preset 时，系统另附参考图和外形，不要把外形抄进 prompt。需要复用某个常驻角色或元素时，在 presets 里引用它的 id。支持 openai（默认，gpt-image-2）和 gemini，两边共用同一套参考拼装。',
   executor: 'generate_image',
+  deliversContent: true,
   // gpt-image-2 measured at 50–65s per picture; the ceiling leaves room for a slow provider.
   timeoutMs: 300_000,
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },

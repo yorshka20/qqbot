@@ -13,6 +13,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   description:
     '给当前这条群消息贴一个 QQ 表情回应（就是群里长按消息贴表情那个功能）。这是"说话"和"沉默"之间的第三档：某条消息值得表个态，但不值得专门回一句话时用它。没有别的要说就和 end_turn 在同一轮调用。',
   executor: 'react',
+  deliversContent: true,
   visibility: {
     reply: { sources: ['qq-group'] },
   },

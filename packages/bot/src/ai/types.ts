@@ -302,6 +302,8 @@ export interface ToolDefinition {
   };
   /** Mirrors `ToolSpec.roundExempt`; read by the tool loop, never sent to a provider. */
   roundExempt?: true;
+  /** Mirrors `ToolSpec.deliversContent`; read by the tool loop, never sent to a provider. */
+  deliversContent?: true;
 }
 
 /** Function call from LLM */

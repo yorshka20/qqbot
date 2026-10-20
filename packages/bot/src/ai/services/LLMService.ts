@@ -88,8 +88,8 @@ function withHardTimeout<T>(p: Promise<T>, timeoutMs: number, label: string): Pr
  * `finish_reason: stop`.
  */
 export class EmptyCompletionError extends Error {
-  constructor(label: string) {
-    super(`[LLMService] ${label} returned an empty completion (no text, no tool calls)`);
+  constructor(label: string, detail = 'no text, no tool calls') {
+    super(`[LLMService] ${label} returned an empty completion (${detail})`);
     this.name = 'EmptyCompletionError';
   }
 }
@@ -610,12 +610,52 @@ export class LLMService {
     return this.generateInRound(prompt, options, providerName, newConversation());
   }
 
+  /**
+   * A tool loop may finish silently only when the turn has already produced
+   * something the user can see. `end_turn` is a claim that the round's other
+   * output went through; when the provider dropped its final text and emitted
+   * only the tool call, the claim is false and the turn is an empty completion,
+   * not a deliberate silent finish.
+   *
+   * Gemini 3 thinking models are the observed source: the whole answer can stay
+   * in a `thought` part while the visible text is empty, so the reasoning exists
+   * but never becomes output. Passing `allowEmptyEndTurn` covers the legitimate
+   * case where content came from an earlier round or the held text.
+   */
+  private assertEndTurnHasContent(
+    result: AIGenerateResponse,
+    options: LLMCallOptions,
+    allowEmptyEndTurn: boolean,
+    label: string,
+  ): void {
+    if (allowEmptyEndTurn || result.text?.trim()) {
+      return;
+    }
+    const calls = result.functionCalls ?? [];
+    if (!calls.some((call) => call.name === END_TURN_TOOL_NAME)) {
+      return;
+    }
+    const contentCall = (options.tools ?? []).some(
+      (tool) => tool.deliversContent && calls.some((call) => call.name === tool.name),
+    );
+    if (contentCall) {
+      return;
+    }
+    logger.warn(
+      `[LLMService] ${label} ended with end_turn but produced no visible content ` +
+        `(reasoning=${result.reasoningContent?.length ?? 0} chars, tokens=${result.usage?.totalTokens ?? 'unknown'}); ` +
+        'treating it as an empty completion',
+    );
+    throw new EmptyCompletionError(label, 'end_turn without any user-visible content');
+  }
+
   /** `generate()` for one round of a conversation, possibly a later round of a tool loop. */
   private async generateInRound(
     prompt: string,
     options: LLMCallOptions,
     providerName: string | undefined,
     round: ConversationRound,
+    allowEmptyEndTurn = false,
   ): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
     const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
@@ -641,11 +681,13 @@ export class LLMService {
         resolvedName,
         async () => {
           const hardTimeoutMs = effectiveOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-          return await awaitCompletion(
+          const result = await awaitCompletion(
             provider.generate(prompt, this.optionsForProvider(provider, effectiveOptions)),
             hardTimeoutMs,
             `generate:${resolvedName}`,
           );
+          this.assertEndTurnHasContent(result, effectiveOptions, allowEmptyEndTurn, `generate:${resolvedName}`);
+          return result;
         },
         // Two backoff retries (1.5s, 3s) before falling back: rides out brief
         // upstream overload (e.g. Anthropic 529) without delaying the reply too much.
@@ -672,12 +714,14 @@ export class LLMService {
       return this.generateWithFallback(
         resolvedName,
         sessionId,
-        (p) => {
+        (p, altName) => {
           const t = fallbackOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-          return awaitCompletion(
-            p.generate(prompt, this.optionsForProvider(p, fallbackOptions)),
-            t,
-            `generate-fallback`,
+          const label = `generate-fallback:${altName}`;
+          return awaitCompletion(p.generate(prompt, this.optionsForProvider(p, fallbackOptions)), t, label).then(
+            (result) => {
+              this.assertEndTurnHasContent(result, fallbackOptions, allowEmptyEndTurn, label);
+              return result;
+            },
           );
         },
         prompt,
@@ -936,6 +980,11 @@ export class LLMService {
     // on it. Bounded separately — see DEFAULT_MAX_EXEMPT_ROUNDS.
     const exemptToolNames = new Set(tools.filter((tool) => tool.roundExempt).map((tool) => tool.name));
     let exemptRoundsUsed = 0;
+    // Tools that put something in front of the user (a card, a message, a voice
+    // message, a reaction, an image). A silent end_turn is valid only after one
+    // of them succeeded, or after this turn's text was delivered.
+    const contentToolNames = new Set(tools.filter((tool) => tool.deliversContent).map((tool) => tool.name));
+    let contentDelivered = false;
 
     while (maxRounds === undefined || round < maxRounds) {
       // Generate with tools
@@ -945,6 +994,7 @@ export class LLMService {
         options,
         currentProviderName,
         { conversationId, sentCount },
+        contentDelivered || heldText.trim().length > 0,
       );
       sentCount = currentMessages.length;
       sawUsage = this.accumulateUsage(accUsage, response.usage) || sawUsage;
@@ -1005,6 +1055,11 @@ export class LLMService {
         const roundText = joinRoundText(heldText, response.text);
         heldText = '';
         await this.emitToolRoundText(roundText, calls, options);
+        // Text written beside non-end_turn tools is delivered by the caller, so it
+        // counts as user-visible output for a later silent end_turn.
+        if (roundText.trim() && options.onToolRoundText && !calls.some((call) => call.name === END_TURN_TOOL_NAME)) {
+          contentDelivered = true;
+        }
 
         // Build assistant message with all tool_calls for this round
         const assistantToolCalls: ChatMessageToolCall[] = [];
@@ -1044,6 +1099,7 @@ export class LLMService {
 
           if (settlement.status === 'fulfilled') {
             let toolResult = settlement.value.result;
+            let callFailed = false;
 
             // Extract loop-control sentinel from wrapped tool results (end_turn)
             if (toolResult && typeof toolResult === 'object' && '__endTurn' in (toolResult as object)) {
@@ -1055,6 +1111,7 @@ export class LLMService {
 
             if (toolResult && typeof toolResult === 'object' && '__failed' in (toolResult as object)) {
               roundHadFailure = true;
+              callFailed = true;
               toolResult = (toolResult as { __failed: true; result: unknown }).result;
             }
 
@@ -1063,6 +1120,10 @@ export class LLMService {
               const wrapped = toolResult as { __contentParts: ContentPart[]; result: unknown };
               pendingVisionParts.push(...wrapped.__contentParts);
               toolResult = wrapped.result;
+            }
+
+            if (!callFailed && contentToolNames.has(fc.name)) {
+              contentDelivered = true;
             }
 
             allToolCalls.push({ tool: fc.name, result: toolResult });
@@ -1548,10 +1609,17 @@ export class LLMService {
     options: ToolUseCallOptions,
     providerName: string,
     round: ConversationRound,
+    allowEmptyEndTurn: boolean,
   ): Promise<ToolUseGenerateResponse> {
     const lastContent = messages[messages.length - 1]?.content;
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
-    const response = await this.generateInRound(prompt, { ...options, messages, tools }, providerName, round);
+    const response = await this.generateInRound(
+      prompt,
+      { ...options, messages, tools },
+      providerName,
+      round,
+      allowEmptyEndTurn,
+    );
 
     // Fallback: if no structured functionCalls but text contains DSML, parse it
     if (!response.functionCalls?.length && response.text && containsDSML(response.text)) {

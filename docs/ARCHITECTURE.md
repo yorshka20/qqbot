@@ -675,7 +675,10 @@ delivery actions with non-overlapping semantics:
   loop exits without demanding another model response. Text in the same round is
   the final text; with no text, `ResponseDispatchStage` queues no reply at all
   (Path 0). A failed call in the same round voids it (see
-  [Turn termination](#turn-termination)).
+  [Turn termination](#turn-termination)), and so does a turn that produced no
+  content at all: an `end_turn`-only completion is a silent finish only after the
+  turn has already delivered something (a tool marked `deliversContent`, delivered
+  tool-round text, or held text).
 
 Tool-round text and `send_message` both go through `ConversationMessageSender`: the target comes from
 the hook context, leaked tool-call blocks are stripped and `[表情:名字]` /
@@ -711,6 +714,16 @@ call counts too), the end is void: the `end_turn` result is replaced with a noti
 round's text is held for the final reply, and the loop continues so the model can
 recover — otherwise a failed card would leave no reply at all. Loops without `end_turn`
 (subagents, reflection, fanout) keep ending on the first round without tool calls.
+
+The same claim covers content: a turn may end silently only if it has already put
+something in front of the user. Tools that do so declare `deliversContent` (`send_card`,
+`send_message`, `speak`, `react`, `generate_image`); `generateWithTools` also counts
+text it handed to `onToolRoundText` and the text held from an earlier round. An
+`end_turn`-only response from a turn that has delivered nothing is not a silent finish —
+it is an empty completion, retried and then failed over like any other. This is what
+keeps a provider that drops its final text (Gemini 3 thinking models leave the whole
+answer in a `thought` part while the visible text stays empty) from looking exactly
+like a deliberate decision to stay quiet.
 
 #### Delivery markers
 
@@ -797,7 +810,7 @@ A call does not size its own output budget. Reasoning is charged against the sam
 
 ### Failed calls: retry or fallback
 
-`LLMService` accepts every provider completion through one check: a completion with neither text nor tool calls is a failed call (`EmptyCompletionError`) — no caller asks for an empty answer, and a reply stays silent only through `end_turn`. What happens next depends on whether the failure is silent:
+`LLMService` accepts every provider completion through one check: a completion with neither text nor tool calls is a failed call (`EmptyCompletionError`) — no caller asks for an empty answer, and a reply stays silent only through `end_turn`. The same check covers an `end_turn`-only completion in a turn that has produced no user-visible content (see [Turn termination](#turn-termination)): it is reported as an empty completion rather than read as a deliberate silent finish. What happens next depends on whether the failure is silent:
 
 - **Retry on the same provider, then fall back** — a silent empty completion (the provider reported success), 429 / 5xx, and socket-level blips (`isTransientLLMError`).
 - **Fall back directly** — an error the provider stated, such as "no content (finish_reason=length)" or a 4xx. Trying the same request again would fail the same way.

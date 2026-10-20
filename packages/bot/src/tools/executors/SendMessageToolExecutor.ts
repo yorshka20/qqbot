@@ -12,6 +12,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
   description:
     '在调用耗时工具之前，立即向当前会话发送一条先行提示（不等待最终回复）。目的是减少用户在等待最终回复期间的空白感——如果这条消息和最终回复几乎同时抵达，就完全失去意义。发出的内容是正式发言，最终回复不必重复它。',
   executor: 'send_message',
+  deliversContent: true,
   visibility: {
     reply: { sources: ['qq-group', 'qq-private', 'discord'] },
   },

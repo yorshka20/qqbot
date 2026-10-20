@@ -29,6 +29,8 @@ export interface ToolOptions {
   timeoutMs?: number;
   /** See {@link ToolSpec.roundExempt} — retrieval-only rounds get their own budget. */
   roundExempt?: boolean;
+  /** See {@link ToolSpec.deliversContent} — the tool puts something in front of the user. */
+  deliversContent?: boolean;
 }
 
 /**
@@ -112,5 +114,6 @@ export function metadataToToolSpec(metadata: ToolMetadata): ToolSpec {
     describeForModel: metadata.describeForModel,
     timeoutMs: metadata.timeoutMs,
     roundExempt: metadata.roundExempt,
+    deliversContent: metadata.deliversContent,
   };
 }
