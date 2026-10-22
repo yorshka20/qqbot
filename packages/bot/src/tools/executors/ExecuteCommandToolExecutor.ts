@@ -28,6 +28,10 @@ const BLOCKED_COMMANDS = new Set(['shell', 'restart']);
   // Proxies an arbitrary registered command through the full pipeline, so its
   // cost is that of the slowest command the sender is allowed to run.
   timeoutMs: 300_000,
+  // The proxied command's own reply goes out through the SEND stage of the
+  // pipeline this tool runs, so a successful call has already put something in
+  // front of the user and the turn may legitimately end without further text.
+  deliversContent: true,
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'], adminOnly: true } },
   parameters: {
     command: {
