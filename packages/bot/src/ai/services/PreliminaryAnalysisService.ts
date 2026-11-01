@@ -7,6 +7,7 @@ import { isLLMCapability } from '@/ai/capabilities/LLMCapability';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { type PreliminaryAnalysisResult, PreliminaryAnalysisSchema } from '@/ai/schemas';
 import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 
@@ -16,7 +17,7 @@ const PRELIMINARY_ANALYSIS_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'braceM
 export type { PreliminaryAnalysisResult } from '@/ai/schemas';
 
 /** Default result when LLM is unavailable or parse fails. */
-const DEFAULT_ANALYSIS_RESULT: PreliminaryAnalysisResult = {
+export const DEFAULT_ANALYSIS_RESULT: PreliminaryAnalysisResult = {
   shouldJoin: false,
   reason: undefined,
   topic: undefined,
@@ -39,8 +40,8 @@ export interface ThreadContextForAnalysis {
 }
 
 export interface PreliminaryAnalysisOptions {
-  /** LLM provider name (required — must be resolved from config by caller). */
-  providerName: string;
+  /** The LLM to analyze with (required — must be resolved from config by caller). */
+  target: LLMTarget;
   /** When true, analysis is idle-triggered (no keyword); inject stricter instruction so AI avoids replying when topic has shifted and no one is interested. */
   idleMode?: boolean;
 }
@@ -69,8 +70,8 @@ export class PreliminaryAnalysisService {
     recentMessagesText: string,
     options: PreliminaryAnalysisOptions,
   ): Promise<PreliminaryAnalysisResult> {
-    const providerName = options.providerName;
-    const provider = this.aiManager.getProvider(providerName);
+    const { target } = options;
+    const provider = this.aiManager.getProvider(target.provider);
     if (!provider || !isLLMCapability(provider)) {
       return DEFAULT_ANALYSIS_RESULT;
     }
@@ -94,6 +95,7 @@ export class PreliminaryAnalysisService {
     const generate = llm.generateLite ?? llm.generate;
     try {
       const response = await generate.call(llm, prompt, {
+        model: target.model,
         temperature: 0.2,
         reasoningEffort: 'low',
         jsonMode: true,
@@ -103,7 +105,7 @@ export class PreliminaryAnalysisService {
       return this.parseJsonResult(text);
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.warn(`[PreliminaryAnalysisService] Provider "${providerName}" call failed:`, err);
+      logger.warn(`[PreliminaryAnalysisService] Provider "${target.provider}" call failed:`, err);
       return DEFAULT_ANALYSIS_RESULT;
     }
   }
@@ -127,8 +129,8 @@ export class PreliminaryAnalysisService {
     threads: ThreadContextForAnalysis[],
     options: PreliminaryAnalysisOptions,
   ): Promise<PreliminaryAnalysisResult> {
-    const providerName = options.providerName;
-    const provider = this.aiManager.getProvider(providerName);
+    const { target } = options;
+    const provider = this.aiManager.getProvider(target.provider);
     if (!provider || !isLLMCapability(provider)) {
       return DEFAULT_ANALYSIS_RESULT;
     }
@@ -152,6 +154,7 @@ export class PreliminaryAnalysisService {
     const generate = llm.generateLite ?? llm.generate;
     try {
       const response = await generate.call(llm, prompt, {
+        model: target.model,
         temperature: 0.2,
         reasoningEffort: 'low',
         jsonMode: true,
@@ -161,7 +164,7 @@ export class PreliminaryAnalysisService {
       return this.parseJsonResult(text);
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.warn(`[PreliminaryAnalysisService] Provider "${providerName}" call failed:`, err);
+      logger.warn(`[PreliminaryAnalysisService] Provider "${target.provider}" call failed:`, err);
       return DEFAULT_ANALYSIS_RESULT;
     }
   }

@@ -11,7 +11,6 @@ import { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
-import type { AIManager } from '../AIManager';
 import type { Text2ImageOptions } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 
@@ -36,15 +35,10 @@ export class ImagePromptService {
   private static readonly DEFAULT_WIDTH = 832;
   private static readonly DEFAULT_HEIGHT = 1216;
 
-  private readonly providerName: string;
-
   constructor(
     @inject(LLMService) private llmService: LLMService,
     @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
-    @inject(DITokens.AI_MANAGER) aiManager: AIManager,
-  ) {
-    this.providerName = aiManager.getDefaultProvider('llm')?.name || 'deepseek';
-  }
+  ) {}
 
   /**
    * Prepare image generation parameters
@@ -97,17 +91,13 @@ export class ImagePromptService {
       description: userInput,
     });
 
-    // Call LLM to generate JSON parameters. use providerName to generate prompt.
-    const llmResponse = await this.llmService.generate(
-      llmPrompt,
-      {
-        temperature: 0.3, // Lower temperature for more consistent JSON output
-        reasoningEffort: 'none',
-        sessionId,
-        jsonMode: true,
-      },
-      this.providerName,
-    );
+    // Call LLM to generate JSON parameters on the session/default LLM.
+    const llmResponse = await this.llmService.generate(llmPrompt, {
+      temperature: 0.3, // Lower temperature for more consistent JSON output
+      reasoningEffort: 'none',
+      sessionId,
+      jsonMode: true,
+    });
 
     // Parse LLM response to extract image generation parameters
     const parsedParams = this.parseImageGenerationParams(llmResponse.text, userInput);
@@ -156,16 +146,12 @@ export class ImagePromptService {
         description: userInput ?? '',
       });
 
-      const llmResponse = await this.llmService.generate(
-        llmPrompt,
-        {
-          temperature: 0.3,
-          reasoningEffort: 'none',
-          sessionId,
-          jsonMode: true,
-        },
-        this.providerName,
-      );
+      const llmResponse = await this.llmService.generate(llmPrompt, {
+        temperature: 0.3,
+        reasoningEffort: 'none',
+        sessionId,
+        jsonMode: true,
+      });
       const result = this.parseI2VPromptResponse(llmResponse.text, userInput);
 
       logger.info(`[ImagePromptService] I2V prompt prepared`, {

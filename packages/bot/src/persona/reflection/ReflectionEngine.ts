@@ -5,7 +5,7 @@
 //     and fire a 'time'-triggered reflection.
 //   - Event trigger: keyword detection in completed user messages fires an
 //     immediate 'event'-triggered reflection (fire-and-forget, off the reply path).
-//   - LLM call: pinned to 'gemini' (configurable) via LLMService.generateFixed().
+//   - LLM call: `reflection.llm`, else the default LLM, via LLMService.generateFixed().
 //   - Schema validation: strict Zod schema on LLM JSON output.
 //   - Write path: EpigeneticsStore.applyReflectionPatch(), single retry with
 //     halved traitDeltas on trait_bound_exceeded, audit trail on final reject.
@@ -21,6 +21,7 @@ import type { FunctionCall } from '@/ai/types';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
+import type { LLMTarget } from '@/core/config/types/ai';
 import type { HookManager } from '@/hooks/HookManager';
 import type { ToolManager } from '@/tools/ToolManager';
 import { logger } from '@/utils/logger';
@@ -148,13 +149,13 @@ export class ReflectionEngine {
   }
 
   /**
-   * Resolve the provider to run reflection on: the `reflection.provider` config
-   * override (read from the personaService this engine already holds), else the
-   * system default LLM. Returns undefined when no LLM is configured at all, in
-   * which case the caller skips the cycle.
+   * Resolve the LLM to run reflection on: the `reflection.llm` config override
+   * (read from the personaService this engine already holds), else the system
+   * default LLM. Returns null when no LLM is configured at all, in which case the
+   * caller skips the cycle.
    */
-  private resolveProviderName(): string | undefined {
-    return this.personaService.getConfig().reflection?.provider ?? this.llmService.getDefaultLLMProviderName();
+  private resolveTarget(): LLMTarget | null {
+    return this.personaService.getConfig().reflection?.llm ?? this.llmService.getDefaultLLM();
   }
 
   /** Start the periodic reflection timer. Idempotent. */
@@ -164,7 +165,7 @@ export class ReflectionEngine {
       void this.timerTick();
     }, this.timerIntervalMs);
     logger.info(
-      `[ReflectionEngine] Started | persona=${this.options.personaId} intervalMs=${this.timerIntervalMs} provider=${this.personaService.getConfig().reflection?.provider ?? '(default)'}`,
+      `[ReflectionEngine] Started | persona=${this.options.personaId} intervalMs=${this.timerIntervalMs} provider=${this.personaService.getConfig().reflection?.llm?.provider ?? '(default)'}`,
     );
   }
 
@@ -296,12 +297,12 @@ export class ReflectionEngine {
    * Returns a validated ReflectionOutput or undefined on failure.
    */
   private async runSingleCall(systemPrompt: string): Promise<ReflectionOutput | undefined> {
-    const providerName = this.resolveProviderName();
-    if (!providerName) {
+    const target = this.resolveTarget();
+    if (!target) {
       logger.warn('[ReflectionEngine] single-call: no LLM provider available, skipping');
       return undefined;
     }
-    const response = await this.llmService.generateFixed(providerName, '', {
+    const response = await this.llmService.generateFixed(target, '', {
       systemPrompt,
       reasoningEffort: 'medium',
       temperature: 0.3,
@@ -402,8 +403,8 @@ export class ReflectionEngine {
       return result.reply || result.data || '';
     };
 
-    const providerName = this.resolveProviderName();
-    if (!providerName) {
+    const target = this.resolveTarget();
+    if (!target) {
       logger.warn('[ReflectionEngine] tool loop: no LLM provider available, skipping');
       return undefined;
     }
@@ -417,7 +418,7 @@ export class ReflectionEngine {
         maxToolRounds,
         toolExecutor,
       },
-      providerName,
+      target,
     );
 
     logger.debug(

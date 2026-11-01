@@ -103,7 +103,7 @@ export class GachaPlugin extends PluginBase {
           reasoningEffort: 'none',
           sessionId,
         },
-        'deepseek',
+        { provider: 'deepseek' },
       );
       rawResponse = (response?.text ?? '').trim();
     } catch (err) {

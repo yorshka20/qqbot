@@ -13,10 +13,26 @@ export type AIProviderCapability =
   | 'i2v';
 
 /**
+ * An LLM to call: a provider and the model it runs there. The two only work as a pair —
+ * a model name means nothing to another provider — so every route to an LLM (defaults,
+ * task providers, session overrides, user routing, fallback) names both together. An
+ * omitted model is the provider's own configured model.
+ */
+export interface LLMTarget {
+  provider: string;
+  model?: string;
+}
+
+/** `provider / model` for logs and replies; a target without a model shows the provider alone. */
+export function describeLLMTarget(target: LLMTarget): string {
+  return target.model ? `${target.provider} / ${target.model}` : target.provider;
+}
+
+/**
  * Default providers configuration (by capability)
  */
 export interface DefaultProvidersConfig {
-  llm?: AIProviderType; // Default LLM provider name
+  llm?: LLMTarget; // Default LLM: calls that name no target and have no session override
   function_calling?: AIProviderType; // Default function-calling provider name (usually same as llm)
   native_web_search?: AIProviderType; // Unused for selection (native search is a per-provider flag); kept for index type compatibility
   vision?: AIProviderType; // Default vision/multimodal provider name
@@ -30,7 +46,7 @@ export interface DefaultProvidersConfig {
  * Session-level provider override configuration
  */
 export interface SessionProviderConfig {
-  llm?: AIProviderType;
+  llm?: LLMTarget;
   function_calling?: AIProviderType;
   native_web_search?: AIProviderType;
   vision?: AIProviderType;
@@ -57,47 +73,35 @@ export interface AutoSwitchConfig {
 }
 
 /**
- * Task-specific provider configuration.
- * Overrides defaultProviders for specific internal tasks.
- * Each task falls back to defaultProviders.llm if not specified.
+ * Task-specific LLM configuration.
+ * Overrides the default LLM for specific internal tasks.
+ * Each task runs on the default LLM (defaultProviders.llm) if not specified.
  */
 export interface TaskProvidersConfig {
-  /** Provider for memory extraction (MemoryPlugin) */
-  memoryExtract?: string;
+  /** LLM for memory extraction (MemoryPlugin) */
+  memoryExtract?: LLMTarget;
   /**
-   * Provider for the group_day fan-out (daily report, comic, memory extraction). Every task
-   * of one run shares it: a different provider or model is a different prefix cache.
+   * LLM for the group_day fan-out (daily report, comic, memory extraction). Every task
+   * of one run shares it: a different target is a different prefix cache.
    */
-  groupDay?: string;
-  /** Model override for the group_day provider (optional) */
-  groupDayModel?: string;
-  /** Provider for thread/context summarization */
-  summarize?: string;
-  /** Provider for lightweight/fast LLM calls (prefix-invitation, analysis) */
-  lite?: string;
-  /** Model override for lite provider (optional) */
-  liteModel?: string;
+  groupDay?: LLMTarget;
+  /** LLM for thread/context summarization */
+  summarize?: LLMTarget;
+  /** LLM for lightweight/fast calls (prefix-invitation, analysis) */
+  lite?: LLMTarget;
   /**
-   * Provider for article analysis (WeChatArticleAnalysisService).
+   * LLM for article analysis (WeChatArticleAnalysisService).
    * Uses generateFixed (no fallback, retry-only) — ideal for cost-sensitive batch tasks.
-   * Falls back to 'doubao' if not specified.
+   * Falls back to doubao if not specified.
    */
-  articleAnalysis?: string;
-  /** Model override for article analysis provider (optional) */
-  articleAnalysisModel?: string;
-  /** Provider for todo optimization (TodoPlugin) */
-  todoOptimize?: string;
-  /** Model override for todo optimization provider (optional) */
-  todoOptimizeModel?: string;
+  articleAnalysis?: LLMTarget;
+  /** LLM for todo optimization (TodoPlugin) */
+  todoOptimize?: LLMTarget;
   /**
-   * Provider(s) for sub-agent execution (research, analysis, etc.).
-   * String = fixed provider. Array = random selection per call.
-   * Should be a cost-effective provider with tool-use support (e.g. deepseek, gemini, openai).
-   * Falls back to defaultProviders.llm if not specified.
+   * LLMs for sub-agent execution (research, analysis, etc.); one is picked at random per call.
+   * Should be cost-effective and support tool use (e.g. deepseek, gemini, openai).
    */
-  subagent?: string | string[];
-  /** Model override for sub-agent provider (only used when subagent is a single string) */
-  subagentModel?: string;
+  subagent?: LLMTarget[];
 }
 
 /**

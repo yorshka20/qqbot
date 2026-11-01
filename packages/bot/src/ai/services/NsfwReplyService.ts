@@ -80,7 +80,7 @@ export class NsfwReplyService {
           sessionId,
           systemPrompt: baseSystemPrompt,
         },
-        'deepseek', // now only deepseek supports NSFW mode
+        { provider: 'deepseek' }, // now only deepseek supports NSFW mode
       );
 
       // NSFW mode: no card reply, output plain text only

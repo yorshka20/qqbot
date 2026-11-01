@@ -6,7 +6,7 @@ import { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { ConversationMessageSender } from '@/conversation/ConversationMessageSender';
 import { normalizeSessionForConfig } from '@/core/config/SessionUtils';
-import type { ReasoningEffort } from '@/core/config/types/ai';
+import type { LLMTarget, ReasoningEffort } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
@@ -34,7 +34,7 @@ interface GenerationPipelineParams {
     maxToolRounds: number;
   };
   toolDefinitions: ToolDefinition[];
-  selectedProviderName: string | undefined;
+  target: LLMTarget | undefined;
   effectiveNativeSearchEnabled: boolean;
   /** Set only when `/think` is on for this session; each tool round's thinking is sent as it lands. */
   onReasoning?: (text: string, provider: string | undefined) => Promise<void>;
@@ -43,7 +43,7 @@ interface GenerationPipelineParams {
 /** Result of the LLM generation pipeline (attempt / retry). */
 interface GenerationPipelineResult {
   response: AIGenerateResponse;
-  actualProvider: string | undefined;
+  actualTarget: LLMTarget | undefined;
   /** True when the model ended the turn via the end_turn tool. */
   endTurnRequested: boolean;
 }
@@ -79,7 +79,7 @@ export class GenerationStage implements ReplyStage {
       messages: ctx.messages,
       genOptions: ctx.genOptions,
       toolDefinitions: ctx.toolDefinitions,
-      selectedProviderName: ctx.selectedProviderName,
+      target: ctx.target,
       effectiveNativeSearchEnabled: ctx.effectiveNativeSearchEnabled,
       onReasoning,
     };
@@ -87,11 +87,11 @@ export class GenerationStage implements ReplyStage {
     const result = await this.generateWithRetry(ctx.hookContext, params);
 
     ctx.responseText = result.response.text;
-    ctx.actualProvider = result.actualProvider;
+    ctx.actualTarget = result.actualTarget;
     ctx.endTurnRequested = result.endTurnRequested;
 
     logger.debug(
-      `[GenerationStage] LLM response received | responseLength=${result.response.text.length} | actualProvider=${result.actualProvider ?? 'default'} | cardSent=${ctx.hookContext.metadata.get('cardSent') ?? false} | endTurn=${result.endTurnRequested}`,
+      `[GenerationStage] LLM response received | responseLength=${result.response.text.length} | actualProvider=${result.actualTarget?.provider ?? 'default'} | cardSent=${ctx.hookContext.metadata.get('cardSent') ?? false} | endTurn=${result.endTurnRequested}`,
     );
   }
 
@@ -127,7 +127,7 @@ export class GenerationStage implements ReplyStage {
     // LLMService passes the provider that served each round — the metadata copy is
     // not yet updated when a round's thinking fires.
     return async (text: string, provider: string | undefined) => {
-      await this.sendThinking(ctx.hookContext, text, provider ?? ctx.selectedProviderName);
+      await this.sendThinking(ctx.hookContext, text, provider ?? ctx.target?.provider);
     };
   }
 
@@ -188,8 +188,7 @@ export class GenerationStage implements ReplyStage {
     context: HookContext,
     params: GenerationPipelineParams,
   ): Promise<GenerationPipelineResult> {
-    const { messages, genOptions, toolDefinitions, selectedProviderName, effectiveNativeSearchEnabled, onReasoning } =
-      params;
+    const { messages, genOptions, toolDefinitions, target, effectiveNativeSearchEnabled, onReasoning } = params;
 
     // Reset per-attempt so retries with fallback providers start clean.
     // `cardSent`/`cardSendFailedReason` describe a QUEUED (not yet sent) card that a
@@ -206,8 +205,8 @@ export class GenerationStage implements ReplyStage {
     // Without this, send_card falls back to the global default LLM provider
     // and the card footer shows the wrong name when the requested provider
     // was overridden upstream (e.g. `claude:` prefix → anthropic).
-    if (selectedProviderName) {
-      context.metadata.set('activeProvider', selectedProviderName);
+    if (target) {
+      context.metadata.set('activeProvider', target.provider);
     } else {
       context.metadata.delete('activeProvider');
     }
@@ -236,7 +235,7 @@ export class GenerationStage implements ReplyStage {
           if (model) context.metadata.set('activeModel', model);
         },
       },
-      selectedProviderName,
+      target,
     );
 
     // The turn's reasoning rides on metadata to DatabasePersistenceSystem, which
@@ -248,13 +247,15 @@ export class GenerationStage implements ReplyStage {
 
     // Stamp per-user usage onto the context so the onAIGenerationComplete hook
     // handler can record it. r.usage is the summed total across all tool rounds.
-    const actualProvider = r.resolvedProviderName ?? selectedProviderName;
-    const actualModel = r.resolvedModel ?? context.metadata.get('activeModel');
-    if (r.usage && actualProvider) {
+    const actualProvider = r.resolvedProviderName ?? target?.provider;
+    const actualTarget = actualProvider
+      ? { provider: actualProvider, model: r.resolvedModel ?? context.metadata.get('activeModel') }
+      : undefined;
+    if (r.usage && actualTarget) {
       context.metadata.set('aiUsage', {
         type: 'llm',
-        provider: actualProvider,
-        model: actualModel,
+        provider: actualTarget.provider,
+        model: actualTarget.model,
         source: 'reply',
         promptTokens: r.usage.promptTokens,
         cachedPromptTokens: r.usage.cachedPromptTokens,
@@ -266,7 +267,7 @@ export class GenerationStage implements ReplyStage {
 
     return {
       response: { text: r.text, resolvedProviderName: r.resolvedProviderName },
-      actualProvider,
+      actualTarget,
       endTurnRequested: r.stopReason === 'end_turn_tool',
     };
   }
@@ -284,7 +285,7 @@ export class GenerationStage implements ReplyStage {
     try {
       return await this.attemptLLMGeneration(context, params);
     } catch (primaryError) {
-      const primaryProviderLabel = params.selectedProviderName ?? 'default';
+      const primaryProviderLabel = params.target?.provider ?? 'default';
       logger.error(
         `[GenerationStage] Primary provider "${primaryProviderLabel}" failed, triggering health check and attempting fallback`,
         primaryError instanceof Error ? primaryError : new Error(String(primaryError)),
@@ -303,9 +304,10 @@ export class GenerationStage implements ReplyStage {
         const fallbackProvider = alternatives[retry];
         logger.info(`[GenerationStage] Retry ${retry + 1}/${MAX_RETRIES} with fallback provider "${fallbackProvider}"`);
         try {
+          // A fallback provider answers on its own model.
           const fallbackParams: GenerationPipelineParams = {
             ...params,
-            selectedProviderName: fallbackProvider,
+            target: { provider: fallbackProvider },
           };
           const result = await this.attemptLLMGeneration(context, fallbackParams);
           logger.info(`[GenerationStage] Fallback provider "${fallbackProvider}" succeeded`);

@@ -72,13 +72,14 @@ export class CardRenderingHelper {
   async renderMarkdownDirect(
     content: string,
     providerName?: string,
+    model?: string,
   ): Promise<{ segments: MessageSegment[]; textForHistory: string }> {
     // A face marker cannot survive this path: the card is an image, so the marker would be
     // painted into it as literal text. Stripping before both the render and the history text
     // keeps what was said and what was recorded the same.
     const prose = stripFaceMarkers(content);
     const card: CardData = { type: 'markdown', content: prose };
-    const result = await this.renderParsedCards([card], providerName);
+    const result = await this.renderParsedCards([card], providerName, model);
     return { segments: result.segments, textForHistory: prose };
   }
 

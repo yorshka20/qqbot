@@ -30,6 +30,7 @@ import { mergeAvatarConfig } from '@qqbot/avatar';
 import { inject, singleton } from 'tsyringe';
 import { formatConversationEntriesToText } from '@/conversation/history/format';
 import type { Config } from '@/core/config';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
 import { logger } from '@/utils/logger';
@@ -191,13 +192,13 @@ export class AvatarMemoryExtractionCoordinator {
     const recentMessagesText = formatConversationEntriesToText(cappedEntries);
     if (!recentMessagesText.trim()) return;
 
-    const provider = this.resolveProvider(resolved);
+    const target = this.resolveTarget(resolved);
     logger.info(
-      `[Live2DMemoryExtraction] run | thread=${threadId} group=${groupId} provider=${provider} entries=${cappedEntries.length} userEntries=${userOnly.length}`,
+      `[Live2DMemoryExtraction] run | thread=${threadId} group=${groupId} provider=${target?.provider ?? 'default'} entries=${cappedEntries.length} userEntries=${userOnly.length}`,
     );
 
     try {
-      await this.extractService.extractAndConsolidate(groupId, recentMessagesText, { provider });
+      await this.extractService.extractAndConsolidate(groupId, recentMessagesText, target);
     } catch (err) {
       logger.warn(`[Live2DMemoryExtraction] extractAndConsolidate failed (thread=${threadId} group=${groupId}):`, err);
     }
@@ -223,27 +224,26 @@ export class AvatarMemoryExtractionCoordinator {
   }
 
   /**
-   * Provider precedence (most specific first):
+   * LLM precedence (most specific first); an avatar provider runs on its own configured model:
    *   1. `avatar.memoryExtraction.provider` (explicit opt-in, scope-specific)
-   *   2. `ai.taskProviders.memoryExtract` (system-wide extract provider)
+   *   2. `ai.taskProviders.memoryExtract` (system-wide extract LLM)
    *   3. `avatar.llmProvider` (whatever the avatar uses for its own replies)
-   *   4. `ai.defaultProviders.llm` (last resort)
+   *   4. the default LLM (undefined)
    */
-  private resolveProvider(resolved: ResolvedConfig): string {
-    if (resolved.providerOverride) return resolved.providerOverride;
+  private resolveTarget(resolved: ResolvedConfig): LLMTarget | undefined {
+    if (resolved.providerOverride) return { provider: resolved.providerOverride };
 
-    const aiConfig = this.config.getAIConfig();
-    const taskProvider = aiConfig?.taskProviders?.memoryExtract;
-    if (typeof taskProvider === 'string' && taskProvider.trim().length > 0) {
-      return taskProvider.trim();
+    const taskTarget = this.config.getAIConfig()?.taskProviders?.memoryExtract;
+    if (taskTarget) {
+      return taskTarget;
     }
 
     const rawAvatar = this.config.getAvatarConfig() as Record<string, unknown> | undefined;
     const avatarProvider = rawAvatar?.llmProvider;
     if (typeof avatarProvider === 'string' && avatarProvider.trim().length > 0) {
-      return avatarProvider.trim();
+      return { provider: avatarProvider.trim() };
     }
 
-    return aiConfig?.defaultProviders?.llm ?? 'deepseek';
+    return undefined;
   }
 }

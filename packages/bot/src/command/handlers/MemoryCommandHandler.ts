@@ -3,6 +3,7 @@
 import { inject, injectable } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import { MemoryConsolidationService } from '@/memory/consolidation/MemoryConsolidationService';
 import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';
@@ -135,16 +136,9 @@ export class MemoryEditCommand implements CommandHandler {
     @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
   ) {}
 
-  /** Resolve the LLM provider for memory operations from config (required). */
-  private getExtractProvider(): string {
-    const aiConfig = this.config.getAIConfig();
-    const provider = aiConfig?.taskProviders?.memoryExtract ?? aiConfig?.defaultProviders?.llm;
-    if (!provider) {
-      throw new Error(
-        '[MemoryEditCommand] No LLM provider configured for memory extract (set taskProviders.memoryExtract or defaultProviders.llm in ai config)',
-      );
-    }
-    return provider;
+  /** The LLM for memory operations: taskProviders.memoryExtract, else the default LLM. */
+  private getExtractTarget(): LLMTarget | undefined {
+    return this.config.getAIConfig()?.taskProviders?.memoryExtract;
   }
 
   execute(args: string[], context: CommandContext): CommandResult {
@@ -186,7 +180,7 @@ export class MemoryEditCommand implements CommandHandler {
     const slotUserId = target === 'group' ? GROUP_MEMORY_USER_ID : targetUserId;
     const doneLabel = target === 'group' ? '群组' : targetUserId === callerUserId ? '你的' : `用户 ${targetUserId} 的`;
     this.consolidationService
-      .consolidateSlot(groupId, slotUserId, [content], { provider: this.getExtractProvider() })
+      .consolidateSlot(groupId, slotUserId, [content], this.getExtractTarget())
       .then(() => this.messageAPI.sendFromContext(`${doneLabel}记忆订正完成。`, context, 10000))
       .catch((err: unknown) => {
         logger.warn('[MemoryEditCommand] memory edit failed:', err);

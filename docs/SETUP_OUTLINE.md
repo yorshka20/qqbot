@@ -49,7 +49,7 @@ These decisions are not final policy. When overseas positioning hardens further,
   - (a) `protocols[0]` — Discord token / intents (default example); collapsible "If you chose QQ instead" subsection
   - (b) `bot.owner` — your Discord/QQ user ID
   - (c) `database` — sqlite default + path
-  - (d) `ai.defaultProviders.llm` — which provider name you'll use
+  - (d) `ai.defaultProviders.llm` — `{ "provider": "<name>" }`, plus `"model"` to run something other than that provider's configured model
   - (e) `ai.providers.<name>` — apiKey / baseUrl / model
 - 3.3 "Hand this section to your AI assistant" — ready-to-copy prompt template
 - 3.4 What to ignore for now — explicit list of optional sections (`mcp`, `cluster`, `avatar`, `contextMemory`, …)

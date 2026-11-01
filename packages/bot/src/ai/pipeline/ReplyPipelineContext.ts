@@ -2,7 +2,7 @@
 // Each stage reads upstream fields and writes its own outputs.
 
 import type { ConversationMessageEntry } from '@/conversation/history';
-import type { ReasoningEffort } from '@/core/config/types/ai';
+import type { LLMTarget, ReasoningEffort } from '@/core/config/types/ai';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
 import type { ToolResult } from '@/tools/types';
@@ -43,8 +43,10 @@ export class ReplyPipelineContext {
   sessionMemoText = '';
 
   // --- ProviderSelectionStage ---
-  providerName: string | undefined;
-  selectedProviderName: string | undefined;
+  /** The LLM the user's trigger routed to, if any. */
+  routedTarget: LLMTarget | undefined;
+  /** The LLM that answers the turn (after image hand-off), model made concrete; undefined when none is available. */
+  target: LLMTarget | undefined;
   // User explicitly wake-worded a provider (e.g. `gemini:`); opts into its premium tier.
   usedExplicitProvider = false;
   providerHasVision = false;
@@ -66,7 +68,8 @@ export class ReplyPipelineContext {
 
   // --- GenerationStage ---
   responseText = '';
-  actualProvider: string | undefined;
+  /** The LLM that actually served the final round (a fallback may differ from `target`). */
+  actualTarget: LLMTarget | undefined;
   /** True when the model ended the turn via the end_turn tool. */
   endTurnRequested = false;
 

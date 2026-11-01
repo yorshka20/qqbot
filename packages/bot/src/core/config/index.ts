@@ -10,10 +10,10 @@ import { loadConfigAuto } from './loadConfigDir';
 import { type AgendaConfig, type AgendaLlmLimits, DEFAULT_AGENDA_LLM_LIMITS } from './types/agenda';
 import {
   type AIConfig,
-  type AIProviderCapability,
   type ChatReasoningEfforts,
   type ContextMemoryConfig,
   DEFAULT_CHAT_REASONING_EFFORTS,
+  type LLMTarget,
   type SessionProviderConfig,
 } from './types/ai';
 import type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';
@@ -262,6 +262,39 @@ export class Config {
     }
   }
 
+  /**
+   * Every LLM route in `ai` is one `{ provider, model? }` object. A bare provider string
+   * (the format before LLM routes became targets) fails here: read as a target it has no
+   * provider, and the call would silently fall back to some other LLM.
+   */
+  private validateLLMTargets(ai: AIConfig | undefined): void {
+    const check = (path: string, value: unknown): void => {
+      if (value === undefined) {
+        return;
+      }
+      const provider = typeof value === 'object' && value !== null ? (value as Partial<LLMTarget>).provider : undefined;
+      if (typeof provider !== 'string' || !provider) {
+        throw new ConfigError(
+          `${path} must be an LLM target { "provider": "...", "model"?: "..." }, got ${JSON.stringify(value)}`,
+        );
+      }
+    };
+    check('ai.defaultProviders.llm', ai?.defaultProviders?.llm);
+    for (const [key, value] of Object.entries(ai?.taskProviders ?? {})) {
+      if (key !== 'subagent') {
+        check(`ai.taskProviders.${key}`, value);
+      } else if (!Array.isArray(value)) {
+        throw new ConfigError(
+          `ai.taskProviders.subagent must be an array of LLM targets, got ${JSON.stringify(value)}`,
+        );
+      } else {
+        for (const [i, target] of value.entries()) {
+          check(`ai.taskProviders.subagent[${i}]`, target);
+        }
+      }
+    }
+  }
+
   private validateConfig(): void {
     if (!Array.isArray(this.config.protocols)) {
       throw new ConfigError('protocols must be an array');
@@ -275,6 +308,7 @@ export class Config {
     }
 
     this.validateLanRelayConfig(lr);
+    this.validateLLMTargets(this.config.ai);
 
     // Validate each protocol config
     for (const protocol of this.config.protocols) {
@@ -449,22 +483,6 @@ export class Config {
    */
   getUseSkills(): boolean {
     return this.config.ai?.useSkills !== false;
-  }
-
-  /**
-   * Get default provider name for a capability
-   */
-  getDefaultProviderName(capability: AIProviderCapability): string | undefined {
-    const aiConfig = this.config.ai;
-    if (!aiConfig) {
-      return undefined;
-    }
-
-    if (aiConfig.defaultProviders) {
-      return aiConfig.defaultProviders[capability];
-    }
-
-    return undefined;
   }
 
   /**

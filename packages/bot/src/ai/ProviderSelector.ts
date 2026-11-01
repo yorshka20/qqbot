@@ -84,118 +84,73 @@ export class ProviderSelector {
   }
 
   /**
-   * Get provider for a capability for a specific session
-   * Returns session-specific provider if set, otherwise returns default provider
+   * The session's own selection for a capability, or null when it has none or names a
+   * provider that is no longer available. The default is not consulted: a caller that
+   * finds no override falls back to the default itself, so the two stay distinguishable.
    */
-  async getProviderForSession(sessionId: string, capability: CapabilityType): Promise<string | null> {
-    // Load from config if not in cache
-    if (!this.sessionSelections.has(sessionId)) {
-      await this.loadProviderSelection(sessionId);
+  async getSessionOverride<C extends SelectableCapability>(
+    sessionId: string,
+    capability: C,
+  ): Promise<ProviderSelection[C] | null> {
+    const selection = await this.loadCachedSelection(sessionId);
+    const value = selection?.[capability];
+    if (!value) {
+      return null;
     }
-
-    // Check session-specific selection
-    const sessionSelection = this.sessionSelections.get(sessionId);
-    if (sessionSelection) {
-      const providerName = sessionSelection[capability];
-      if (providerName) {
-        // Verify provider exists and supports the capability
-        const provider = this.aiManager.getProviderForCapability(capability, providerName);
-        if (provider) {
-          return providerName;
-        }
-        // Provider not found or doesn't support capability, fall back to default
-        logger.warn(
-          `[ProviderSelector] Session ${sessionId} provider ${providerName} for ${capability} not available, using default`,
-        );
-      }
+    const providerName = selectionProviderName(value);
+    if (!this.aiManager.getProviderForCapability(capability, providerName)) {
+      logger.warn(
+        `[ProviderSelector] Session ${sessionId} provider ${providerName} for ${capability} not available, using default`,
+      );
+      return null;
     }
-
-    // Fall back to default provider
-    const defaultProvider = this.aiManager.getDefaultProvider(capability);
-    return defaultProvider ? defaultProvider.name : null;
+    return value;
   }
 
-  /**
-   * Set provider for a capability for a specific session
-   */
-  async setProviderForSession(sessionId: string, capability: CapabilityType, providerName: string): Promise<void> {
-    // Verify provider exists and supports the capability
-    const provider = this.aiManager.getProviderForCapability(capability, providerName);
-    if (!provider) {
+  async setSessionOverride<C extends SelectableCapability>(
+    sessionId: string,
+    capability: C,
+    value: NonNullable<ProviderSelection[C]>,
+  ): Promise<void> {
+    const providerName = selectionProviderName(value);
+    if (!this.aiManager.getProviderForCapability(capability, providerName)) {
       throw new Error(`Provider ${providerName} does not support capability ${capability} or is not available`);
     }
+    const selection = (await this.loadCachedSelection(sessionId)) ?? {};
+    selection[capability] = value;
+    await this.persistSelection(sessionId, selection);
+    logger.info(`[ProviderSelector] Set ${capability} override for session ${sessionId}: ${JSON.stringify(value)}`);
+  }
 
-    // Load existing selection if not in cache
+  async clearSessionOverride(sessionId: string, capability: SelectableCapability): Promise<void> {
+    const selection = await this.loadCachedSelection(sessionId);
+    if (!selection?.[capability]) {
+      return;
+    }
+    delete selection[capability];
+    await this.persistSelection(sessionId, selection);
+    logger.info(`[ProviderSelector] Cleared ${capability} override for session ${sessionId}`);
+  }
+
+  private async loadCachedSelection(sessionId: string): Promise<SessionProviderSelection | undefined> {
     if (!this.sessionSelections.has(sessionId)) {
       await this.loadProviderSelection(sessionId);
     }
-
-    // Update in-memory cache
-    let sessionSelection = this.sessionSelections.get(sessionId);
-    if (!sessionSelection) {
-      sessionSelection = {};
-      this.sessionSelections.set(sessionId, sessionSelection);
-    }
-    sessionSelection[capability] = providerName;
-
-    // Persist to conversation config
-    const { sessionId: parsedId, sessionType } = this.parseSessionId(sessionId);
-    await this.configService.updateConfig(parsedId, sessionType, {
-      providers: sessionSelection,
-    });
-
-    logger.info(`[ProviderSelector] Set provider ${providerName} for ${capability} for session ${sessionId}`);
+    return this.sessionSelections.get(sessionId);
   }
 
-  /**
-   * Get all provider selections for a session
-   */
-  async getSessionSelection(sessionId: string): Promise<SessionProviderSelection | null> {
-    // Load from config if not in cache
-    if (!this.sessionSelections.has(sessionId)) {
-      await this.loadProviderSelection(sessionId);
-    }
-    return this.sessionSelections.get(sessionId) || null;
-  }
-
-  /**
-   * Set all provider selections for a session
-   */
-  async setSessionSelection(sessionId: string, selection: SessionProviderSelection): Promise<void> {
-    // Validate all providers
-    for (const [capability, providerName] of Object.entries(selection)) {
-      if (providerName) {
-        const provider = this.aiManager.getProviderForCapability(capability as CapabilityType, providerName);
-        if (!provider) {
-          throw new Error(`Provider ${providerName} does not support capability ${capability} or is not available`);
-        }
-      }
-    }
-
-    // Update in-memory cache
+  private async persistSelection(sessionId: string, selection: SessionProviderSelection): Promise<void> {
     this.sessionSelections.set(sessionId, selection);
-
-    // Persist to conversation config
     const { sessionId: parsedId, sessionType } = this.parseSessionId(sessionId);
     await this.configService.updateConfig(parsedId, sessionType, {
       providers: selection,
     });
-
-    logger.info(`[ProviderSelector] Set provider selection for session ${sessionId}`);
   }
+}
 
-  /**
-   * Clear session selection (reset to defaults)
-   */
-  async clearSessionSelection(sessionId: string): Promise<void> {
-    this.sessionSelections.delete(sessionId);
+/** Capabilities a session can override: those with a slot in the persisted selection. */
+export type SelectableCapability = CapabilityType & keyof ProviderSelection;
 
-    // Remove from conversation config
-    const { sessionId: parsedId, sessionType } = this.parseSessionId(sessionId);
-    await this.configService.updateConfig(parsedId, sessionType, {
-      providers: undefined,
-    });
-
-    logger.info(`[ProviderSelector] Cleared provider selection for session ${sessionId}`);
-  }
+function selectionProviderName(value: NonNullable<ProviderSelection[SelectableCapability]>): string {
+  return typeof value === 'string' ? value : value.provider;
 }

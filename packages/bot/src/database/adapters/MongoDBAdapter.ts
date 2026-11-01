@@ -250,6 +250,17 @@ export class MongoDBAdapter implements DatabaseAdapter {
     await collections.tokenUsage.createIndex({ date: 1 });
     await collections.tokenUsage.createIndex({ date: 1, userId: 1 });
 
+    // A session's LLM override was stored as a bare provider name before LLM routes became
+    // targets (provider + model). The provider alone is a target on its own configured model.
+    const { modifiedCount } = await this.db
+      .collection('conversation_configs')
+      .updateMany({ 'config.providers.llm': { $type: 'string' } }, [
+        { $set: { 'config.providers.llm': { provider: '$config.providers.llm' } } },
+      ]);
+    if (modifiedCount > 0) {
+      logger.info(`[MongoDBAdapter] Migrated ${modifiedCount} session LLM override(s) to targets`);
+    }
+
     logger.info('[MongoDBAdapter] Migrations completed');
   }
 

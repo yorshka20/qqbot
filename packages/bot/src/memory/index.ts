@@ -15,7 +15,6 @@ export type { ConsolidationSummary } from './consolidation/MemoryConsolidationSe
 export { MemoryConsolidationService } from './consolidation/MemoryConsolidationService';
 export type { ExtractResult } from './extraction/MemoryExtractService';
 export { MemoryExtractService } from './extraction/MemoryExtractService';
-export type { MemoryLLMOptions } from './llm/memoryLLM';
 export { GROUP_MEMORY_USER_ID } from './model/constants';
 export type { FormatMemoryMarkdownInput, MemorySpeakerSection } from './retrieval/formatMemoryMarkdown';
 export { buildSpeakerTag, formatMemoryMarkdown } from './retrieval/formatMemoryMarkdown';

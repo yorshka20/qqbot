@@ -49,8 +49,8 @@ function makeContext(source: string): ReplyPipelineContext {
     episodeKey: 'ep-1',
     memoryContextText: '',
     retrievedConversationSection: '',
-    providerName: undefined,
-    selectedProviderName: undefined,
+    routedTarget: undefined,
+    target: undefined,
     providerHasVision: false,
     effectiveNativeSearchEnabled: false,
     toolDefinitions: [],
@@ -58,7 +58,7 @@ function makeContext(source: string): ReplyPipelineContext {
     messages: [],
     genOptions: null,
     responseText: '',
-    actualProvider: undefined,
+    actualTarget: undefined,
     interrupted: false,
   } as unknown as ReplyPipelineContext;
 }

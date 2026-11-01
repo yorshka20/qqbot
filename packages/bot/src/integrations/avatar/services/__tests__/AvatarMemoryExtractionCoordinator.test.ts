@@ -10,8 +10,8 @@
 //   - Below `minUserEntries`, the fire is a no-op (no LLM call)
 //   - `runNow()` bypasses the debounce and runs immediately (useful for
 //     `/memory extract` style admin commands + tests)
-//   - Provider resolution precedence (override → taskProviders.memoryExtract
-//     → avatar.llmProvider → defaultProviders.llm)
+//   - LLM resolution precedence (override → taskProviders.memoryExtract
+//     → avatar.llmProvider → the default LLM)
 
 import { describe, expect, mock, test } from 'bun:test';
 import type { Config } from '@/core/config';
@@ -94,8 +94,8 @@ function setup(opts: SetupOptions = {}): CoordinatorEnv {
       },
     },
     ai: {
-      defaultProviders: { llm: opts.defaultProvider ?? 'deepseek' },
-      taskProviders: opts.taskProvider ? { memoryExtract: opts.taskProvider } : undefined,
+      defaultProviders: { llm: { provider: opts.defaultProvider ?? 'deepseek' } },
+      taskProviders: opts.taskProvider ? { memoryExtract: { provider: opts.taskProvider } } : undefined,
     },
   };
 
@@ -161,11 +161,11 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     await sleep(80);
     expect(env.extractService.extractAndConsolidate).toHaveBeenCalledTimes(1);
-    const [groupId, text, options] = env.extractService.extractAndConsolidate.mock.calls[0];
+    const [groupId, text, target] = env.extractService.extractAndConsolidate.mock.calls[0];
     expect(groupId).toBe('live2d:bilibili-live:room-6940826');
     expect(typeof text).toBe('string');
     expect(text.length).toBeGreaterThan(0);
-    expect(options.provider).toBe('deepseek'); // default fallback
+    expect(target).toBeUndefined(); // no target: runs on the default LLM
   });
 
   test('skips scheduling for sources not in allowedSources (avatar-cmd / livemode by default)', async () => {
@@ -311,8 +311,8 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     });
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     await sleep(80);
-    const [, , options] = env.extractService.extractAndConsolidate.mock.calls[0];
-    expect(options.provider).toBe('groq-extract');
+    const [, , target] = env.extractService.extractAndConsolidate.mock.calls[0];
+    expect(target?.provider).toBe('groq-extract');
   });
 
   test('falls back to ai.taskProviders.memoryExtract when no avatar override', async () => {
@@ -327,8 +327,8 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     });
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     await sleep(80);
-    const [, , options] = env.extractService.extractAndConsolidate.mock.calls[0];
-    expect(options.provider).toBe('doubao');
+    const [, , target] = env.extractService.extractAndConsolidate.mock.calls[0];
+    expect(target?.provider).toBe('doubao');
   });
 
   test('falls back to avatar.llmProvider when no taskProviders.memoryExtract', async () => {
@@ -342,7 +342,7 @@ describe('AvatarMemoryExtractionCoordinator', () => {
     });
     env.coordinator.schedule('thread-1', DEFAULT_SOURCE);
     await sleep(80);
-    const [, , options] = env.extractService.extractAndConsolidate.mock.calls[0];
-    expect(options.provider).toBe('openai');
+    const [, , target] = env.extractService.extractAndConsolidate.mock.calls[0];
+    expect(target?.provider).toBe('openai');
   });
 });

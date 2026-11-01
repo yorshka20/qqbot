@@ -6,7 +6,7 @@ import { VisionService } from '@/ai/services/VisionService';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { Config } from '@/core/config';
-import type { ChatReasoningEfforts } from '@/core/config/types/ai';
+import type { ChatReasoningEfforts, LLMTarget } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
@@ -66,12 +66,9 @@ export class ProactiveReplyGenerationService {
    * Generate a single proactive reply for group participation.
    * All injectable text (preference, thread, RAG, memory) is provided via context from the context layer.
    */
-  async generateProactiveReply(
-    context: ProactiveReplyInjectContext,
-    providerName?: string,
-  ): Promise<AIGenerateResponse> {
+  async generateProactiveReply(context: ProactiveReplyInjectContext, target?: LLMTarget): Promise<AIGenerateResponse> {
     const useVision = Boolean(context.messageImages?.length);
-    const capabilities = await this.resolveProviderAndCapabilities(context, providerName, useVision);
+    const capabilities = await this.resolveProviderAndCapabilities(context, target, useVision);
     const { tools, toolUsageInstructions } = this.getToolsAndInstructions(
       capabilities.canUseToolUse,
       capabilities.nativeWebSearchEnabled,
@@ -102,31 +99,34 @@ export class ProactiveReplyGenerationService {
 
   private async resolveProviderAndCapabilities(
     context: ProactiveReplyInjectContext,
-    providerName: string | undefined,
+    target: LLMTarget | undefined,
     useVision: boolean,
   ): Promise<{
-    effectiveProviderName: string | undefined;
+    effectiveTarget: LLMTarget | undefined;
     canUseToolUse: boolean;
     nativeWebSearchEnabled: boolean;
     nativeFunctionCalling: boolean;
   }> {
     const sessionId = context.sessionId;
-    let effectiveProviderName = providerName;
+    let effectiveTarget = target;
     if (useVision) {
-      const answeringProvider = await this.llmService.getAvailableProvider(providerName, sessionId);
-      const routing = await this.visionService.routeImageTurn(answeringProvider, providerName, sessionId);
-      effectiveProviderName = routing.providerName;
+      const answeringProvider = await this.llmService.getAvailableProvider(target, sessionId);
+      const routing = await this.visionService.routeImageTurn(answeringProvider, target?.provider, sessionId);
+      // A text-only provider hands an image turn to a vision provider, which answers on its own model.
+      if (routing.providerName !== target?.provider) {
+        effectiveTarget = routing.providerName ? { provider: routing.providerName } : undefined;
+      }
     }
     const canUseToolUse = useVision
-      ? Boolean(effectiveProviderName && (await this.llmService.supportsToolUse(effectiveProviderName, sessionId)))
-      : await this.llmService.supportsToolUse(effectiveProviderName, sessionId);
+      ? Boolean(effectiveTarget && (await this.llmService.supportsToolUse(effectiveTarget, sessionId)))
+      : await this.llmService.supportsToolUse(effectiveTarget, sessionId);
     const nativeWebSearchEnabled = canUseToolUse
-      ? await this.llmService.supportsNativeWebSearch(effectiveProviderName, sessionId)
+      ? await this.llmService.supportsNativeWebSearch(effectiveTarget, sessionId)
       : false;
-    const resolvedProvider = await this.llmService.getAvailableProvider(effectiveProviderName, sessionId);
+    const resolvedProvider = await this.llmService.getAvailableProvider(effectiveTarget, sessionId);
     const nativeFunctionCalling =
       !!resolvedProvider && (resolvedProvider as unknown as AIProvider).getCapabilities().includes('function_calling');
-    return { effectiveProviderName, canUseToolUse, nativeWebSearchEnabled, nativeFunctionCalling };
+    return { effectiveTarget, canUseToolUse, nativeWebSearchEnabled, nativeFunctionCalling };
   }
 
   // ---------------------------------------------------------------------------
@@ -216,14 +216,14 @@ export class ProactiveReplyGenerationService {
     messages: ChatMessage[],
     context: ProactiveReplyInjectContext,
     capabilities: {
-      effectiveProviderName: string | undefined;
+      effectiveTarget: LLMTarget | undefined;
       canUseToolUse: boolean;
       nativeWebSearchEnabled: boolean;
     },
     tools: ReturnType<typeof getReplySkillDefinitions>,
     useVision: boolean,
   ): Promise<AIGenerateResponse> {
-    const { effectiveProviderName, canUseToolUse, nativeWebSearchEnabled } = capabilities;
+    const { effectiveTarget, canUseToolUse, nativeWebSearchEnabled } = capabilities;
     const genOptions = {
       ...PROACTIVE_GEN_OPTIONS,
       sessionId: context.sessionId,
@@ -232,7 +232,7 @@ export class ProactiveReplyGenerationService {
     const hookContext = this.buildToolHookContext(context, lastUserMessage);
     const toolExecutor = (call: { name: string; arguments: string }) =>
       executeSkillCall(call, hookContext, this.toolManager, this.hookManager);
-    const useTools = canUseToolUse && effectiveProviderName && tools.length > 0;
+    const useTools = canUseToolUse && effectiveTarget && tools.length > 0;
 
     if (useVision) {
       if (useTools) {
@@ -247,7 +247,7 @@ export class ProactiveReplyGenerationService {
             toolExecutor,
             reasoningEffort: this.reasoningEfforts.toolReasoningEffort,
           },
-          effectiveProviderName,
+          effectiveTarget,
         );
         return { text: toolUseResponse.text, reasoningContent: toolUseResponse.reasoningContent };
       }
@@ -258,7 +258,7 @@ export class ProactiveReplyGenerationService {
           sessionId: genOptions.sessionId,
           reasoningEffort: this.reasoningEfforts.reasoningEffort,
         },
-        effectiveProviderName,
+        effectiveTarget?.provider,
       );
     }
     if (useTools) {
@@ -273,7 +273,7 @@ export class ProactiveReplyGenerationService {
           toolExecutor,
           reasoningEffort: this.reasoningEfforts.toolReasoningEffort,
         },
-        effectiveProviderName,
+        effectiveTarget,
       );
       return { text: toolUseResponse.text };
     }
@@ -282,7 +282,7 @@ export class ProactiveReplyGenerationService {
     return this.llmService.generate(
       prompt,
       { ...genOptions, messages, reasoningEffort: this.reasoningEfforts.reasoningEffort },
-      effectiveProviderName,
+      effectiveTarget,
     );
   }
 

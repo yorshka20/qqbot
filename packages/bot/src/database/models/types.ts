@@ -1,5 +1,7 @@
 // Database model types and interfaces
 
+import type { LLMTarget } from '@/core/config/types/ai';
+
 /**
  * Base model interface
  */
@@ -48,7 +50,7 @@ export interface Message extends BaseModel {
  * Provider selection for a session
  */
 export interface ProviderSelection {
-  llm?: string;
+  llm?: LLMTarget;
   native_web_search?: string;
   vision?: string;
   text2img?: string;

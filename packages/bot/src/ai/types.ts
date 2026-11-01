@@ -222,11 +222,10 @@ export interface AIGenerateResponse {
   resolvedProviderName?: string;
   /**
    * The model that actually served this response. LLMService stamps this centrally
-   * at each resolution point (caller-pinned `options.model`, else the provider's
-   * configured default) so callers don't have to guess from static config. A provider
-   * only needs to set this itself when the model it actually used differs from both
-   * of those — e.g. it picks a per-capability model from its own config — in which
-   * case the provider's value wins.
+   * from the call's target (its model, else the provider's configured default) so
+   * callers don't have to guess from static config. A provider only needs to set this
+   * itself when the model it actually used differs from that — e.g. it picks a
+   * per-capability model from its own config — in which case the provider's value wins.
    */
   resolvedModel?: string;
   /**
@@ -330,9 +329,11 @@ export interface ToolResult {
 /**
  * Options for a call through LLMService. The reasoning effort is required: left out, a call
  * runs at the vendor's default, which on thinking models is the most expensive setting
- * (DeepSeek: high), so every task states how much it should think.
+ * (DeepSeek: high), so every task states how much it should think. The model is not an
+ * option: it travels with its provider in the call's `LLMTarget`, so a model can never
+ * reach a provider it was not chosen for.
  */
-export type LLMCallOptions = AIGenerateOptions & Required<Pick<AIGenerateOptions, 'reasoningEffort'>>;
+export type LLMCallOptions = Omit<AIGenerateOptions, 'model'> & Required<Pick<AIGenerateOptions, 'reasoningEffort'>>;
 
 /** Tool Use generation options */
 export interface ToolUseGenerateOptions extends AIGenerateOptions {
@@ -366,7 +367,8 @@ export interface ToolUseGenerateOptions extends AIGenerateOptions {
   onToolRoundText?: (text: string, calls: FunctionCall[]) => void | Promise<void>;
 }
 
-export type ToolUseCallOptions = ToolUseGenerateOptions & Required<Pick<AIGenerateOptions, 'reasoningEffort'>>;
+export type ToolUseCallOptions = Omit<ToolUseGenerateOptions, 'model'> &
+  Required<Pick<AIGenerateOptions, 'reasoningEffort'>>;
 
 /** Tool Use generation response */
 export interface ToolUseGenerateResponse extends AIGenerateResponse {

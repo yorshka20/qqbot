@@ -6,6 +6,7 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
+import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';
@@ -17,16 +18,15 @@ import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
 import { MemoryReviewService } from '@/memory/review/MemoryReviewService';
 import { MemoryFactStore } from '@/memory/storage/MemoryFactStore';
 import { MemoryIndexSync } from '@/memory/storage/MemoryIndexSync';
+import { ConfigError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 export interface MemoryPluginConfig {
-  /** LLM provider for backfill extracts, consolidation and review (e.g. "gemini", "deepseek"). Required. */
-  extractProvider: string;
-  /** Model override for the extract provider (e.g. "gemini-3.1-flash-lite"). Default: the provider's configured model. */
-  extractModel?: string;
+  /** LLM for backfill extracts, consolidation and review (e.g. { "provider": "gemini", "model": "gemini-3.1-flash-lite" }). Required. */
+  extract: LLMTarget;
   /** Full-history extract (via MemoryTrigger): max character length per extract chunk. Default 15000. */
   fullHistoryMaxLength?: number;
   /** Full-history progress file path (one line per "groupId:userId"). Default "data/memory_full_history_progress.txt". */
@@ -49,9 +49,8 @@ const MEMORY_DIR = 'data/memory';
   description: 'Memory: daily extract on the group_day prefix, full-history backfills, backups',
 })
 export class MemoryPlugin extends PluginBase {
-  /** LLM provider name for extract + analyze (from config). */
-  private extractProvider = '';
-  private extractModel: string | undefined;
+  /** LLM for extract + analyze (from config); unset runs them on the default LLM. */
+  private extract: LLMTarget | undefined;
   /** Full-history extract (MemoryTrigger): max character length per extract chunk. */
   private fullHistoryMaxLength = DEFAULT_FULL_HISTORY_MAX_LENGTH;
   /** Full-history progress file path (one line per "groupId:userId"). */
@@ -85,16 +84,18 @@ export class MemoryPlugin extends PluginBase {
     const pluginConfig = this.pluginConfig?.config as MemoryPluginConfig | undefined;
 
     if (pluginConfig) {
+      if (typeof pluginConfig.extract?.provider !== 'string') {
+        throw new ConfigError(
+          'plugins.memory.extract must be an LLM target { "provider": "...", "model"?: "..." } (it replaces extractProvider / extractModel)',
+        );
+      }
       // Plugin config takes precedence over AI config
-      this.extractProvider = pluginConfig.extractProvider;
-      this.extractModel = pluginConfig.extractModel;
+      this.extract = pluginConfig.extract;
       this.fullHistoryMaxLength = pluginConfig.fullHistoryMaxLength ?? DEFAULT_FULL_HISTORY_MAX_LENGTH;
       this.fullHistoryProgressFile = pluginConfig.fullHistoryProgressFile ?? DEFAULT_FULL_HISTORY_PROGRESS_FILE;
       this.backupIntervalMs = pluginConfig.backupIntervalMs ?? DEFAULT_BACKUP_INTERVAL_MS;
       this.backupDir = pluginConfig.backupDir ?? DEFAULT_BACKUP_DIR;
-      logger.info(
-        `[MemoryPlugin] Configured | extractProvider=${this.extractProvider}${this.extractModel ? ` model=${this.extractModel}` : ''}`,
-      );
+      logger.info(`[MemoryPlugin] Configured | extract=${describeLLMTarget(pluginConfig.extract)}`);
     }
   }
 
@@ -134,9 +135,7 @@ export class MemoryPlugin extends PluginBase {
 
   async onEnable(): Promise<void> {
     await super.onEnable();
-    this.groupDay().registerTask(
-      new GroupDayMemoryTask(this.memoryExtractService, { provider: this.extractProvider, model: this.extractModel }),
-    );
+    this.groupDay().registerTask(new GroupDayMemoryTask(this.memoryExtractService, this.extract));
     logger.info('[MemoryPlugin] Registered group_day task: memory');
   }
 
@@ -158,10 +157,9 @@ export class MemoryPlugin extends PluginBase {
     const container = getContainer();
     const indexSync = container.resolve(MemoryIndexSync);
     const review = container.resolve(MemoryReviewService);
-    const options = { provider: this.extractProvider, model: this.extractModel };
     try {
       for (const groupId of await indexSync.listGroupIds()) {
-        const reviewed = await review.reviewGroup(groupId, options);
+        const reviewed = await review.reviewGroup(groupId, this.extract);
         const indexed = indexSync.isEnabled() ? await indexSync.reindexGroup(groupId) : { upserted: 0, removed: 0 };
         logger.info(
           `[MemoryPlugin] Daily maintenance group=${groupId} | review due=${reviewed.due} kept=${reviewed.kept} ` +
@@ -294,13 +292,12 @@ export class MemoryPlugin extends PluginBase {
     logger.info(
       `[MemoryPlugin] runFullHistoryExtractForUser: processing groupId=${groupId} userId=${userId} messages=${entries.length} chunks=${chunks.length}`,
     );
-    const opts = { provider: this.extractProvider, model: this.extractModel };
     try {
       for (let i = 0; i < chunks.length; i++) {
         logger.info(
           `[MemoryPlugin] runFullHistoryExtractForUser chunk ${i + 1}/${chunks.length} groupId=${groupId} userId=${userId}`,
         );
-        await this.memoryExtractService.extractAndConsolidateUser(groupId, userId, chunks[i], opts);
+        await this.memoryExtractService.extractAndConsolidateUser(groupId, userId, chunks[i], this.extract);
       }
       const latestEntry = entries[entries.length - 1];
       const lastProcessedAt = latestEntry?.createdAt
@@ -358,10 +355,9 @@ export class MemoryPlugin extends PluginBase {
     logger.info(
       `[MemoryPlugin] runFullHistoryExtractForGroup: processing groupId=${groupId} messages=${filtered.length} chunks=${chunks.length}`,
     );
-    const opts = { provider: this.extractProvider, model: this.extractModel };
     for (let i = 0; i < chunks.length; i++) {
       logger.info(`[MemoryPlugin] runFullHistoryExtractForGroup chunk ${i + 1}/${chunks.length} groupId=${groupId}`);
-      await this.memoryExtractService.extractAndConsolidate(groupId, chunks[i], opts);
+      await this.memoryExtractService.extractAndConsolidate(groupId, chunks[i], this.extract);
     }
     logger.info(`[MemoryPlugin] Full history group extract completed for groupId=${groupId} chunks=${chunks.length}`);
   }
@@ -406,12 +402,11 @@ export class MemoryPlugin extends PluginBase {
     logger.info(
       `[MemoryPlugin] runExtractForUserSince: processing groupId=${groupId} userId=${userId} messages=${userEntries.length} chunks=${chunks.length}`,
     );
-    const opts = { provider: this.extractProvider, model: this.extractModel };
     for (let i = 0; i < chunks.length; i++) {
       logger.info(
         `[MemoryPlugin] runExtractForUserSince chunk ${i + 1}/${chunks.length} groupId=${groupId} userId=${userId}`,
       );
-      await this.memoryExtractService.extractAndConsolidateUser(groupId, userId, chunks[i], opts);
+      await this.memoryExtractService.extractAndConsolidateUser(groupId, userId, chunks[i], this.extract);
     }
     logger.info(
       `[MemoryPlugin] runExtractForUserSince completed groupId=${groupId} userId=${userId} chunks=${chunks.length}`,
@@ -455,10 +450,9 @@ export class MemoryPlugin extends PluginBase {
     logger.info(
       `[MemoryPlugin] runExtractForGroupSince: processing groupId=${groupId} messages=${filtered.length} chunks=${chunks.length}`,
     );
-    const opts = { provider: this.extractProvider, model: this.extractModel };
     for (let i = 0; i < chunks.length; i++) {
       logger.info(`[MemoryPlugin] runExtractForGroupSince chunk ${i + 1}/${chunks.length} groupId=${groupId}`);
-      await this.memoryExtractService.extractAndConsolidate(groupId, chunks[i], opts);
+      await this.memoryExtractService.extractAndConsolidate(groupId, chunks[i], this.extract);
     }
     logger.info(`[MemoryPlugin] runExtractForGroupSince completed groupId=${groupId} chunks=${chunks.length}`);
   }

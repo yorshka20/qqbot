@@ -41,7 +41,7 @@ function fakeHistoryService(): ConversationHistoryService {
 function fakeLLMServiceWith(text: string): LLMService {
   return {
     generateFixed: async () => ({ text, toolCalls: [], finishReason: 'stop', usage: null }),
-    getDefaultLLMProviderName: () => 'gemini',
+    getDefaultLLM: () => ({ provider: 'gemini' }),
   } as unknown as LLMService;
 }
 

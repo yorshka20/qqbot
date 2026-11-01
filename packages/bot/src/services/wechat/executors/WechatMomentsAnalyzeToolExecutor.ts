@@ -164,13 +164,12 @@ export class WechatMomentsAnalyzeToolExecutor extends BaseToolExecutor {
   private async callLLM(prompt: string, topic: string): Promise<string> {
     for (const providerName of ALLOWED_PROVIDERS) {
       try {
-        const provider = await this.llmService.getAvailableProvider(providerName);
-        if (!provider) continue;
-
-        const response = await provider.generate(prompt, {
-          temperature: 0.3,
-          reasoningEffort: 'low',
-        });
+        const response = await this.llmService.generateFixed(
+          { provider: providerName },
+          prompt,
+          { temperature: 0.3, reasoningEffort: 'low' },
+          { maxRetries: 0 },
+        );
 
         const text = response.text?.trim();
         if (text) return text;

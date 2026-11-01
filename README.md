@@ -154,7 +154,7 @@ Required keys:
 - `protocols` — at least one enabled entry. For QQ, `connection.url` / `apiUrl` point at LLBot (for a bridge on this machine, `127.0.0.1` and the ports from step 1) and `accessToken` matches the token set in the LLBot WebUI. For Discord, set `accessToken` to the bot token and enable the intents listed in the example.
 - `database` — `sqlite` plus a path, or `mongodb` plus a connection string
 - `bot.owner` — your user id on that platform
-- `ai.defaultProviders.llm` and the matching `ai.providers.<name>` (`apiKey`, `baseUrl`, `model`)
+- `ai.defaultProviders.llm` — an LLM target `{ "provider": "<name>", "model"?: "..." }` — and the matching `ai.providers.<name>` (`apiKey`, `baseUrl`, `model`)
 - `prompts` — `./prompts`
 
 `config.jsonc` and `config.d/` are gitignored. The example file still shows placeholder hosts; replace them with the machine that actually runs LLBot.
@@ -236,7 +236,7 @@ bun run debug         # mock messages, no live protocol
 
 - **LLBot container never becomes healthy.** `docker compose logs pmhq llbot`. PMHQ must pass its healthcheck before LLBot starts. An empty `LLBOT_AUTH_TOKEN` or a missing `llbot_config/webui_token.txt` leaves you on the login page.
 - **Bot does not connect.** Protocol URL, port, and `accessToken` must match what the LLBot WebUI is actually serving. `LOG_LEVEL=debug`.
-- **No model reply.** `ai.defaultProviders.llm` must name a provider that exists, and that provider's key must be set. At least one protocol must be connected.
+- **No model reply.** `ai.defaultProviders.llm.provider` must name a provider that exists, and that provider's key must be set. At least one protocol must be connected.
 - **Plugin did not load.** `plugins.list[].name` matches the class `name`, and `enabled` is true.
 - **Smoke-test fails.** The stack is usually a missing DI token or a circular import. Don't continue until it exits 0.
 - **Card render is empty.** `puppeteer-core` needs a Chromium it can find; set the executable path in config if it is not on `PATH`.

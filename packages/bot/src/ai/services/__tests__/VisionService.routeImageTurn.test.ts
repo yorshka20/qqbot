@@ -8,7 +8,7 @@ import type { LLMCapability } from '@/ai/capabilities/LLMCapability';
 import type { ProviderSelector } from '@/ai/ProviderSelector';
 import { VisionService } from '../VisionService';
 
-const NO_SESSION_SELECTION = { getProviderForSession: async () => null } as unknown as ProviderSelector;
+const NO_SESSION_SELECTION = { getSessionOverride: async () => null } as unknown as ProviderSelector;
 
 function providerWith(name: string, capabilities: CapabilityType[]): AIProvider {
   return {

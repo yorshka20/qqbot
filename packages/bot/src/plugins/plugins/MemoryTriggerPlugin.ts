@@ -11,6 +11,7 @@ import {
   groupEntriesIntoWindows,
 } from '@/conversation/rag/buildConversationWindowDocument';
 import type { Config } from '@/core/config';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
@@ -319,20 +320,13 @@ export class MemoryTriggerPlugin extends PluginBase {
    * Merge new content with existing user memory and upsert.
    * @returns Promise that resolves when update is done (for sending "记忆已更新" after)
    */
-  private getExtractProvider(): string {
-    const aiConfig = this.config.getAIConfig();
-    const provider = aiConfig?.taskProviders?.memoryExtract ?? aiConfig?.defaultProviders?.llm;
-    if (!provider) {
-      throw new Error(
-        '[MemoryTriggerPlugin] No LLM provider configured for memory extract (set taskProviders.memoryExtract or defaultProviders.llm in ai config)',
-      );
-    }
-    return provider;
+  private getExtractTarget(): LLMTarget | undefined {
+    return this.config.getAIConfig()?.taskProviders?.memoryExtract;
   }
 
   private consolidateUserMemory(groupId: string, userId: string, content: string): Promise<void> {
     return this.consolidationService
-      .consolidateSlot(groupId, userId, [content], { provider: this.getExtractProvider() })
+      .consolidateSlot(groupId, userId, [content], this.getExtractTarget())
       .then(() => {
         logger.debug(`[MemoryTriggerPlugin] Consolidated user memory for group=${groupId} user=${userId}`);
       })

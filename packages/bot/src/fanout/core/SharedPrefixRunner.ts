@@ -8,6 +8,7 @@
 import type { LLMService } from '@/ai/services/LLMService';
 import { executeToolCall } from '@/ai/tools/replyTools';
 import type { ChatMessage, FunctionCall, ToolDefinition } from '@/ai/types';
+import type { LLMTarget } from '@/core/config/types/ai';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { ToolManager } from '@/tools/ToolManager';
@@ -15,8 +16,7 @@ import { logger } from '@/utils/logger';
 import type { FanoutRun, FanoutTask, FanoutTaskOutput, FanoutTaskReport } from './types';
 
 export interface FanoutEnvelope {
-  provider: string;
-  model?: string;
+  target: LLMTarget;
   system: string;
   tools: ToolDefinition[];
 }
@@ -102,7 +102,6 @@ async function runTask<C>(
         messages,
         envelope.tools,
         {
-          model: envelope.model,
           reasoningEffort: task.limits.reasoningEffort,
           timeout: task.limits.timeout,
           maxToolRounds: task.limits.maxToolRounds,
@@ -112,7 +111,7 @@ async function runTask<C>(
             onFirstRound();
           },
         },
-        envelope.provider,
+        envelope.target,
       )
       .finally(onFirstRound);
     // A tool-less envelope short-circuits to a single plain generation, which reports no rounds.

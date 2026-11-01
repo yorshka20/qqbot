@@ -6,13 +6,14 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import type { Config } from '@/core/config';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { GROUP_CORE_SCOPES, USER_CORE_SCOPES } from '@/core/config/types/memory';
 import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { MemoryNoteBuffer } from '@/database/models/types';
 import { logger } from '@/utils/logger';
 import { MemoryConsolidationService } from '../consolidation/MemoryConsolidationService';
-import { MEMORY_JOB_TIMEOUT_MS, type MemoryLLMOptions } from '../llm/memoryLLM';
+import { MEMORY_JOB_TIMEOUT_MS } from '../llm/memoryLLM';
 import { GROUP_MEMORY_USER_ID } from '../model/constants';
 
 /**
@@ -66,10 +67,9 @@ export class MemoryExtractService {
     }
   }
 
-  /** LLM provider for note consolidation: same as memory extract (taskProviders.memoryExtract → defaultProviders.llm). */
-  private resolveProvider(): string | null {
-    const ai = this.config.getAIConfig();
-    return ai?.taskProviders?.memoryExtract ?? ai?.defaultProviders?.llm ?? null;
+  /** LLM for note consolidation: same as memory extract (taskProviders.memoryExtract, else the default LLM). */
+  private resolveTarget(): LLMTarget | undefined {
+    return this.config.getAIConfig()?.taskProviders?.memoryExtract;
   }
 
   /**
@@ -118,17 +118,13 @@ export class MemoryExtractService {
   }
 
   private async runFlushNotes(groupId: string): Promise<void> {
-    const provider = this.resolveProvider();
-    if (!provider) {
-      logger.warn('[MemoryExtractService] flushNotes: no LLM provider configured, skip');
-      return;
-    }
+    const target = this.resolveTarget();
     const drained = await this.drainPendingNotes(groupId);
     if (!drained || (drained.groupNotes.length === 0 && drained.userNotes.size === 0)) {
       return;
     }
     try {
-      await this.consolidationService.consolidate(groupId, drained.groupNotes, drained.userNotes, { provider });
+      await this.consolidationService.consolidate(groupId, drained.groupNotes, drained.userNotes, target);
       await this.deletePendingNotes(drained.ids);
       logger.info(`[MemoryExtractService] flushed ${drained.ids.length} memory notes | group=${groupId}`);
     } catch (err) {
@@ -230,12 +226,10 @@ export class MemoryExtractService {
     groupId: string,
     userId: string,
     recentMessagesText: string,
-    options: MemoryLLMOptions,
+    target: LLMTarget | undefined,
   ): Promise<void> {
     const prev = this.extractQueue;
-    this.extractQueue = prev.then(() =>
-      this.runExtractAndConsolidateUser(groupId, userId, recentMessagesText, options),
-    );
+    this.extractQueue = prev.then(() => this.runExtractAndConsolidateUser(groupId, userId, recentMessagesText, target));
     return this.extractQueue;
   }
 
@@ -244,9 +238,8 @@ export class MemoryExtractService {
     groupId: string,
     userId: string,
     recentMessagesText: string,
-    options: MemoryLLMOptions,
+    target: LLMTarget | undefined,
   ): Promise<void> {
-    const provider = options.provider;
     const inputText = recentMessagesText || '(no messages)';
     const baseSystemPrompt = this.promptManager.renderBasePrompt();
     const targetUserSection = this.promptManager.render('memory.extract_single_user', {
@@ -268,12 +261,11 @@ export class MemoryExtractService {
         {
           temperature: 0.4,
           reasoningEffort: 'medium',
-          model: options.model,
           systemPrompt: baseSystemPrompt,
           jsonMode: true,
           timeout: MEMORY_JOB_TIMEOUT_MS,
         },
-        provider,
+        target,
       );
       response = (res.text ?? '').trim();
       logger.debug('[MemoryExtractService] runExtractAndConsolidateUser result:', { response });
@@ -297,7 +289,7 @@ export class MemoryExtractService {
       groupId,
       userId,
       userFacts.flatMap((u) => u.facts),
-      options,
+      target,
     );
   }
 
@@ -305,9 +297,13 @@ export class MemoryExtractService {
    * Extract from recent messages (memory.extract), then consolidate each slot.
    * Queued: runs after previous extract job completes (single-threaded).
    */
-  async extractAndConsolidate(groupId: string, recentMessagesText: string, options: MemoryLLMOptions): Promise<void> {
+  async extractAndConsolidate(
+    groupId: string,
+    recentMessagesText: string,
+    target: LLMTarget | undefined,
+  ): Promise<void> {
     const prev = this.extractQueue;
-    this.extractQueue = prev.then(() => this.runExtractAndConsolidate(groupId, recentMessagesText, options));
+    this.extractQueue = prev.then(() => this.runExtractAndConsolidate(groupId, recentMessagesText, target));
     return this.extractQueue;
   }
 
@@ -324,9 +320,9 @@ export class MemoryExtractService {
    * another context) into group and user memory, together with any buffered notes.
    * Queued like every other extract job.
    */
-  async consolidateExtractOutput(groupId: string, extractOutput: string, options: MemoryLLMOptions): Promise<void> {
+  async consolidateExtractOutput(groupId: string, extractOutput: string, target: LLMTarget | undefined): Promise<void> {
     const prev = this.extractQueue;
-    this.extractQueue = prev.then(() => this.applyExtractOutput(groupId, extractOutput, options));
+    this.extractQueue = prev.then(() => this.applyExtractOutput(groupId, extractOutput, target));
     return this.extractQueue;
   }
 
@@ -334,9 +330,8 @@ export class MemoryExtractService {
   private async runExtractAndConsolidate(
     groupId: string,
     recentMessagesText: string,
-    options: MemoryLLMOptions,
+    target: LLMTarget | undefined,
   ): Promise<void> {
-    const provider = options.provider;
     const prompt = this.promptManager.render('memory.extract', {
       groupId,
       recentMessagesText: recentMessagesText || '(no messages)',
@@ -351,11 +346,10 @@ export class MemoryExtractService {
         {
           temperature: 0.4,
           reasoningEffort: 'medium',
-          model: options.model,
           jsonMode: true,
           timeout: MEMORY_JOB_TIMEOUT_MS,
         },
-        provider,
+        target,
       );
       response = (res.text ?? '').trim();
     } catch (err) {
@@ -363,11 +357,11 @@ export class MemoryExtractService {
       return;
     }
 
-    await this.applyExtractOutput(groupId, response, options);
+    await this.applyExtractOutput(groupId, response, target);
   }
 
   /** Parse an extract output, fold in buffered notes, then consolidate each slot. */
-  private async applyExtractOutput(groupId: string, response: string, options: MemoryLLMOptions): Promise<void> {
+  private async applyExtractOutput(groupId: string, response: string, target: LLMTarget | undefined): Promise<void> {
     // Even when extraction yields nothing, still drain buffered notes for this group so they consolidate.
     const parsed = this.parseExtractOutput(response);
 
@@ -402,7 +396,7 @@ export class MemoryExtractService {
     );
 
     try {
-      await this.consolidationService.consolidate(groupId, groupFacts, userFacts, options);
+      await this.consolidationService.consolidate(groupId, groupFacts, userFacts, target);
       if (drained) {
         await this.deletePendingNotes(drained.ids);
       }

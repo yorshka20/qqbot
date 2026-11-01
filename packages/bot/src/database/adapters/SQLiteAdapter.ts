@@ -626,6 +626,21 @@ export class SQLiteAdapter implements DatabaseAdapter {
       logger.warn(`[SQLiteAdapter] Failed to add token_usage columns: ${error}`);
     }
 
+    // A session's LLM override was stored as a bare provider name before LLM routes became
+    // targets (provider + model). The provider alone is a target on its own configured model.
+    try {
+      const { changes } = this.db.run(
+        `UPDATE conversation_configs
+         SET config = json_set(config, '$.providers.llm', json_object('provider', json_extract(config, '$.providers.llm')))
+         WHERE json_type(config, '$.providers.llm') = 'text'`,
+      );
+      if (changes > 0) {
+        logger.info(`[SQLiteAdapter] Migrated ${changes} session LLM override(s) to targets`);
+      }
+    } catch (error) {
+      logger.warn(`[SQLiteAdapter] Failed to migrate session LLM overrides to targets: ${error}`);
+    }
+
     // The original agenda_items CHECK constraint predates the 'onMessage' trigger
     // type. SQLite cannot ALTER a CHECK, so tables created before it must be
     // rebuilt (create new → copy → drop → rename) or every onMessage insert fails.

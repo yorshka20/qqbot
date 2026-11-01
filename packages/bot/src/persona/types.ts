@@ -12,6 +12,7 @@
  */
 
 import { type MessageSource, SOURCE_VALUES } from '@/conversation/sources';
+import type { LLMTarget } from '@/core/config/types/ai';
 
 /**
  * Persona identifier. Phase 1 only has a single hardcoded `default`
@@ -289,11 +290,11 @@ export interface PersonaConfig {
      */
     maxToolRounds?: number;
     /**
-     * LLM provider used for reflection. Omit/empty → the system default LLM
+     * LLM used for reflection. Omit → the system default LLM
      * (`ai.defaultProviders.llm`). Reflection requires JSON output, so the
      * chosen provider must honour `jsonMode`.
      */
-    provider?: string;
+    llm?: LLMTarget;
   };
 }
 
@@ -516,7 +517,7 @@ function mergeReflectionConfig(raw: unknown): PersonaConfig['reflection'] {
   return {
     toolEquipped: typeof src.toolEquipped === 'boolean' ? src.toolEquipped : false,
     maxToolRounds: numberOr(src.maxToolRounds, 4),
-    provider: typeof src.provider === 'string' && src.provider.trim() ? src.provider.trim() : undefined,
+    llm: typeof src.llm?.provider === 'string' && src.llm.provider.trim() ? src.llm : undefined,
   };
 }
 

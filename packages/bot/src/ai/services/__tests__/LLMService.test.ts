@@ -18,7 +18,7 @@ import { createLLMService } from '@/ai/services/__tests__/createLLMService';
 function createMockAIManager(): AIManager {
   return {
     getProviderForCapability: () => null,
-    getDefaultProvider: () => null,
+    getDefaultLLM: () => null,
   } as unknown as AIManager;
 }
 
@@ -68,7 +68,7 @@ describe('LLMService', () => {
       };
       const aiManager = {
         getProviderForCapability: (_cap: string, name?: string) => (name ? mockProvider : null),
-        getDefaultProvider: () => mockProvider,
+        getDefaultLLM: () => ({ provider: mockProvider.name }),
       } as unknown as AIManager;
       const llmService = createLLMService(aiManager);
 
@@ -79,14 +79,18 @@ describe('LLMService', () => {
       expect(lastOptions?.maxTokens).toBeUndefined();
       expect(lastOptions?.reasoningEffort).toBe('none');
 
-      await llmService.generateLite('test', { reasoningEffort: 'none', model: 'doubao-1-5-lite-32k-250115' }, 'doubao');
+      await llmService.generateLite(
+        'test',
+        { reasoningEffort: 'none' },
+        { provider: 'doubao', model: 'doubao-1-5-lite-32k-250115' },
+      );
       expect(lastOptions?.model).toBe('doubao-1-5-lite-32k-250115');
     });
 
     it('returns fallback when no provider available', async () => {
       const aiManager = createMockAIManager();
       const llmService = createLLMService(aiManager);
-      const res = await llmService.generateLite('hello', { reasoningEffort: 'none' }, 'nonexistent');
+      const res = await llmService.generateLite('hello', { reasoningEffort: 'none' }, { provider: 'nonexistent' });
       expect(res.text).toContain('unavailable');
     });
   });
@@ -99,7 +103,7 @@ describe('LLMService', () => {
     test(
       'generate returns text and optional usage',
       async () => {
-        const res = await llmService.generate('Say "hello" in one short word.', { reasoningEffort: 'none' }, 'doubao');
+        const res = await llmService.generate('Say "hello" in one short word.', { reasoningEffort: 'none' }, { provider: 'doubao' });
         expect(res).toBeDefined();
         expect(typeof res.text).toBe('string');
         expect(res.text.length).toBeGreaterThan(0);
@@ -115,7 +119,7 @@ describe('LLMService', () => {
       'generate with messages returns text',
       async () => {
         const messages = [{ role: 'user' as const, content: 'Reply with only the number 42.' }];
-        const res = await llmService.generate('Reply with only the number 42.', { reasoningEffort: 'none', messages }, 'doubao');
+        const res = await llmService.generate('Reply with only the number 42.', { reasoningEffort: 'none', messages }, { provider: 'doubao' });
         expect(res).toBeDefined();
         expect(typeof res.text).toBe('string');
         expect(res.text.length).toBeGreaterThan(0);
@@ -181,7 +185,7 @@ describe('LLMService same-provider retry', () => {
     const aiManager = {
       getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
       getProvidersForCapability: () => [],
-      getDefaultProvider: () => provider,
+      getDefaultLLM: () => ({ provider: provider.name }),
     } as unknown as AIManager;
     return { service: createLLMService(aiManager), getCalls: () => calls };
   }
@@ -193,7 +197,7 @@ describe('LLMService same-provider retry', () => {
       if (n === 1) throw new HttpClientError('Overloaded', 529);
       return { text: 'ok', resolvedModel: 'gemini-3.5-flash' };
     });
-    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' });
     expect(res.text).toBe('ok');
     expect(res.resolvedModel).toBe('gemini-3.5-flash');
     expect(getCalls()).toBe(2);
@@ -205,7 +209,7 @@ describe('LLMService same-provider retry', () => {
       n++;
       return n === 1 ? { text: '', reasoningContent: '想到一半' } : { text: 'ok' };
     });
-    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' });
     expect(res.text).toBe('ok');
     expect(getCalls()).toBe(2);
   }, 20_000);
@@ -215,7 +219,7 @@ describe('LLMService same-provider retry', () => {
       text: '',
       functionCalls: [{ name: 'search', arguments: '{}' }],
     }));
-    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' });
     expect(res.functionCalls).toHaveLength(1);
     expect(getCalls()).toBe(1);
   });
@@ -224,7 +228,7 @@ describe('LLMService same-provider retry', () => {
     const { service, getCalls } = makeService(async () => {
       throw new Error('DeepSeek returned no content (finish_reason=length)');
     });
-    await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
+    await service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' });
     expect(getCalls()).toBe(1);
   });
 
@@ -232,7 +236,7 @@ describe('LLMService same-provider retry', () => {
     const { service, getCalls } = makeService(async () => {
       throw new HttpClientError('not found', 404);
     });
-    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' });
     // No same-provider retry, no alternative provider → graceful fallback text.
     expect(getCalls()).toBe(1);
     expect(res.text.length).toBeGreaterThan(0);
@@ -254,14 +258,14 @@ describe('LLMService trace observers', () => {
     const aiManager = {
       getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
       getProvidersForCapability: () => [],
-      getDefaultProvider: () => provider,
+      getDefaultLLM: () => ({ provider: provider.name }),
     } as unknown as AIManager;
     const service = createLLMService(aiManager);
 
     const seen: import('@/ai/types').LLMTraceEntry[] = [];
     service.addTraceObserver((e) => seen.push(e));
 
-    await service.generate('ask', { reasoningEffort: 'none', messages: [{ role: 'user', content: 'ask' }], systemPrompt: 'sys' }, 'mock');
+    await service.generate('ask', { reasoningEffort: 'none', messages: [{ role: 'user', content: 'ask' }], systemPrompt: 'sys' }, { provider: 'mock' });
 
     expect(seen.length).toBe(1);
     expect(seen[0].opLabel).toBe('generate');
@@ -290,7 +294,7 @@ describe('LLMService trace observers', () => {
     const aiManager = {
       getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
       getProvidersForCapability: () => [],
-      getDefaultProvider: () => provider,
+      getDefaultLLM: () => ({ provider: provider.name }),
     } as unknown as AIManager;
     const service = createLLMService(aiManager, { toolUseProviders: ['mock'], fallback: { fallbackOrder: [] } });
     const seen: import('@/ai/types').LLMTraceEntry[] = [];
@@ -303,9 +307,9 @@ describe('LLMService trace observers', () => {
       [{ role: 'user', content: 'hi' }],
       tools,
       { reasoningEffort: 'none', toolExecutor: async () => 'ok' },
-      'mock',
+      { provider: 'mock' },
     );
-    await service.generate('again', { reasoningEffort: 'none' }, 'mock');
+    await service.generate('again', { reasoningEffort: 'none' }, { provider: 'mock' });
 
     expect(seen.length).toBe(3);
     expect(seen[1].conversationId).toBe(seen[0].conversationId);
@@ -322,14 +326,14 @@ describe('LLMService trace observers', () => {
     const aiManager = {
       getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
       getProvidersForCapability: () => [],
-      getDefaultProvider: () => provider,
+      getDefaultLLM: () => ({ provider: provider.name }),
     } as unknown as AIManager;
     const service = createLLMService(aiManager);
     service.addTraceObserver(() => {
       throw new Error('observer boom');
     });
 
-    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' });
     expect(res.text).toBe('ok');
   });
 });
@@ -339,11 +343,11 @@ describe('LLMService prompt log', () => {
     { name: 'noop', description: 'does nothing', parameters: { type: 'object', properties: {} } },
   ];
 
-  function createService(provider: unknown) {
+  function createService(provider: { name: string }) {
     const aiManager = {
       getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
       getProvidersForCapability: () => [],
-      getDefaultProvider: () => provider,
+      getDefaultLLM: () => ({ provider: provider.name }),
     } as unknown as AIManager;
     return createLLMService(aiManager, { toolUseProviders: ['mock'], fallback: { fallbackOrder: [] } });
   }
@@ -388,7 +392,7 @@ describe('LLMService prompt log', () => {
         ],
         tools,
         { reasoningEffort: 'none', toolExecutor: async () => 'tool output' },
-        'mock',
+        { provider: 'mock' },
       ),
     );
 
@@ -423,7 +427,7 @@ describe('LLMService prompt log', () => {
     };
     const service = createService(provider);
 
-    const entries = await capturePromptLog(() => service.generate('RENDERED TEMPLATE', { reasoningEffort: 'none' }, 'mock'));
+    const entries = await capturePromptLog(() => service.generate('RENDERED TEMPLATE', { reasoningEffort: 'none' }, { provider: 'mock' }));
 
     expect(entries).toEqual(['[LLMService] prompt | provider=mock | messages=0']);
   });
@@ -441,11 +445,11 @@ describe('LLMService resolvedModel stamping', () => {
     const aiManager = {
       getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
       getProvidersForCapability: () => [],
-      getDefaultProvider: () => provider,
+      getDefaultLLM: () => ({ provider: provider.name }),
     } as unknown as AIManager;
     const service = createLLMService(aiManager);
 
-    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' });
     expect(res.resolvedModel).toBe('gpt-4o-mini');
   });
 
@@ -460,11 +464,11 @@ describe('LLMService resolvedModel stamping', () => {
     const aiManager = {
       getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
       getProvidersForCapability: () => [],
-      getDefaultProvider: () => provider,
+      getDefaultLLM: () => ({ provider: provider.name }),
     } as unknown as AIManager;
     const service = createLLMService(aiManager);
 
-    const res = await service.generate('hi', { reasoningEffort: 'none' }, 'mock');
+    const res = await service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' });
     expect(res.resolvedModel).toBe('gemini-3.5-flash');
   });
 
@@ -480,7 +484,7 @@ describe('LLMService resolvedModel stamping', () => {
     const aiManager = {
       getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
       getProvidersForCapability: () => [],
-      getDefaultProvider: () => provider,
+      getDefaultLLM: () => ({ provider: provider.name }),
     } as unknown as AIManager;
     const service = createLLMService(aiManager, {
       toolUseProviders: ['mock'],
@@ -490,7 +494,7 @@ describe('LLMService resolvedModel stamping', () => {
     const tools: ToolDefinition[] = [
       { name: 'noop', description: 'does nothing', parameters: { type: 'object', properties: {} } },
     ];
-    const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, { reasoningEffort: 'none' }, 'mock');
+    const res = await service.generateWithTools([{ role: 'user', content: 'hi' }], tools, { reasoningEffort: 'none' }, { provider: 'mock' });
     expect(res.resolvedModel).toBe('gpt-4o-mini');
   });
 
@@ -517,11 +521,11 @@ describe('LLMService resolvedModel stamping', () => {
       };
     }
 
-    function createService(provider: unknown) {
+    function createService(provider: { name: string }) {
       const aiManager = {
         getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
         getProvidersForCapability: () => [],
-        getDefaultProvider: () => provider,
+        getDefaultLLM: () => ({ provider: provider.name }),
       } as unknown as AIManager;
       return createLLMService(aiManager, {
         toolUseProviders: ['mock'],
@@ -687,11 +691,11 @@ describe('LLMService resolvedModel stamping', () => {
       return { provider, prompts, calls: () => call };
     }
 
-    function createService(provider: unknown) {
+    function createService(provider: { name: string }) {
       const aiManager = {
         getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
         getProvidersForCapability: () => [],
-        getDefaultProvider: () => provider,
+        getDefaultLLM: () => ({ provider: provider.name }),
       } as unknown as AIManager;
       return createLLMService(aiManager, {
         toolUseProviders: ['mock'],
@@ -772,11 +776,11 @@ describe('LLMService resolvedModel stamping', () => {
       };
     }
 
-    function createService(provider: unknown) {
+    function createService(provider: { name: string }) {
       const aiManager = {
         getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
         getProvidersForCapability: () => [],
-        getDefaultProvider: () => provider,
+        getDefaultLLM: () => ({ provider: provider.name }),
       } as unknown as AIManager;
       return createLLMService(aiManager, { toolUseProviders: ['mock'], fallback: { fallbackOrder: [] } });
     }
@@ -828,7 +832,7 @@ describe('LLMService resolvedModel stamping', () => {
       const aiManager = {
         getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
         getProvidersForCapability: () => [],
-        getDefaultProvider: () => provider,
+        getDefaultLLM: () => ({ provider: provider.name }),
       } as unknown as AIManager;
       return createLLMService(aiManager, { toolUseProviders: ['mock'], fallback: { fallbackOrder: [] } });
     }
@@ -907,7 +911,7 @@ describe('LLMService resolvedModel stamping', () => {
       const aiManager = {
         getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
         getProvidersForCapability: () => [],
-        getDefaultProvider: () => provider,
+        getDefaultLLM: () => ({ provider: provider.name }),
       } as unknown as AIManager;
       const service = createLLMService(aiManager, { toolUseProviders: ['mock'], fallback: { fallbackOrder: [] } });
       return { service, requests };
@@ -1087,11 +1091,11 @@ describe('LLMService resolvedModel stamping', () => {
       };
     }
 
-    function serviceFor(provider: unknown) {
+    function serviceFor(provider: { name: string }) {
       const aiManager = {
         getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
         getProvidersForCapability: () => [],
-        getDefaultProvider: () => provider,
+        getDefaultLLM: () => ({ provider: provider.name }),
       } as unknown as AIManager;
       return createLLMService(aiManager, {
         toolUseProviders: [],

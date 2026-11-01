@@ -8,10 +8,11 @@
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryFact } from '@/database/models/types';
 import { logger } from '@/utils/logger';
-import { generateMemoryJson, type MemoryLLMOptions } from '../llm/memoryLLM';
+import { generateMemoryJson } from '../llm/memoryLLM';
 import { listManualFacts, numberFacts, scopeGuide } from '../llm/promptParts';
 import { GROUP_MEMORY_USER_ID } from '../model/constants';
 import { slotLabel } from '../model/scopes';
@@ -41,14 +42,14 @@ export class MemoryConsolidationService {
     groupId: string,
     groupFacts: string[],
     userFacts: Map<string, string[]>,
-    options: MemoryLLMOptions,
+    target: LLMTarget | undefined,
   ): Promise<void> {
     if (groupFacts.length > 0) {
-      await this.consolidateSlot(groupId, GROUP_MEMORY_USER_ID, groupFacts, options);
+      await this.consolidateSlot(groupId, GROUP_MEMORY_USER_ID, groupFacts, target);
     }
     for (const [userId, facts] of userFacts) {
       if (userId && facts.length > 0) {
-        await this.consolidateSlot(groupId, userId, facts, options);
+        await this.consolidateSlot(groupId, userId, facts, target);
       }
     }
   }
@@ -57,7 +58,7 @@ export class MemoryConsolidationService {
     groupId: string,
     userId: string,
     candidates: string[],
-    options: MemoryLLMOptions,
+    target: LLMTarget | undefined,
   ): Promise<ConsolidationSummary> {
     const summary: ConsolidationSummary = { added: 0, confirmed: 0, updated: 0, deleted: 0, rejected: 0 };
     const newFacts = candidates.map((c) => c.trim()).filter(Boolean);
@@ -72,7 +73,7 @@ export class MemoryConsolidationService {
       existingFacts: numberFacts(existing),
       newFacts: newFacts.map((fact) => `- ${fact}`).join('\n'),
     });
-    const answer = await generateMemoryJson(this.llmService, prompt, options, 'MemoryConsolidation');
+    const answer = await generateMemoryJson(this.llmService, prompt, target, 'MemoryConsolidation');
     if (!answer) {
       return summary;
     }

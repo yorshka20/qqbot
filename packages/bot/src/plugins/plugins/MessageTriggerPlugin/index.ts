@@ -117,8 +117,7 @@ export class MessageTriggerPlugin extends PluginBase {
    */
   private async checkPrefixInvitation(messageText: string): Promise<boolean> {
     const aiConfig = this.config.getAIConfig();
-    const liteProvider = aiConfig?.taskProviders?.lite ?? aiConfig?.defaultProviders?.llm ?? 'deepseek';
-    const liteModel = aiConfig?.taskProviders?.liteModel ?? '';
+    const lite = aiConfig?.taskProviders?.lite ?? aiConfig?.defaultProviders?.llm;
 
     try {
       const aliasMap = ProviderRouter.getProviderAliasMap();
@@ -129,11 +128,7 @@ export class MessageTriggerPlugin extends PluginBase {
         messageText,
         providerAliasMap,
       });
-      const response = await this.llmService.generateLite(
-        prompt,
-        { reasoningEffort: 'none', model: liteModel },
-        liteProvider,
-      );
+      const response = await this.llmService.generateLite(prompt, { reasoningEffort: 'none' }, lite);
       const raw = parseLlmTrueFalse(response.text);
       if (raw === null) {
         logger.warn('[MessageTriggerPlugin] Prefix-invitation LLM response not true/false; treating as no reply');
@@ -143,7 +138,7 @@ export class MessageTriggerPlugin extends PluginBase {
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.warn(
-        `[MessageTriggerPlugin] Prefix-invitation LLM call failed (provider=${liteProvider}, model=${liteModel}):`,
+        `[MessageTriggerPlugin] Prefix-invitation LLM call failed (provider=${lite?.provider ?? 'default'}, model=${lite?.model ?? 'default'}):`,
         err,
       );
       return false;

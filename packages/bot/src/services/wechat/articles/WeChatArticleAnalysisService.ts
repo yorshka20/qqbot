@@ -3,6 +3,7 @@
 
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
+import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
 import { logger } from '@/utils/logger';
 import type { WeChatDatabase, WeChatOAArticleRow } from '../WeChatDatabase';
 import { fetchArticleText } from './fetchArticleText';
@@ -12,10 +13,8 @@ import { fetchArticleText } from './fetchArticleText';
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface ArticleAnalysisConfig {
-  /** Provider name to use for analysis. Default: "doubao". No fallback — retries on timeout. */
-  provider?: string;
-  /** Model override for the analysis provider (optional) */
-  model?: string;
+  /** LLM to use for analysis. Default: doubao. No fallback — retries on timeout. */
+  llm?: LLMTarget;
   /** Max articles to analyze per run (default 100) */
   maxArticles?: number;
   /** Concurrency — how many articles to analyze in parallel (default 1) */
@@ -47,8 +46,7 @@ interface AnalysisResult {
 // ────────────────────────────────────────────────────────────────────────────
 
 export class WeChatArticleAnalysisService {
-  private provider: string;
-  private model: string | undefined;
+  private target: LLMTarget;
   private maxArticles: number;
   private concurrency: number;
   private maxRetries: number;
@@ -60,14 +58,13 @@ export class WeChatArticleAnalysisService {
     private promptManager: PromptManager,
     config: ArticleAnalysisConfig,
   ) {
-    this.provider = config.provider ?? 'doubao';
-    this.model = config.model;
+    this.target = config.llm ?? { provider: 'doubao' };
     this.maxArticles = config.maxArticles ?? 100;
     this.concurrency = config.concurrency ?? 1;
     this.maxRetries = config.maxRetries ?? 5;
     this.retryDelayMs = config.retryDelayMs ?? 2000;
 
-    logger.info(`[ArticleAnalysis] Initialized | provider=${this.provider}`);
+    logger.info(`[ArticleAnalysis] Initialized | llm=${describeLLMTarget(this.target)}`);
   }
 
   /**
@@ -110,7 +107,7 @@ export class WeChatArticleAnalysisService {
     }
 
     logger.info(
-      `[ArticleAnalysis] ${pending.length} to analyze, ${alreadyDone.length} skipped (already had insights) | provider: ${this.provider}`,
+      `[ArticleAnalysis] ${pending.length} to analyze, ${alreadyDone.length} skipped (already had insights) | llm: ${describeLLMTarget(this.target)}`,
     );
 
     // 3. Analyze in batches with concurrency control
@@ -167,7 +164,7 @@ export class WeChatArticleAnalysisService {
         worthReporting: 0,
         evergreen: 0,
         analyzedAt: new Date().toISOString(),
-        model: this.provider,
+        model: this.target.provider,
       });
       this.db.markArticleAnalyzed(msgId);
       return false;
@@ -199,7 +196,7 @@ export class WeChatArticleAnalysisService {
       worthReporting: analysisResult.worthReporting ? 1 : 0,
       evergreen: analysisResult.evergreen ? 1 : 0,
       analyzedAt: new Date().toISOString(),
-      model: this.provider,
+      model: this.target.provider,
     });
     this.db.markArticleAnalyzed(msgId);
 
@@ -216,13 +213,12 @@ export class WeChatArticleAnalysisService {
    */
   private async callLLM(prompt: string, title: string): Promise<AnalysisResult | null> {
     const response = await this.llmService.generateFixed(
-      this.provider,
+      this.target,
       prompt,
       {
         temperature: 0.3,
         reasoningEffort: 'low',
         jsonMode: true,
-        model: this.model,
       },
       {
         maxRetries: this.maxRetries,
@@ -232,7 +228,7 @@ export class WeChatArticleAnalysisService {
 
     const text = response.text?.trim();
     if (!text) {
-      logger.warn(`[ArticleAnalysis] Empty response from "${this.provider}" for "${title}"`);
+      logger.warn(`[ArticleAnalysis] Empty response from "${this.target.provider}" for "${title}"`);
       return null;
     }
     return this.parseJSON(text, title);

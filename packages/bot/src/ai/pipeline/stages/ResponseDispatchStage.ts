@@ -95,7 +95,9 @@ export class ResponseDispatchStage implements ReplyStage {
     if (!containsCommand && this.cardHelper.shouldUseCardReply(text)) {
       if (!skipCard && this.cardHelper.looksLikeMarkdown(text)) {
         // Path 2a: markdown → card
-        const mdResult = await this.cardHelper.renderMarkdownDirect(text, ctx.actualProvider).catch(() => null);
+        const mdResult = await this.cardHelper
+          .renderMarkdownDirect(text, ctx.actualTarget?.provider, ctx.actualTarget?.model)
+          .catch(() => null);
         if (mdResult) {
           this.cardHelper.setCardReplyOnContext(hookContext, mdResult.segments, mdResult.textForHistory);
           await this.hookManager.execute('onAIGenerationComplete', hookContext);

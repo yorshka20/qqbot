@@ -101,14 +101,9 @@ export class ReplyComplexityClassifierPlugin extends PluginBase {
     });
 
     const aiConfig = this.config.getAIConfig();
-    const liteProvider = aiConfig?.taskProviders?.lite ?? aiConfig?.defaultProviders?.llm ?? 'deepseek';
-    const liteModel = aiConfig?.taskProviders?.liteModel ?? '';
+    const lite = aiConfig?.taskProviders?.lite ?? aiConfig?.defaultProviders?.llm;
 
-    const callPromise = this.llmService.generateLite(
-      prompt,
-      { reasoningEffort: 'none', jsonMode: true, model: liteModel || undefined },
-      liteProvider,
-    );
+    const callPromise = this.llmService.generateLite(prompt, { reasoningEffort: 'none', jsonMode: true }, lite);
 
     // Hard timeout: classifier must not stall the reply pipeline. On timeout we
     // fail-open to deep — better to spend extra TTFT on this turn than to wait.

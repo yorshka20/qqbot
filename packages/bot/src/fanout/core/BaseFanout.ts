@@ -7,6 +7,7 @@
 // assemble an envelope that differs between the tasks of one run.
 
 import { HookContextBuilder } from '@/context/HookContextBuilder';
+import type { LLMTarget } from '@/core/config/types/ai';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
 import type { ToolSpec } from '@/tools/types';
@@ -14,11 +15,6 @@ import { logger } from '@/utils/logger';
 import type { FanoutServices } from './FanoutServices';
 import { type FanoutEnvelope, type PreparedTask, runSharedPrefixTasks } from './SharedPrefixRunner';
 import type { FanoutRun, FanoutRunReport, FanoutTarget, FanoutTask } from './types';
-
-export interface FanoutModel {
-  provider: string;
-  model?: string;
-}
 
 export interface FanoutContext<C> {
   ctx: C;
@@ -29,7 +25,8 @@ export interface FanoutContext<C> {
 export abstract class BaseFanout<C> {
   abstract readonly name: string;
   protected abstract readonly systemTemplate: string;
-  protected abstract resolveModel(): FanoutModel;
+  /** The LLM every task of a run shares: a different target is a different prefix cache. */
+  protected abstract resolveTarget(): LLMTarget;
   /** Null when there is nothing to run on (e.g. an empty day); the run is skipped. */
   protected abstract buildContext(target: FanoutTarget): Promise<FanoutContext<C> | null>;
 
@@ -114,10 +111,8 @@ export abstract class BaseFanout<C> {
   private buildEnvelope(prepared: PreparedTask<C>[]): FanoutEnvelope {
     const names = [...new Set(prepared.flatMap(({ task }) => task.tools))].sort();
     const specs = names.map((name) => this.services.toolManager.getTool(name)).filter((s): s is ToolSpec => !!s);
-    const { provider, model } = this.resolveModel();
     return {
-      provider,
-      model,
+      target: this.resolveTarget(),
       system: this.services.promptManager.render(this.systemTemplate),
       tools: this.services.toolManager.toToolDefinitions(specs),
     };

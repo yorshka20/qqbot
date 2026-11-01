@@ -10,6 +10,7 @@
  */
 
 import type { LLMService } from '@/ai/services/LLMService';
+import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
 import type { RetrievalService } from '@/services/retrieval';
 import { toQdrantPointId } from '@/services/retrieval/rag/QdrantClient';
 import { logger } from '@/utils/logger';
@@ -23,8 +24,8 @@ const TAG_BATCH_SIZE = 20;
 const ANALYSIS_BATCH_SIZE = 15;
 
 export interface MomentsAnalysisConfig {
-  /** LLM provider name (e.g. 'deepseek', 'doubao', 'ollama'). Default: 'ollama'. */
-  provider?: string;
+  /** LLM to analyze with (e.g. { provider: 'deepseek' }). Default: ollama. */
+  llm?: LLMTarget;
 }
 
 export interface MomentsAnalysisResult {
@@ -54,7 +55,7 @@ interface MomentItem {
 }
 
 export class WechatMomentsAnalysisService {
-  private provider: string;
+  private target: LLMTarget;
 
   constructor(
     private readonly llmService: LLMService,
@@ -62,7 +63,7 @@ export class WechatMomentsAnalysisService {
     private readonly db: WeChatDatabase,
     config?: MomentsAnalysisConfig,
   ) {
-    this.provider = config?.provider ?? 'ollama';
+    this.target = config?.llm ?? { provider: 'ollama' };
   }
 
   /**
@@ -74,7 +75,9 @@ export class WechatMomentsAnalysisService {
       return { tagged: 0, analyzed: 0, failed: 0 };
     }
 
-    logger.info(`[MomentsAnalysis] Starting analysis for ${momentIds.length} moments | provider=${this.provider}`);
+    logger.info(
+      `[MomentsAnalysis] Starting analysis for ${momentIds.length} moments | llm=${describeLLMTarget(this.target)}`,
+    );
 
     // Fetch moment content from Qdrant
     const moments = await this.fetchMoments(momentIds);
@@ -229,12 +232,12 @@ export class WechatMomentsAnalysisService {
     const contentList = contents.map((c) => `[${c.index}] ${(c.content || '').slice(0, 500)}`).join('\n\n');
     const prompt = promptBuilder(contentList);
 
-    const provider = await this.llmService.getAvailableProvider(this.provider);
-    if (!provider) {
-      throw new Error(`LLM provider "${this.provider}" is not available`);
-    }
-
-    const response = await provider.generate(prompt, { temperature: 0.3, reasoningEffort: 'low' });
+    const response = await this.llmService.generateFixed(
+      this.target,
+      prompt,
+      { temperature: 0.3, reasoningEffort: 'low' },
+      { maxRetries: 0 },
+    );
     const text = response.text?.trim() ?? '';
 
     return this.extractJsonArray<T>(text);

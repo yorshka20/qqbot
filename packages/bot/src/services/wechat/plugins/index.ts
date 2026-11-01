@@ -196,11 +196,8 @@ export class WeChatIngestPlugin extends PluginBase {
       const llmService = container.resolve(LLMService);
       const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
       const aiConfig = config.getAIConfig();
-      const articleAnalysisProvider = raw?.analysis?.provider ?? aiConfig?.taskProviders?.articleAnalysis ?? 'doubao';
-      const articleAnalysisModel = aiConfig?.taskProviders?.articleAnalysisModel;
       const analysisService = new WeChatArticleAnalysisService(this.db, llmService, promptManager, {
-        provider: articleAnalysisProvider,
-        model: articleAnalysisModel,
+        llm: raw?.analysis?.llm ?? aiConfig?.taskProviders?.articleAnalysis,
         maxArticles: raw?.analysis?.maxArticles,
         concurrency: raw?.analysis?.concurrency,
       });
@@ -234,7 +231,7 @@ export class WeChatIngestPlugin extends PluginBase {
       // Create moments analysis service (reuses LLMService already resolved above)
       const llmService = container.resolve(LLMService);
       const momentsAnalysis = new WechatMomentsAnalysisService(llmService, this.retrieval, this.db as WeChatDatabase, {
-        provider: raw?.analysis?.provider ?? 'ollama',
+        llm: raw?.analysis?.llm,
       });
       logger.info('[WeChatIngestPlugin] WechatMomentsAnalysisService created');
 

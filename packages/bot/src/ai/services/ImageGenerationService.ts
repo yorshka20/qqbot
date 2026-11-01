@@ -93,7 +93,7 @@ export class ImageGenerationService {
         throw new Error(`Provider ${providerName} does not support Text2Image capability`);
       }
     } else if (sessionId) {
-      const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'text2img');
+      const sessionProviderName = await this.providerSelector.getSessionOverride(sessionId, 'text2img');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('text2img', sessionProviderName);
         if (p && isText2ImageCapability(p)) {
@@ -142,7 +142,7 @@ export class ImageGenerationService {
         throw new Error(`Provider ${providerName} does not support Image2Image capability`);
       }
     } else if (sessionId) {
-      const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'img2img');
+      const sessionProviderName = await this.providerSelector.getSessionOverride(sessionId, 'img2img');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('img2img', sessionProviderName);
         if (p && isImage2ImageCapability(p)) {

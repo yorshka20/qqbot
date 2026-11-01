@@ -2,6 +2,7 @@
 
 import { inject, singleton } from 'tsyringe';
 import type { ProactiveReplyInjectContext } from '@/context/types';
+import type { LLMTarget } from '@/core/config/types/ai';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
@@ -78,11 +79,8 @@ export class AIService {
 
   // --- Proactive reply ---
 
-  async generateProactiveReply(
-    context: ProactiveReplyInjectContext,
-    providerName?: string,
-  ): Promise<AIGenerateResponse> {
-    return this.proactiveReplyService.generateProactiveReply(context, providerName);
+  async generateProactiveReply(context: ProactiveReplyInjectContext, target?: LLMTarget): Promise<AIGenerateResponse> {
+    return this.proactiveReplyService.generateProactiveReply(context, target);
   }
 
   async processReplyMaybeCard(

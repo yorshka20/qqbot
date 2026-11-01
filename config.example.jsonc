@@ -394,7 +394,7 @@
         "name": "proactiveConversation",
         "enabled": true,
         "config": {
-          "analysisProvider": "ollama", // optional: LLM for analysis/reply (default "ollama")
+          "analysis": { "provider": "ollama" }, // optional: LLM for analysis/reply (default taskProviders.lite, then the default LLM)
           "cooldownDefaultMinutes": 30, // default cooldown duration for /proactive cooldown (minutes)
           "groups": [
             {
@@ -424,10 +424,9 @@
         "config": {
           // Daily extraction is the `memory` task of the group_day fan-out: add it to the group's
           // `action fanout` item in data/agenda/schedule.md. It runs on ai.taskProviders.groupDay.
-          // The provider below drives backfills, consolidation of extracted facts, and the daily review.
+          // The LLM below drives backfills, consolidation of extracted facts, and the daily review.
           // Retrieval, scoring and review thresholds live in the top-level "memory" section.
-          "extractProvider": "gemini",
-          "extractModel": "gemini-3.1-flash-lite", // Optional; defaults to the provider's configured model
+          "extract": { "provider": "gemini", "model": "gemini-3.1-flash-lite" }, // model optional; defaults to the provider's configured model
           // Periodic backup: data/memory/ (manual files) as a tar.gz plus every memory_facts row as JSON
           "backupIntervalMs": 604800000 // 7 days (default). Set to 0 to disable.
           // "backupDir": "data/backup/memory" // Override backup directory (default)
@@ -535,7 +534,7 @@
           // Uses the configured LLM provider to extract facts, news, opinions from articles
           // Triggered by agenda cron item calling wechat_analyze_articles tool
           "analysis": {
-            "provider": "ollama", // LLM provider name (must be configured in ai.providers)
+            "llm": { "provider": "ollama" }, // LLM target; its provider must be configured in ai.providers
             "maxArticles": 100, // max articles per analysis run
             "concurrency": 1 // parallel analysis tasks
             // "promptPath": "prompts/analysis/wechat_article.txt" // custom prompt template
@@ -656,8 +655,14 @@
     // Enable unified reply skill-loop (single LLM call with multi-round tool execution)
     "useSkills": true,
     // Default providers by capability (optional)
+    // An LLM is always a target: a provider and the model it runs, { "provider": "...", "model"?: "..." }.
+    // An omitted model is the provider's own configured model (ai.providers.<name>.model).
     "defaultProviders": {
-      "llm": "deepseek", // Default LLM provider
+      // Default LLM: calls that name no target and have no session override. Routing that names a
+      // provider (the `claude,` prefix, a color nickname, /provider switch) runs on that provider's own
+      // model, so the default can be a cheaper model of the same provider, e.g.
+      // "llm": { "provider": "anthropic", "model": "claude-haiku-5-5" }
+      "llm": { "provider": "deepseek" },
       "text2img": "local-text2img" // t2i command defaults to local-text2img
     },
     // LLM fallback configuration (optional)
@@ -720,33 +725,24 @@
     //   "lowEffortProviders": ["doubao"],
     //   "maxToolRounds": 5
     // },
-    // Task-specific provider overrides (optional)
-    // Override provider for specific internal LLM tasks
+    // Task-specific LLM overrides (optional). Each is an LLM target { "provider", "model"? }.
     // Falls back to defaultProviders.llm if not specified
     "taskProviders": {
-      // Provider for memory extraction (MemoryPlugin)
-      // "memoryExtract": "deepseek",
-      // Provider (+ optional model) for the group_day fan-out: daily report, comic and memory
-      // extraction share one chat-log prefix, so they must share one provider and model to hit
-      // its prompt cache.
-      // "groupDay": "deepseek",
-      // "groupDayModel": "",
-      // Provider for thread summarization (context compression)
-      // "summarize": "deepseek",
-      // Provider for lightweight/fast LLM calls (prefix-invitation, analysis)
-      // "lite": "deepseek",
-      // "liteModel": "deepseek-chat",
-      // Provider for article analysis (no fallback, retry-only — cost-sensitive batch task)
-      "articleAnalysis": "doubao"
-      // "articleAnalysisModel": "",
-      // Provider for todo optimization (TodoPlugin — optimizes task description before inserting)
-      // "todoOptimize": "deepseek",
-      // "todoOptimizeModel": "",
-      // Provider(s) for sub-agent execution (research, analysis, etc.)
-      // String = fixed provider. Array = random selection per call.
-      // "subagent": "deepseek",
-      // "subagent": ["deepseek", "gemini"],
-      // "subagentModel": ""
+      // LLM for memory extraction (MemoryPlugin)
+      // "memoryExtract": { "provider": "deepseek" },
+      // LLM for the group_day fan-out: daily report, comic and memory extraction share one
+      // chat-log prefix, so they must share one target to hit its prompt cache.
+      // "groupDay": { "provider": "deepseek" },
+      // LLM for thread summarization (context compression)
+      // "summarize": { "provider": "deepseek" },
+      // LLM for lightweight/fast calls (prefix-invitation, analysis)
+      // "lite": { "provider": "deepseek", "model": "deepseek-chat" },
+      // LLM for article analysis (no fallback, retry-only — cost-sensitive batch task)
+      "articleAnalysis": { "provider": "doubao" }
+      // LLM for todo optimization (TodoPlugin — optimizes task description before inserting)
+      // "todoOptimize": { "provider": "deepseek" },
+      // LLMs for sub-agent execution (research, analysis, etc.); one is picked at random per call.
+      // "subagent": [{ "provider": "deepseek" }, { "provider": "gemini", "model": "gemini-3.1-flash-lite" }]
     },
     // AI providers configuration
     // maxTokens: leave unset. A call runs at the provider's output ceiling (50k; 20k for
@@ -1755,6 +1751,7 @@
   //   // "reflection": {
   //   //   "toolEquipped": false,
   //   //   "maxToolRounds": 4
+  //   //   // "llm": { "provider": "deepseek" } // omit → the default LLM; must honour jsonMode
   //   // }
   // }
 }

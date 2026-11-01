@@ -6,6 +6,7 @@ import { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, FunctionCall, ToolDefinition, ToolUseGenerateResponse } from '@/ai/types';
 import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 import type { Config } from '@/core/config';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import type { PermissionChecker } from '@/permission';
 import type { ToolManager } from '@/tools/ToolManager';
@@ -46,8 +47,7 @@ export class SubAgentExecutor {
     5: ['spawn_subagent', 'file_write', 'send_message', 'http_request'], // Depth 5 - most restricted
   };
 
-  private readonly defaultProviderName: string | string[] | undefined;
-  private readonly defaultModel: string | undefined;
+  private readonly defaultTargets: LLMTarget[] | undefined;
 
   constructor(
     @inject(LLMService) private llmService: LLMService,
@@ -58,9 +58,7 @@ export class SubAgentExecutor {
     @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
     @inject(DITokens.CONFIG) config: Config,
   ) {
-    const taskProviders = config.getAIConfig()?.taskProviders;
-    this.defaultProviderName = taskProviders?.subagent;
-    this.defaultModel = taskProviders?.subagentModel;
+    this.defaultTargets = config.getAIConfig()?.taskProviders?.subagent;
   }
 
   /**
@@ -88,15 +86,12 @@ export class SubAgentExecutor {
   }
 
   /**
-   * Resolve a provider name from a string or string[] (random selection).
+   * One of the configured LLMs, picked at random; undefined runs on the default LLM.
    */
-  private resolveProvider(configProvider?: string | string[]): string | undefined {
-    const provider = configProvider ?? this.defaultProviderName;
-    if (!provider) return undefined;
-    if (Array.isArray(provider)) {
-      return provider[Math.floor(Math.random() * provider.length)];
-    }
-    return provider;
+  private pickTarget(configured?: LLMTarget[]): LLMTarget | undefined {
+    const targets = configured ?? this.defaultTargets;
+    if (!targets?.length) return undefined;
+    return targets[Math.floor(Math.random() * targets.length)];
   }
 
   /**
@@ -123,14 +118,11 @@ export class SubAgentExecutor {
       const messages = this.buildMessages(session, context);
 
       // 4. Execute LLM with tools (ToolRunner executes tool calls)
-      // Use provider from session config, or fall back to the default provider configured for SubAgentExecutor.
-      // When providerName is an array, randomly select one for load distribution.
-      const providerName = this.resolveProvider(session.config.providerName);
-      const model =
-        session.config.providerModels?.[providerName ?? ''] ??
-        (session.config.providerName ? undefined : this.defaultModel);
+      // Use an LLM from session config, else taskProviders.subagent, else the default LLM.
+      // With several, one is picked at random for load distribution.
+      const target = this.pickTarget(session.config.llm);
       logger.debug(
-        `[SubAgentExecutor] Using provider: ${providerName} (model: ${model ?? 'default'}) for sub-agent ${session.id}`,
+        `[SubAgentExecutor] Using provider: ${target?.provider ?? 'default'} (model: ${target?.model ?? 'default'}) for sub-agent ${session.id}`,
       );
       const result = await this.llmService.generateWithTools(
         messages,
@@ -145,11 +137,10 @@ export class SubAgentExecutor {
           // Without this, the LLM falls back to LLMService's global 120s default, which is
           // far too short for structured-JSON workloads (e.g. group_report 8K-token output).
           timeout: session.config.timeout,
-          model,
           toolExecutor: (call: FunctionCall) =>
             call.name === 'spawn_subagent' ? this.spawnChild(call, session) : this.toolRunner.run(call, session),
         },
-        providerName,
+        target,
       );
 
       // 5. Parse and return result

@@ -5,7 +5,7 @@ import { AIService } from '@/ai/AIService';
 import type { VisionImage } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { PreliminaryAnalysisResult } from '@/ai/services/PreliminaryAnalysisService';
-import { PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
+import { DEFAULT_ANALYSIS_RESULT, PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
 import { extractImagesFromMessageAndReply } from '@/ai/utils/imageUtils';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { SendMessageResult } from '@/api/types';
@@ -14,6 +14,7 @@ import { ConversationHistoryService } from '@/conversation/history/ConversationH
 import { SearXNGPreferenceKnowledgeService } from '@/conversation/proactive/PreferenceKnowledgeService';
 import { DefaultProactiveThreadPersistenceService } from '@/conversation/proactive/ProactiveThreadPersistenceService';
 import type { Config } from '@/core/config';
+import type { LLMTarget } from '@/core/config/types/ai';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -73,8 +74,8 @@ const RECENT_ACTIVITY_GRACE_MS = 2 * 60 * 1_000;
 export class ProactiveConversationService {
   /** groupId -> preferenceKeys[] (multiple preferences per group). */
   private groupConfig = new Map<string, string[]>();
-  /** LLM provider name for preliminary analysis — must be set via setAnalysisProvider() from config. */
-  private analysisProviderName = '';
+  /** LLM for preliminary analysis and proactive replies — set via setAnalysisTarget() from config. */
+  private analysisTarget: LLMTarget | null = null;
   private timersByGroup = new Map<string, ReturnType<typeof setTimeout>>();
   private preferredProtocol: ProtocolName = 'milky';
   private searchLimit = 8;
@@ -184,10 +185,10 @@ export class ProactiveConversationService {
   }
 
   /**
-   * Set LLM provider name for preliminary analysis (e.g. "ollama", "doubao"). Called by plugin from config.
+   * Set the LLM for preliminary analysis and proactive replies. Called by plugin from config.
    */
-  setAnalysisProvider(providerName: string): void {
-    this.analysisProviderName = providerName;
+  setAnalysisTarget(target: LLMTarget): void {
+    this.analysisTarget = target;
   }
 
   /**
@@ -400,8 +401,11 @@ export class ProactiveConversationService {
     activeThreads: ProactiveThread[],
     idleMode: boolean = false,
   ): Promise<PreliminaryAnalysisResult> {
+    if (!this.analysisTarget) {
+      return DEFAULT_ANALYSIS_RESULT;
+    }
     const analysisOptions = {
-      providerName: this.analysisProviderName,
+      target: this.analysisTarget,
       idleMode,
     };
     // new thread
@@ -780,7 +784,7 @@ export class ProactiveConversationService {
     if (messageImages.length > 0) {
       injectContext.messageImages = messageImages;
     }
-    const replyResponse = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
+    const replyResponse = await this.aiService.generateProactiveReply(injectContext, this.analysisTarget ?? undefined);
     const replyText = replyResponse.text;
     if (!replyText) {
       logger.warn('[ProactiveConversationService] Empty proactive reply');
@@ -791,7 +795,7 @@ export class ProactiveConversationService {
     // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
     const cardResult = skipCard
       ? null
-      : await this.aiService.processReplyMaybeCard(cleanReplyText, groupId, this.analysisProviderName);
+      : await this.aiService.processReplyMaybeCard(cleanReplyText, groupId, this.analysisTarget?.provider);
     const toSend = cardResult ? cardResult.segments : cleanReplyText;
     const toAppend = cardResult ? cardResult.textForHistory : cleanReplyText;
     // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).
@@ -833,7 +837,7 @@ export class ProactiveConversationService {
         injectContext.messageImages = messageImages;
       }
     }
-    const replyResponse = await this.aiService.generateProactiveReply(injectContext, this.analysisProviderName);
+    const replyResponse = await this.aiService.generateProactiveReply(injectContext, this.analysisTarget ?? undefined);
     const replyText = replyResponse.text;
     if (!replyText) {
       logger.warn('[ProactiveConversationService] Empty proactive reply (existing thread)');
@@ -845,7 +849,7 @@ export class ProactiveConversationService {
     // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
     const cardResult = skipCard
       ? null
-      : await this.aiService.processReplyMaybeCard(cleanReplyText, thread.groupId, this.analysisProviderName);
+      : await this.aiService.processReplyMaybeCard(cleanReplyText, thread.groupId, this.analysisTarget?.provider);
     const toSend = cardResult ? cardResult.segments : cleanReplyText;
     const toAppend = cardResult ? cardResult.textForHistory : cleanReplyText;
     // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).

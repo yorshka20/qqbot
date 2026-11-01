@@ -9,6 +9,7 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, ToolDefinition, ToolUseGenerateOptions, ToolUseGenerateResponse } from '@/ai/types';
 import type { Config } from '@/core/config';
+import type { LLMTarget } from '@/core/config/types/ai';
 import type { HookManager } from '@/hooks/HookManager';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolSpec } from '@/tools/types';
@@ -20,7 +21,7 @@ interface Call {
   messages: ChatMessage[];
   tools: ToolDefinition[];
   options: ToolUseGenerateOptions;
-  provider?: string;
+  target?: LLMTarget;
 }
 
 type Generate = (call: Call) => Promise<Partial<ToolUseGenerateResponse>>;
@@ -38,9 +39,9 @@ function makeServices(generate: Generate, executed: string[]): { services: Fanou
       messages: ChatMessage[],
       tools: ToolDefinition[],
       options: ToolUseGenerateOptions,
-      provider?: string,
+      target?: LLMTarget,
     ) => {
-      const call = { messages, tools, options, provider };
+      const call = { messages, tools, options, target };
       calls.push(call);
       return { text: '', ...(await generate(call)) };
     },
@@ -74,7 +75,7 @@ class TestFanout extends BaseFanout<{ day: string }> {
   ) {
     super(services);
   }
-  protected resolveModel() {
+  protected resolveTarget() {
     return { provider: 'p', model: 'm' };
   }
   protected async buildContext(): Promise<FanoutContext<{ day: string }> | null> {
@@ -121,8 +122,7 @@ describe('BaseFanout envelope', () => {
     });
     expect(calls.map(taskOf)).toEqual(['a', 'b', 'c']);
     for (const call of calls) {
-      expect(call.provider).toBe('p');
-      expect(call.options.model).toBe('m');
+      expect(call.target).toEqual({ provider: 'p', model: 'm' });
       expect(call.tools.map((t) => t.name)).toEqual(['draw', 'lookup']);
       expect(call.messages[0]).toEqual({ role: 'system', content: 'SYSTEM' });
       expect(String(call.messages[1].content).startsWith(`${PREFIX}\n\n`)).toBe(true);

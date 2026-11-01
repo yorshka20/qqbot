@@ -5,8 +5,7 @@
 
 import type { AIConfig, Config } from '@/core/config';
 import { logger } from '@/utils/logger';
-import { AIManager } from './AIManager';
-import type { CapabilityType } from './capabilities/types';
+import { AIManager, type ProviderDefaultCapability } from './AIManager';
 import { ProviderFactory } from './ProviderFactory';
 
 export function createAIManager(config: Config): AIManager {
@@ -49,12 +48,14 @@ function configureAIManager(aiManager: AIManager, config: Config): void {
  * Priority: 1. Config specified providers, 2. First available provider
  */
 function configureDefaultProviders(aiManager: AIManager, aiConfig: AIConfig): void {
-  const validCapabilities: CapabilityType[] = ['llm', 'vision', 'video_analysis', 'text2img', 'img2img', 'i2v'];
+  const validCapabilities: ProviderDefaultCapability[] = ['vision', 'video_analysis', 'text2img', 'img2img', 'i2v'];
 
   // Log configured defaults to simplify provider setup debugging.
   if (aiConfig.defaultProviders) {
     logger.debug(`[AIManager] defaultProviders from config: ${JSON.stringify(aiConfig.defaultProviders)}`);
   }
+
+  configureDefaultLLM(aiManager, aiConfig);
 
   // First pass: respect explicit defaults from config.
   if (aiConfig.defaultProviders) {
@@ -99,4 +100,25 @@ function configureDefaultProviders(aiManager: AIManager, aiConfig: AIConfig): vo
       logger.warn(`[AIManager] No available providers for capability ${capability}`);
     }
   }
+}
+
+/** The configured default LLM, else the first available LLM provider on its own model. */
+function configureDefaultLLM(aiManager: AIManager, aiConfig: AIConfig): void {
+  const configured = aiConfig.defaultProviders?.llm;
+  if (configured) {
+    try {
+      aiManager.setDefaultLLM(configured);
+      return;
+    } catch (error) {
+      logger.warn(`[AIManager] Failed to set default LLM ${configured.provider}:`, error);
+    }
+  }
+
+  const [firstAvailable] = aiManager.getProvidersForCapability('llm');
+  if (!firstAvailable) {
+    logger.warn('[AIManager] No available providers for capability llm');
+    return;
+  }
+  aiManager.setDefaultLLM({ provider: firstAvailable.name });
+  logger.info(`[AIManager] Set ${firstAvailable.name} as default LLM (first available)`);
 }

@@ -87,7 +87,7 @@ export function createAIManagerWithProvider(providerName: IntegrationProviderNam
   const provider = getIntegrationProvider(providerName);
   if (provider) {
     manager.registerProvider(provider);
-    manager.setDefaultProvider('llm', providerName);
+    manager.setDefaultLLM({ provider: providerName });
   }
   return manager;
 }

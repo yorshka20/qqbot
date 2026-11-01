@@ -10,11 +10,12 @@ import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
 import type { Config } from '@/core/config';
+import type { LLMTarget } from '@/core/config/types/ai';
 import type { MemoryReviewConfig } from '@/core/config/types/memory';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryFact } from '@/database/models/types';
 import { logger } from '@/utils/logger';
-import { generateMemoryJson, type MemoryLLMOptions } from '../llm/memoryLLM';
+import { generateMemoryJson } from '../llm/memoryLLM';
 import { listManualFacts, scopeGuide } from '../llm/promptParts';
 import { slotLabel } from '../model/scopes';
 import { ManualMemoryStore } from '../storage/ManualMemoryStore';
@@ -48,12 +49,12 @@ export class MemoryReviewService {
   }
 
   /** Review every slot of a group that has a due fact. */
-  async reviewGroup(groupId: string, options: MemoryLLMOptions, now = Date.now()): Promise<ReviewSummary> {
+  async reviewGroup(groupId: string, target: LLMTarget | undefined, now = Date.now()): Promise<ReviewSummary> {
     const total: ReviewSummary = { due: 0, kept: 0, retired: 0, merged: 0 };
     const active = await this.store.listGroup(groupId, 'active');
     const slots = [...new Set(active.filter((fact) => isDue(fact, this.review, now)).map((fact) => fact.userId))];
     for (const userId of slots) {
-      const summary = await this.reviewSlot(groupId, userId, options, now);
+      const summary = await this.reviewSlot(groupId, userId, target, now);
       total.due += summary.due;
       total.kept += summary.kept;
       total.retired += summary.retired;
@@ -65,7 +66,7 @@ export class MemoryReviewService {
   async reviewSlot(
     groupId: string,
     userId: string,
-    options: MemoryLLMOptions,
+    target: LLMTarget | undefined,
     now = Date.now(),
   ): Promise<ReviewSummary> {
     const facts = await this.store.listSlot(groupId, userId, 'active');
@@ -81,7 +82,7 @@ export class MemoryReviewService {
       facts: numberFactsForReview(facts, due),
       today: formatDate(now),
     });
-    const answer = await generateMemoryJson(this.llmService, prompt, options, 'MemoryReview');
+    const answer = await generateMemoryJson(this.llmService, prompt, target, 'MemoryReview');
     if (!answer) {
       return summary;
     }

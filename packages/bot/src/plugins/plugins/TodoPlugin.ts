@@ -190,7 +190,7 @@ export class TodoPlugin extends PluginBase {
     projectAlias: string,
   ): Promise<string> {
     const aiConfig = this.config.getAIConfig();
-    const provider = aiConfig?.taskProviders?.todoOptimize ?? aiConfig?.defaultProviders?.llm;
+    const target = aiConfig?.taskProviders?.todoOptimize ?? aiConfig?.defaultProviders?.llm;
 
     const prompt = this.promptManager.render('task.todo-optimize', {
       rawContent,
@@ -204,9 +204,8 @@ export class TodoPlugin extends PluginBase {
       {
         temperature: 0.3,
         reasoningEffort: 'none',
-        ...(aiConfig?.taskProviders?.todoOptimizeModel ? { model: aiConfig.taskProviders.todoOptimizeModel } : {}),
       },
-      provider,
+      target,
     );
 
     const text = response.text?.trim();

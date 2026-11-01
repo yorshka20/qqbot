@@ -63,7 +63,7 @@ for (const providerName of ALL_TOOL_USE_PROVIDERS) {
           const res = await llmService.generate(
             '',
             { reasoningEffort: 'none', messages, tools: [SEND_CARD_DEF], maxTokens: 1024 },
-            providerName,
+            { provider: providerName },
           );
 
           const call = res.functionCalls?.find((c) => c.name === 'send_card');

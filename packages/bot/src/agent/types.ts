@@ -1,6 +1,7 @@
 // SubAgent system type definitions
 
 import type { AIGenerateOptions } from '@/ai/types';
+import type { LLMTarget } from '@/core/config/types/ai';
 
 /**
  * SubAgent types
@@ -40,8 +41,7 @@ export interface SubAgentConfig {
   restrictedTools: string[]; // Restricted tools (empty = no restrictions)
 
   // Provider selection
-  providerName?: string | string[]; // LLM provider(s) for this sub-agent. Array = random selection per call. (default: use taskProviders.subagent or default LLM provider)
-  providerModels?: Record<string, string>; // Model override keyed by provider name; matches the provider picked from providerName arrays.
+  llm?: LLMTarget[]; // LLMs for this sub-agent; one is picked at random per call. (default: taskProviders.subagent, else the default LLM)
 
   // LLM generation parameters
   reasoningEffort: NonNullable<AIGenerateOptions['reasoningEffort']>;

@@ -6,6 +6,7 @@ import { KeepIndicesSchema } from '@/ai/schemas';
 import { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import type { Config } from '@/core/config';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import { logger } from '@/utils/logger';
 
@@ -13,8 +14,6 @@ import { logger } from '@/utils/logger';
 const CLEAN_THREAD_TOPIC_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'regex'];
 
 export interface SummarizeOptions {
-  /** Override LLM provider for this call (e.g. "ollama"). If not set, uses defaultProvider from constructor. */
-  provider?: string;
   temperature?: number;
 }
 
@@ -22,11 +21,11 @@ const DEFAULT_TEMPERATURE = 0.5;
 
 /**
  * Unified summarization: renders llm.summarize prompt and calls LLM.
- * Runs on `ai.taskProviders.summarize` unless a call overrides it via options.provider.
+ * Runs on `ai.taskProviders.summarize`, else the default LLM.
  */
 @singleton()
 export class SummarizeService {
-  private readonly defaultProvider: string | undefined;
+  private readonly target: LLMTarget | undefined;
 
   constructor(
     @inject(LLMService) private llmService: LLMService,
@@ -34,13 +33,13 @@ export class SummarizeService {
     @inject(DITokens.CONFIG) config: Config,
   ) {
     const aiConfig = config.getAIConfig();
-    this.defaultProvider = aiConfig?.taskProviders?.summarize ?? aiConfig?.defaultProviders?.llm;
+    this.target = aiConfig?.taskProviders?.summarize ?? aiConfig?.defaultProviders?.llm;
   }
 
   /**
    * Summarize conversation text using llm.summarize template.
    * @param conversationText - Formatted conversation (e.g. "User: ...\nAssistant: ...")
-   * @param options - Optional provider override and generation params
+   * @param options - Optional generation params
    * @returns Trimmed summary text, or empty string if LLM returned empty
    */
   async summarize(conversationText: string, options?: SummarizeOptions): Promise<string> {
@@ -54,7 +53,7 @@ export class SummarizeService {
         // still thought 5–20K tokens to write a 1–3K-char summary, most of each call's cost.
         reasoningEffort: 'none',
       },
-      options?.provider ?? this.defaultProvider,
+      this.target,
     );
 
     const text = (response.text ?? '').trim();
@@ -82,7 +81,7 @@ export class SummarizeService {
         jsonMode: true,
         reasoningEffort: 'low',
       },
-      options?.provider ?? this.defaultProvider,
+      this.target,
     );
     const text = (response.text ?? '').trim();
     if (!text) {

@@ -5,6 +5,7 @@ import { ProviderSelector } from '@/ai/ProviderSelector';
 import { HttpClientError } from '@/api/http/HttpClient';
 import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 import type { Config } from '@/core/config';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
@@ -41,6 +42,12 @@ import {
 } from '../utils/dsmlParser';
 
 type TokenUsage = NonNullable<AIGenerateResponse['usage']>;
+
+/** A resolved LLM call: the provider instance, and the target it serves with the model made concrete. */
+interface Route {
+  provider: LLMCapability;
+  target: LLMTarget;
+}
 
 /**
  * LLM fallback configuration
@@ -343,165 +350,110 @@ export class LLMService {
   }
 
   /**
-   * Resolve a provider for the caller, honoring explicit intent.
-   *
-   * Behavior is identical to {@link resolveProviderForGeneration}:
-   * - Explicit `providerName` is returned as-is even when marked unhealthy
-   *   (callers must rely on the runtime catch path / fallback chain).
-   * - When no `providerName` is supplied (session/default path), an unhealthy
-   *   resolution is swapped to the first healthy fallback.
-   *
-   * This method exists for non-generation callers (capability probes such as
-   * `supportsToolUse` / `supportsNativeWebSearch`, and external services).
-   * Generation entry points use `resolveProviderForGeneration` directly so
-   * they can also strip stale `options.model` on swap.
+   * The provider a call routed to `target` (or, without one, by session/default) would
+   * run on. Capability probes (`supportsToolUse`, `supportsNativeWebSearch`) and external
+   * services use this; generation entry points resolve the full route themselves.
    */
-  async getAvailableProvider(providerName?: string, sessionId?: string): Promise<LLMCapability | null> {
-    const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
-    return resolved?.provider ?? null;
+  async getAvailableProvider(target?: LLMTarget, sessionId?: string): Promise<LLMCapability | null> {
+    const route = await this.resolveRoute(target, sessionId);
+    return route?.provider ?? null;
   }
 
   /**
-   * Name of the configured default LLM provider, or undefined when none is set.
-   * Lets background jobs (e.g. reflection) run on the system default LLM via
-   * `generateFixed` instead of hardcoding a specific provider.
+   * Where a call routed to `target` (or, without one, by session/default) would run: the
+   * provider instance and the target with its model made concrete. Callers that must know
+   * the model before generating (the prompt's model identity) read it here.
    */
-  getDefaultLLMProviderName(): string | undefined {
-    const provider = this.aiManager.getDefaultProvider('llm');
-    if (!provider) return undefined;
-    return 'name' in provider ? (provider as { name: string }).name : undefined;
-  }
-
-  /**
-   * Resolve the provider for a generation call.
-   *
-   * Rules:
-   * - If the caller passes an explicit `providerName`, honor it. Do NOT silently swap
-   *   to a healthy fallback even if it's marked unhealthy — attempt it once and let
-   *   the caller's catch path trigger the fallback chain. This preserves explicit
-   *   user intent (e.g. `claude,` prefix routing).
-   * - If the caller does NOT pass a provider (session/default path) and the resolved
-   *   provider is unhealthy, swap to the first healthy fallback AND strip the caller's
-   *   `options.model`, since that model was meant for the originally-resolved provider.
-   *
-   * Returns `resolvedName`, the (possibly swapped) provider, and `options` with
-   * `model` stripped when a swap occurred.
-   */
-  private async resolveProviderForGeneration(
-    providerName?: string,
+  async resolveTarget(
+    target?: LLMTarget,
     sessionId?: string,
-  ): Promise<{
-    provider: LLMCapability;
-    resolvedName: string;
-    requestedName?: string;
-    swapped: boolean;
-    isUnhealthy: boolean;
-  } | null> {
-    const explicit = !!providerName;
-    let provider: LLMCapability | null = null;
-    let resolvedName: string | undefined;
+  ): Promise<{ provider: LLMCapability; target: LLMTarget } | null> {
+    const route = await this.resolveRoute(target, sessionId);
+    return route ? { provider: route.provider, target: route.target } : null;
+  }
 
-    if (providerName) {
-      const p = this.aiManager.getProviderForCapability('llm', providerName);
-      if (p && isLLMCapability(p) && p.isAvailable()) {
-        provider = p;
-        resolvedName = providerName;
-      } else if (p && !p.isAvailable()) {
+  /** The default LLM, for background jobs that call `generateFixed` without a target of their own. */
+  getDefaultLLM(): LLMTarget | null {
+    return this.aiManager.getDefaultLLM();
+  }
+
+  /**
+   * Resolve the route of a generation call: an explicit `target`, else the session's
+   * override, else the default LLM.
+   *
+   * - An explicit target is honored even when its provider is marked unhealthy — it is
+   *   attempted once and the caller's catch path runs the fallback chain. This preserves
+   *   explicit intent (e.g. `claude,` prefix routing).
+   * - A session/default route whose provider is unhealthy is swapped to the first healthy
+   *   provider in the fallback order, on that provider's own model.
+   *
+   * The model always travels with its provider: a route that ends up on a different
+   * provider than the one requested drops the requested model with it.
+   */
+  private async resolveRoute(target: LLMTarget | undefined, sessionId: string | undefined): Promise<Route | null> {
+    let route: Route | null = null;
+
+    if (target) {
+      route = this.routeTo(target);
+      if (!route) {
         logger.warn(
-          `[LLMService] Requested provider "${providerName}" is not available (e.g. API key missing or check failed); falling back to default`,
-        );
-      } else {
-        logger.warn(
-          `[LLMService] Requested provider "${providerName}" is not registered for LLM capability; falling back to default`,
+          `[LLMService] Requested provider "${target.provider}" is not registered or not available; falling back to default`,
         );
       }
     } else if (sessionId) {
-      const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'llm');
-      if (sessionProviderName) {
-        const p = this.aiManager.getProviderForCapability('llm', sessionProviderName);
-        if (p && isLLMCapability(p) && p.isAvailable()) {
-          provider = p;
-          resolvedName = sessionProviderName;
-        }
+      const sessionTarget = await this.providerSelector.getSessionOverride(sessionId, 'llm');
+      if (sessionTarget) {
+        route = this.routeTo(sessionTarget);
       }
     }
 
-    if (!provider) {
-      const defaultProvider = this.aiManager.getDefaultProvider('llm');
-      if (defaultProvider && isLLMCapability(defaultProvider) && defaultProvider.isAvailable()) {
-        provider = defaultProvider;
-        resolvedName = 'name' in defaultProvider ? (defaultProvider as { name: string }).name : undefined;
+    if (!route) {
+      const defaultTarget = this.aiManager.getDefaultLLM();
+      route = defaultTarget ? this.routeTo(defaultTarget) : null;
+    }
+    if (!route) return null;
+
+    const providerName = route.target.provider;
+    if (!this.healthCheckManager.isServiceHealthySync(providerName)) {
+      if (target) {
+        logger.warn(
+          `[LLMService] Explicit provider "${providerName}" is marked unhealthy; attempting anyway (honoring caller intent)`,
+        );
+      } else {
+        logger.warn(`[LLMService] Provider "${providerName}" is unhealthy, trying healthy fallback`);
+        const healthyFallback = this.getFirstHealthyRoute(providerName);
+        if (healthyFallback) return healthyFallback;
+        logger.warn(`[LLMService] No healthy fallback available, proceeding with "${providerName}"`);
       }
     }
-
-    if (!provider || !resolvedName) return null;
-
-    const isUnhealthy = !this.healthCheckManager.isServiceHealthySync(resolvedName);
-
-    // Only swap for non-explicit requests. Explicit caller intent (prefix routing,
-    // taskProviders.convert etc.) must actually attempt the requested provider so
-    // the catch path can correctly strip model and fall back on real failure.
-    if (!explicit && isUnhealthy) {
-      logger.warn(`[LLMService] Provider "${resolvedName}" is unhealthy, trying healthy fallback`);
-      const healthyFallback = await this.getFirstHealthyProvider(sessionId, resolvedName);
-      if (healthyFallback) {
-        const swappedName = 'name' in healthyFallback ? (healthyFallback as { name: string }).name : resolvedName;
-        return {
-          provider: healthyFallback,
-          resolvedName: swappedName,
-          requestedName: resolvedName,
-          swapped: true,
-          isUnhealthy: false,
-        };
-      }
-      logger.warn(`[LLMService] No healthy fallback available, proceeding with "${resolvedName}"`);
-    } else if (explicit && isUnhealthy) {
-      logger.warn(
-        `[LLMService] Explicit provider "${resolvedName}" is marked unhealthy; attempting anyway (honoring caller intent)`,
-      );
-    }
-
-    return {
-      provider,
-      resolvedName,
-      requestedName: providerName,
-      swapped: false,
-      isUnhealthy,
-    };
+    return route;
   }
 
-  /**
-   * Strip caller-supplied `model` when the provider was swapped — the model name
-   * belonged to the originally requested provider and won't resolve on the swapped one.
-   */
-  private stripModelIfSwapped<T extends AIGenerateOptions | undefined>(options: T, swapped: boolean): T {
-    if (!swapped || !options) return options;
-    return { ...options, model: undefined } as T;
+  /** The registered provider for `target`, with the target's model made concrete; null when unavailable. */
+  private routeTo(target: LLMTarget): Route | null {
+    const provider = this.aiManager.getProviderForCapability('llm', target.provider);
+    if (!provider || !isLLMCapability(provider) || !provider.isAvailable()) {
+      return null;
+    }
+    return { provider, target: { provider: target.provider, model: target.model ?? provider.getDefaultModel?.() } };
   }
 
   /** The model that actually served a call: what the provider reported wins (Gemini
-   *  swaps to the paid model mid-call), then the caller's explicit pin, then the
-   *  provider's configured default. Stamped centrally so providers don't each have
-   *  to remember to report it. */
-  private stampResolvedModel(
-    result: AIGenerateResponse,
-    provider: LLMCapability,
-    options: AIGenerateOptions | undefined,
-  ): void {
-    result.resolvedModel = result.resolvedModel ?? options?.model ?? provider.getDefaultModel?.();
+   *  swaps to the paid model mid-call), then the target's model. Stamped centrally so
+   *  providers don't each have to remember to report it. */
+  private stampResolvedModel(result: AIGenerateResponse, target: LLMTarget): void {
+    result.resolvedModel = result.resolvedModel ?? target.model;
   }
 
   /**
-   * Get the first healthy provider from fallback order.
+   * The first healthy provider in the fallback order, on its own model.
    */
-  private async getFirstHealthyProvider(_sessionId?: string, excludeProvider?: string): Promise<LLMCapability | null> {
-    const healthyProviders = this.getHealthyFallbackProviders(this.config.fallback.fallbackOrder, excludeProvider);
-
-    for (const name of healthyProviders) {
-      const p = this.aiManager.getProviderForCapability('llm', name);
-      if (p && isLLMCapability(p) && p.isAvailable()) {
+  private getFirstHealthyRoute(excludeProvider: string): Route | null {
+    for (const name of this.getHealthyFallbackProviders(this.config.fallback.fallbackOrder, excludeProvider)) {
+      const route = this.routeTo({ provider: name });
+      if (route) {
         logger.info(`[LLMService] Using healthy fallback provider "${name}"`);
-        return p;
+        return route;
       }
     }
     return null;
@@ -519,24 +471,14 @@ export class LLMService {
     });
   }
 
-  async supportsNativeWebSearch(providerName?: string, sessionId?: string): Promise<boolean> {
-    const provider = await this.getAvailableProvider(providerName, sessionId);
-    if (!provider) {
-      return false;
-    }
-    const resolvedProviderName =
-      provider && 'name' in provider ? (provider as { name: string }).name : (providerName ?? '');
-    return this.providerSupportsNativeWebSearch(resolvedProviderName);
+  async supportsNativeWebSearch(target?: LLMTarget, sessionId?: string): Promise<boolean> {
+    const route = await this.resolveRoute(target, sessionId);
+    return route ? this.providerSupportsNativeWebSearch(route.target.provider) : false;
   }
 
-  async supportsToolUse(providerName?: string, sessionId?: string): Promise<boolean> {
-    const provider = await this.getAvailableProvider(providerName, sessionId);
-    if (!provider) {
-      return false;
-    }
-    const resolvedProviderName =
-      provider && 'name' in provider ? (provider as { name: string }).name : (providerName ?? '');
-    return this.providerSupportsToolUse(resolvedProviderName);
+  async supportsToolUse(target?: LLMTarget, sessionId?: string): Promise<boolean> {
+    const route = await this.resolveRoute(target, sessionId);
+    return route ? this.providerSupportsToolUse(route.target.provider) : false;
   }
 
   /**
@@ -552,7 +494,7 @@ export class LLMService {
    * @throws Error if provider is unavailable or all retries exhausted.
    */
   async generateFixed(
-    providerName: string,
+    target: LLMTarget,
     prompt: string,
     options: LLMCallOptions,
     retryConfig?: { maxRetries?: number; retryDelayMs?: number },
@@ -560,12 +502,13 @@ export class LLMService {
     const maxRetries = retryConfig?.maxRetries ?? 3;
     const retryDelayMs = retryConfig?.retryDelayMs ?? 2000;
 
-    // Resolve provider strictly — no fallback to default or session provider
-    const rawProvider = this.aiManager.getProviderForCapability('llm', providerName);
-    if (!rawProvider || !isLLMCapability(rawProvider) || !rawProvider.isAvailable()) {
-      throw new Error(`[LLMService] generateFixed: provider "${providerName}" is not available`);
+    // Resolve the target strictly — no fallback to default or session provider
+    const route = this.routeTo(target);
+    if (!route) {
+      throw new Error(`[LLMService] generateFixed: provider "${target.provider}" is not available`);
     }
-    const provider = rawProvider as LLMCapability;
+    const { provider } = route;
+    const providerName = route.target.provider;
 
     const estimatedTokens = this.estimatePromptTokens(prompt, options);
     await this.rateLimiter.waitForCapacity(estimatedTokens, providerName);
@@ -578,7 +521,7 @@ export class LLMService {
         async () => {
           const hardTimeoutMs = options?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
           return await awaitCompletion(
-            provider.generate(prompt, this.optionsForProvider(provider, options)),
+            provider.generate(prompt, this.optionsForProvider(provider, options, route.target)),
             hardTimeoutMs,
             `generateFixed:${providerName}`,
           );
@@ -588,11 +531,11 @@ export class LLMService {
       if (result.usage) {
         this.rateLimiter.recordUsage(result.usage.totalTokens, providerName);
       }
+      result.resolvedProviderName = providerName;
+      this.stampResolvedModel(result, route.target);
       this.logLLMUsage(providerName, prompt, options, result);
       this.emitTrace('generateFixed', providerName, prompt, options, result, startedAt, randomUUID());
       this.healthCheckManager.markServiceHealthy(providerName);
-      result.resolvedProviderName = providerName;
-      this.stampResolvedModel(result, provider, options);
       return result;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
@@ -606,8 +549,8 @@ export class LLMService {
    * Automatically falls back to alternative providers on runtime failure.
    * Updates provider health status based on success/failure.
    */
-  async generate(prompt: string, options: LLMCallOptions, providerName?: string): Promise<AIGenerateResponse> {
-    return this.generateInRound(prompt, options, providerName, newConversation());
+  async generate(prompt: string, options: LLMCallOptions, target?: LLMTarget): Promise<AIGenerateResponse> {
+    return this.generateInRound(prompt, options, target, newConversation());
   }
 
   /**
@@ -653,40 +596,40 @@ export class LLMService {
   private async generateInRound(
     prompt: string,
     options: LLMCallOptions,
-    providerName: string | undefined,
+    target: LLMTarget | undefined,
     round: ConversationRound,
     allowEmptyEndTurn = false,
   ): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
-    const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
+    const route = await this.resolveRoute(target, sessionId);
 
     // If no available provider, return fallback response
-    if (!resolved) {
+    if (!route) {
       logger.warn('[LLMService] No available LLM provider, returning fallback response');
       return this.getFallbackResponse(prompt);
     }
 
-    const { provider, resolvedName, swapped } = resolved;
-    const effectiveOptions = this.stripModelIfSwapped(options, swapped);
+    const { provider } = route;
+    const resolvedName = route.target.provider;
 
     // Rate limit: wait for token capacity before calling the provider.
     // Estimate prompt tokens from content length (rough: 1 token ≈ 3 chars for CJK, 4 for latin).
-    const estimatedTokens = this.estimatePromptTokens(prompt, effectiveOptions);
+    const estimatedTokens = this.estimatePromptTokens(prompt, options);
     await this.rateLimiter.waitForCapacity(estimatedTokens, resolvedName);
-    this.logLLMPrompt(resolvedName, effectiveOptions, round.sentCount);
+    this.logLLMPrompt(resolvedName, options, round.sentCount);
 
     const startedAt = Date.now();
     try {
       const result = await this.runWithProviderRetry(
         resolvedName,
         async () => {
-          const hardTimeoutMs = effectiveOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
+          const hardTimeoutMs = options?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
           const result = await awaitCompletion(
-            provider.generate(prompt, this.optionsForProvider(provider, effectiveOptions)),
+            provider.generate(prompt, this.optionsForProvider(provider, options, route.target)),
             hardTimeoutMs,
             `generate:${resolvedName}`,
           );
-          this.assertEndTurnHasContent(result, effectiveOptions, allowEmptyEndTurn, `generate:${resolvedName}`);
+          this.assertEndTurnHasContent(result, options, allowEmptyEndTurn, `generate:${resolvedName}`);
           return result;
         },
         // Two backoff retries (1.5s, 3s) before falling back: rides out brief
@@ -697,32 +640,31 @@ export class LLMService {
       if (result.usage) {
         this.rateLimiter.recordUsage(result.usage.totalTokens, resolvedName);
       }
-      this.logLLMUsage(resolvedName, prompt, effectiveOptions, result);
-      this.emitTrace('generate', resolvedName, prompt, effectiveOptions, result, startedAt, round.conversationId);
+      result.resolvedProviderName = resolvedName;
+      this.stampResolvedModel(result, route.target);
+      this.logLLMUsage(resolvedName, prompt, options, result);
+      this.emitTrace('generate', resolvedName, prompt, options, result, startedAt, round.conversationId);
       // Mark provider as healthy on success
       this.healthCheckManager.markServiceHealthy(resolvedName);
-      result.resolvedProviderName = resolvedName;
-      this.stampResolvedModel(result, provider, effectiveOptions);
       return result;
     } catch (err) {
       // Mark provider as failed
       const errorMessage = err instanceof Error ? err.message : String(err);
       this.healthCheckManager.markServiceUnhealthy(resolvedName, errorMessage);
       logger.error(`[LLMService] Provider "${resolvedName}" generate failed:`, err);
-      // Strip provider-specific model from options so fallback providers use their own defaults
-      const fallbackOptions = options ? { ...options, model: undefined } : options;
       return this.generateWithFallback(
         resolvedName,
-        sessionId,
-        (p, altName) => {
-          const t = fallbackOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-          const label = `generate-fallback:${altName}`;
-          return awaitCompletion(p.generate(prompt, this.optionsForProvider(p, fallbackOptions)), t, label).then(
-            (result) => {
-              this.assertEndTurnHasContent(result, fallbackOptions, allowEmptyEndTurn, label);
-              return result;
-            },
-          );
+        (alt) => {
+          const t = options?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
+          const label = `generate-fallback:${alt.target.provider}`;
+          return awaitCompletion(
+            alt.provider.generate(prompt, this.optionsForProvider(alt.provider, options, alt.target)),
+            t,
+            label,
+          ).then((result) => {
+            this.assertEndTurnHasContent(result, options, allowEmptyEndTurn, label);
+            return result;
+          });
         },
         prompt,
       );
@@ -731,25 +673,21 @@ export class LLMService {
 
   /**
    * Generate with lite defaults (low temperature, small maxTokens) for cheap/fast tasks (e.g. prefix-invitation, analysis).
-   * Supports explicit provider and model override (e.g. doubao, doubao-1-5-lite-32k-250115).
+   * Supports an explicit target (e.g. doubao / doubao-1-5-lite-32k-250115).
    */
-  async generateLite(prompt: string, options: LLMCallOptions, providerName?: string): Promise<AIGenerateResponse> {
+  async generateLite(prompt: string, options: LLMCallOptions, target?: LLMTarget): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
-    const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
+    const route = await this.resolveRoute(target, sessionId);
 
-    if (!resolved) {
+    if (!route) {
       logger.warn('[LLMService] No available LLM provider for generateLite, returning fallback response');
       return this.getFallbackResponse(prompt);
     }
 
-    const { provider, resolvedName, swapped } = resolved;
-    const liteDefaults: AIGenerateOptions = {
+    const resolvedName = route.target.provider;
+    const mergedOptions: LLMCallOptions = {
       temperature: 0.1,
-    };
-    const incomingOptions = this.stripModelIfSwapped(options, swapped);
-    const mergedOptions: AIGenerateOptions = {
-      ...liteDefaults,
-      ...incomingOptions,
+      ...options,
     };
 
     this.logLLMPrompt(resolvedName, mergedOptions, 0);
@@ -761,31 +699,28 @@ export class LLMService {
         async () => {
           const hardTimeoutMs = mergedOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
           return await awaitCompletion(
-            this.invokeLiteGeneration(provider, prompt, mergedOptions),
+            this.invokeLiteGeneration(route, prompt, mergedOptions),
             hardTimeoutMs,
             `generateLite:${resolvedName}`,
           );
         },
         { opLabel: 'generateLite' },
       );
+      result.resolvedProviderName = resolvedName;
+      this.stampResolvedModel(result, route.target);
       this.logLLMUsage(resolvedName, prompt, mergedOptions, result);
       this.emitTrace('generateLite', resolvedName, prompt, mergedOptions, result, startedAt, randomUUID());
       this.healthCheckManager.markServiceHealthy(resolvedName);
-      result.resolvedProviderName = resolvedName;
-      this.stampResolvedModel(result, provider, mergedOptions);
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       this.healthCheckManager.markServiceUnhealthy(resolvedName, errorMessage);
       logger.error(`[LLMService] Provider "${resolvedName}" generateLite failed:`, err);
-      // Strip provider-specific model from options so fallback providers use their own defaults
-      const fallbackOptions: AIGenerateOptions = { ...mergedOptions, model: undefined };
       return this.generateWithFallback(
         resolvedName,
-        sessionId,
-        (p) => {
-          const t = fallbackOptions?.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
-          return awaitCompletion(this.invokeLiteGeneration(p, prompt, fallbackOptions), t, `generateLite-fallback`);
+        (alt) => {
+          const t = mergedOptions.timeout ?? DEFAULT_GENERATE_HARD_TIMEOUT_MS;
+          return awaitCompletion(this.invokeLiteGeneration(alt, prompt, mergedOptions), t, `generateLite-fallback`);
         },
         prompt,
       );
@@ -794,15 +729,17 @@ export class LLMService {
 
   /** Invoke generateLite on provider if supported, otherwise fall back to generate with lite defaults. */
   private async invokeLiteGeneration(
-    provider: LLMCapability,
+    route: Route,
     prompt: string,
-    options: AIGenerateOptions,
+    options: LLMCallOptions,
   ): Promise<AIGenerateResponse> {
+    const { provider } = route;
+    const providerOptions = this.optionsForProvider(provider, options, route.target);
     const cap = provider as { generateLite?: (p: string, o?: AIGenerateOptions) => Promise<AIGenerateResponse> };
     if (typeof cap.generateLite === 'function') {
-      return await cap.generateLite(prompt, this.optionsForProvider(provider, options));
+      return await cap.generateLite(prompt, providerOptions);
     }
-    return await provider.generate(prompt, this.optionsForProvider(provider, options));
+    return await provider.generate(prompt, providerOptions);
   }
 
   /**
@@ -811,12 +748,12 @@ export class LLMService {
   private async generateFromMessages(
     messages: ChatMessage[],
     options: Omit<LLMCallOptions, 'messages'>,
-    providerName: string | undefined,
+    target: LLMTarget | undefined,
     round: ConversationRound,
   ): Promise<AIGenerateResponse> {
     const lastContent = messages[messages.length - 1]?.content;
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
-    return this.generateInRound(prompt, { ...options, messages }, providerName, round);
+    return this.generateInRound(prompt, { ...options, messages }, target, round);
   }
 
   /**
@@ -828,47 +765,45 @@ export class LLMService {
     prompt: string,
     handler: StreamingHandler,
     options: LLMCallOptions,
-    providerName?: string,
+    target?: LLMTarget,
   ): Promise<AIGenerateResponse> {
     const sessionId = options?.sessionId;
-    const resolved = await this.resolveProviderForGeneration(providerName, sessionId);
+    const route = await this.resolveRoute(target, sessionId);
 
     // If no available provider, return fallback response
-    if (!resolved) {
+    if (!route) {
       logger.warn('[LLMService] No available LLM provider, returning fallback response');
       const fallbackResponse = this.getFallbackResponse(prompt);
       handler(fallbackResponse.text);
       return fallbackResponse;
     }
 
-    const { provider, resolvedName, swapped } = resolved;
-    const effectiveOptions = this.stripModelIfSwapped(options, swapped);
-    this.logLLMPrompt(resolvedName, effectiveOptions, 0);
+    const { provider } = route;
+    const resolvedName = route.target.provider;
+    this.logLLMPrompt(resolvedName, options, 0);
 
     const startedAt = Date.now();
     try {
       const result = await provider.generateStream(
         prompt,
         handler,
-        this.optionsForProvider(provider, effectiveOptions),
+        this.optionsForProvider(provider, options, route.target),
       );
       // Mark provider as healthy on success
       this.healthCheckManager.markServiceHealthy(resolvedName);
       result.resolvedProviderName = resolvedName;
-      this.stampResolvedModel(result, provider, effectiveOptions);
-      this.emitTrace('generateStream', resolvedName, prompt, effectiveOptions, result, startedAt, randomUUID());
+      this.stampResolvedModel(result, route.target);
+      this.emitTrace('generateStream', resolvedName, prompt, options, result, startedAt, randomUUID());
       return result;
     } catch (err) {
       // Mark provider as failed
       const errorMessage = err instanceof Error ? err.message : String(err);
       this.healthCheckManager.markServiceUnhealthy(resolvedName, errorMessage);
       logger.error(`[LLMService] Provider "${resolvedName}" generateStream failed:`, err);
-      // Strip provider-specific model from options so fallback providers use their own defaults
-      const fallbackOptions = options ? { ...options, model: undefined } : options;
       return this.generateWithFallback(
         resolvedName,
-        sessionId,
-        (p) => p.generateStream(prompt, handler, this.optionsForProvider(p, fallbackOptions)),
+        (alt) =>
+          alt.provider.generateStream(prompt, handler, this.optionsForProvider(alt.provider, options, alt.target)),
         prompt,
       );
     }
@@ -882,12 +817,12 @@ export class LLMService {
     messages: ChatMessage[],
     tools: ToolDefinition[],
     options: ToolUseCallOptions,
-    providerName?: string,
+    target?: LLMTarget,
   ): Promise<ToolUseGenerateResponse> {
     // No tools — short-circuit to plain generate.
     if (tools.length === 0) {
-      const response = await this.generateFromMessages(messages, options, providerName, newConversation());
-      await this.emitReasoning(response, options, [], new Set(), providerName);
+      const response = await this.generateFromMessages(messages, options, target, newConversation());
+      await this.emitReasoning(response, options, [], new Set(), target?.provider);
       return { ...response, stopReason: 'end_turn', openingPromptTokens: response.usage?.promptTokens };
     }
 
@@ -895,17 +830,13 @@ export class LLMService {
     const maxRounds = options?.maxToolRounds;
     const toolExecutor = options?.toolExecutor;
 
-    let provider = await this.getAvailableProvider(providerName, sessionId);
-
-    // Check if provider supports tool use
-    let currentProviderName =
-      provider && 'name' in provider ? (provider as { name: string }).name : (providerName ?? '');
-    const supportsToolUse = provider && this.providerSupportsToolUse(currentProviderName);
+    // The loop resolves its route once; every round then runs on an explicit target.
+    let currentTarget = (await this.resolveRoute(target, sessionId))?.target;
 
     // If provider doesn't support tool use, try fallback to configured tool-use providers
-    if (provider && !supportsToolUse) {
+    if (currentTarget && !this.providerSupportsToolUse(currentTarget.provider)) {
       logger.warn(
-        `[LLMService] Provider "${currentProviderName}" doesn't support tool use, trying tool-use capable providers`,
+        `[LLMService] Provider "${currentTarget.provider}" doesn't support tool use, trying tool-use capable providers`,
       );
 
       // Try each tool-use provider in priority order
@@ -917,10 +848,9 @@ export class LLMService {
           continue;
         }
 
-        const toolProvider = await this.getAvailableProvider(toolProviderName, sessionId);
-        if (toolProvider && this.providerSupportsToolUse(toolProviderName)) {
-          provider = toolProvider;
-          currentProviderName = toolProviderName;
+        const toolRoute = this.routeTo({ provider: toolProviderName });
+        if (toolRoute && this.providerSupportsToolUse(toolProviderName)) {
+          currentTarget = toolRoute.target;
           foundToolUseProvider = true;
           logger.info(`[LLMService] Using tool-use capable provider "${toolProviderName}"`);
           break;
@@ -930,8 +860,8 @@ export class LLMService {
       if (!foundToolUseProvider) {
         logger.warn('[LLMService] No tool-use capable provider available, will proceed without tool use');
         // Proceed without tool use - just generate normally
-        const response = await this.generateFromMessages(messages, options, providerName, newConversation());
-        await this.emitReasoning(response, options, [], new Set(), providerName);
+        const response = await this.generateFromMessages(messages, options, target, newConversation());
+        await this.emitReasoning(response, options, [], new Set(), target?.provider);
         // Strip text-based tool calls the model may emit when it sees tool instructions in the prompt
         if (response.text && containsTextToolCalls(response.text)) {
           logger.warn('[LLMService] Stripping text-based tool call blocks from no-tool-use fallback response');
@@ -945,7 +875,7 @@ export class LLMService {
       }
     }
 
-    if (!provider) {
+    if (!currentTarget) {
       logger.warn('[LLMService] No available provider for tool use');
       return {
         ...this.getFallbackResponse(contentToPlainString(messages[messages.length - 1]?.content ?? '')),
@@ -992,7 +922,7 @@ export class LLMService {
         currentMessages,
         tools,
         options,
-        currentProviderName,
+        currentTarget,
         { conversationId, sentCount },
         contentDelivered || heldText.trim().length > 0,
       );
@@ -1001,16 +931,17 @@ export class LLMService {
       if (round === 0) {
         openingPromptTokens = response.usage?.promptTokens;
       }
-      await this.emitReasoning(response, options, accReasoning, seenReasoning, currentProviderName);
+      await this.emitReasoning(response, options, accReasoning, seenReasoning, currentTarget.provider);
 
-      // Always use the resolved provider for subsequent rounds (handles internal fallback)
-      if (response.resolvedProviderName) {
-        currentProviderName = response.resolvedProviderName;
+      // A round served by a fallback provider moves the rest of the loop there, on that
+      // provider's own model — the previous target's model means nothing to it.
+      if (response.resolvedProviderName && response.resolvedProviderName !== currentTarget.provider) {
+        currentTarget = { provider: response.resolvedProviderName };
       }
 
       // Surface the provider/model that actually served this round before its tool
       // calls run, so mid-loop tools (e.g. send_card footer) can report the truth.
-      options?.onProviderResolved?.({ providerName: currentProviderName, model: response.resolvedModel });
+      options?.onProviderResolved?.({ providerName: currentTarget.provider, model: response.resolvedModel });
 
       // Get all function calls from this response
       const calls = response.functionCalls ?? [];
@@ -1021,7 +952,7 @@ export class LLMService {
             ...response,
             usage: sawUsage ? { ...accUsage } : response.usage,
             reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
-            resolvedProviderName: currentProviderName,
+            resolvedProviderName: currentTarget.provider,
             toolCalls: allToolCalls,
             openingPromptTokens,
             stopReason: 'end_turn',
@@ -1037,14 +968,14 @@ export class LLMService {
             text: heldText,
             usage: sawUsage ? { ...accUsage } : response.usage,
             reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
-            resolvedProviderName: currentProviderName,
+            resolvedProviderName: currentTarget.provider,
             toolCalls: allToolCalls,
             openingPromptTokens,
             stopReason: 'max_rounds',
           };
         }
         logger.info(`[LLMService] Round ${round + 1} wrote text without end_turn; asking whether the turn is done`);
-        currentMessages.push(LLMService.assistantTurn(response, currentProviderName));
+        currentMessages.push(LLMService.assistantTurn(response, currentTarget.provider));
         currentMessages.push({ role: 'user', content: END_TURN_REQUIRED_NOTICE });
         round++;
         continue;
@@ -1170,14 +1101,14 @@ export class LLMService {
         // Stamp the serving provider so a later provider (after mid-loop fallback) can tell
         // foreign tool_calls turns (fold/degrade for signature compatibility) from its own
         // (replay verbatim so the model keeps its first-person action record).
-        currentMessages.push(LLMService.assistantTurn(response, currentProviderName, assistantToolCalls));
+        currentMessages.push(LLMService.assistantTurn(response, currentTarget.provider, assistantToolCalls));
         for (const msg of toolMessages) {
           currentMessages.push(msg);
         }
 
         // Inject vision content from tool results as a user message
         if (pendingVisionParts.length > 0) {
-          const currentProvider = this.aiManager.getProvider(currentProviderName);
+          const currentProvider = this.aiManager.getProvider(currentTarget.provider);
           const supportsVision = currentProvider?.supportsCapability('vision') ?? false;
 
           if (supportsVision) {
@@ -1216,7 +1147,7 @@ export class LLMService {
             text: roundText,
             usage: sawUsage ? { ...accUsage } : response.usage,
             reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
-            resolvedProviderName: currentProviderName,
+            resolvedProviderName: currentTarget.provider,
             toolCalls: allToolCalls,
             openingPromptTokens,
             stopReason: 'end_turn_tool',
@@ -1255,12 +1186,12 @@ export class LLMService {
     // Max rounds reached, force final generation with explicit instruction to produce text answer
     logger.warn(`[LLMService] Max tool rounds (${maxRounds}) reached, forcing final response`);
     currentMessages.push({ role: 'user', content: TOOL_ROUNDS_EXHAUSTED_NOTICE });
-    const finalResponse = await this.generateFromMessages(currentMessages, options, currentProviderName, {
+    const finalResponse = await this.generateFromMessages(currentMessages, options, currentTarget, {
       conversationId,
       sentCount,
     });
     sawUsage = this.accumulateUsage(accUsage, finalResponse.usage) || sawUsage;
-    await this.emitReasoning(finalResponse, options, accReasoning, seenReasoning, currentProviderName);
+    await this.emitReasoning(finalResponse, options, accReasoning, seenReasoning, currentTarget.provider);
 
     // Strip text-based tool calls from final text — model may still attempt tool calls via text when tools are absent
     if (finalResponse.text && containsDSML(finalResponse.text)) {
@@ -1277,7 +1208,7 @@ export class LLMService {
       text: joinRoundText(heldText, finalResponse.text),
       usage: sawUsage ? { ...accUsage } : finalResponse.usage,
       reasoningContent: accReasoning.length > 0 ? accReasoning.join('\n\n---\n\n') : undefined,
-      resolvedProviderName: currentProviderName,
+      resolvedProviderName: currentTarget.provider,
       toolCalls: allToolCalls,
       openingPromptTokens,
       stopReason: 'max_rounds',
@@ -1425,14 +1356,15 @@ export class LLMService {
    * turn was assembled for — `generateWithFallback` hands the call to a different provider
    * after a failure, and its options object is already built by then.
    */
-  private optionsForProvider(provider: unknown, options?: AIGenerateOptions): AIGenerateOptions | undefined {
-    if (!options?.messages?.length) {
-      return options;
+  private optionsForProvider(provider: LLMCapability, options: LLMCallOptions, target: LLMTarget): AIGenerateOptions {
+    const providerOptions: AIGenerateOptions = { ...options, model: target.model };
+    if (!providerOptions.messages?.length) {
+      return providerOptions;
     }
     if ((provider as { echoesReasoningNatively?: boolean }).echoesReasoningNatively) {
-      return options;
+      return providerOptions;
     }
-    return { ...options, messages: foldReasoningIntoContent(options.messages) };
+    return { ...providerOptions, messages: foldReasoningIntoContent(providerOptions.messages) };
   }
 
   /**
@@ -1489,19 +1421,19 @@ export class LLMService {
    */
   private async generateWithFallback(
     failedProvider: string,
-    sessionId: string | undefined,
-    fn: (provider: LLMCapability, altName: string) => Promise<AIGenerateResponse>,
+    fn: (alt: Route) => Promise<AIGenerateResponse>,
     prompt: string,
   ): Promise<AIGenerateResponse> {
     const alternatives = this.getAlternativeProviderNames(failedProvider);
     for (const altName of alternatives) {
-      const altProvider = await this.getAvailableProvider(altName, sessionId);
-      if (!altProvider) continue;
+      // An alternative runs on its own model: the failed target's model belongs to the failed provider.
+      const alt = this.routeTo({ provider: altName });
+      if (!alt) continue;
       try {
         logger.info(`[LLMService] Falling back to provider "${altName}"`);
-        const result = await fn(altProvider, altName);
+        const result = await fn(alt);
         result.resolvedProviderName = altName;
-        this.stampResolvedModel(result, altProvider, undefined);
+        this.stampResolvedModel(result, alt.target);
         return result;
       } catch (altErr) {
         logger.warn(`[LLMService] Fallback provider "${altName}" also failed:`, altErr);
@@ -1607,7 +1539,7 @@ export class LLMService {
     messages: ChatMessage[],
     tools: ToolDefinition[],
     options: ToolUseCallOptions,
-    providerName: string,
+    target: LLMTarget,
     round: ConversationRound,
     allowEmptyEndTurn: boolean,
   ): Promise<ToolUseGenerateResponse> {
@@ -1616,7 +1548,7 @@ export class LLMService {
     const response = await this.generateInRound(
       prompt,
       { ...options, messages, tools },
-      providerName,
+      target,
       round,
       allowEmptyEndTurn,
     );

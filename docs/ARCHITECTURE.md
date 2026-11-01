@@ -794,9 +794,24 @@ Multi-provider support is handled by `AIManager` + `ProviderRouter`:
 - **Name prefix** — a provider name or alias (`claude`, `gpt`, `哈基米`, …) at the **start** of the message, followed by a separator (space, comma, colon).
 - **Color nickname** — a color nickname such as `橙色高手` / `紫色高手`, matched **anywhere** in the message.
 
-Nicknames are tried before prefixes, and longer nicknames before shorter ones, so `橙色高手` is never shadowed by the bare `高手`. The bare `高手` is the default nickname: it triggers a reply but names no provider, so the request falls back to the configured default provider and is not treated as an explicit user choice (no paid-tier preference). A name or nickname whose provider is not registered does not route; the request goes to the default provider.
+Nicknames are tried before prefixes, and longer nicknames before shorter ones, so `橙色高手` is never shadowed by the bare `高手`. The bare `高手` is the default nickname: it triggers a reply but names no provider, so the request falls back to the default LLM and is not treated as an explicit user choice. A name or nickname whose provider is not registered does not route; the request goes to the default LLM.
 
 Routing only picks the provider — it never rewrites the message. The LLM receives what the user typed, trigger word included, and the QQ scene prompts (`SceneProducer`, `{{botProviderNicknames}}`) render the nickname table from `ProviderRouter.getNicknameAliasMap()` so the model knows every nickname is a way of calling it and which provider each color picks. The bare default nickname is listed with the configured `messageTrigger.wakeWords`.
+
+#### LLM targets
+
+An LLM is addressed as an `LLMTarget` — `{ provider, model? }` — never as a provider name with a model passed separately: a model name means nothing to another provider, so the two travel as one value through every route. An omitted model is the provider's own configured model (`ai.providers.<name>.model`); `LLMService` makes it concrete when it resolves the route, and that concrete target is what the prompt's model identity, the usage record and the card footer report. Call options carry no `model` (`LLMCallOptions` omits it).
+
+`LLMService` resolves a call's route in one place (`resolveRoute`): an explicit target, else the session's override (`ProviderSelector.getSessionOverride`, which returns only an override the session set — never the default), else the default LLM (`AIManager.getDefaultLLM`). Where the route ends up on a different provider than the one requested, the requested model is dropped with it:
+
+- **Routing by name** — a provider prefix or color nickname routes to `{ provider }`, the provider on its own model. So the default can be a cheaper model of the same provider (`"llm": { "provider": "anthropic", "model": "claude-haiku-5-5" }`) while `claude,` / `橙色高手` still reach the model configured on `ai.providers.anthropic`.
+- **Health swap** — an unhealthy session/default provider is swapped to the first healthy provider in `fallbackOrder`, on that provider's own model. An explicit target is attempted even when marked unhealthy.
+- **Unavailable target** — a target whose provider is not registered falls back to the default LLM.
+- **Fallback** — each alternative runs on its own model. In a tool loop, a round served by a fallback provider moves the rest of the loop to it, again on its own model.
+
+The reply pipeline resolves the answering target once, in `ProviderSelectionStage` (after the image hand-off), and the prompt, the effort decision and the generation all use it. Task LLMs (`ai.taskProviders.*`, `plugins.memory.extract`, `plugins.proactiveConversation.analysis`, `persona.reflection.llm`, sub-agent presets' `llm`) are targets too; an unset task target runs on the default LLM. `Config` rejects a bare provider string where a target belongs, at startup.
+
+`/provider switch <capability> <provider> [model]` sets a group's persisted override in a group and the global default in a private chat; only `llm` takes a model. `/provider reset <capability>` clears the group override, or restores the configured global default.
 
 ### Reasoning effort
 
@@ -815,7 +830,7 @@ A call does not size its own output budget. Reasoning is charged against the sam
 - **Retry on the same provider, then fall back** — a silent empty completion (the provider reported success), 429 / 5xx, and socket-level blips (`isTransientLLMError`).
 - **Fall back directly** — an error the provider stated, such as "no content (finish_reason=length)" or a 4xx. Trying the same request again would fail the same way.
 
-Fallback tries the other registered, healthy providers in `ai.llmFallback.fallbackOrder` order (unlisted ones last). Each tool round is one `generate` call, so a round that fails is re-run alone and the tools from earlier rounds do not run again.
+Fallback tries the other registered, healthy providers in `ai.llmFallback.fallbackOrder` order (unlisted ones last), each on its own model (see [LLM targets](#llm-targets)). Each tool round is one `generate` call, so a round that fails is re-run alone and the tools from earlier rounds do not run again.
 
 ## Tool System
 
@@ -971,7 +986,7 @@ A fact has a `scope` (`core_scope` or `core_scope:subtag`; group memory: topic /
 
 Extraction produces candidate facts per slot. `MemoryConsolidationService.consolidateSlot` shows the model the slot's active facts numbered, its manual facts read-only and the candidates, and applies the operations it answers with: `add`, `confirm` (a restatement: bumps `confirmCount`), `update` (one or more facts replaced by a corrected or merged one) and `delete` (contradicted). Operations are validated against the numbered facts and the slot's allowed scopes; nothing rewrites the slot wholesale. The manual facts win: a candidate that repeats or contradicts one is dropped, and an existing fact that contradicts one is corrected or deleted, as is one a manual line already covers, whether or not a candidate touched it.
 
-Every writer goes through it: the daily `memory` task of the `group_day` fan-out (yesterday's chat on the shared prefix, then consolidation on the memory plugin's own `extractProvider`), buffered `memory_note` notes, MemoryTrigger, `/memory_edit`, `/memory_deep`, avatar extraction and `bun run memory backfill`.
+Every writer goes through it: the daily `memory` task of the `group_day` fan-out (yesterday's chat on the shared prefix, then consolidation on the memory plugin's own `extract` LLM), buffered `memory_note` notes, MemoryTrigger, `/memory_edit`, `/memory_deep`, avatar extraction and `bun run memory backfill`.
 
 ### Review
 
@@ -997,7 +1012,7 @@ The webui memory page shows each layer from its source: `manual.txt` (editable) 
 - **Registration** — `contexts/index.ts` lists every concrete fan-out (`FANOUT_CONTEXTS`). Each is a class-keyed DI singleton, and `FanoutManager` resolves every class in the list itself, the way ToolManager and CommandManager resolve their members, so nothing registers them. Triggers look a fan-out up by name through the manager; task owners resolve the class from DI (`getContainer().resolve(GroupDayFanout)`) and get the same instance.
 - **Triggers** — the agenda action `fanout` (`参数: {"fanout": "group_day", "tasks": {"report": {}, "comic": {"presets": […]}, "mines": {"count": 3}, "memory": {}}}`), and `/group_report`, which runs the report task alone.
 
-`group_day` (`GroupDayFanout`) is yesterday's chat in one group: `prompts/fanout/group_day/context.txt` renders the group name, date, code-computed stats and the day's log (`[HH:MM] nickname(userId): content`, bot replies excluded, 200-character cut, at most 2000 messages). Its provider is `ai.taskProviders.groupDay` (+ `groupDayModel`). Tasks: `report` (GroupReportPlugin — semantic JSON only; every count on the card comes from the stats), `comic` (GroupReportPlugin — calls `generate_image`), `mines` (GroupReportPlugin — picks keywords verbatim from the log and plants one-shot `onMessage` items, each checked against the day's messages), `memory` (MemoryPlugin). Plugins register their tasks in `onEnable` and drop them in `onDisable`. Prompts mirror the code: a fan-out's shared `system.txt` / `context.txt` sit in `prompts/fanout/<context>/`, and each task's suffix in `tasks/<task name>.txt`.
+`group_day` (`GroupDayFanout`) is yesterday's chat in one group: `prompts/fanout/group_day/context.txt` renders the group name, date, code-computed stats and the day's log (`[HH:MM] nickname(userId): content`, bot replies excluded, 200-character cut, at most 2000 messages). Its LLM is the target `ai.taskProviders.groupDay`. Tasks: `report` (GroupReportPlugin — semantic JSON only; every count on the card comes from the stats), `comic` (GroupReportPlugin — calls `generate_image`), `mines` (GroupReportPlugin — picks keywords verbatim from the log and plants one-shot `onMessage` items, each checked against the day's messages), `memory` (MemoryPlugin). Plugins register their tasks in `onEnable` and drop them in `onDisable`. Prompts mirror the code: a fan-out's shared `system.txt` / `context.txt` sit in `prompts/fanout/<context>/`, and each task's suffix in `tasks/<task name>.txt`.
 
 ## Database Layer
 

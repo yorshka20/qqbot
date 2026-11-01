@@ -4,9 +4,10 @@
 // Only the extract call shares the prefix. Consolidation (memory.consolidate) reads stored
 // memory and the new facts, not the chat, so it keeps memory's own provider and model.
 
+import type { LLMTarget } from '@/core/config/types/ai';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
 import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
-import { MEMORY_JOB_TIMEOUT_MS, type MemoryLLMOptions } from '../llm/memoryLLM';
+import { MEMORY_JOB_TIMEOUT_MS } from '../llm/memoryLLM';
 import type { MemoryExtractService } from './MemoryExtractService';
 
 export class GroupDayMemoryTask implements FanoutTask<GroupDayContext, null> {
@@ -17,7 +18,7 @@ export class GroupDayMemoryTask implements FanoutTask<GroupDayContext, null> {
 
   constructor(
     private readonly extractService: MemoryExtractService,
-    private readonly mergeOptions: MemoryLLMOptions,
+    private readonly mergeTarget: LLMTarget | undefined,
   ) {}
 
   parseParams(): null {
@@ -29,6 +30,6 @@ export class GroupDayMemoryTask implements FanoutTask<GroupDayContext, null> {
   }
 
   async handle(output: FanoutTaskOutput, run: FanoutRun<GroupDayContext>): Promise<void> {
-    await this.extractService.consolidateExtractOutput(run.ctx.groupId, output.text, this.mergeOptions);
+    await this.extractService.consolidateExtractOutput(run.ctx.groupId, output.text, this.mergeTarget);
   }
 }

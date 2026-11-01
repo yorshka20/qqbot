@@ -101,7 +101,7 @@ function validLLMJson(traitDelta = 0.02): string {
 function fakeLLMService(text: string): LLMService {
   return {
     generateFixed: async () => ({ text, toolCalls: [], finishReason: 'stop', usage: null }),
-    getDefaultLLMProviderName: () => 'gemini',
+    getDefaultLLM: () => ({ provider: 'gemini' }),
   } as unknown as LLMService;
 }
 

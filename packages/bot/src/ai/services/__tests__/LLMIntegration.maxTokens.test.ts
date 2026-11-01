@@ -42,7 +42,7 @@ function runProvider(name: IntegrationProviderName): void {
     test(
       'generate() with NO maxTokens returns non-empty text',
       async () => {
-        const res = await llm.generate('用一句话自我介绍。', { reasoningEffort: 'none' }, name);
+        const res = await llm.generate('用一句话自我介绍。', { reasoningEffort: 'none' }, { provider: name });
         console.log(LOG_PREFIX, `[${name}] short`, {
           len: res.text?.length,
           preview: res.text?.slice(0, 60),
@@ -57,7 +57,7 @@ function runProvider(name: IntegrationProviderName): void {
     test(
       'long-output prompt with NO maxTokens is not truncated to empty / errored',
       async () => {
-        const res = await llm.generate(LONG_PROMPT, { reasoningEffort: 'none' }, name);
+        const res = await llm.generate(LONG_PROMPT, { reasoningEffort: 'none' }, { provider: name });
         console.log(LOG_PREFIX, `[${name}] long`, {
           len: res.text?.length,
           completionTokens: res.usage?.completionTokens,

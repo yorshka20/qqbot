@@ -209,6 +209,11 @@ export class GeminiProvider
     return this._capabilities;
   }
 
+  /** The LLM model lives under `llm`, not at the top level the base class reads. */
+  override getDefaultModel(): string | undefined {
+    return this.config.llm?.model;
+  }
+
   /**
    * Save image data to local file
    * Supports both Buffer and base64 string input

@@ -1,5 +1,7 @@
 // WeChat Ingest Plugin - Type definitions
 
+import type { LLMTarget } from '@/core/config/types/ai';
+
 // ────────────────────────────────────────────────────────────────────────────
 // Webhook payload from WeChatPadPro
 // ────────────────────────────────────────────────────────────────────────────
@@ -82,8 +84,8 @@ export interface WeChatIngestConfig {
     targetQQGroup?: string;
   };
   analysis?: {
-    /** LLM provider name to use for analysis (e.g. "ollama"). Default: "ollama" */
-    provider?: string;
+    /** LLM to use for analysis (e.g. { "provider": "ollama" }). Default: ollama for moments, doubao for articles */
+    llm?: LLMTarget;
     /** Max articles per run (default 100) */
     maxArticles?: number;
     /** Parallel analysis tasks (default 1) */

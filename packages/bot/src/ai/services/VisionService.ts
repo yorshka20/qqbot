@@ -53,7 +53,7 @@ export class VisionService {
         throw new Error(`Provider ${providerName} does not support Vision capability`);
       }
     } else if (sessionId) {
-      const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'vision');
+      const sessionProviderName = await this.providerSelector.getSessionOverride(sessionId, 'vision');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('vision', sessionProviderName);
         if (p && isVisionCapability(p)) {
@@ -106,7 +106,7 @@ export class VisionService {
     }
 
     if (sessionId) {
-      const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'vision');
+      const sessionProviderName = await this.providerSelector.getSessionOverride(sessionId, 'vision');
       if (sessionProviderName) {
         const sessionProvider = this.aiManager.getProviderForCapability('vision', sessionProviderName);
         if (sessionProvider && isVisionCapability(sessionProvider)) {
@@ -154,7 +154,7 @@ export class VisionService {
         throw new Error(`Provider ${providerName} does not support Vision capability`);
       }
     } else if (sessionId) {
-      const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'vision');
+      const sessionProviderName = await this.providerSelector.getSessionOverride(sessionId, 'vision');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('vision', sessionProviderName);
         if (p && isVisionCapability(p)) {
@@ -207,7 +207,7 @@ export class VisionService {
         throw new Error(`Provider ${providerName} does not support Vision capability`);
       }
     } else if (sessionId) {
-      const sessionProviderName = await this.providerSelector.getProviderForSession(sessionId, 'vision');
+      const sessionProviderName = await this.providerSelector.getSessionOverride(sessionId, 'vision');
       if (sessionProviderName) {
         const p = this.aiManager.getProviderForCapability('vision', sessionProviderName);
         if (p && isVisionCapability(p)) {
@@ -251,8 +251,8 @@ export class VisionService {
         provider = preferredProvider;
       }
     }
-    if (sessionId) {
-      const name = await this.providerSelector.getProviderForSession(sessionId, 'vision');
+    if (!provider && sessionId) {
+      const name = await this.providerSelector.getSessionOverride(sessionId, 'vision');
       if (name) {
         const p = this.aiManager.getProviderForCapability('vision', name);
         if (p && isVisionCapability(p)) {

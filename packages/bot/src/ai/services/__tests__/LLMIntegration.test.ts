@@ -62,7 +62,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao LLM integration (real
     async () => {
       const prompt = 'Say "hello" in one short word.';
       logFlow(`[${providerName}] 1) Calling LLMService.generate`, { prompt });
-      const res = await llmService.generate(prompt, { reasoningEffort: 'none' }, providerName);
+      const res = await llmService.generate(prompt, { reasoningEffort: 'none' }, { provider: providerName });
       logFlow(`[${providerName}] 1) Response`, {
         textPreview: res.text?.slice(0, 80),
         textLength: res.text?.length,
@@ -82,7 +82,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao LLM integration (real
   test('generate with messages returns text', async () => {
     const messages: ChatMessage[] = [{ role: 'user', content: 'Reply with only the number 42.' }];
     logFlow(`[${providerName}] 2) Calling LLMService.generate with messages`, { messageCount: messages.length });
-    const res = await llmService.generate('Reply with only the number 42.', { reasoningEffort: 'none', messages }, providerName);
+    const res = await llmService.generate('Reply with only the number 42.', { reasoningEffort: 'none', messages }, { provider: providerName });
     logFlow(`[${providerName}] 2) Response`, { textPreview: res.text?.slice(0, 80), textLength: res.text?.length });
     expect(res).toBeDefined();
     expect(typeof res.text).toBe('string');
@@ -99,7 +99,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao LLM integration (real
         messageCount: messages.length,
         toolNames: SAMPLE_TOOLS.map((t) => t.name),
       });
-      const res = await llmService.generate('', { reasoningEffort: 'none', messages, tools: SAMPLE_TOOLS, maxTokens: 1024 }, providerName);
+      const res = await llmService.generate('', { reasoningEffort: 'none', messages, tools: SAMPLE_TOOLS, maxTokens: 1024 }, { provider: providerName });
       const firstCall = res.functionCalls?.[0];
       logFlow(`[${providerName}] 3) Response`, {
         textPreview: res.text?.slice(0, 80),
@@ -144,7 +144,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao LLM integration (real
             return { temperature: 25, unit: 'celsius', condition: 'sunny' };
           },
         },
-        providerName,
+        { provider: providerName },
       );
       logFlow(`[${providerName}] 4) Response`, {
         stopReason: res.stopReason,
@@ -192,7 +192,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao jsonMode integration 
           maxTokens: 500,
           temperature: 0.3,
         },
-        'doubao',
+        { provider: 'doubao' },
       );
       logFlow('[doubao] jsonMode response', { text: res.text?.slice(0, 200) });
 
@@ -222,7 +222,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao jsonMode integration 
           maxTokens: 500,
           temperature: 0.3,
         },
-        'doubao',
+        { provider: 'doubao' },
       );
       logFlow('[doubao] no-jsonMode response', { textPreview: res.text?.slice(0, 200) });
 
@@ -241,11 +241,10 @@ describe.skipIf(!getIntegrationProvider('doubao'))('Doubao jsonMode integration 
           reasoningEffort: 'none',
           systemPrompt: 'Return JSON with fields: name (string), age (number). No other text.',
           jsonMode: true,
-          model: 'doubao-1-5-lite-32k-250115',
           maxTokens: 500,
           temperature: 0.3,
         },
-        'doubao',
+        { provider: 'doubao', model: 'doubao-1-5-lite-32k-250115' },
       );
       logFlow('[doubao-lite] jsonMode response', { text: res.text?.slice(0, 200) });
 
@@ -274,7 +273,7 @@ describe.skipIf(!getIntegrationProvider('deepseek'))('DeepSeek LLM integration (
     async () => {
       const prompt = 'Say "hello" in one short word.';
       logFlow(`[${providerName}] 1) Calling LLMService.generate`, { prompt });
-      const res = await llmService.generate(prompt, { reasoningEffort: 'none' }, providerName);
+      const res = await llmService.generate(prompt, { reasoningEffort: 'none' }, { provider: providerName });
       logFlow(`[${providerName}] 1) Response`, {
         textPreview: res.text?.slice(0, 80),
         textLength: res.text?.length,
@@ -296,7 +295,7 @@ describe.skipIf(!getIntegrationProvider('deepseek'))('DeepSeek LLM integration (
     async () => {
       const messages: ChatMessage[] = [{ role: 'user', content: 'Reply with only the number 42.' }];
       logFlow(`[${providerName}] 2) Calling LLMService.generate with messages`, { messageCount: messages.length });
-      const res = await llmService.generate('Reply with only the number 42.', { reasoningEffort: 'none', messages }, providerName);
+      const res = await llmService.generate('Reply with only the number 42.', { reasoningEffort: 'none', messages }, { provider: providerName });
       logFlow(`[${providerName}] 2) Response`, { textPreview: res.text?.slice(0, 80), textLength: res.text?.length });
       expect(res).toBeDefined();
       expect(typeof res.text).toBe('string');
@@ -315,7 +314,7 @@ describe.skipIf(!getIntegrationProvider('deepseek'))('DeepSeek LLM integration (
         messageCount: messages.length,
         toolNames: SAMPLE_TOOLS.map((t) => t.name),
       });
-      const res = await llmService.generate('', { reasoningEffort: 'none', messages, tools: SAMPLE_TOOLS, maxTokens: 1024 }, providerName);
+      const res = await llmService.generate('', { reasoningEffort: 'none', messages, tools: SAMPLE_TOOLS, maxTokens: 1024 }, { provider: providerName });
       const firstCall = res.functionCalls?.[0];
       logFlow(`[${providerName}] 3) Response`, {
         textPreview: res.text?.slice(0, 80),
@@ -360,7 +359,7 @@ describe.skipIf(!getIntegrationProvider('deepseek'))('DeepSeek LLM integration (
             return { temperature: 25, unit: 'celsius', condition: 'sunny' };
           },
         },
-        providerName,
+        { provider: providerName },
       );
       logFlow(`[${providerName}] 4) Response`, {
         stopReason: res.stopReason,

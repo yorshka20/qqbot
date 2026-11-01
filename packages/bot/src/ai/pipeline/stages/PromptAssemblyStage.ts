@@ -184,7 +184,7 @@ export class PromptAssemblyStage implements ReplyStage {
     //      chatReasoning. Premium providers always run at full quality
     //      regardless of upstream routing.
     const replyMode = ctx.hookContext.metadata.get('replyMode');
-    const providerName = ctx.selectedProviderName ?? '';
+    const providerName = ctx.target?.provider ?? '';
     let reasoningEffort: ReasoningEffort;
     let effortReason: string;
     if (hasTools) {
@@ -217,7 +217,7 @@ export class PromptAssemblyStage implements ReplyStage {
 
     // Debug log
     logger.debug(
-      `[PromptAssemblyStage] Raw messages sent to provider (provider=${ctx.selectedProviderName ?? 'default'}):\n${JSON.stringify(
+      `[PromptAssemblyStage] Raw messages sent to provider (provider=${ctx.target?.provider ?? 'default'}):\n${JSON.stringify(
         messages,
         (_, v) => (typeof v === 'string' && v.startsWith('data:') && v.includes('base64,') ? '[base64 omitted]' : v),
         2,

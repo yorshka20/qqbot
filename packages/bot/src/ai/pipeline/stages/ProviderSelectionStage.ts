@@ -63,33 +63,33 @@ export class ProviderSelectionStage implements ReplyStage {
       usedExplicitProvider = result.hasExplicitProvider;
     }
 
-    ctx.providerName = providerName;
+    // A routed provider answers on its own configured model.
+    ctx.routedTarget = providerName ? { provider: providerName } : undefined;
     ctx.usedExplicitProvider = usedExplicitProvider;
 
-    // The provider that answers this turn: the routed one, else the session/default LLM.
-    const routedProvider = await this.llmService.getAvailableProvider(providerName, sessionId);
+    // The LLM that answers this turn: the routed one, else the session/default LLM. It is
+    // resolved once here and the prompt, the effort and the generation all use the result.
+    const routed = await this.llmService.resolveTarget(ctx.routedTarget, sessionId);
 
     const hasImages = ctx.messageImages.length > 0;
     const imageRouting = hasImages
-      ? await this.visionService.routeImageTurn(routedProvider, providerName, sessionId)
+      ? await this.visionService.routeImageTurn(routed?.provider ?? null, providerName, sessionId)
       : null;
-    ctx.selectedProviderName = imageRouting?.providerName ?? providerName;
     ctx.providerHasVision = imageRouting?.canSeeImages ?? false;
 
-    const effectiveProvider = ctx.selectedProviderName ?? 'default';
-    // Re-resolve only when the images handed the turn to a different provider.
-    const resolvedProvider =
-      ctx.selectedProviderName === providerName
-        ? routedProvider
-        : await this.llmService.getAvailableProvider(ctx.selectedProviderName, sessionId);
+    // A text-only provider hands an image turn to a vision provider, which answers on its own model.
+    const visionHandoff = imageRouting?.providerName !== providerName ? imageRouting?.providerName : undefined;
+    const answering = visionHandoff
+      ? await this.llmService.resolveTarget({ provider: visionHandoff }, sessionId)
+      : routed;
+    ctx.target = answering?.target;
 
-    // Store resolved provider name and model in metadata so prompt producers can inject
+    // Store the answering provider and model in metadata so prompt producers can inject
     // them into the system prompt for LLM self-identification.
-    const resolvedProviderInstance = resolvedProvider as unknown as AIProvider | null;
-    const resolvedProviderName = resolvedProviderInstance?.name ?? effectiveProvider;
-    const resolvedModel = resolvedProviderInstance?.getDefaultModel?.();
+    const resolvedProviderInstance = (answering?.provider ?? null) as unknown as AIProvider | null;
+    const resolvedProviderName = ctx.target?.provider ?? 'default';
     ctx.hookContext.metadata.set('promptProviderName', resolvedProviderName);
-    if (resolvedModel) ctx.hookContext.metadata.set('promptModelName', resolvedModel);
+    if (ctx.target?.model) ctx.hookContext.metadata.set('promptModelName', ctx.target.model);
 
     // Capabilities of the provider that will actually serve the turn
     const providerCanUseTools = resolvedProviderInstance
@@ -131,7 +131,7 @@ export class ProviderSelectionStage implements ReplyStage {
 
     // Log
     logger.info(
-      `[ProviderSelectionStage] Provider routing | reason=${reason} | confidence=${confidence} | explicitProvider=${usedExplicitProvider} | provider=${providerName ?? 'default'} | resolved=${resolvedProviderName} | images=${ctx.messageImages.length}`,
+      `[ProviderSelectionStage] Provider routing | reason=${reason} | confidence=${confidence} | explicitProvider=${usedExplicitProvider} | provider=${providerName ?? 'default'} | resolved=${resolvedProviderName} | model=${ctx.target?.model ?? '-'} | images=${ctx.messageImages.length}`,
     );
   }
 }

@@ -1,5 +1,6 @@
 // AI Manager - manages AI providers and handles provider switching
 
+import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
 import type { HealthCheckable, HealthCheckOptions, HealthCheckResult } from '@/core/health';
 import { HealthStatus } from '@/core/health';
 import { logger } from '@/utils/logger';
@@ -7,10 +8,14 @@ import type { AIProvider } from './base/AIProvider';
 import type { CapabilityType } from './capabilities/types';
 import { ProviderRegistry } from './ProviderRegistry';
 
+/** Capabilities whose default is a bare provider; the LLM default is a target (provider + model). */
+export type ProviderDefaultCapability = Exclude<CapabilityType, 'llm'>;
+
 export class AIManager implements HealthCheckable {
   private providers = new Map<string, AIProvider>();
   private registry = new ProviderRegistry();
-  private defaultProviders = new Map<CapabilityType, string>();
+  private defaultProviders = new Map<ProviderDefaultCapability, string>();
+  private defaultLLM: LLMTarget | null = null;
 
   /**
    * Register an AI provider
@@ -56,6 +61,11 @@ export class AIManager implements HealthCheckable {
         }
       }
     }
+    if (this.defaultLLM?.provider === name) {
+      const [next] = this.registry.getProvidersForCapability('llm');
+      this.defaultLLM = next ? { provider: next.name } : null;
+      logger.info(`[AIManager] Switched default LLM to: ${next?.name ?? '(none)'}`);
+    }
 
     logger.info(`[AIManager] Unregistered provider: ${name}`);
     return true;
@@ -64,7 +74,7 @@ export class AIManager implements HealthCheckable {
   /**
    * Set default provider for a capability
    */
-  setDefaultProvider(capability: CapabilityType, providerName: string): void {
+  setDefaultProvider(capability: ProviderDefaultCapability, providerName: string): void {
     const provider = this.registry.getProviderForCapability(capability, providerName);
     if (!provider) {
       throw new Error(`Provider ${providerName} does not support capability ${capability} or is not available`);
@@ -74,11 +84,23 @@ export class AIManager implements HealthCheckable {
     logger.info(`[AIManager] Set ${providerName} as default provider for ${capability}`);
   }
 
+  setDefaultLLM(target: LLMTarget): void {
+    if (!this.registry.getProviderForCapability('llm', target.provider)) {
+      throw new Error(`Provider ${target.provider} does not support capability llm or is not available`);
+    }
+    this.defaultLLM = target;
+    logger.info(`[AIManager] Set default LLM: ${describeLLMTarget(target)}`);
+  }
+
+  getDefaultLLM(): LLMTarget | null {
+    return this.defaultLLM;
+  }
+
   /**
    * Get default provider for a capability
    */
   getDefaultProvider(capability: CapabilityType): AIProvider | null {
-    const defaultName = this.defaultProviders.get(capability);
+    const defaultName = capability === 'llm' ? this.defaultLLM?.provider : this.defaultProviders.get(capability);
     if (!defaultName) {
       return null;
     }
@@ -140,14 +162,6 @@ export class AIManager implements HealthCheckable {
    */
   getCurrentProvider(capability: CapabilityType = 'llm'): AIProvider | null {
     return this.getDefaultProvider(capability);
-  }
-
-  /**
-   * Set current provider (for backward compatibility)
-   * Sets the default LLM provider
-   */
-  setCurrentProvider(capability: CapabilityType, name: string): void {
-    this.setDefaultProvider(capability, name);
   }
 
   /**

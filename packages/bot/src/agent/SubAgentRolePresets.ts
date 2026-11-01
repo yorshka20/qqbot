@@ -8,6 +8,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import type { SubAgentConfig } from './types';
@@ -48,8 +49,7 @@ interface PresetConfigFile {
   inheritSoul?: boolean;
   inheritMemory?: boolean;
   inheritPreference?: boolean;
-  providerName?: string | string[];
-  providerModels?: Record<string, string>;
+  llm?: LLMTarget[];
   reasoningEffort?: SubAgentConfig['reasoningEffort'];
   maxToolRounds?: number;
   systemTemplate?: string;
@@ -122,8 +122,7 @@ function configToPreset(cfg: PresetConfigFile): RolePreset {
   if (cfg.inheritSoul !== undefined) overrides.inheritSoul = cfg.inheritSoul;
   if (cfg.inheritMemory !== undefined) overrides.inheritMemory = cfg.inheritMemory;
   if (cfg.inheritPreference !== undefined) overrides.inheritPreference = cfg.inheritPreference;
-  if (cfg.providerName !== undefined) overrides.providerName = cfg.providerName;
-  if (cfg.providerModels !== undefined) overrides.providerModels = cfg.providerModels;
+  if (cfg.llm !== undefined) overrides.llm = cfg.llm;
   if (cfg.reasoningEffort !== undefined) overrides.reasoningEffort = cfg.reasoningEffort;
   if (cfg.maxToolRounds !== undefined) overrides.maxToolRounds = cfg.maxToolRounds;
   if (cfg.systemTemplate !== undefined) overrides.systemTemplate = cfg.systemTemplate;

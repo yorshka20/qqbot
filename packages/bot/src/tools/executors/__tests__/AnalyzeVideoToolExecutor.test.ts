@@ -250,10 +250,10 @@ describe('AnalyzeVideoToolExecutor', () => {
   // ── Preset configuration ───────────────────────────────────────────────────
 
   describe('video_analyzer preset', () => {
-    it('getRolePreset returns gemini providerName for video_analyzer', async () => {
+    it('getRolePreset returns a gemini LLM for video_analyzer', async () => {
       const { getRolePreset } = await import('@/agent/SubAgentRolePresets');
       const preset = getRolePreset('video_analyzer');
-      expect(preset.configOverrides.providerName).toBe('gemini');
+      expect(preset.configOverrides.llm?.map((target) => target.provider)).toEqual(['gemini']);
       expect(preset.displayName).toBe('视频分析');
     });
 

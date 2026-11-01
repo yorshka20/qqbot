@@ -95,6 +95,7 @@ The bot requires a `config.jsonc` file (JSONC with comments). Copy from `config.
 - **Control Flow**: Always use curly braces for `if`/`else`; ESM `import` only, never inline `require()`
 - **No Defensive Optionals**: Make a field non-optional when the value is always set (metadata, protocol types); don't add an optional param plus fallbacks for a case the config already guarantees
 - **Single Representation**: One field, not a boolean alongside a parallel enum — use `replyTriggerType` alone, never `triggeredByAtBot` + `triggeredByWakeWord` + `replyTriggerType`
+- **An LLM Is a Target**: Address an LLM as one `LLMTarget` (`{ provider, model? }`) everywhere — config, call sites, routing, session overrides, fallback. Never carry a provider name and a model separately (no `XModel` key beside `X`, no `model` in call options): a model means nothing to another provider, and split fields let it reach the wrong one
 - **One Shape for Single/Multi**: Keep the same format for one and many — a card deck is always an array, a single card is `[card]`
 - **Derive, Don't Hardcode**: Never hardcode a list or an ordering the module can supply (capabilities come from `ProviderRegistry`); default to alphabetical ordering unless there is a stated reason
 - **Reuse Over Reimplementation**: Use the existing shared utility (e.g. image-to-base64 + mime) and promote common logic into a shared module instead of writing a second copy

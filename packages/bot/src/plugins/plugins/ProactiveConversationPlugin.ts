@@ -9,9 +9,11 @@ import { hasWhitelistCapability } from '@/context/HookContextHelpers';
 import { ProactiveConversationService } from '@/conversation/proactive';
 import { ThreadService } from '@/conversation/thread';
 import type { Config } from '@/core/config';
+import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext, HookResult } from '@/hooks/types';
+import { ConfigError } from '@/utils/errors';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
@@ -27,8 +29,8 @@ const COOLDOWN_STATE_FILE = 'data/proactive-cooldown.json';
 export interface ProactiveConversationPluginConfig {
   /** Groups that have proactive analysis enabled. Same groupId can appear multiple times with different preferenceKey (multiple preferences per group). */
   groups?: Array<{ groupId: string; preferenceKey: string }>;
-  /** LLM provider name for preliminary analysis (e.g. "doubao", "deepseek"). Must be registered in ai.providers. Required if not set in taskProviders.lite or defaultProviders.llm. */
-  analysisProvider?: string;
+  /** LLM for preliminary analysis and proactive replies. Its provider must be registered in ai.providers. Defaults to taskProviders.lite, then defaultProviders.llm. */
+  analysis?: LLMTarget;
   /** Default cooldown duration in minutes when /proactive cooldown is used without explicit duration. Default: 30. */
   cooldownDefaultMinutes?: number;
 }
@@ -136,18 +138,24 @@ export class ProactiveConversationPlugin extends PluginBase {
       }
       logger.info(`[ProactiveConversationPlugin] Enabled for groups: ${Array.from(this.groupIds).join(', ')}`);
     }
-    // Resolve analysis provider: plugin config > taskProviders.lite > defaultProviders.llm
+    // A bare provider name no longer configures analysis; left in place it would be ignored
+    // and analysis would silently move to another LLM.
+    if (pluginConfig && 'analysisProvider' in pluginConfig) {
+      throw new ConfigError(
+        'plugins.proactiveConversation.analysisProvider is now analysis: { "provider": "...", "model"?: "..." }',
+      );
+    }
+    // Resolve analysis LLM: plugin config > taskProviders.lite > defaultProviders.llm
     const config = container.resolve<Config>(DITokens.CONFIG);
     const aiConfig = config.getAIConfig();
-    const analysisProvider =
-      pluginConfig?.analysisProvider ?? aiConfig?.taskProviders?.lite ?? aiConfig?.defaultProviders?.llm;
-    if (!analysisProvider) {
+    const analysis = pluginConfig?.analysis ?? aiConfig?.taskProviders?.lite ?? aiConfig?.defaultProviders?.llm;
+    if (!analysis) {
       logger.warn(
-        '[ProactiveConversationPlugin] No analysis provider configured (set plugin analysisProvider, taskProviders.lite, or defaultProviders.llm)',
+        '[ProactiveConversationPlugin] No analysis LLM configured (set plugin analysis, taskProviders.lite, or defaultProviders.llm)',
       );
     } else {
-      this.proactiveConversationService.setAnalysisProvider(analysisProvider);
-      logger.info(`[ProactiveConversationPlugin] Analysis and reply provider: ${analysisProvider}`);
+      this.proactiveConversationService.setAnalysisTarget(analysis);
+      logger.info(`[ProactiveConversationPlugin] Analysis and reply LLM: ${describeLLMTarget(analysis)}`);
     }
 
     // Cooldown config

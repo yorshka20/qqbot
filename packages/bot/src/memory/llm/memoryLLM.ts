@@ -2,6 +2,7 @@
 
 import type { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { logger } from '@/utils/logger';
 
 /**
@@ -11,20 +12,13 @@ import { logger } from '@/utils/logger';
  */
 export const MEMORY_JOB_TIMEOUT_MS = 300_000;
 
-export interface MemoryLLMOptions {
-  /** LLM provider name, resolved from config by the caller. */
-  provider: string;
-  /** Model override; omitted means the provider's configured default. */
-  model?: string;
-}
-
 const JSON_STRATEGIES: ExtractStrategy[] = ['codeBlock', 'regex'];
 
 /** Parsed JSON object from the model's answer, or null when the call or the parse fails (logged). */
 export async function generateMemoryJson(
   llmService: LLMService,
   prompt: string,
-  options: MemoryLLMOptions,
+  target: LLMTarget | undefined,
   label: string,
 ): Promise<Record<string, unknown> | null> {
   let text: string;
@@ -34,11 +28,10 @@ export async function generateMemoryJson(
       {
         temperature: 0.2,
         reasoningEffort: 'medium',
-        model: options.model,
         jsonMode: true,
         timeout: MEMORY_JOB_TIMEOUT_MS,
       },
-      options.provider,
+      target,
     );
     text = (res.text ?? '').trim();
   } catch (err) {

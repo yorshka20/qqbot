@@ -169,8 +169,7 @@ export class ScheduleCommand implements CommandHandler {
   private async parseWithLLM(input: string, groupId: string): Promise<ScheduleParsed | null> {
     const today = new Date().toISOString();
     const aiConfig = this.config.getAIConfig();
-    const liteProvider = aiConfig?.taskProviders?.lite ?? aiConfig?.defaultProviders?.llm ?? 'deepseek';
-    const liteModel = aiConfig?.taskProviders?.liteModel ?? '';
+    const lite = aiConfig?.taskProviders?.lite ?? aiConfig?.defaultProviders?.llm;
 
     const prompt = this.promptManager.render('agenda.schedule_parse', {
       today,
@@ -178,11 +177,7 @@ export class ScheduleCommand implements CommandHandler {
       groupIdLine: `当前群ID: ${groupId}`,
     });
 
-    const response = await this.llmService.generateLite(
-      prompt,
-      { reasoningEffort: 'low', jsonMode: true, model: liteModel },
-      liteProvider,
-    );
+    const response = await this.llmService.generateLite(prompt, { reasoningEffort: 'low', jsonMode: true }, lite);
     if (!response.text) return null;
 
     return parseLlmJson(response.text, ScheduleParseSchema, { strategies: JSON_ONLY_STRATEGIES });

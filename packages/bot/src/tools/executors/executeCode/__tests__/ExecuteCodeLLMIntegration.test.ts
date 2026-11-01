@@ -355,7 +355,7 @@ function defineProviderSuite(providerName: IntegrationProviderName): void {
               return executeToolCall(call);
             },
           },
-          providerName,
+          { provider: providerName },
         );
 
         log('--- Final ---');

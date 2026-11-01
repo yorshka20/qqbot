@@ -26,7 +26,7 @@
 //       Fact counts per group and status.
 //
 // LLM: --provider / --model; migrate defaults to gemini / gemini-3.8-flash, the rest to the
-// memory plugin's extractProvider / extractModel.
+// memory plugin's extract LLM.
 
 import 'reflect-metadata';
 
@@ -39,6 +39,7 @@ import { LLMService } from '@/ai/services/LLMService';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { bootstrapCore } from '@/core/bootstrap';
 import { Config } from '@/core/config';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
@@ -46,7 +47,7 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import { chunkLines } from '@/memory/extraction/chunkLines';
 import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
 import { type NewFactDraft, parseDraft } from '@/memory/llm/factDraft';
-import { generateMemoryJson, type MemoryLLMOptions } from '@/memory/llm/memoryLLM';
+import { generateMemoryJson } from '@/memory/llm/memoryLLM';
 import { listManualFacts, scopeGuide } from '@/memory/llm/promptParts';
 import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';
 import { slotLabel } from '@/memory/model/scopes';
@@ -107,16 +108,18 @@ const llmService = container.resolve(LLMService);
 const store = container.resolve(MemoryFactStore);
 const manualStore = container.resolve(ManualMemoryStore);
 
-function llmOptions(defaults: MemoryLLMOptions): MemoryLLMOptions {
-  return { provider: arg('provider') ?? defaults.provider, model: arg('model') ?? defaults.model };
+/** The LLM from --provider / --model. A provider named here runs on --model or its own model, never the default's. */
+function llmTarget(defaults: LLMTarget): LLMTarget {
+  const provider = arg('provider');
+  return provider ? { provider, model: arg('model') } : { ...defaults, model: arg('model') ?? defaults.model };
 }
 
-function pluginLLMOptions(): MemoryLLMOptions {
-  const plugin = config.getPluginConfig('memory') as { extractProvider?: string; extractModel?: string } | undefined;
-  if (!plugin?.extractProvider) {
-    throw new Error('memory plugin has no extractProvider; pass --provider');
+function pluginLLMTarget(): LLMTarget {
+  const plugin = config.getPluginConfig('memory') as { extract?: LLMTarget } | undefined;
+  if (!plugin?.extract) {
+    throw new Error('memory plugin has no extract LLM; pass --provider');
   }
-  return llmOptions({ provider: plugin.extractProvider, model: plugin.extractModel });
+  return llmTarget(plugin.extract);
 }
 
 function rawDb(): Database {
@@ -153,7 +156,7 @@ interface PlannedFact extends NewFactDraft {
 
 interface MigrationPlan {
   createdAt: string;
-  llm: MemoryLLMOptions;
+  llm: LLMTarget;
   slots: Array<{ groupId: string; userId: string; legacyPath: string; legacyChars: number; facts: PlannedFact[] }>;
   failed: Array<{ groupId: string; userId: string }>;
 }
@@ -233,7 +236,7 @@ function firstSeenFor(db: Database, slot: LegacySlot, facts: NewFactDraft[]): Pl
 }
 
 async function migrateDryRun(): Promise<void> {
-  const llm = llmOptions({ provider: 'gemini', model: 'gemini-3.8-flash' });
+  const llm = llmTarget({ provider: 'gemini', model: 'gemini-3.8-flash' });
   const slots = legacySlots(listArg('group'));
   const db = rawDb();
   const plan: MigrationPlan = { createdAt: new Date().toISOString(), llm, slots: [], failed: [] };
@@ -364,10 +367,10 @@ async function reindex(onlyGroups: string[]): Promise<void> {
 
 async function review(): Promise<void> {
   const reviewService = container.resolve(MemoryReviewService);
-  const options = pluginLLMOptions();
+  const target = pluginLLMTarget();
   const groups = listArg('group');
   for (const groupId of groups.length > 0 ? groups : await store.listGroupIds()) {
-    const summary = await reviewService.reviewGroup(groupId, options);
+    const summary = await reviewService.reviewGroup(groupId, target);
     console.log(
       `  ${groupId}: due ${summary.due}, kept ${summary.kept}, retired ${summary.retired}, merged ${summary.merged}`,
     );
@@ -429,9 +432,9 @@ async function backfill(): Promise<void> {
   );
   const chunks = chunkLines(history.formatAsText(entries), BACKFILL_CHUNK_CHARS);
   console.log(`${entries.length} messages since ${since} in ${chunks.length} chunks`);
-  const options = pluginLLMOptions();
+  const target = pluginLLMTarget();
   for (let i = 0; i < chunks.length; i++) {
-    await extract.extractAndConsolidate(groupId, chunks[i], options);
+    await extract.extractAndConsolidate(groupId, chunks[i], target);
     console.log(`  chunk ${i + 1}/${chunks.length} done`);
   }
 }

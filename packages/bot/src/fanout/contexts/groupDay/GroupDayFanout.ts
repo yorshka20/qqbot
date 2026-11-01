@@ -11,8 +11,9 @@ import {
   type ConversationMessageEntry,
   normalizeGroupId,
 } from '@/conversation/history/ConversationHistoryService';
+import type { LLMTarget } from '@/core/config/types/ai';
 import { DATE_TIMEZONE, dateInTimezone } from '@/utils/dateTime';
-import { BaseFanout, type FanoutContext, type FanoutModel } from '../../core/BaseFanout';
+import { BaseFanout, type FanoutContext } from '../../core/BaseFanout';
 import { FanoutServices } from '../../core/FanoutServices';
 import type { FanoutTarget } from '../../core/types';
 import { computeGroupDayStats, formatChatLog, type GroupDayStats } from './stats';
@@ -45,13 +46,13 @@ export class GroupDayFanout extends BaseFanout<GroupDayContext> {
     super(services);
   }
 
-  protected resolveModel(): FanoutModel {
+  protected resolveTarget(): LLMTarget {
     const ai = this.services.config.getAIConfig();
-    const provider = ai?.taskProviders?.groupDay ?? ai?.defaultProviders?.llm;
-    if (!provider) {
-      throw new Error('group_day: no provider (ai.taskProviders.groupDay or ai.defaultProviders.llm)');
+    const target = ai?.taskProviders?.groupDay ?? ai?.defaultProviders?.llm;
+    if (!target) {
+      throw new Error('group_day: no LLM (ai.taskProviders.groupDay or ai.defaultProviders.llm)');
     }
-    return { provider, model: ai?.taskProviders?.groupDayModel };
+    return target;
   }
 
   protected async buildContext(target: FanoutTarget): Promise<FanoutContext<GroupDayContext> | null> {

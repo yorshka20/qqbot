@@ -26,8 +26,6 @@ import type { ActionHandlerRegistry } from './ActionHandlerRegistry';
 import { buildAgendaHookContext } from './AgendaHookContext';
 import type { AgendaEventContext, AgendaItem } from './types';
 
-const DEFAULT_PROVIDER: string | undefined = undefined; // Use system default LLM provider
-
 /**
  * Result of the LLM loop. `hookContext` carries any reply already queued by
  * tools (e.g. `send_card` writes the rendered card into `hookContext.reply` and
@@ -378,16 +376,11 @@ export class AgentLoop {
       const agendaContext = buildAgendaHookContext(item, groupId, eventContext, this.preferredProtocol);
       const toolExecutor = (call: { name: string; arguments: string }) =>
         executeToolCall(call, agendaContext, this.toolManager, this.hookManager);
-      const response = await this.llmService.generateWithTools(
-        messages,
-        tools,
-        {
-          maxToolRounds: Math.max(1, item.maxSteps ?? 15),
-          toolExecutor,
-          reasoningEffort: 'low',
-        },
-        DEFAULT_PROVIDER,
-      );
+      const response = await this.llmService.generateWithTools(messages, tools, {
+        maxToolRounds: Math.max(1, item.maxSteps ?? 15),
+        toolExecutor,
+        reasoningEffort: 'low',
+      });
       return { text: response.text?.trim() ?? '', hookContext: agendaContext };
     } catch (err) {
       logger.error(`[AgentLoop] LLM call failed for item "${item.name}":`, err);
