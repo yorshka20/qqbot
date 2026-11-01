@@ -1,5 +1,6 @@
 // WeChat article insights tool — retrieves LLM-analyzed article insights from DB
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { WechatDITokens } from '@/services/wechat/tokens';
@@ -7,7 +8,6 @@ import type { WeChatDatabase } from '@/services/wechat/WeChatDatabase';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
-import { logger } from '@/utils/logger';
 
 const DEFAULT_HOURS = 24;
 const DEFAULT_LIMIT = 50;

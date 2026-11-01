@@ -19,12 +19,11 @@
 //
 // Fails soft: any error / disabled state / empty query → empty string.
 
+import { HttpClient, HttpClientError, logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
-import { HttpClient, HttpClientError } from '@/api/http/HttpClient';
 import type { Config } from '@/core/config';
 import type { VKBContextEngineConfig } from '@/core/config/types/vkbContextEngine';
 import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
 import type {
   VKBEntityEvidence,
   VKBEvidencePack,

@@ -23,8 +23,8 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { readdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { TicketJobSnapshot } from '@qqbot/api-types';
+import { logger } from '@qqbot/shared';
 import { findTicketDir } from '@/services/staticServer/backends/ticketStorage';
-import { logger } from '@/utils/logger';
 import type { ClusterManager } from './ClusterManager';
 import type { JobRecord, TaskRecord, WorkerRegistration } from './types';
 

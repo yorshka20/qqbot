@@ -3,8 +3,8 @@
 // this, which is why anything resolving AI_MANAGER gets a manager that already knows its
 // providers.
 
+import { logger } from '@qqbot/shared';
 import type { AIConfig, Config } from '@/core/config';
-import { logger } from '@/utils/logger';
 import { AIManager, type ProviderDefaultCapability } from './AIManager';
 import { ProviderFactory } from './ProviderFactory';
 

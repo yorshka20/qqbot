@@ -14,9 +14,9 @@
  * a one-way soft dep (avatar also doesn't import mind).
  */
 
+import { logger } from '@qqbot/shared';
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import { type AgendaSystemEvent, MESSAGE_RECEIVED_EVENT } from '@/agenda/types';
-import { logger } from '@/utils/logger';
 import { type CharacterBible, EMPTY_BIBLE } from './data/CharacterBibleLoader';
 import { type CoreDNA, DEFAULT_CORE_DNA } from './data/CoreDNALoader';
 import { applyStimulus, deriveModulation, freshPhenotype, tickPhenotype } from './ode';

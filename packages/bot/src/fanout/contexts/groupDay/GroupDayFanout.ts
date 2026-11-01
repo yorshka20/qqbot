@@ -5,6 +5,7 @@
 // rendered once per run and its bytes must not vary by task: changing context.txt,
 // the line format or the truncation changes every task's cache key at once.
 
+import { DATE_TIMEZONE, dateInTimezone } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import {
   ConversationHistoryService,
@@ -12,7 +13,6 @@ import {
   normalizeGroupId,
 } from '@/conversation/history/ConversationHistoryService';
 import type { LLMTarget } from '@/core/config/types/ai';
-import { DATE_TIMEZONE, dateInTimezone } from '@/utils/dateTime';
 import { BaseFanout, type FanoutContext } from '../../core/BaseFanout';
 import { FanoutServices } from '../../core/FanoutServices';
 import type { FanoutTarget } from '../../core/types';

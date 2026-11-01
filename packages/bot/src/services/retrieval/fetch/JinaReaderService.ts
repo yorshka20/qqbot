@@ -3,8 +3,8 @@
 // expect ~20 req/min before 429s. Caller is responsible for guarding
 // internal/LAN URLs (see urlGuards.isInternalUrl) before invoking.
 
+import { logger } from '@qqbot/shared';
 import type { JinaReaderConfig } from '@/core/config/types/mcp';
-import { logger } from '@/utils/logger';
 
 const DEFAULT_BASE_URL = 'https://r.jina.ai';
 const DEFAULT_TIMEOUT_MS = 15000;

@@ -1,9 +1,9 @@
 // Proactive Thread Persistence Service - persist ended threads to DB
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { ProactiveThreadRecord } from '@/database/models/types';
-import { logger } from '@/utils/logger';
 import type { ProactiveThread } from '../thread';
 
 /**

@@ -1,7 +1,7 @@
+import { logger } from '@qqbot/shared';
 import { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import type { PromptInjectionContext, PromptInjectionProducer } from '@/conversation/promptInjection/types';
 import { getSourceConfig } from '@/conversation/sources/registry';
-import { logger } from '@/utils/logger';
 import type { PromptManager } from '../PromptManager';
 
 /**

@@ -4,6 +4,7 @@
  * Handles initialization and lifecycle management of the coding-agent service.
  */
 
+import { logger } from '@qqbot/shared';
 import { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { APIClient } from '@/api/APIClient';
@@ -14,7 +15,6 @@ import type { Config, ProtocolName } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
-import { logger } from '@/utils/logger';
 import { AgentToolBridge } from './AgentToolBridge';
 import { CodingAgentService } from './CodingAgentService';
 

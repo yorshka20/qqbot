@@ -1,6 +1,7 @@
 // Reply generation pipeline orchestrator.
 // Runs the stage-based pipeline for normal reply generation.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
 import { EpisodeCacheManager } from '@/ai/pipeline/helpers/EpisodeCacheManager';
@@ -17,7 +18,6 @@ import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
 import type { ToolResult } from '@/tools/types';
-import { logger } from '@/utils/logger';
 import { ReplyPipelineContext } from './ReplyPipelineContext';
 import type { ReplyStage } from './types';
 

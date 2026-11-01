@@ -1,8 +1,8 @@
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import type { AgendaService } from '@/agenda/AgendaService';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

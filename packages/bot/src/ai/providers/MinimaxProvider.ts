@@ -3,8 +3,7 @@
 // Supports MiniMax-M2.7, MiniMax-M2.5, MiniMax-M2.1, MiniMax-M2 models (and highspeed variants).
 // Supports vision (image understanding) and tool use.
 
-import { HttpClient } from '@/api/http/HttpClient';
-import { logger } from '@/utils/logger';
+import { HttpClient, logger } from '@qqbot/shared';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';

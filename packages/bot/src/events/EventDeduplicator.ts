@@ -1,6 +1,6 @@
 // Deduplicates events from multiple protocols
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { NormalizedEvent } from './types';
 
 export type DeduplicationStrategy = 'first-received' | 'priority-protocol' | 'merge';

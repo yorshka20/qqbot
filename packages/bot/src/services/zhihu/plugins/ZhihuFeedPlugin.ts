@@ -2,6 +2,7 @@
 // Digest generation is handled by AgentLoop via schedule.md, not by this plugin.
 // All core logic lives in src/services/zhihu/
 
+import { logger } from '@qqbot/shared';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
 import { CommandManager } from '@/command/CommandManager';
@@ -16,7 +17,6 @@ import { ZhihuClient } from '@/services/zhihu/ZhihuClient';
 import { ZhihuContentParser } from '@/services/zhihu/ZhihuContentParser';
 import { ZhihuDatabase } from '@/services/zhihu/ZhihuDatabase';
 import { ZhihuFeedService } from '@/services/zhihu/ZhihuFeedService';
-import { logger } from '@/utils/logger';
 import { ZhihuCommandHandler } from '../commands/ZhihuCommandHandler';
 
 @RegisterPlugin({

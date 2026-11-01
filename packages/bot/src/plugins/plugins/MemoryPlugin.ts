@@ -4,6 +4,7 @@
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
+import { ConfigError, getRepoRoot, logger } from '@qqbot/shared';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
 import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
@@ -18,9 +19,6 @@ import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
 import { MemoryReviewService } from '@/memory/review/MemoryReviewService';
 import { MemoryFactStore } from '@/memory/storage/MemoryFactStore';
 import { MemoryIndexSync } from '@/memory/storage/MemoryIndexSync';
-import { ConfigError } from '@/utils/errors';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

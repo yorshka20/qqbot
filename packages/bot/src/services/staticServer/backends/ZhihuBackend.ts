@@ -15,11 +15,11 @@ import type {
   ZhihuPageStats,
   ZhihuStatsResponse,
 } from '@qqbot/api-types';
+import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
 import { ZhihuDITokens } from '@/services/zhihu/tokens';
 import type { ZhihuFeedItemRow } from '@/services/zhihu/types';
 import type { ZhihuDatabase } from '@/services/zhihu/ZhihuDatabase';
-import { logger } from '@/utils/logger';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 

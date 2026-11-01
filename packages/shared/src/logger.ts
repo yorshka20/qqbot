@@ -3,10 +3,12 @@
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import winston from 'winston';
-import { getCurrentMessageContext } from '@/context/MessageContextStorage';
-import { botLogsDir, localDateString, logFilePathAt } from '@/utils/logFiles';
+import { botLogsDir, localDateString, logFilePathAt } from './logFiles';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+/** The two transports differ in what they may drop; see `LogContextSource.suppress`. */
+export type LogTarget = 'console' | 'file';
 
 export interface Logger {
   debug(message: string, ...args: unknown[]): void;
@@ -30,67 +32,56 @@ export function formatLogSections(sections: LogSection[]): string {
   return sections.map((s) => `── [${s.label}] ──\n${s.content}`).join('\n');
 }
 
-/**
- * Per-message log filter. When set, every log call checks the current async
- * message context: if a message context exists and the message's group/user
- * is not whitelisted, the call is dropped (unless the level is in allowLevels).
- * Logs without a message context (bootstrap, plugins, system errors) always pass.
- *
- * Asymmetric semantics by design:
- *   - groupIds: strict allowlist (groups are noisy, opt-in only)
- *   - userIds:  empty → all private chats pass; non-empty → allowlist
- *               (private is owner-controlled and low-volume; the filter exists
- *                to silence groups, not interactions the owner initiated)
- */
-export interface MessageLogFilter {
-  groupIds: Set<string>;
-  userIds: Set<string>;
-  /** Levels that always pass through. */
-  allowLevels: Set<LogLevel>;
-}
-
-let messageLogFilter: MessageLogFilter | null = null;
-
-export function setMessageLogFilter(filter: MessageLogFilter | null): void {
-  messageLogFilter = filter;
+/** What the logger may know about the entry it is writing. */
+export interface LogEntryContext {
+  /** Short tag written in front of the message. */
+  tag?: string;
+  /** ANSI background code for the tag on the console; carries no foreground colour. */
+  color?: string;
+  /**
+   * True the first time it is asked for one context: that console line takes the
+   * background across its whole width, every later line only on the tag. Calling it
+   * consumes the turn, so only call it when a line will actually use it.
+   */
+  takeWholeLineBackground(): boolean;
 }
 
 /**
- * Returns true if this log entry should be suppressed for the given transport.
- *
- * Two transports have different needs:
- *   - 'console': pure display; non-whitelisted is dropped without exception
- *   - 'file':    also feeds DailyStatsBackend log parsing; [STATS] lines must
- *                bypass the filter so per-group counters keep working
- *
- * Logs without a message context (bootstrap, plugin startup, system errors
- * outside any pipeline) always pass — they are not "message logs".
+ * Where the logger gets the per-entry context and the decision to drop an entry.
+ * The application installs one at startup; with none installed every entry is written,
+ * untagged. This is the seam that keeps the logger free of any knowledge of messages,
+ * conversations or whatever else the application tags its logs by.
  */
-function shouldSuppress(target: 'console' | 'file', level: LogLevel, message: string): boolean {
-  if (!messageLogFilter) return false;
-  if (messageLogFilter.allowLevels.has(level)) return false;
-  if (target === 'file' && message.includes('[STATS]')) return false;
-  const ctx = getCurrentMessageContext();
-  if (!ctx) return false;
-  const msg = ctx.message;
-  const gid = msg.groupId != null ? String(msg.groupId) : '';
-  const uid = msg.userId != null ? String(msg.userId) : '';
-  // Group: strict allowlist — group filter exists to silence noisy unrelated groups.
-  if (gid) {
-    return !messageLogFilter.groupIds.has(gid);
-  }
-  // Private: low-volume owner channel; empty userIds means "all private chats pass".
-  // Non-empty userIds becomes an allowlist for the niche case of focusing on one DM.
-  if (messageLogFilter.userIds.size === 0) return false;
-  return !(uid && messageLogFilter.userIds.has(uid));
+export interface LogContextSource {
+  /** Context of the entry being written, or null outside any. */
+  current(): LogEntryContext | null;
+  /**
+   * True when this entry must not reach that transport. The two differ: the console is
+   * display only, while the file is also parsed for statistics, so a source may let
+   * entries through to the file that it drops from the console.
+   */
+  suppress(target: LogTarget, level: LogLevel, message: string): boolean;
 }
 
-/** Build a winston format that drops entries via shouldSuppress() for the given transport. */
-function buildSuppressFormat(target: 'console' | 'file') {
+let contextSource: LogContextSource | null = null;
+
+export function setLogContextSource(source: LogContextSource | null): void {
+  contextSource = source;
+}
+
+function currentContext(): LogEntryContext | null {
+  return contextSource?.current() ?? null;
+}
+
+/** Build a winston format that drops the entries the context source rejects. */
+function buildSuppressFormat(target: LogTarget) {
   return winston.format((info) => {
+    if (!contextSource) {
+      return info;
+    }
     const lvl = info.level as LogLevel;
     const msg = typeof info.message === 'string' ? info.message : String(info.message);
-    return shouldSuppress(target, lvl, msg) ? false : info;
+    return contextSource.suppress(target, lvl, msg) ? false : info;
   })();
 }
 
@@ -143,23 +134,19 @@ const levelColors: Record<string, string> = {
   debug: colors.gray,
 };
 
-/** Prefix for console: [logTag] with background only (no text color). ctx.logColor is already an ANSI background code. */
-function getMessageContextPrefixConsole(): string {
-  const ctx = getCurrentMessageContext();
-  if (ctx?.logTag && ctx?.logColor) {
-    // Background + white text for tag, then reset
-    return `${ctx.logColor}\x1b[37m[${ctx.logTag}]${colors.reset} `;
+/** Console prefix: the tag on its background only (no text colour). */
+function contextPrefixConsole(): string {
+  const ctx = currentContext();
+  if (ctx?.tag && ctx.color) {
+    return `${ctx.color}\x1b[37m[${ctx.tag}]${colors.reset} `;
   }
   return '';
 }
 
-/** Prefix for file: plain [logTag] when current async chain has message context with logTag. */
-function getMessageContextPrefixFile(): string {
-  const ctx = getCurrentMessageContext();
-  if (ctx?.logTag) {
-    return `[${ctx.logTag}] `;
-  }
-  return '';
+/** File prefix: the plain tag. */
+function contextPrefixFile(): string {
+  const ctx = currentContext();
+  return ctx?.tag ? `[${ctx.tag}] ` : '';
 }
 
 class FileLogger implements Logger {
@@ -191,7 +178,7 @@ class FileLogger implements Logger {
         } else if (Object.keys(meta).length) {
           metaStr = formatMeta(meta);
         }
-        const msgPrefix = getMessageContextPrefixFile();
+        const msgPrefix = contextPrefixFile();
         return `[${timestamp}] [${level.toUpperCase()}] ${msgPrefix}${message}${metaStr}`;
       }),
     );
@@ -226,7 +213,7 @@ class FileLogger implements Logger {
         const reset = colors.reset;
         const dim = colors.dim;
         const gray = colors.gray;
-        const ctx = getCurrentMessageContext();
+        const ctx = currentContext();
 
         let metaStr = '';
         let metaStrPlain = '';
@@ -242,20 +229,19 @@ class FileLogger implements Logger {
           metaStrPlain = formatted;
         }
 
-        // First log for this message: whole-line BACKGROUND (no text color). Then turn off so rest are prefix-only.
-        if (ctx?.logColor && ctx?.logWholeLineBackground) {
-          ctx.logWholeLineBackground = false;
-          const plainPrefix = ctx.logTag ? `[${ctx.logTag}] ` : '';
+        // First line of a context: whole-line background, then prefix-only for the rest.
+        if (ctx?.color && ctx.takeWholeLineBackground()) {
+          const plainPrefix = ctx.tag ? `[${ctx.tag}] ` : '';
           const plainLine = `${timestamp} ${levelUpper.padEnd(5)} ${plainPrefix}${message}${metaStrPlain}`;
-          // Background + white text for whole line (readable on dark terminal)
-          const bgAndFg = ctx.logColor.endsWith('m') ? `${ctx.logColor.slice(0, -1)};37m` : `${ctx.logColor}\x1b[37m`;
+          // Background + white text for the whole line (readable on a dark terminal)
+          const bgAndFg = ctx.color.endsWith('m') ? `${ctx.color.slice(0, -1)};37m` : `${ctx.color}\x1b[37m`;
           return `${bgAndFg}${plainLine}${reset}`;
         }
 
         // Subsequent logs: only prefix has background; rest of line normal (no extra text color)
         const levelStr = `${color}${levelUpper.padEnd(5)}${reset}`;
         const timeStr = `${dim}${timestamp}${reset}`;
-        const msgPrefix = getMessageContextPrefixConsole();
+        const msgPrefix = contextPrefixConsole();
         return `${timeStr} ${levelStr} ${msgPrefix}${message}${metaStr}`;
       }),
     );
@@ -306,7 +292,7 @@ class FileLogger implements Logger {
           } else if (Object.keys(meta).length) {
             metaStr = formatMeta(meta);
           }
-          const msgPrefix = getMessageContextPrefixFile();
+          const msgPrefix = contextPrefixFile();
           return `[${timestamp}] [${level.toUpperCase()}] ${msgPrefix}${message}${metaStr}`;
         }),
       );

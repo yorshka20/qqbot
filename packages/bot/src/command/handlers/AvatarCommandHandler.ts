@@ -3,6 +3,7 @@
 // spoken text back to QQ as a plain segment (bypassing the card-rendering
 // stage so long replies don't get sent as images).
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { MessagePipeline } from '@/conversation/MessagePipeline';
 import { makeSyntheticEvent } from '@/conversation/synthetic';
@@ -12,7 +13,6 @@ import { DITokens } from '@/core/DITokens';
 import type { ReplyContent } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
-import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

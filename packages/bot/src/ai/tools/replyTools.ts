@@ -3,6 +3,7 @@
  * Stateless helpers used by ReplyGenerationService and AIService.
  */
 
+import { logger } from '@qqbot/shared';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
 import type { MessageSource } from '@/conversation/sources';
@@ -10,7 +11,6 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ReplyVisibility, ToolCall, ToolResult, ToolSpec } from '@/tools/types';
-import { logger } from '@/utils/logger';
 import type { FunctionCall, ToolDefinition } from '../types';
 
 export interface ReplyToolOptions {

@@ -2,7 +2,7 @@
 // Ported from https://github.com/yorshka20/JKVideo/blob/master/utils/wbi.ts
 
 import { createHash } from 'node:crypto';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 /**
  * Fixed permutation table for generating the mixin key.

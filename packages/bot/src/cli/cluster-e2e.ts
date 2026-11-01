@@ -67,13 +67,12 @@
 import 'reflect-metadata';
 
 import { spawnSync } from 'node:child_process';
+import { logger, randomUUID } from '@qqbot/shared';
 import type { ClusterManager } from '@/cluster/ClusterManager';
 import type { EventEntry, TaskRecord } from '@/cluster/types';
 import { type App, startApp } from '@/core/app';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
-import { randomUUID } from '@/utils/randomUUID';
 
 /** Supported values for --mcp-tool. Empty string = sentinel mode. */
 type McpTool = '' | 'hub_claim' | 'hub_report' | 'hub_ask';

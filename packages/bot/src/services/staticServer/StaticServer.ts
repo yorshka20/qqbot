@@ -9,10 +9,10 @@
  */
 
 import { resolve } from 'node:path';
+import { logger } from '@qqbot/shared';
 import { serve } from 'bun';
 import type { Config } from '@/core/config';
 import type { StaticServerConfig } from '@/core/config/types/bot';
-import { logger } from '@/utils/logger';
 import { type Backend, createBackends } from './backends';
 
 export interface StaticServerInitOptions {

@@ -1,8 +1,8 @@
 // ComfyUI Cloud Run client - synchronous POST workflow API (no job id, no polling).
 
+import { logger } from '@qqbot/shared';
 import type { Text2ImageOptions } from '@/ai/capabilities/types';
 import { buildT2IWorkflow } from '@/services/runpod/t2iWorkflow';
-import { logger } from '@/utils/logger';
 
 export interface ComfyUICloudRunClientOptions {
   /** Optional Bearer token for authenticated Cloud Run or API gateway. */

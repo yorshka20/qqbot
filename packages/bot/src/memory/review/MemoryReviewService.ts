@@ -6,6 +6,7 @@
 // at the time), or merge it with a fact saying the same thing. Retiring changes the status;
 // the row stays. A fact the model leaves out counts as kept.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
@@ -14,7 +15,6 @@ import type { LLMTarget } from '@/core/config/types/ai';
 import type { MemoryReviewConfig } from '@/core/config/types/memory';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryFact } from '@/database/models/types';
-import { logger } from '@/utils/logger';
 import { generateMemoryJson } from '../llm/memoryLLM';
 import { listManualFacts, scopeGuide } from '../llm/promptParts';
 import { slotLabel } from '../model/scopes';

@@ -3,8 +3,7 @@
 // Request/response shapes follow Ark API; parsing is based on doubao-seed-1-8-251228 response format.
 // See: https://www.volcengine.com/docs/82379/1585135
 
-import { HttpClient } from '@/api/http/HttpClient';
-import { logger } from '@/utils/logger';
+import { HttpClient, logger } from '@qqbot/shared';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';

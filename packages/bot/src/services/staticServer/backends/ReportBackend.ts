@@ -8,9 +8,9 @@
  */
 
 import type { ReportDetailResponse, ReportListItem, ReportListResponse } from '@qqbot/api-types';
+import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
 import { WechatDITokens, type WechatReportService } from '@/services/wechat';
-import { logger } from '@/utils/logger';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 

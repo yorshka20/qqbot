@@ -17,14 +17,13 @@
 // Phase 1's `inbound_message` (broadcast every IM event from host) is gone:
 // the client is silent unless the host explicitly dispatches.
 
+import { logger, randomUUID } from '@qqbot/shared';
 import type { SendMessageResult } from '@/api/types';
 import type { Config } from '@/core/config';
 import type { LanRelayConfig } from '@/core/config/types/lanRelay';
 import type { EventRouter } from '@/events/EventRouter';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
-import { logger } from '@/utils/logger';
-import { randomUUID } from '@/utils/randomUUID';
 import type { ILanRelayRuntime, LanRelayOutboundParams } from '../types/runtime';
 import type {
   LanRelayActionPayload,

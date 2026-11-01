@@ -1,6 +1,7 @@
 // WechatMomentsIngestToolExecutor - fetches own WeChat moments and stores in Qdrant
 // Designed for schedule (cron every 3 days) and subagent invocation.
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { LLMService } from '@/ai/services/LLMService';
 import { DITokens } from '@/core/DITokens';
@@ -14,7 +15,6 @@ import type { WeChatPadProClient } from '@/services/wechat/WeChatPadProClient';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
-import { logger } from '@/utils/logger';
 
 /**
  * WechatMomentsIngestToolExecutor

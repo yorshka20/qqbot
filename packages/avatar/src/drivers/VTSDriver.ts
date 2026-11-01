@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { logger } from '@qqbot/shared';
 import { translateChannelsToVTS } from '../channels';
-import { logger } from '../utils/logger';
 import { DriverAdapter } from './DriverAdapter';
 import { DEFAULT_VTS_CONFIG, type VTSConfig, type VTSParameterValue, type VTSRequest, type VTSResponse } from './types';
 

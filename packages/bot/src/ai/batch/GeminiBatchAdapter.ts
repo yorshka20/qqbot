@@ -7,8 +7,7 @@
 // - Processing target: 24 hours
 // - Results inline or via file download
 
-import { HttpClient } from '@/api/http/HttpClient';
-import { logger } from '@/utils/logger';
+import { HttpClient, logger } from '@qqbot/shared';
 import type { BatchAdapter, BatchJob, BatchJobStatus, BatchRequest, BatchResult } from './types';
 
 // ────────────────────────────────────────────────────────────────────────────

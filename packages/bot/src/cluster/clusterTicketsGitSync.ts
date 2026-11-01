@@ -5,9 +5,9 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { logger } from '@qqbot/shared';
 import { spawn } from 'bun';
 import type { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
-import { logger } from '@/utils/logger';
 
 /** Default ProjectRegistry alias for the centralized tickets repo */
 export const CLUSTER_TICKETS_REGISTRY_ALIAS = 'cluster-tickets';

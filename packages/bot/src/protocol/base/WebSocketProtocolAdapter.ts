@@ -1,10 +1,10 @@
 // WebSocket-specific protocol adapter
 // Extracted from the original ProtocolAdapter — handles echo-based request tracking via WS.
 
+import { logger } from '@qqbot/shared';
 import type { APIContext } from '@/api/types';
 import type { ProtocolConfig } from '@/core/config';
 import type { Connection, WebSocketConnection } from '@/core/connection';
-import { logger } from '@/utils/logger';
 import { ProtocolAdapter, unansweredCallError } from './ProtocolAdapter';
 import type { BaseAPIRequest, BaseAPIResponse, BaseEvent } from './types';
 

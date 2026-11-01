@@ -9,7 +9,7 @@
 //
 // This is the ONLY supported registration method. Do not use filesystem scanning.
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import { ToolManager } from './ToolManager';
 
 export function createToolManager(): ToolManager {

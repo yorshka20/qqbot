@@ -3,9 +3,9 @@
 // TTS_MANAGER calls this, so TTSCommandHandler (QQ voice path), AvatarService (renderer
 // speech path) and the `speak` tool all get the same provider set.
 
+import { logger } from '@qqbot/shared';
+import type { HealthCheckManager } from '@qqbot/shared/health';
 import type { Config } from '@/core/config';
-import type { HealthCheckManager } from '@/core/health';
-import { logger } from '@/utils/logger';
 import { FishAudioProvider } from './providers/FishAudioProvider';
 import { SovitsProvider } from './providers/SovitsProvider';
 import { TTSManager } from './TTSManager';

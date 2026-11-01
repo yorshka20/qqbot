@@ -2,9 +2,7 @@
 
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ConfigError } from '@/utils/errors';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { ConfigError, getRepoRoot, logger } from '@qqbot/shared';
 import { loadConfigAuto } from './loadConfigDir';
 // Import all config types
 import { type AgendaConfig, type AgendaLlmLimits, DEFAULT_AGENDA_LLM_LIMITS } from './types/agenda';

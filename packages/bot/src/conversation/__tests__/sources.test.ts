@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 import type { NormalizedMessageEvent } from '@/events/types';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import { deriveSourceFromEvent, SOURCE_VALUES } from '../sources';
 
 function makeEvent(protocol: string, messageType: 'private' | 'group'): NormalizedMessageEvent {

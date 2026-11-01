@@ -11,6 +11,7 @@
 // registered; the provider's live health decides whether it is offered, via
 // the `available` gate.
 
+import { logger } from '@qqbot/shared';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { HookContext } from '@/hooks/types';
@@ -19,7 +20,6 @@ import { stripCues } from '@/services/tts/speechCues';
 import type { TTSManager } from '@/services/tts/TTSManager';
 import type { TTSCapabilities } from '@/services/tts/TTSProvider';
 import type { ResolvedVoiceReplyConfig } from '@/services/tts/voiceReplyConfig';
-import { logger } from '@/utils/logger';
 import type { ToolManager } from '../ToolManager';
 import type { ToolCall, ToolExecutionContext, ToolResult, ToolSpec } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

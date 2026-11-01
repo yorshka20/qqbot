@@ -10,13 +10,13 @@
 // handlers are registered regardless of the config enable flag, and tracking is
 // infrastructure that should run for every reply without requiring a config entry.
 
+import { logger } from '@qqbot/shared';
 import { ConversationMessageSender } from '@/conversation/ConversationMessageSender';
 import { getContainer } from '@/core/DIContainer';
 import type { HookContext } from '@/hooks/types';
 import { Hook, RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { UsageNoticeService } from '@/services/tokenUsage/UsageNoticeService';
-import { logger } from '@/utils/logger';
 
 @RegisterPlugin({
   name: 'usage-tracking',

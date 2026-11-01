@@ -10,13 +10,13 @@
 //   finally:
 //     - Call ResourceCleanupService.cleanup(sessionId, deleteRemoteFile) to remove local temp files and Gemini files
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import type { GeminiProvider } from '@/ai/providers/GeminiProvider';
 import { DITokens } from '@/core/DITokens';
 import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
 import { VideoDownloadService } from '@/services/video/VideoDownloadService';
-import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

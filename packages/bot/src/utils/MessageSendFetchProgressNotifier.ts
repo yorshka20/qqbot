@@ -1,8 +1,8 @@
 // FetchProgressNotifier implementation that sends "正在查询：\n- title1\n- title2" via MessageAPI.
 
+import { logger } from '@qqbot/shared';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { NormalizedMessageEvent } from '@/events/types';
-import { logger } from '@/utils/logger';
 
 export interface FetchProgressNotifier {
   onFetchingUrls(titles: string[]): void;

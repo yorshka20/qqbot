@@ -1,5 +1,6 @@
 // Message Pipeline - processes messages through the complete flow
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import { MESSAGE_RECEIVED_EVENT } from '@/agenda/types';
@@ -16,7 +17,6 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
-import { logger } from '@/utils/logger';
 import { getLogColorForKey, getLogTag } from '@/utils/messageLogContext';
 import { deriveSourceFromEvent, type MessageSource } from './sources';
 import { getSourceConfig } from './sources/registry';

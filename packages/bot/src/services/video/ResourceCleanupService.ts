@@ -8,8 +8,8 @@
 // Both success and error paths in the caller must call cleanup() so no temp files are leaked.
 
 import { unlink } from 'node:fs/promises';
+import { logger } from '@qqbot/shared';
 import { singleton } from 'tsyringe';
-import { logger } from '@/utils/logger';
 
 interface FileResource {
   fileName: string;

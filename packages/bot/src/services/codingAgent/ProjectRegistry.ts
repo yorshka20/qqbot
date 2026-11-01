@@ -10,11 +10,10 @@
 
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 
 export interface ProjectEntry {
   /** Unique alias for referencing in commands */

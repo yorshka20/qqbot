@@ -2,6 +2,7 @@
 
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import { AIService } from '@/ai/AIService';
@@ -14,8 +15,6 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import type { PermissionLevel } from '@/permission';
 import { PluginManager } from '@/plugins/PluginManager';
 import type { InfoCardData, ListCardData } from '@/services/card';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { CommandManager } from '../CommandManager';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';

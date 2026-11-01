@@ -1,4 +1,4 @@
-import { logger } from '../utils/logger';
+import { logger } from '@qqbot/shared';
 
 export type AmbientSourceName = 'idle' | 'persona' | 'activity' | 'persona' | 'idle' | 'persona' | 'activity';
 

@@ -1,8 +1,8 @@
 // Statistics and chat-log text for one group's day, computed in code so the model
 // only does semantic work and never has to count.
 
+import { DISPLAY_TIMEZONE } from '@qqbot/shared';
 import type { ConversationMessageEntry } from '@/conversation/history/ConversationHistoryService';
-import { DISPLAY_TIMEZONE } from '@/utils/dateTime';
 
 export interface HourlyActivity {
   hour: number;

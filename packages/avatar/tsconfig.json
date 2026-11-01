@@ -11,6 +11,11 @@
       "bun-types"
     ]
   },
+  "references": [
+    {
+      "path": "../shared"
+    }
+  ],
   "include": [
     "src/**/*"
   ]

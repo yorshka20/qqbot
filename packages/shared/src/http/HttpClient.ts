@@ -1,7 +1,7 @@
 // HTTP Client utility - encapsulates fetch with better error handling and features
 
 import { connect as tlsConnect } from 'node:tls';
-import { logger } from '@/utils/logger';
+import { logger } from '../logger';
 
 export interface HttpClientOptions {
   baseURL?: string;

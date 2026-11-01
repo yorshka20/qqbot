@@ -10,7 +10,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { botLogsDir, followLatestLog } from '../../packages/bot/src/utils/logFiles';
+import { botLogsDir, followLatestLog } from '@qqbot/shared';
 import { BOT_APP } from './app';
 import { connectSupervisor, launchSupervisor, type SupervisorClient } from './client';
 import type { BotStatus } from './Supervisor';

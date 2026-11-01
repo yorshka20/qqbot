@@ -9,6 +9,7 @@
 //   3. Validated trigger string is written to schedule.md via appendItem()
 //   4. AgendaItem is created in DB and scheduled immediately
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { z } from 'zod';
 import type { AgendaService } from '@/agenda/AgendaService';
@@ -19,7 +20,6 @@ import { JSON_ONLY_STRATEGIES, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

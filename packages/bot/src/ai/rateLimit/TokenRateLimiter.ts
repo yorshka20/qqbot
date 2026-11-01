@@ -4,7 +4,7 @@
 // per provider over a rolling 60-second window and delaying requests
 // when the budget is exhausted.
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 /** A single token consumption record. */
 interface TokenRecord {

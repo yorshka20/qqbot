@@ -10,7 +10,7 @@
 //   const status = await batchService.getBatchStatus('anthropic', job.id);
 //   const results = await batchService.getBatchResults('anthropic', job.id);
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { AIManager } from '../AIManager';
 import { AnthropicBatchAdapter } from './AnthropicBatchAdapter';
 import { DoubaoBatchAdapter, type TOSLocation } from './DoubaoBatchAdapter';

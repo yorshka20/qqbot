@@ -1,7 +1,7 @@
 // Format RAG-retrieved conversation hits for prompt injection (time, participants with id+nickname, clear separators)
 
+import { formatDateTimeShort } from '@qqbot/shared';
 import type { RAGSearchResult } from '@/services/retrieval/rag/types';
-import { formatDateTimeShort } from '@/utils/dateTime';
 
 /** Single message in conversation window RAG payload (userId, optional nickname, text, timestamp). */
 export interface RawMessageItem {

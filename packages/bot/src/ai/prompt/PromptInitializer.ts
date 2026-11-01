@@ -1,12 +1,11 @@
 // Prompt Initializer - initializes PromptManager and registers it to DI container
 
 import { resolve } from 'node:path';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import { initRolePresets } from '@/agent/SubAgentRolePresets';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { PromptManager } from './PromptManager';
 
 /**

@@ -1,6 +1,6 @@
 // Meta event handler
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { NormalizedMetaEvent } from '../types';
 
 export class MetaEventHandler {

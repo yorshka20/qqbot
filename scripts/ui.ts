@@ -10,8 +10,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { botLogsDir } from '../packages/bot/src/utils/logFiles';
-import { getRepoRoot } from '../packages/bot/src/utils/repoRoot';
+import { botLogsDir, getRepoRoot } from '@qqbot/shared';
 
 const PID_FILE = join(botLogsDir(), 'webui.pid');
 const LOG_FILE = join(botLogsDir(), 'webui.log');

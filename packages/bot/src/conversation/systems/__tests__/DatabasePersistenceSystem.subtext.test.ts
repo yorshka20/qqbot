@@ -1,19 +1,16 @@
 import 'reflect-metadata';
 
 import { describe, expect, it, vi } from 'bun:test';
+import * as shared from '@qqbot/shared';
 import { DatabasePersistenceSystem } from '@/conversation/systems/DatabasePersistenceSystem';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { Message } from '@/database/models/types';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 
-vi.mock('@/utils/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-    error: vi.fn(),
-  },
+vi.mock('@qqbot/shared', () => ({
+  ...shared,
+  logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
 vi.mock('@/message/MessageCache', () => ({

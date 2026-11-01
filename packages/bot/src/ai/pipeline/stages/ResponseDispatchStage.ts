@@ -1,12 +1,12 @@
 // Response dispatch stage — card/text dispatch + onAIGenerationComplete hook.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
 import { replaceReply, setReplyWithSegments } from '@/context/HookContextHelpers';
 import { HookManager } from '@/hooks/HookManager';
 import { MessageUtils } from '@/message/MessageUtils';
 import { parseDeliveryMarkers } from '@/utils/contentMarkers';
-import { logger } from '@/utils/logger';
 import { containsTextToolCalls, stripTextToolCalls } from '../../utils/dsmlParser';
 import { extractExpectedJsonFromLlmText } from '../../utils/llmJsonExtract';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';

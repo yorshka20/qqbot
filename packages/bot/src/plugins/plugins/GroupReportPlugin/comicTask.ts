@@ -3,6 +3,7 @@
 // The model decides what to draw from the day's log and calls generate_image itself,
 // which posts each picture to the group. Its closing line, if any, is the caption.
 
+import { logger } from '@qqbot/shared';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { ImageRequestAssembler } from '@/ai/services/ImageRequestAssembler';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
@@ -10,7 +11,6 @@ import type { ConversationHistoryService } from '@/conversation/history/Conversa
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
 import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { logger } from '@/utils/logger';
 import { asArray, asObject } from './normalizeReport';
 
 const TASK_TEMPLATE = 'fanout.group_day.tasks.comic';

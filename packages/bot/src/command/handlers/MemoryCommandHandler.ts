@@ -1,5 +1,6 @@
 // Memory command handlers: deep extract and memory edit
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
@@ -11,7 +12,6 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import type { PermissionChecker } from '@/permission';
 import { PluginManager } from '@/plugins/PluginManager';
 import type { MemoryPlugin } from '@/plugins/plugins/MemoryPlugin';
-import { logger } from '@/utils/logger';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';

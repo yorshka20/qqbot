@@ -1,5 +1,6 @@
 // Message Lifecycle Orchestrator - orchestrates the message processing lifecycle
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { ParsedCommand } from '@/command';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
@@ -9,7 +10,6 @@ import { SystemStage } from '@/core/system';
 import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
-import { logger } from '@/utils/logger';
 import { CommandRouter } from './CommandRouter';
 import { ProcessStageInterceptorRegistry } from './ProcessStageInterceptor';
 

@@ -1,10 +1,10 @@
 // Context resolution stage — resolve referenced messages and extract images.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { ToolResult } from '@/tools/types';
-import { logger } from '@/utils/logger';
 import { extractImagesFromMessageAndReply, getReplyMessageIdFromMessage } from '../../utils/imageUtils';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
 import type { ReplyStage } from '../types';

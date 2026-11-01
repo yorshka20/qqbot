@@ -7,11 +7,11 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { v5 as uuidv5 } from 'uuid';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
 import { GROUP_MEMORY_USER_ID } from '../model/constants';
 import { type ManualFact, parseManualFacts } from './manualFormat';
 

@@ -18,8 +18,7 @@
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { getRepoRoot, logger } from '@qqbot/shared';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 const PRESET_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;

@@ -2,8 +2,7 @@
 // supervisor spawns it with. A bot started any other way (`bun run bot`, `bun run dev`) has no
 // supervisor: nothing would start it again, so it cannot restart or deploy itself.
 
-import { botLogsDir } from '@/utils/logFiles';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { botLogsDir, getRepoRoot } from '@qqbot/shared';
 import {
   type BotToSupervisor,
   SUPERVISED_ENV,

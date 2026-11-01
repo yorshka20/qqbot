@@ -13,7 +13,7 @@
  * - <media><thumb type="1"> — thumbnail URL
  */
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 export interface ParsedMomentMedia {
   id: string;

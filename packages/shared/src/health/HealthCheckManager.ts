@@ -1,7 +1,7 @@
 // Health check manager - centralized management of service health checks
 
 import { singleton } from 'tsyringe';
-import { logger } from '@/utils/logger';
+import { logger } from '../logger';
 import type { HealthCheckable, HealthCheckOptions, HealthCheckResult, ServiceHealthConfig } from './types';
 import { HealthStatus } from './types';
 

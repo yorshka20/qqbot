@@ -1,9 +1,9 @@
 // The one way memory jobs call an LLM: a JSON answer from a background job.
 
+import { logger } from '@qqbot/shared';
 import type { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import type { LLMTarget } from '@/core/config/types/ai';
-import { logger } from '@/utils/logger';
 
 /**
  * Memory jobs carry a day of chat or a whole memory slot and ask for a document-sized answer.

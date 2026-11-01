@@ -1,6 +1,6 @@
 // Command parser - parses command format from message
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { ParsedCommand } from './types';
 
 export class CommandParser {

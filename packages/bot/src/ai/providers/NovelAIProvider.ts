@@ -2,10 +2,9 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import AdmZip from 'adm-zip';
 import type { NovelAIProviderConfig } from '@/core/config';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';

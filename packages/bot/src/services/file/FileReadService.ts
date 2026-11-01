@@ -14,11 +14,11 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { Config } from '@/core/config';
 import type { FileReadServiceConfig } from '@/core/config/types/bot';
 import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
 
 /** Default cap for the human `/cat` path. The read_file tool passes its own. */
 const MAX_CONTENT_LENGTH = 15000;

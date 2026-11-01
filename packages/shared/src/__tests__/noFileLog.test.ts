@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { logger } from './logger';
+import { logger } from '../logger';
 
 const marker = 'nofile-log-marker-7f3a';
 

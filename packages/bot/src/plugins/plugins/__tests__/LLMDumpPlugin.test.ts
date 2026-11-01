@@ -10,7 +10,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { LLMTraceEntry } from '@/ai/types';
-import { randomUUID } from '@/utils/randomUUID';
+import { randomUUID } from '@qqbot/shared';
 import { LLMDumpPlugin } from '../LLMDumpPlugin';
 
 let dir: string;

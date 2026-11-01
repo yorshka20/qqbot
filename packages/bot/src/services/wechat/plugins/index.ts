@@ -1,6 +1,7 @@
 // WeChat Ingest Plugin — thin wrapper that wires up the WeChat service layer
 // All core logic lives in src/services/wechat/
 
+import { logger } from '@qqbot/shared';
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
@@ -29,7 +30,6 @@ import { WeChatArticleCleanupService } from '@/services/wechat/articles/WeChatAr
 import { WechatMomentsAnalysisService } from '@/services/wechat/moments/WechatMomentsAnalysisService';
 import { WechatDigestService } from '@/services/wechat/WechatDigestService';
 import { WechatReportService } from '@/services/wechat/WechatReportService';
-import { logger } from '@/utils/logger';
 import { WechatCommandHandler } from '../commands/WechatCommandHandler';
 
 const PLUGIN_NAME = 'wechatIngest';

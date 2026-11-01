@@ -7,12 +7,12 @@
 // `memory.filter.minRelevanceScore`; each automatic one that makes it into a reply counts a hit.
 // A private reply carries the person's own memory from every group, and no group's memory.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { Config } from '@/core/config';
 import type { MemoryFilterConfig, MemoryScoringConfig } from '@/core/config/types/memory';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryFact } from '@/database/models/types';
-import { logger } from '@/utils/logger';
 import { GROUP_MEMORY_USER_ID } from '../model/constants';
 import { coreScopeOf } from '../model/scopes';
 import { type ManualMemoryFact, ManualMemoryStore } from '../storage/ManualMemoryStore';

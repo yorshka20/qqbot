@@ -59,12 +59,12 @@ import type {
   EnrichedWorkerRegistration,
   ProjectsResponse,
 } from '@qqbot/api-types';
+import { logger } from '@qqbot/shared';
 import type { ClusterManager } from '@/cluster/ClusterManager';
 import type { ClusterEventType, TaskRecord, WorkerRegistration } from '@/cluster/types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
-import { logger } from '@/utils/logger';
 import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/cluster';

@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { PromptManager } from '@/ai/prompt/PromptManager';
 import type { PromptInjectionContext } from '@/conversation/promptInjection/types';
 import { HookMetadataMap } from '@/hooks/metadata';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { getRepoRoot } from '@qqbot/shared';
 import { createModelIdentityProducer } from '../ModelIdentityProducer';
 
 /** The constructor loads prompts/ off disk — same path production takes. */

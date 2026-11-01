@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { HttpClient } from '@/api/http/HttpClient';
+import type { HttpClient } from '@qqbot/shared';
 import { decodeTokenExpMs, VKBTokenManager } from '../VKBTokenManager';
 
 // Build a VKB-shaped token: base64url(json{exp}) + "." + <sig>. Only the

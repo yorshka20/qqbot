@@ -1,12 +1,11 @@
 // Thread Context Compression Service (Phase 4) - async summarize oldest segment, replace in thread; periodic topic cleaning
 
+import { formatTimeCompact, logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { buildSpeakerTag } from '@/ai/prompt/speakerTag';
 import { SummarizeService } from '@/ai/services/SummarizeService';
 import { DITokens } from '@/core/DITokens';
-import { formatTimeCompact } from '@/utils/dateTime';
-import { logger } from '@/utils/logger';
 import type { ThreadMessage } from './ThreadService';
 import { ThreadService } from './ThreadService';
 

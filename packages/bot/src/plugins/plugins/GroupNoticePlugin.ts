@@ -1,10 +1,10 @@
 // GroupNotice Plugin - notifies group member changes (join/leave)
 
+import { logger } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getContainer } from '@/core/DIContainer';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

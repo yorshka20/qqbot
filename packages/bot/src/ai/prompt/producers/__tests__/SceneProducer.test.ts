@@ -8,7 +8,7 @@ import { PromptManager } from '@/ai/prompt/PromptManager';
 import { ProviderRouter } from '@/ai/routing/ProviderRouter';
 import type { PromptInjectionContext } from '@/conversation/promptInjection/types';
 import { HookMetadataMap } from '@/hooks/metadata';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { getRepoRoot } from '@qqbot/shared';
 import { createSceneProducer } from '../SceneProducer';
 
 const WAKE_WORD = '测试唤醒词';

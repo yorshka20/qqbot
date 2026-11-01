@@ -1,5 +1,6 @@
 // Rule Plugin - executes commands on schedule based on configured rules
 
+import { logger } from '@qqbot/shared';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
 import { CommandBuilder } from '@/command/CommandBuilder';
@@ -13,7 +14,6 @@ import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
 import { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
-import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

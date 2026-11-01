@@ -30,13 +30,13 @@ import type {
   LanStatusResponse,
   LanStreamInitData,
 } from '@qqbot/api-types';
+import { logger } from '@qqbot/shared';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { LanHostSubscriber, LanRelayHost } from '@/lan/host/LanRelayHost';
 import { getLanRelayRuntime } from '@/lan/types/runtime';
 import type { PermissionChecker } from '@/permission';
-import { logger } from '@/utils/logger';
 import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/lan';

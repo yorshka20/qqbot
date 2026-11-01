@@ -1,6 +1,6 @@
 // CodeSandbox - executes user code in a controlled environment
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { SandboxConfig, SandboxExecutionResult, SandboxGlobals } from './types';
 import { DEFAULT_SANDBOX_CONFIG } from './types';
 

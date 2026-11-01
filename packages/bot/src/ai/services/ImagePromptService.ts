@@ -1,5 +1,6 @@
 // Image Prompt Service - provides image generation prompt preprocessing
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import {
   AdditionalParamsSchema,
@@ -10,7 +11,6 @@ import {
 import { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
 import type { Text2ImageOptions } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 

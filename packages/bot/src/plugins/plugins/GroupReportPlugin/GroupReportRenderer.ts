@@ -1,11 +1,11 @@
 // GroupReportRenderer — renders a finished group daily report as an image and posts it.
 
+import { logger } from '@qqbot/shared';
 import type { Page } from 'puppeteer-core';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { BrowserService } from '@/services/browser/BrowserService';
-import { logger } from '@/utils/logger';
 import { avatarUrl, renderReportHTML } from './renderReportHTML';
 import type { GroupReportData } from './types';
 

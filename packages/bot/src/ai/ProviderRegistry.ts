@@ -1,6 +1,6 @@
 // Provider Registry - organizes providers by capability
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { AIProvider } from './base/AIProvider';
 import type { CapabilityType } from './capabilities/types';
 

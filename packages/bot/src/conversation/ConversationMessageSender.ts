@@ -1,3 +1,4 @@
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { stripLeakedToolCalls } from '@/ai/utils/dsmlParser';
 import { extractTextFromSegments } from '@/ai/utils/imageUtils';
@@ -6,7 +7,6 @@ import { ConversationHistoryService } from '@/conversation/history/ConversationH
 import type { HookContext } from '@/hooks/types';
 import { expandFaceMarkers } from '@/message/qqFace';
 import { parseDeliveryMarkers } from '@/utils/contentMarkers';
-import { logger } from '@/utils/logger';
 
 /**
  * Sends model-written text into the conversation a hook context came from, immediately,

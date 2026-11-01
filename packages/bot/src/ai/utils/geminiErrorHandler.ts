@@ -1,8 +1,7 @@
 // Gemini API error message handler
 // Provides utilities for handling errors in Gemini API responses and converting them to user-friendly messages
 
-import { HttpClientError } from '@/api/http/HttpClient';
-import { logger } from '@/utils/logger';
+import { HttpClientError, logger } from '@qqbot/shared';
 import type { ProviderImageGenerationResponse } from '../capabilities/types';
 
 /**

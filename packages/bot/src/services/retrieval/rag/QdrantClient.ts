@@ -2,10 +2,9 @@
 // Qdrant point id must be ExtendedPointId: uint64 integer OR string in UUID format.
 // Arbitrary strings (e.g. message id "milky_1772197146_xjm0xvdmf") cause HTTP 400.
 
+import { HttpClient, logger } from '@qqbot/shared';
 import { validate as uuidValidate, v5 as uuidv5 } from 'uuid';
-import { HttpClient } from '@/api/http/HttpClient';
 import type { QdrantConfig } from '@/core/config/types/rag';
-import { logger } from '@/utils/logger';
 
 /** Use RFC DNS namespace for deterministic UUID v5 from RAG document ids (e.g. message id). Same id => same point id. */
 const RAG_POINT_ID_NAMESPACE = uuidv5.DNS;

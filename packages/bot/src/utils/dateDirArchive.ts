@@ -4,7 +4,7 @@
 
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { logger } from './logger';
+import { logger } from '@qqbot/shared';
 
 export type DateDirArchiveFormat = 'tar.gz' | 'zip';
 

@@ -5,7 +5,7 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { ToolCall, ToolExecutionContext } from '@/tools/types';
-import { APIError, SendDeliveryUnknownError } from '@/utils/errors';
+import { APIError, SendDeliveryUnknownError } from '@qqbot/shared';
 import { describeGenerateImageForModel, GenerateImageToolExecutor } from '../GenerateImageToolExecutor';
 
 function executorWith(

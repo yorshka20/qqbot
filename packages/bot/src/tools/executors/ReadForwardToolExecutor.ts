@@ -1,9 +1,9 @@
 // Read forward tool executor - opens a merged-forward (聊天记录) by its forward_id
 
+import { formatDateTimeShort } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ForwardedMessageNode } from '@/api/types';
-import { formatDateTimeShort } from '@/utils/dateTime';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

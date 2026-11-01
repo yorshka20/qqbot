@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { beforeEach, describe, expect, it, vi } from 'bun:test';
+import * as shared from '@qqbot/shared';
 import { PromptInjectionRegistry } from '../PromptInjectionRegistry';
 import type { PromptInjectionContext, PromptInjectionProducer } from '../types';
 
@@ -12,13 +13,9 @@ function makeCtx(source: string): PromptInjectionContext {
 }
 
 // Stub logger so we can spy on warn without real logger setup
-vi.mock('@/utils/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-    error: vi.fn(),
-  },
+vi.mock('@qqbot/shared', () => ({
+  ...shared,
+  logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
 describe('PromptInjectionRegistry', () => {
@@ -68,7 +65,7 @@ describe('PromptInjectionRegistry', () => {
   });
 
   it('case 4: throwing producer does not prevent good producer from contributing', async () => {
-    const { logger } = await import('@/utils/logger');
+    const { logger } = await import('@qqbot/shared');
     const thrower: PromptInjectionProducer = {
       name: 'thrower',
       layer: 'runtime',

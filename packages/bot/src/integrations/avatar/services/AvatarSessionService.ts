@@ -18,10 +18,10 @@
 // pass would error out. We use `scheduleCompressOnly` to run the
 // summarize-and-replace pass only.
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable, singleton } from 'tsyringe';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { ThreadContextCompressionService, ThreadService } from '@/conversation/thread';
-import { logger } from '@/utils/logger';
 import type { AvatarSource } from '../types';
 
 /** Fake preferenceKey for Live2D threads. Not used for template rendering. */

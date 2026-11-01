@@ -1,8 +1,8 @@
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { EpisodeCacheManager } from '@/ai/pipeline/helpers/EpisodeCacheManager';
 import { ConversationHistoryService, normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
 import type { NormalizedNoticeEvent } from '@/events/types';
-import { logger } from '@/utils/logger';
 
 /**
  * Applies a `message_recall` notice to conversation history, so history shows what the chat

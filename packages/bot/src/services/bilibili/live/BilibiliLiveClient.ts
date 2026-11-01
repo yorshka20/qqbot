@@ -22,7 +22,7 @@
 //   - `sendDanmaku` via REST (receive-only clients don't need this)
 
 import { EventEmitter } from 'node:events';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import { clearWbiCache, signWbiParams } from '../wbi';
 import { decodeAll, decodeBodyJson, decodeOnlineCount, encodePacket, Op, Protover } from './protocol';
 

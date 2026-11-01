@@ -3,7 +3,7 @@
  */
 
 import { hostname } from 'node:os';
-import { parseDuration } from '@/utils/duration';
+import { parseDuration } from '@qqbot/shared';
 
 export interface ClusterConfig {
   enabled: boolean;

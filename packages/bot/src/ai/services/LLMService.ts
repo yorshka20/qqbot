@@ -1,16 +1,14 @@
 // LLM Service - provides LLM text generation capability
 
+import { formatLogSections, HttpClientError, type LogSection, logger, randomUUID } from '@qqbot/shared';
+import { HealthCheckManager } from '@qqbot/shared/health';
 import { inject, singleton } from 'tsyringe';
 import { ProviderSelector } from '@/ai/ProviderSelector';
-import { HttpClientError } from '@/api/http/HttpClient';
 import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 import type { Config } from '@/core/config';
 import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
-import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
-import { formatLogSections, type LogSection, logger } from '@/utils/logger';
-import { randomUUID } from '@/utils/randomUUID';
 import type { AIManager } from '../AIManager';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import { isLLMCapability } from '../capabilities/LLMCapability';

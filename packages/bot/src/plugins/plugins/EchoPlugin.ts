@@ -1,5 +1,6 @@
 // Echo Plugin - automatically converts admin messages to TTS
 
+import { logger } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { CommandBuilder } from '@/command/CommandBuilder';
 import { CommandManager } from '@/command/CommandManager';
@@ -13,7 +14,6 @@ import type { HookContext } from '@/hooks/types';
 import { MessageUtils } from '@/message/MessageUtils';
 import type { TextSegment } from '@/message/types';
 import type { PermissionChecker } from '@/permission';
-import { logger } from '@/utils/logger';
 import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';

@@ -21,14 +21,13 @@ import type {
   LanStreamClientDisconnectedData,
   LanStreamInternalReportData,
 } from '@qqbot/api-types';
+import { logger, randomUUID } from '@qqbot/shared';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { SendMessageResult } from '@/api/types';
 import type { Config } from '@/core/config';
 import type { LanRelayConfig } from '@/core/config/types/lanRelay';
 import type { EventRouter } from '@/events/EventRouter';
 import type { MessageSegment } from '@/message/types';
-import { logger } from '@/utils/logger';
-import { randomUUID } from '@/utils/randomUUID';
 import type { ILanRelayRuntime } from '../types/runtime';
 import type {
   LanRelayActionPayload,

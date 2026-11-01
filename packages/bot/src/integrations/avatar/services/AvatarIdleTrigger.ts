@@ -17,8 +17,8 @@
 // input listener), so viewer-generated input both resets the idle clock and
 // the consecutive-fire counter.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
-import { logger } from '@/utils/logger';
 import { LivemodeState } from '../livemode/LivemodeState';
 
 const CHECK_INTERVAL_MS = 15_000;

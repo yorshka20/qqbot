@@ -1,6 +1,6 @@
 // WeChat message buffer: accumulates messages per conversation, flushes on idle or max count
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { ParsedWeChatMessage } from '../types';
 
 export type BufferFlushCallback = (conversationId: string, messages: ParsedWeChatMessage[]) => Promise<void>;

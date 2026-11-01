@@ -1,7 +1,7 @@
 // AutoAccept Plugin - automatically accepts friend requests and group invitations
 
+import { logger } from '@qqbot/shared';
 import type { NormalizedRequestEvent } from '@/events/types';
-import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

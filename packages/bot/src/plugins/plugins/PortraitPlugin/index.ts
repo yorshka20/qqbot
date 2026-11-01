@@ -4,6 +4,7 @@
 // Everything lives in this folder; there is no separate command-handler file or
 // DI-registered service.
 
+import { logger } from '@qqbot/shared';
 import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandHandler, CommandResult } from '@/command/types';
 import { isNoReplyPath } from '@/context/HookContextHelpers';
@@ -14,7 +15,6 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookContext, HookResult } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { BrowserService } from '@/services/browser/BrowserService';
-import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
 import { PortraitService } from './PortraitService';

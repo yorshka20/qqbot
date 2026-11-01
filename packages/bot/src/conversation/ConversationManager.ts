@@ -1,12 +1,12 @@
 // Conversation Manager - orchestrates the conversation flow
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { MessagePipeline } from '@/conversation/MessagePipeline';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { getProtocolSelfId } from '@/protocol/ProtocolRegistry';
-import { logger } from '@/utils/logger';
 import { deriveSourceFromEvent } from './sources';
 import type { MessageProcessingContext, MessageProcessingResult, ProcessMessageOptions } from './types';
 

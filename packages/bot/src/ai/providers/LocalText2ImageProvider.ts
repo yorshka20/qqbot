@@ -1,7 +1,6 @@
 // Local Text2Image Provider implementation - connects to local Python server
 
-import { HttpClient } from '@/api/http/HttpClient';
-import { logger } from '@/utils/logger';
+import { HttpClient, logger } from '@qqbot/shared';
 import { AIProvider } from '../base/AIProvider';
 import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
 import type { CapabilityType, ProviderImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';

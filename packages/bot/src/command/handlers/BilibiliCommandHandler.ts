@@ -1,8 +1,8 @@
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { BilibiliService } from '@/services/bilibili';
 import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
-import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

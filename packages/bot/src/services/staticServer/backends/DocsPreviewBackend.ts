@@ -23,9 +23,8 @@
 import { access, readdir, readFile, stat } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import type { DocsListResponse, DocsRootInfo, DocsRootsResponse, FileItem } from '@qqbot/api-types';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import type { DocsPreviewConfig } from '@/core/config/types/docsPreview';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { resolveSafe } from './pathSafety';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';

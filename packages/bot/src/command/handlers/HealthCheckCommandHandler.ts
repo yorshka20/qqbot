@@ -1,10 +1,9 @@
 // Admin command to inspect and force-refresh health check status for registered services (providers, RAG, etc.)
 
+import { logger } from '@qqbot/shared';
+import { HealthCheckManager, type HealthCheckResult, HealthStatus } from '@qqbot/shared/health';
 import { inject, injectable } from 'tsyringe';
-import { type HealthCheckResult, HealthStatus } from '@/core/health';
-import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

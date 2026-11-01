@@ -7,9 +7,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve as resolvePath } from 'node:path';
-import { logger } from '@/utils/logger';
-import { randomUUID } from '@/utils/randomUUID';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
 import type { ClusterConfig, WorkerBackendType } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { ClusterStatus, TaskRecord, WorkerBackend, WorkerInstance } from './types';

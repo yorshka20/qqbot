@@ -42,8 +42,8 @@
     "cluster:e2e:gemini": "bun run --filter @qqbot/bot cluster:e2e:gemini",
     "cluster:e2e:codex": "bun run --filter @qqbot/bot cluster:e2e:codex",
     "cluster-tickets:sync": "bun run --filter @qqbot/bot cluster-tickets:sync",
-    "test": "bun test packages/bot scripts",
-    "test:network": "NETWORK_TESTS=1 bun test packages/bot scripts",
+    "test": "bun test packages/bot packages/shared scripts",
+    "test:network": "NETWORK_TESTS=1 bun test packages/bot packages/shared scripts",
     "prepare": "husky"
   },
   "keywords": [

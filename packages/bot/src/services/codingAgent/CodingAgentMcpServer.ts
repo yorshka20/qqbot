@@ -31,13 +31,11 @@ import { resolve as resolvePath } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
 import { z } from 'zod';
 import type { ToolDefinition } from '@/ai/types';
 import type { CodingAgentConfig } from '@/core/config';
 import { CARD_DECK_DESCRIPTION } from '@/services/card/cardTypes';
-import { logger } from '@/utils/logger';
-import { randomUUID } from '@/utils/randomUUID';
-import { getRepoRoot } from '@/utils/repoRoot';
 import type { BotInfo, ExecuteCommandParams, ExecuteCommandResult, TaskNotification } from './types';
 
 type TaskNotificationHandler = (notification: TaskNotification) => void;

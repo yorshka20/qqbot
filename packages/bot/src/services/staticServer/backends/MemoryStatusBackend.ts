@@ -28,6 +28,7 @@ import type {
   MemorySlotSummary,
   MemoryStatsResponse,
 } from '@qqbot/api-types';
+import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
 import { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
 import { DatabaseManager } from '@/database/DatabaseManager';
@@ -36,7 +37,6 @@ import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';
 import { isAllowedScope } from '@/memory/model/scopes';
 import { ManualMemoryStore } from '@/memory/storage/ManualMemoryStore';
 import { MemoryFactStore } from '@/memory/storage/MemoryFactStore';
-import { logger } from '@/utils/logger';
 import { MemoryDisplayNames, memorySubjectKey } from './memoryDisplayNames';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';

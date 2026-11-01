@@ -1,5 +1,6 @@
 // MessageOperation Plugin - handles reactions on messages and triggers operations
 
+import { logger } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationManager } from '@/conversation/ConversationManager';
 import type { Config } from '@/core/config';
@@ -11,7 +12,6 @@ import type { HookContext } from '@/hooks/types';
 import { PluginManager } from '@/plugins/PluginManager';
 import type { ProactiveConversationPlugin } from '@/plugins/plugins/ProactiveConversationPlugin';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
-import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

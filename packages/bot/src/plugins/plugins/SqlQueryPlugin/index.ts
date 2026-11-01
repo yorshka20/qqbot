@@ -10,6 +10,7 @@
 // a first query without spending a round trip on schema discovery.
 
 import { resolve } from 'node:path';
+import { logger } from '@qqbot/shared';
 import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import type { Config } from '@/core/config';
@@ -18,7 +19,6 @@ import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolSpec } from '@/tools/types';
-import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
 import { PluginCommandHandler } from '../../PluginCommandHandler';

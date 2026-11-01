@@ -226,6 +226,32 @@ The bot automatically handles database schema initialization. For SQLite, tables
 - `LOG_LEVEL`: Set to `debug` for verbose logging (default: `info`)
 - `CONFIG_PATH`: Override config file location (default: `./config.jsonc`)
 
+## Packages
+
+A `packages/*` bun workspace. **A package never imports the bot**; inside a package use relative
+paths, not `@/`. Glue that needs bot internals (tool executors, commands, plugins) stays in the bot.
+Config types travel with their package — the package exports its own slice and `BotConfig` composes
+them, so the dependency only ever runs bot → package.
+
+- **`@qqbot/shared`** (`packages/shared/`) — the base layer everything sits on: `logger`, `logFiles`,
+  `repoRoot`, `randomUUID`, `dateTime`, `duration`, the error hierarchy and `HttpClient`. The logger
+  knows nothing about messages: it reads per-entry context through `setLogContextSource`, which the
+  bot installs in `bootstrap.ts` from `packages/bot/src/context/logContextSource.ts` (where the
+  per-group/user filter rules live). The health-check framework is the separate
+  `@qqbot/shared/health` entry, deliberately not in the root barrel — it is a tsyringe singleton, and
+  tsyringe throws on import without `reflect-metadata`, which the barrel's 370 importers should not
+  have to load for a logger.
+- **`@qqbot/api-types`** (`packages/api-types/`) — the HTTP contract between
+  `packages/bot/src/services/staticServer/backends/*` and the WebUI. Types only, no runtime code, no
+  dependencies. Both sides import it, so a response shape that changes on one side alone fails to
+  compile. A backend never re-declares a wire shape: either it imports the contract type, or it pins
+  the domain object it sends with an explicit `jsonResponse<T>(...)` at the response site.
+- **`@qqbot/avatar`** (`packages/avatar/`) — VRM / Cubism body layer; depends only on
+  `@qqbot/shared` and `tsyringe`.
+- **`@qqbot/webui`** (`packages/webui/`) — Vite + React admin console; talks to the bot only over HTTP.
+
+Remaining splits are planned in the knowledge base (`_kb/tasks/09-monorepo-and-package-split/`).
+
 ## Important Files and Locations
 
 - **Entry Point**: `packages/bot/src/index.ts`

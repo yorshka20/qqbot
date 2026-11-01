@@ -1,12 +1,12 @@
 // Image utilities for converting message segments to VisionImage format
 
+import { logger } from '@qqbot/shared';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { collectViewableImageSegments } from '@/message/imageSegments';
 import { renderFaceToken } from '@/message/qqFace';
 import type { MessageSegment } from '@/message/types';
-import { logger } from '@/utils/logger';
 import type { VisionImage } from '../capabilities/types';
 import { compressImageToMaxBytes, detectMimeType } from './imageResize';
 import { ResourceDownloader } from './ResourceDownloader';

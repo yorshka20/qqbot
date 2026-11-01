@@ -1,8 +1,8 @@
 // Unified multi-protocol API client
 
+import { APIError } from '@qqbot/shared';
 import type { ProtocolName } from '@/core/config';
 import type { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
-import { APIError } from '@/utils/errors';
 import { APIRouter } from './APIRouter';
 import type { APIStrategy } from './types';
 import { APIContext } from './types';

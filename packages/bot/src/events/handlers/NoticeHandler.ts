@@ -1,7 +1,7 @@
 // Notice event handler
 
+import { logger } from '@qqbot/shared';
 import type { MessageRecallRecorder } from '@/conversation/MessageRecallRecorder';
-import { logger } from '@/utils/logger';
 import type { NormalizedNoticeEvent } from '../types';
 
 export class NoticeHandler {

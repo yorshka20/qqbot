@@ -4,9 +4,9 @@
 
 import { existsSync } from 'node:fs';
 import { relative } from 'node:path';
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { FileReadService } from '@/services/file/FileReadService';
-import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

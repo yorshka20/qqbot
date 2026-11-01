@@ -2,6 +2,7 @@
 
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { isNoReplyPath } from '@/context/HookContextHelpers';
 import { normalizeGroupId } from '@/conversation/history';
@@ -19,8 +20,6 @@ import { MemoryConsolidationService } from '@/memory/consolidation/MemoryConsoli
 import { QdrantClient } from '@/services/retrieval';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import type { RAGDocument } from '@/services/retrieval/rag/types';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

@@ -22,7 +22,7 @@
 
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { AgendaItem } from './types';
 
 export interface RunRecord {

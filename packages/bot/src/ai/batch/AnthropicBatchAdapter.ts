@@ -7,8 +7,7 @@
 // - Results available for 29 days
 // - Processing target: 24 hours (usually < 1 hour)
 
-import { HttpClient } from '@/api/http/HttpClient';
-import { logger } from '@/utils/logger';
+import { HttpClient, logger } from '@qqbot/shared';
 import { clampMaxTokens, PREMIUM_MAX_TOKENS_CEILING } from '../providers/maxTokens';
 import type { BatchAdapter, BatchJob, BatchJobStatus, BatchRequest, BatchResult } from './types';
 

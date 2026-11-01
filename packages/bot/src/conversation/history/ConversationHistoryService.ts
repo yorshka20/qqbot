@@ -1,5 +1,6 @@
 // Conversation History Service - single implementation for loading history from DB and formatting (User<userId:nickname> / Assistant)
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { SummarizeService } from '@/ai/services/SummarizeService';
 import { ThreadService } from '@/conversation/thread/ThreadService';
@@ -11,7 +12,6 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import type { Conversation, Message } from '@/database/models/types';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
-import { logger } from '@/utils/logger';
 import { formatConversationEntriesToText, formatEntriesForSummaryInput } from './format';
 
 export interface ConversationMessageEntry {

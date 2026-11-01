@@ -1,8 +1,8 @@
+import type { HealthCheckManager } from '@qqbot/shared/health';
 import type { AIManager } from '@/ai/AIManager';
 import type { ProviderSelector } from '@/ai/ProviderSelector';
 import type { Config } from '@/core/config';
 import type { LLMTarget } from '@/core/config/types/ai';
-import type { HealthCheckManager } from '@/core/health';
 import { LLMService, type LLMServiceConfig } from '../LLMService';
 
 const EMPTY_CONFIG: LLMServiceConfig = { toolUseProviders: [], fallback: { fallbackOrder: [] } };

@@ -1,5 +1,7 @@
 // Retrieval service - unified facade for web search and vector RAG
 
+import { logger } from '@qqbot/shared';
+import { HealthCheckManager } from '@qqbot/shared/health';
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
@@ -7,8 +9,6 @@ import type { Config } from '@/core/config';
 import type { MCPConfig } from '@/core/config/types/mcp';
 import type { RAGConfig } from '@/core/config/types/rag';
 import { DITokens } from '@/core/DITokens';
-import { HealthCheckManager } from '@/core/health/HealthCheckManager';
-import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { PageContentFetchService } from './fetch';
 import { RAGService } from './rag/RAGService';

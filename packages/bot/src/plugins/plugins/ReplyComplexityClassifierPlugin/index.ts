@@ -3,6 +3,7 @@
 // budget on workhorse providers. Runs at onMessageBeforeAI, well before
 // the main LLM call.
 
+import { logger } from '@qqbot/shared';
 import { z } from 'zod';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
@@ -13,7 +14,6 @@ import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
-import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
 

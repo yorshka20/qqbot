@@ -8,8 +8,8 @@ import { describe, expect, it } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { PromptManager } from '@/ai/prompt/PromptManager';
-import { getCurrentDateHourForPrompt } from '@/utils/dateTime';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { getCurrentDateHourForPrompt } from '@qqbot/shared';
+import { getRepoRoot } from '@qqbot/shared';
 
 const PROMPTS_DIR = join(getRepoRoot(), 'prompts');
 

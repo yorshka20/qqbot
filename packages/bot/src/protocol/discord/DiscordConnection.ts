@@ -2,10 +2,10 @@
 // Overrides connect()/disconnect() to manage discord.js Client lifecycle internally.
 // ConnectionManager treats this identically to any other Connection — no special cases needed.
 
+import { logger } from '@qqbot/shared';
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import type { ProtocolConfig } from '@/core/config';
 import { Connection } from '@/core/connection';
-import { logger } from '@/utils/logger';
 
 /** Map string intent names from config to discord.js GatewayIntentBits flags. */
 const INTENT_MAP: Record<string, number> = {

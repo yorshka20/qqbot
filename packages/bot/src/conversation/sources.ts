@@ -1,5 +1,5 @@
+import { logger } from '@qqbot/shared';
 import type { NormalizedMessageEvent } from '@/events/types';
-import { logger } from '@/utils/logger';
 
 export type MessageSource =
   | 'qq-private'

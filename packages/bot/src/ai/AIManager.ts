@@ -1,9 +1,9 @@
 // AI Manager - manages AI providers and handles provider switching
 
+import { logger } from '@qqbot/shared';
+import type { HealthCheckable, HealthCheckOptions, HealthCheckResult } from '@qqbot/shared/health';
+import { HealthStatus } from '@qqbot/shared/health';
 import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
-import type { HealthCheckable, HealthCheckOptions, HealthCheckResult } from '@/core/health';
-import { HealthStatus } from '@/core/health';
-import { logger } from '@/utils/logger';
 import type { AIProvider } from './base/AIProvider';
 import type { CapabilityType } from './capabilities/types';
 import { ProviderRegistry } from './ProviderRegistry';

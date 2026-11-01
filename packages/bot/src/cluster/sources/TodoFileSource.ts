@@ -6,7 +6,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { TaskCandidate } from '../types';
 import type { ProjectInfo, TaskSource } from './TaskSource';
 

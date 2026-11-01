@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { randomUUID } from '@/utils/randomUUID';
+import { randomUUID } from '@qqbot/shared';
 
 export interface NormalEpisodeState {
   id: string;

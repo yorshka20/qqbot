@@ -6,13 +6,13 @@
 //   /agenda enable <编号|name>  启用指定日程任务
 //   /agenda disable <编号|name> 禁用指定日程任务
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import type { AgendaService } from '@/agenda/AgendaService';
 import type { ScheduleFileService } from '@/agenda/ScheduleFileService';
 import type { AgendaItem } from '@/agenda/types';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

@@ -16,7 +16,7 @@
 // in the surrounding tag grammar (`<memory_context>`, `[speaker:…]`, etc.)
 // and would corrupt the parse if left in.
 
-import { formatTimeCompact } from '@/utils/dateTime';
+import { formatTimeCompact } from '@qqbot/shared';
 
 export interface SpeakerIdentity {
   /** Raw user id — emitted verbatim. Empty string allowed (falls back to nick-only). */

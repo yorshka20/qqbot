@@ -1,9 +1,9 @@
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { DITokens } from '@/core/DITokens';
 import { MemoryIndexSync } from '@/memory/storage/MemoryIndexSync';
 import type { PermissionChecker } from '@/permission';
-import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

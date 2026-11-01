@@ -21,7 +21,7 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import { ComicTask } from '@/plugins/plugins/GroupReportPlugin/comicTask';
 import { KeywordMinesTask } from '@/plugins/plugins/GroupReportPlugin/keywordMines';
 import type { ToolManager } from '@/tools/ToolManager';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { getRepoRoot } from '@qqbot/shared';
 import type { FanoutTask } from '../../../core/types';
 import { type GroupDayContext, GroupDayFanout, getYesterdayRange } from '../GroupDayFanout';
 

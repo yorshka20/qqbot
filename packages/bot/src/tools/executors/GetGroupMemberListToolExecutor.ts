@@ -1,10 +1,10 @@
 // get_group_member_list tool — stats (count only) or member lookup by one or more QQ ids (batch supported)
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import type { APIClient } from '@/api/APIClient';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

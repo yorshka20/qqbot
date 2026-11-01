@@ -5,10 +5,10 @@
 // `MemoryIndexSync.reindexGroup` (startup, daily, `/memory_sync`, `bun run memory reindex`)
 // brings the index back to the rows.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { MemoryFact } from '@/database/models/types';
-import { logger } from '@/utils/logger';
 import { MemoryIndex } from './MemoryIndex';
 
 export interface NewMemoryFact {

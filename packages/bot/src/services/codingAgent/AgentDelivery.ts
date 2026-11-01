@@ -8,6 +8,7 @@
 
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { basename, sep } from 'node:path';
+import { logger } from '@qqbot/shared';
 import type { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
 import type { FileAPI } from '@/api/methods/FileAPI';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
@@ -15,7 +16,6 @@ import type { ConversationHistoryService } from '@/conversation/history/Conversa
 import type { ProtocolName } from '@/core/config';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { CardData } from '@/services/card/cardTypes';
-import { logger } from '@/utils/logger';
 
 export interface AgentDeliveryDeps {
   messageAPI: MessageAPI;

@@ -1,7 +1,7 @@
 // ZhihuClient — HTTP client for Zhihu private API
 // Handles cookie management, rate limiting, and retry logic
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { ZhihuFeedItem, ZhihuMomentsResponse, ZhihuUser } from './types';
 
 export interface ZhihuClientConfig {

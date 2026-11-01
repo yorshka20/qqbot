@@ -32,7 +32,7 @@
 // noted therefore survives, while only live items reach the prompt.
 
 import type { Database } from 'bun:sqlite';
-import { randomUUID } from '@/utils/randomUUID';
+import { randomUUID } from '@qqbot/shared';
 
 export interface SessionMemoItem {
   id: string;

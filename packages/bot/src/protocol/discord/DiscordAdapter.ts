@@ -1,11 +1,11 @@
 // Discord protocol adapter implementation
 // Event normalization and API conversion only — connection lifecycle is handled by DiscordConnection.
 
+import { logger } from '@qqbot/shared';
 import type { SendMessageResult, SendTarget } from '@/api/types';
 import { APIContext } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import type { MessageSegment } from '@/message/types';
-import { logger } from '@/utils/logger';
 import { ProtocolAdapter, resolveAction } from '../base/ProtocolAdapter';
 import type { BaseEvent } from '../base/types';
 import { executeDiscordAPI } from './DiscordAPIConverter';

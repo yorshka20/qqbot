@@ -3,11 +3,10 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FileState, GoogleGenAI } from '@google/genai';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import type { LLMCapability } from '../capabilities/LLMCapability';

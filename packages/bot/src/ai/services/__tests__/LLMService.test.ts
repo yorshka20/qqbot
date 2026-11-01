@@ -4,9 +4,9 @@ import { describe, expect, it, spyOn, test } from 'bun:test';
 import type { AIManager } from '@/ai/AIManager';
 import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, ToolDefinition } from '@/ai/types';
 import { contentToPlainString } from '@/ai/utils/contentUtils';
-import { HttpClientError } from '@/api/http/HttpClient';
+import { HttpClientError } from '@qqbot/shared';
 import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import { EmptyCompletionError, isTransientLLMError, LLMService } from '../LLMService';
 import {
   createAIManagerWithProvider,

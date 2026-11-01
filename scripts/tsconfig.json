@@ -11,6 +11,9 @@
   "references": [
     {
       "path": "../packages/bot"
+    },
+    {
+      "path": "../packages/shared"
     }
   ],
   "include": ["*.ts", "lint/**/*", "supervisor/**/*"]

@@ -55,7 +55,7 @@ import type {
   TicketTemplateResponse,
   TicketUpdateBody,
 } from '@qqbot/api-types';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import {
   bucketForProject,
   findTicketDir,

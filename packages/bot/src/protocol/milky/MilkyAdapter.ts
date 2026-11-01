@@ -1,7 +1,7 @@
 // Milky protocol adapter implementation
 
+import { APIError, HttpClient, HttpClientError, logger } from '@qqbot/shared';
 import type { IncomingForwardedMessage } from '@saltify/milky-types';
-import { HttpClient, HttpClientError } from '@/api/http/HttpClient';
 import type { ForwardedMessageNode, ForwardMessageInput, SendMessageResult, SendTarget } from '@/api/types';
 import { APIContext } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
@@ -9,8 +9,6 @@ import type { WebSocketConnection } from '@/core/connection';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { MessageParser } from '@/message/MessageParser';
 import type { MessageSegment } from '@/message/types';
-import { APIError } from '@/utils/errors';
-import { logger } from '@/utils/logger';
 import { resolveAction, unansweredCallError } from '../base/ProtocolAdapter';
 import type { BaseEvent } from '../base/types';
 import { WebSocketProtocolAdapter } from '../base/WebSocketProtocolAdapter';

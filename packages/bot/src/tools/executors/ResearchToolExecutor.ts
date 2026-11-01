@@ -1,11 +1,11 @@
 // Research meta-tool executor — delegates data-intensive tools to a subagent
 // with isolated context, returning only the summarized conclusion to the main agent.
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { SubAgentType } from '@/agent/types';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
-import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

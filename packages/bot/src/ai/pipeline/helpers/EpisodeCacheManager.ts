@@ -1,11 +1,11 @@
 // Episode-based history cache manager.
 // Owns the NormalEpisodeService instance and per-episode history cache.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { type ConversationMessageEntry, NormalEpisodeService, normalizeSessionId } from '@/conversation/history';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { HookContext } from '@/hooks/types';
-import { logger } from '@/utils/logger';
 
 /**
  * Window sizing.

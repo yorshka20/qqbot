@@ -1,7 +1,7 @@
 // Shared formatter for conversation history entries (same format as ConversationHistoryService.formatAsText)
 
+import { formatTimeCompact, formatTimeSpanCompact } from '@qqbot/shared';
 import { buildSpeakerTag, recallMark } from '@/ai/prompt/speakerTag';
-import { formatTimeCompact, formatTimeSpanCompact } from '@/utils/dateTime';
 import type { ConversationMessageEntry } from './ConversationHistoryService';
 
 /** Format time in compact form (M/DD HH:mm) using Asia/Tokyo timezone. */

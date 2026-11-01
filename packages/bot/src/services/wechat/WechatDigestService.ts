@@ -1,7 +1,7 @@
 // WechatDigestService - provides granular WeChat data queries
 // Used by task executors for group summaries, article analysis, stats, and search
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { WeChatDatabase, WeChatMessageRow } from './WeChatDatabase';
 
 // ────────────────────────────────────────────────────────────────────────────

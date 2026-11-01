@@ -12,11 +12,11 @@
  *   /cluster health [template]        → verify worker template provider credentials
  */
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import type { ClusterManager } from '@/cluster/ClusterManager';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

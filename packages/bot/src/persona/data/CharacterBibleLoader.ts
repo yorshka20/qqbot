@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 export interface CharacterBible {
   /** Self-concept section body (HTML-comment-stripped at top). */

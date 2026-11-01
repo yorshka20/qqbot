@@ -5,8 +5,8 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { logger } from '@qqbot/shared';
 import type { FileReadService, RawFileEntry } from '@/services/file';
-import { logger } from '@/utils/logger';
 
 // ---------------------------------------------------------------------------
 // Public types

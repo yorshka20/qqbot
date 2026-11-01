@@ -7,6 +7,7 @@
 // in production and in the smoke test.
 
 import type { Database } from 'bun:sqlite';
+import { logger } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { AvatarIdleTrigger } from '@/integrations/avatar/services/AvatarIdleTrigger';
 import { initLanRelay } from '@/lan';
@@ -17,7 +18,6 @@ import { killAllMcpChildren } from '@/services/retrieval/searxng/mcp/childReaper
 import { stopStaticServer } from '@/services/staticServer';
 import type { TTSManager } from '@/services/tts/TTSManager';
 import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
-import { logger } from '@/utils/logger';
 import { type BootstrapResult, bootstrapApp } from './bootstrap';
 import { getContainer } from './DIContainer';
 import { DITokens } from './DITokens';

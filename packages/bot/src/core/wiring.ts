@@ -5,13 +5,13 @@
 // outside the container, factories that assemble a registry from config, and an
 // interface token.
 
+import { HealthCheckManager } from '@qqbot/shared/health';
 import { createAIManager } from '@/ai/createAIManager';
 import type { APIClient } from '@/api/APIClient';
 import { AuditEventStore } from '@/conversation/audit/AuditEventStore';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import { DefaultPermissionChecker } from '@/permission';
 import { createTTSManager } from '@/services/tts/createTTSManager';
 import { createToolManager } from '@/tools/createToolManager';

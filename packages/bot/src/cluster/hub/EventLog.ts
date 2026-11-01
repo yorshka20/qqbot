@@ -6,7 +6,7 @@
  */
 
 import type { Database } from 'bun:sqlite';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { ClusterEventType, EventEntry } from '../types';
 
 export class EventLog {

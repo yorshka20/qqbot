@@ -6,12 +6,12 @@
 // tools run under and the one-run-per-target guard all live here, so no subclass can
 // assemble an envelope that differs between the tasks of one run.
 
+import { logger } from '@qqbot/shared';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import type { LLMTarget } from '@/core/config/types/ai';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
 import type { ToolSpec } from '@/tools/types';
-import { logger } from '@/utils/logger';
 import type { FanoutServices } from './FanoutServices';
 import { type FanoutEnvelope, type PreparedTask, runSharedPrefixTasks } from './SharedPrefixRunner';
 import type { FanoutRun, FanoutRunReport, FanoutTarget, FanoutTask } from './types';

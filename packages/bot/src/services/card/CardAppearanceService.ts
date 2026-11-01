@@ -1,9 +1,9 @@
 // Owns the bot-wide light/dark choice for rendered cards.
 
+import { getHourInTimezone } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { type CardAppearanceMode, Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
-import { getHourInTimezone } from '@/utils/dateTime';
 import type { CardAppearance } from './styles';
 
 const DEFAULT_DARK_HOURS = { from: 18, to: 9 };

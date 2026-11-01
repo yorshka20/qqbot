@@ -1,7 +1,7 @@
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
 import type { PermissionChecker, PermissionLevel } from './types';
 
 /**

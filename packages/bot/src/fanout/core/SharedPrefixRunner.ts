@@ -5,6 +5,7 @@
 // ahead of the messages, so a task with a different tool list or JSON mode misses the
 // cache entirely. Tasks therefore cannot touch the envelope; they only add a suffix.
 
+import { logger } from '@qqbot/shared';
 import type { LLMService } from '@/ai/services/LLMService';
 import { executeToolCall } from '@/ai/tools/replyTools';
 import type { ChatMessage, FunctionCall, ToolDefinition } from '@/ai/types';
@@ -12,7 +13,6 @@ import type { LLMTarget } from '@/core/config/types/ai';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { ToolManager } from '@/tools/ToolManager';
-import { logger } from '@/utils/logger';
 import type { FanoutRun, FanoutTask, FanoutTaskOutput, FanoutTaskReport } from './types';
 
 export interface FanoutEnvelope {

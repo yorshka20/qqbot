@@ -1,9 +1,9 @@
 // Reply task executor - handles simple reply tasks
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { AIService } from '@/ai/AIService';
 import { getReply, getReplyContent } from '@/context/HookContextHelpers';
-import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolExecutor, ToolResult } from '../types';
 

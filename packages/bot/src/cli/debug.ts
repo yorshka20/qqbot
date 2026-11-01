@@ -3,6 +3,7 @@
 import 'reflect-metadata';
 
 import readline from 'node:readline';
+import { logger } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { CommandManager } from '@/command/CommandManager';
 import type { ConversationManager } from '@/conversation/ConversationManager';
@@ -14,7 +15,6 @@ import { getContainer } from '../core/DIContainer';
 import { DITokens } from '../core/DITokens';
 import type { NormalizedEvent, NormalizedMessageEvent } from '../events/types';
 import { registerProtocol } from '../protocol/ProtocolRegistry';
-import { logger } from '../utils/logger';
 import { MockConnection } from './MockConnection';
 import { MockProtocolAdapter } from './MockProtocolAdapter';
 

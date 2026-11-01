@@ -1,6 +1,7 @@
 // ZhihuDigestToolExecutor — retrieves zhihu feed data for AgentLoop.
 // Returns raw feed data as structured text; LLM summarization is done by AgentLoop.
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { ZhihuDITokens } from '@/services/zhihu/tokens';
 import type { ZhihuFeedItemRow } from '@/services/zhihu/types';
@@ -8,7 +9,6 @@ import type { ZhihuFeedService } from '@/services/zhihu/ZhihuFeedService';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
-import { logger } from '@/utils/logger';
 
 @Tool({
   name: 'zhihu_digest',

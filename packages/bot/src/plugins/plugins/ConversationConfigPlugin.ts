@@ -1,6 +1,7 @@
 // Conversation Config Plugin - manages conversation-level configuration
 // Provides commands to enable/disable commands and plugins per conversation
 
+import { logger } from '@qqbot/shared';
 import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import { ConversationConfigService } from '@/conversation/ConversationConfigService';
@@ -12,7 +13,6 @@ import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
 import { PluginManager } from '@/plugins/PluginManager';
-import { logger } from '@/utils/logger';
 
 /**
  * Command usage strings

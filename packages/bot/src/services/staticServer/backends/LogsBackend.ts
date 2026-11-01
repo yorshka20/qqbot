@@ -6,7 +6,7 @@
  *                            client connects (no history), following the logger onto each new file
  */
 
-import { botLogsDir, followLatestLog } from '@/utils/logFiles';
+import { botLogsDir, followLatestLog } from '@qqbot/shared';
 import { errorResponse } from './types';
 
 const API_PREFIX = '/api/logs';

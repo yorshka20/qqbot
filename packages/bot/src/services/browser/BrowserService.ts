@@ -2,8 +2,8 @@
 // Provides shared Chrome/Chromium access for card rendering, page scraping, etc.
 
 import { existsSync } from 'node:fs';
+import { logger } from '@qqbot/shared';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
-import { logger } from '@/utils/logger';
 
 /** Default path to Google Chrome on macOS. */
 const MACOS_CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';

@@ -1,9 +1,9 @@
 // WechatEventBridge - publishes WeChat messages as internal system events
 // Allows Agenda onEvent rules to subscribe to WeChat message types
 
+import { logger } from '@qqbot/shared';
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import type { AgendaSystemEvent } from '@/agenda/types';
-import { logger } from '@/utils/logger';
 import type { WeChatMessageRow, WeChatOAArticleRow } from '../WeChatDatabase';
 
 /**

@@ -1,8 +1,8 @@
 // Global dependency injection container management
 // Provides a centralized container for dependency injection using TSyringe
 
+import { logger } from '@qqbot/shared';
 import { container, type DependencyContainer, instanceCachingFactory } from 'tsyringe';
-import { logger } from '@/utils/logger';
 import { DITokens, getRequiredTokens, getTokenMeta } from './DITokens';
 
 /**

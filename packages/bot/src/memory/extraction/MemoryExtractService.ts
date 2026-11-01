@@ -1,6 +1,7 @@
 // Memory Extract Service - extract candidate facts from chat, hand them to consolidation.
 // Also stages `memory_note` notes and drains them into the next consolidation.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
@@ -11,7 +12,6 @@ import { GROUP_CORE_SCOPES, USER_CORE_SCOPES } from '@/core/config/types/memory'
 import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { MemoryNoteBuffer } from '@/database/models/types';
-import { logger } from '@/utils/logger';
 import { MemoryConsolidationService } from '../consolidation/MemoryConsolidationService';
 import { MEMORY_JOB_TIMEOUT_MS } from '../llm/memoryLLM';
 import { GROUP_MEMORY_USER_ID } from '../model/constants';

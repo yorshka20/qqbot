@@ -1,3 +1,4 @@
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import type { APIClient } from '@/api/APIClient';
 import { FileAPI } from '@/api/methods/FileAPI';
@@ -6,7 +7,6 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import { MessageUtils } from '@/message/MessageUtils';
 import type { TTSManager } from '@/services/tts/TTSManager';
 import { uploadFileBuffer } from '@/utils/fileUpload';
-import { logger } from '@/utils/logger';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';

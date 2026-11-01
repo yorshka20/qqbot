@@ -14,8 +14,7 @@
 //   2. Uploading it to a TOS bucket
 //   3. Passing the TOS location to submitBatch
 
-import { HttpClient } from '@/api/http/HttpClient';
-import { logger } from '@/utils/logger';
+import { HttpClient, logger } from '@qqbot/shared';
 import { clampMaxTokens } from '../providers/maxTokens';
 import type { AIGenerateOptions } from '../types';
 import type { BatchAdapter, BatchJob, BatchJobStatus, BatchRequest, BatchResult } from './types';

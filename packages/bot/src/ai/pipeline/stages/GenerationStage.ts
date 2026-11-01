@@ -1,5 +1,6 @@
 // Generation stage — LLM call with retry/fallback + tool execution loop.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { LLMService } from '@/ai/services/LLMService';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -13,7 +14,6 @@ import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
 import type { ToolManager } from '@/tools/ToolManager';
-import { logger } from '@/utils/logger';
 import { executeSkillCall } from '../../tools/replyTools';
 import type { AIGenerateResponse, ChatMessage, FunctionCall, ToolDefinition } from '../../types';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';

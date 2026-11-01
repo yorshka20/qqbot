@@ -1,9 +1,8 @@
 // Routes API calls to appropriate protocol adapter
 
+import { APIError, logger } from '@qqbot/shared';
 import type { ProtocolName } from '@/core/config';
 import type { ProtocolAdapter } from '@/protocol/base/ProtocolAdapter';
-import { APIError } from '@/utils/errors';
-import { logger } from '@/utils/logger';
 import type { APIContext, APIStrategy } from './types';
 
 export class APIRouter {

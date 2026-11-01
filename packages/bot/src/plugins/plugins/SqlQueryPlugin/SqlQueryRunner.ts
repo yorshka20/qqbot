@@ -11,7 +11,7 @@
 // The child opens the database with SQLITE_OPEN_READONLY: writes are refused by
 // SQLite itself rather than by inspecting the statement text.
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { SqlQueryOutcome } from './types';
 
 const RUNNER_SOURCE = `

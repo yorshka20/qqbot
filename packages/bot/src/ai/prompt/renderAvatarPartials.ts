@@ -20,7 +20,7 @@
 // `{{name}}` and simply gets a blank there. This keeps the pipeline
 // resilient to a deploy that forgets to ship one of the fragment files.
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { PromptManager } from './PromptManager';
 
 export interface AvatarPartials {

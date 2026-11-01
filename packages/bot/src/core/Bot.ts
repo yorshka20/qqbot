@@ -1,7 +1,7 @@
 // Main bot orchestrator class
 
 import { EventEmitter } from 'node:events';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import { Config } from './config';
 import { ConnectionManager } from './connection/ConnectionManager';
 

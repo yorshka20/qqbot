@@ -1,10 +1,10 @@
 // ToolManager - registers and manages tools and executors
 
+import { logger } from '@qqbot/shared';
 import type { ToolDefinition } from '@/ai/types';
 import { getContainer } from '@/core/DIContainer';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
-import { logger } from '@/utils/logger';
 import { getAllToolMetadata, metadataToToolSpec } from './decorators';
 import { DEFAULT_TOOL_TIMEOUT_MS, runWithToolDeadline } from './toolDeadline';
 import type {

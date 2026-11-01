@@ -1,6 +1,6 @@
 // System Registry - centralized system registration and management
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { System, SystemContext, SystemFactory, SystemStage } from './System';
 
 /**

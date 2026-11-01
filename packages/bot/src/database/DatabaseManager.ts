@@ -1,8 +1,8 @@
 // Database manager - creates and manages database adapter instance
 
+import { logger } from '@qqbot/shared';
 import { singleton } from 'tsyringe';
 import type { DatabaseConfig } from '@/core/config';
-import { logger } from '@/utils/logger';
 import { MongoDBAdapter } from './adapters/MongoDBAdapter';
 import { SQLiteAdapter } from './adapters/SQLiteAdapter';
 import type { DatabaseAdapter } from './base/DatabaseAdapter';

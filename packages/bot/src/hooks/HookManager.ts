@@ -1,8 +1,8 @@
 // Hook Manager - manages and executes hooks
 
+import { logger } from '@qqbot/shared';
 import { singleton } from 'tsyringe';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
-import { logger } from '@/utils/logger';
 import type { CoreHookName, HookContext, HookHandler, HookName, HookRegistration } from './types';
 
 /**

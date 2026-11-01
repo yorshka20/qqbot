@@ -12,7 +12,7 @@
 import { readdir, rename, rmdir, stat, unlink } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import type { FileItem, ListResponse, MoveBody, RenameBody } from '@qqbot/api-types';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import { resolveSafe } from './pathSafety';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';

@@ -7,12 +7,12 @@
 // through the exact same CommandSystem → PREPARE → SEND pipeline as a normal
 // user-typed command.
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { CommandManager } from '@/command/CommandManager';
 import type { CommandResult } from '@/command/types';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { Lifecycle } from '@/conversation/Lifecycle';
-import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

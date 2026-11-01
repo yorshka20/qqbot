@@ -6,11 +6,11 @@
  */
 
 import type { PersonaStateResponse } from '@qqbot/api-types';
+import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { PersonaService } from '@/persona/PersonaService';
 import type { EpigeneticsStore } from '@/persona/reflection/epigenetics/EpigeneticsStore';
-import { logger } from '@/utils/logger';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 

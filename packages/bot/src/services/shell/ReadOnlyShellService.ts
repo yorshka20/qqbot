@@ -11,8 +11,8 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
+import { logger } from '@qqbot/shared';
 import type { FileReadService } from '@/services/file';
-import { logger } from '@/utils/logger';
 
 const TIMEOUT_MS = 10_000;
 const MAX_BUFFER_BYTES = 2 * 1024 * 1024;

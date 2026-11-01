@@ -7,8 +7,8 @@
 // its file settles.
 
 import { type FSWatcher, mkdirSync, watch } from 'node:fs';
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
-import { logger } from '@/utils/logger';
 import { ManualMemoryStore, type ManualSlot } from './ManualMemoryStore';
 import { MemoryFactStore } from './MemoryFactStore';
 import { MemoryIndex } from './MemoryIndex';

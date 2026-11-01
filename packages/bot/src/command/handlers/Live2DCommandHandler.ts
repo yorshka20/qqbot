@@ -19,12 +19,12 @@
 // and connect/disconnect affects a shared avatar resource — this isn't
 // an end-user toy.
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { BilibiliLiveBridge } from '@/services/bilibili/live/BilibiliLiveBridge';
-import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

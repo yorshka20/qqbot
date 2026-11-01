@@ -8,7 +8,7 @@
  * Also handles spawning planner workers for Job decomposition.
  */
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { HelpRequest } from './types';

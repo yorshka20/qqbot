@@ -1,6 +1,6 @@
 // Request event handler
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { NormalizedRequestEvent } from '../types';
 
 export class RequestHandler {

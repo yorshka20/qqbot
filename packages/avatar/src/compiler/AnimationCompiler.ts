@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
+import { logger } from '@qqbot/shared';
 import type { TunableParam, TunableSection } from '../preview/types';
-import { logger } from '../utils/logger';
 
 /** Per-second tick/emit rollup log. Off by default (non-zero I/O cost at 60Hz);
  *  enable with `AVATAR_PERF_LOG=1` when diagnosing frame-rate or event-loop issues. */
@@ -239,8 +239,10 @@ export class AnimationCompiler extends EventEmitter {
     }
 
     logger.info(
-      `[AnimationCompiler] continuous stack → LayerManager:${debugQuiet ? ' [debugQuiet]' : ''}`,
-      this.listLayers().map((l) => l.id),
+      `[AnimationCompiler] continuous stack → LayerManager:${debugQuiet ? ' [debugQuiet]' : ''} ` +
+        this.listLayers()
+          .map((l) => l.id)
+          .join(', '),
     );
   }
 

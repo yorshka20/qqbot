@@ -8,7 +8,7 @@
  */
 
 import type { Database } from 'bun:sqlite';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { WorkerRegistration } from '../types';
 
 export class WorkerRegistry {

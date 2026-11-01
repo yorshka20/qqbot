@@ -7,10 +7,10 @@
 // method is invoked from the shutdown signal handler.
 
 import type { Database } from 'bun:sqlite';
+import { logger } from '@qqbot/shared';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import type { EventRouter } from '@/events/EventRouter';
-import { logger } from '@/utils/logger';
 import { LanRelayClient } from './client/LanRelayClient';
 import { LanRelayHost } from './host/LanRelayHost';
 import { setLanRelayRuntime } from './types/runtime';

@@ -1,6 +1,6 @@
 // Shared utility: fetch full-text from a WeChat article URL (best-effort, WeChat mobile UA)
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 const JS_CONTENT_RE = /<div[^>]+id=["']js_content["'][^>]*>([\s\S]*?)<\/div>/i;
 

@@ -2,10 +2,9 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import OpenAI, { toFile } from 'openai';
 import type { OpenAIImageConfig } from '@/core/config/types/ai';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import type { LLMCapability } from '../capabilities/LLMCapability';

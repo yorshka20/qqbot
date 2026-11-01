@@ -1,6 +1,6 @@
 // Base HTTP health check implementation
 
-import { logger } from '@/utils/logger';
+import { logger } from '../logger';
 import type { HealthCheckable, HealthCheckOptions, HealthCheckResult } from './types';
 import { HealthStatus } from './types';
 

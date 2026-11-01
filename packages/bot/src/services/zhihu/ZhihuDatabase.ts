@@ -4,7 +4,7 @@
 import { Database } from 'bun:sqlite';
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { ZhihuContentItem, ZhihuFeedItemRow } from './types';
 
 export class ZhihuDatabase {

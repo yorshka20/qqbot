@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 /**
  * Parse claude CLI stdout into a clean final message.

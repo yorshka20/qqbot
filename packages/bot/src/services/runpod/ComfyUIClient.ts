@@ -1,7 +1,7 @@
 // ComfyUI client - upload image, submit Wan2.2 I2V Remix workflow, poll, download video.
 // Uses native fetch for FormData (upload) and binary (view); no shared HttpClient.
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import { buildWan22I2VRemixWorkflow } from './wan22Workflow';
 
 /** ComfyUI output file entry (filename, subfolder, type) */

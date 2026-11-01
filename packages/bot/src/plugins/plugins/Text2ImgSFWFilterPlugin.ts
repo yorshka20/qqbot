@@ -1,8 +1,8 @@
 // Text2Img SFW Filter Plugin
 // Forces specific users to use SFW template for text2img commands
 
+import { logger } from '@qqbot/shared';
 import type { HookContext, HookResult } from '@/hooks/types';
-import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

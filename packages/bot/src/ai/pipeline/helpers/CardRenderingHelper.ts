@@ -1,5 +1,6 @@
 // Card rendering helper — shared card rendering, detection, and extraction logic.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { replaceReplyWithSegments } from '@/context/HookContextHelpers';
 import { HookManager } from '@/hooks/HookManager';
@@ -10,7 +11,6 @@ import type { MessageSegment } from '@/message/types';
 import { CardRenderingService } from '@/services/card';
 import { cardDeckToText } from '@/services/card/cardText';
 import { type CardData, parseCardDeck } from '@/services/card/cardTypes';
-import { logger } from '@/utils/logger';
 import { extractExpectedJsonFromLlmText } from '../../utils/llmJsonExtract';
 
 /**

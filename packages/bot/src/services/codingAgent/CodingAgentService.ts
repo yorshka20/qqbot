@@ -8,11 +8,11 @@
  */
 
 import { isAbsolute, join } from 'node:path';
+import { logger } from '@qqbot/shared';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { CodingAgentConfig, ProtocolName } from '@/core/config';
 import { checkDeploy, isSupervised, requestDeploy, requestRestart } from '@/core/supervisor';
 import { parseCardDeck } from '@/services/card/cardTypes';
-import { logger } from '@/utils/logger';
 import { AgentDelivery, type AgentDeliveryDeps, type DeliveryResult } from './AgentDelivery';
 import type { AgentToolBridge } from './AgentToolBridge';
 import { CodingAgentMcpServer } from './CodingAgentMcpServer';

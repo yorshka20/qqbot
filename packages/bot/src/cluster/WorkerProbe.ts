@@ -19,7 +19,7 @@
  * not a real task dispatch.
  */
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { ClusterConfig, WorkerBackendType, WorkerTemplateConfig } from './config';
 import type { WorkerBackend } from './types';
 import { checkWorkerTemplateHealth } from './WorkerTemplateHealthCheck';

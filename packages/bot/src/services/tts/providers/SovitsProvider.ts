@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import { renderCues } from '../speechCues';
 import type {
   SynthesisChunk,

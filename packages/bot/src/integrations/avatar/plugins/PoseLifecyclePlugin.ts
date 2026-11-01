@@ -2,13 +2,13 @@
 // (avatar-cmd, bilibili-danmaku, idle-trigger, bootstrap).
 
 import type { AvatarService } from '@qqbot/avatar';
+import { logger } from '@qqbot/shared';
 import { getSourceConfig } from '@/conversation/sources/registry';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { Hook, RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
-import { logger } from '@/utils/logger';
 
 @RegisterPlugin({
   name: 'pose-lifecycle',

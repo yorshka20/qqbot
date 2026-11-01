@@ -4,6 +4,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { logger } from '@qqbot/shared';
 import { injectable } from 'tsyringe';
 import type { ClusterManager } from '@/cluster/ClusterManager';
 import type { ClusterConfig } from '@/cluster/config';
@@ -12,7 +13,6 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { parseMarkdownTicket, serializeTicket } from '@/services/staticServer/backends/TicketBackend';
 import { findTicketDir, iterateAllTickets } from '@/services/staticServer/backends/ticketStorage';
-import { logger } from '@/utils/logger';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
 const TAG = '[RepeatingTicketDispatchHandler]';

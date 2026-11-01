@@ -1,5 +1,7 @@
 // Conversation Initializer - initializes all conversation-related components
 
+import { logger } from '@qqbot/shared';
+import { HealthCheckManager } from '@qqbot/shared/health';
 import { AgendaInitializer } from '@/agenda';
 import type { AIManager, PromptManager } from '@/ai';
 import { AIService } from '@/ai/AIService';
@@ -13,8 +15,7 @@ import type { Config } from '@/core/config';
 import { GlobalConfigManager } from '@/core/config/GlobalConfigManager';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { ProviderHealthAdapter } from '@/core/health';
-import { HealthCheckManager } from '@/core/health/HealthCheckManager';
+import { ProviderHealthAdapter } from '@/core/health/ProviderHealthAdapter';
 import { type SystemContext, SystemRegistry } from '@/core/system';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
@@ -22,7 +23,6 @@ import { MessageUtils } from '@/message/MessageUtils';
 import { PersonaInitializer } from '@/persona';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import type { ToolManager } from '@/tools';
-import { logger } from '@/utils/logger';
 import { COMMAND_PREFIXES } from './CommandRouter';
 import { ConversationManager } from './ConversationManager';
 import { CommandSystem } from './systems/CommandSystem';

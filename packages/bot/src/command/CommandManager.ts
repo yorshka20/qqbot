@@ -3,6 +3,7 @@
 // Builtin handlers register through their @Command decorators when '@/command/handlers'
 // is imported; bootstrap (the composition root) does that, not this module.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { getSessionId, getSessionType } from '@/core/config/SessionUtils';
@@ -11,7 +12,6 @@ import { DITokens } from '@/core/DITokens';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { PermissionChecker, PermissionLevel } from '@/permission';
-import { logger } from '@/utils/logger';
 import { getAllCommandMetadata } from './decorators';
 import type { CommandContext, CommandHandler, CommandRegistration, CommandResult, ParsedCommand } from './types';
 

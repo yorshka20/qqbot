@@ -2,11 +2,10 @@
 // AI-triggered task that scans output/downloads group directories for content-identical duplicates.
 
 import { join } from 'node:path';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { FileReadService } from '@/services/file/FileReadService';
 import { formatBytes, resolveGroupDirs, runDeduplication } from '@/utils/fileDedup';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

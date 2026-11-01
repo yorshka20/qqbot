@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { APIContext } from '@/api/types';
-import { APIError, SendDeliveryUnknownError } from '@/utils/errors';
+import { APIError, SendDeliveryUnknownError } from '@qqbot/shared';
 import { unansweredCallError } from './ProtocolAdapter';
 
 describe('unansweredCallError', () => {

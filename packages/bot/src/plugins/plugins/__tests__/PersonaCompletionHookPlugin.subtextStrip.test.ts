@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 
 import { describe, expect, it, vi } from 'bun:test';
+import * as shared from '@qqbot/shared';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import type { PersonaService } from '@/persona';
@@ -8,13 +9,9 @@ import { PersonaCompletionHookPlugin } from '../PersonaCompletionHookPlugin';
 
 const pluginOpts = { name: 'persona-completion', version: '1.0.0', description: 'test' };
 
-vi.mock('@/utils/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-    error: vi.fn(),
-  },
+vi.mock('@qqbot/shared', () => ({
+  ...shared,
+  logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
 function fakePersonaService(enabled: boolean): PersonaService {

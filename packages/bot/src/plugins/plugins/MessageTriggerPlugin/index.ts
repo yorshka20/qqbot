@@ -1,6 +1,7 @@
 // MessageTriggerPlugin - unified message trigger entry point
 // Decides whether to run the reply pipeline AND optionally spawns background subagents.
 
+import { logger } from '@qqbot/shared';
 import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { AIService } from '@/ai/AIService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
@@ -17,7 +18,6 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { MessageUtils } from '@/message/MessageUtils';
-import { logger } from '@/utils/logger';
 import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import { Hook, RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';

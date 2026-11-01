@@ -18,8 +18,8 @@
 // When only a static token is configured (no password), it is returned as-is
 // with no refresh — backward-compatible with the manual-rotation setup.
 
-import type { HttpClient } from '@/api/http/HttpClient';
-import { logger } from '@/utils/logger';
+import type { HttpClient } from '@qqbot/shared';
+import { logger } from '@qqbot/shared';
 import type { VKBAuthVerifyResponse } from './types';
 
 const LOG_TAG = '[VKBTokenManager]';

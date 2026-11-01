@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import type { ProtocolConfig } from '@/core/config';
 import type { WebSocketConnection } from '@/core/connection';
-import { APIError, SendDeliveryUnknownError } from '@/utils/errors';
+import { APIError, SendDeliveryUnknownError } from '@qqbot/shared';
 import { MilkyAdapter } from './MilkyAdapter';
 
 const imageSegment = [{ type: 'image' as const, data: { uri: 'http://127.0.0.1/out.png' } }];

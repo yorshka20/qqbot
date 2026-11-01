@@ -1,5 +1,6 @@
 // Message API method wrappers
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { CommandContext } from '@/command/types';
 import type { ProtocolName } from '@/core/config/types/protocol';
@@ -10,7 +11,6 @@ import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/typ
 import { cacheMessage, getCachedMessageBySeq } from '@/message/MessageCache';
 import type { MessageSegment } from '@/message/types';
 import { getProtocolAdapter } from '@/protocol/ProtocolRegistry';
-import { logger } from '@/utils/logger';
 import type { APIClient } from '../APIClient';
 import type { ForwardedMessageNode, ForwardMessageInput, SendMessageResult, SendTarget } from '../types';
 

@@ -2,8 +2,8 @@
 // T2I: submit workflow with images: [], get image buffer from output.
 // Handler contract: input { workflow, images: [{ name, image: base64 }] }; output { outputs: [{ data: base64 }] } or { error }.
 
+import { logger } from '@qqbot/shared';
 import type { Text2ImageOptions } from '@/ai/capabilities/types';
-import { logger } from '@/utils/logger';
 import { buildT2IWorkflow } from './t2iWorkflow';
 import { buildWan22I2VRemixWorkflow } from './wan22Workflow';
 

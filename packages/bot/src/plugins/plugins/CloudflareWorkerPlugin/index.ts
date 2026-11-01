@@ -2,13 +2,12 @@
 // Proxies Doubao (Volcengine Ark) API requests through a Cloudflare Worker
 // to route traffic from overseas servers to China-domestic endpoints.
 
+import { HttpClient, logger } from '@qqbot/shared';
 import type { AIManager } from '@/ai/AIManager';
-import { HttpClient } from '@/api/http/HttpClient';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
-import { logger } from '@/utils/logger';
 
 interface CloudflareWorkerPluginConfig {
   /** Cloudflare Worker URL, e.g. "https://volcengine-proxy.your-name.workers.dev" */

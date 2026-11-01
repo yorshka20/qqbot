@@ -14,10 +14,10 @@ import type {
   InsightListResponse,
   InsightStatsResponse,
 } from '@qqbot/api-types';
+import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WeChatArticleInsightRow, WeChatDatabase } from '@/services/wechat/WeChatDatabase';
-import { logger } from '@/utils/logger';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 

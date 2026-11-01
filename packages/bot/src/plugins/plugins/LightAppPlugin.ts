@@ -1,6 +1,7 @@
 // LightApp Plugin - when user sends a mini-program (light_app) message,
 // parse json_payload, extract URLs, and send them as a forward message
 
+import { logger } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { isNoReplyPath } from '@/context/HookContextHelpers';
 import type { Config } from '@/core/config';
@@ -9,7 +10,6 @@ import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { extractUrlsFromLightAppPayload } from '@/protocol/milky/utils/lightAppParser';
-import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

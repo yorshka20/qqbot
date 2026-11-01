@@ -8,8 +8,8 @@
 
 import 'reflect-metadata';
 
+import { logger } from '@qqbot/shared';
 import { startApp } from '@/core/app';
-import { logger } from '@/utils/logger';
 
 function numberArg(name: string, fallback: number): number {
   const idx = process.argv.indexOf(name);

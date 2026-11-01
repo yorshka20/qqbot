@@ -1,11 +1,11 @@
 // Conversation Config Service - manages conversation-level configuration with fallback to global config
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { GlobalConfigManager } from '@/core/config/GlobalConfigManager';
 import type { DatabaseAdapter } from '@/database/base/DatabaseAdapter';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { ConversationConfigData } from '@/database/models/types';
-import { logger } from '@/utils/logger';
 import { updateEnabledDisabled } from '../core/config/ConfigUtils';
 
 export type SessionType = 'user' | 'group';

@@ -1,7 +1,7 @@
 // Display names for memory owners, read from the latest messages (SQLite `messages` table).
 
 import type { Database } from 'bun:sqlite';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 export class MemoryDisplayNames {
   constructor(private readonly db: Database) {}

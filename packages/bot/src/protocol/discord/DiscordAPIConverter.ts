@@ -1,7 +1,7 @@
 // Discord API converter - converts unified API actions to discord.js method calls
 
+import { logger } from '@qqbot/shared';
 import { AttachmentBuilder, type Client, type TextChannel } from 'discord.js';
-import { logger } from '@/utils/logger';
 import { segmentsToDiscordMessage } from './DiscordSegmentConverter';
 
 /**

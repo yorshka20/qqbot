@@ -2,12 +2,12 @@
 // in a specified project. No LLM involved — resolves project from registry and
 // calls CodingAgentService.triggerTask() immediately.
 
+import { logger } from '@qqbot/shared';
 import { injectable } from 'tsyringe';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
 import type { ProjectContext } from '@/services/codingAgent/types';
-import { logger } from '@/utils/logger';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
 @injectable()

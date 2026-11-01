@@ -1,5 +1,6 @@
 // RAG Persistence System - buffers messages per session and writes time-windowed points to Qdrant at COMPLETE stage
 
+import { logger } from '@qqbot/shared';
 import { getReply } from '@/context/HookContextHelpers';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { buildConversationWindowDocument } from '@/conversation/rag/buildConversationWindowDocument';
@@ -10,7 +11,6 @@ import type { HookContext } from '@/hooks/types';
 import type { RetrievalService } from '@/services/retrieval';
 import { QdrantClient } from '@/services/retrieval';
 import type { RAGDocument } from '@/services/retrieval/rag/types';
-import { logger } from '@/utils/logger';
 
 /** Default idle minutes to close a conversation window. */
 const DEFAULT_WINDOW_IDLE_MINUTES = 5;

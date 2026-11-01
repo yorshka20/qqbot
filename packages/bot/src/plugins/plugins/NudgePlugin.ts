@@ -1,17 +1,17 @@
 // Nudge Plugin - automatically replies when bot is nudged (戳一戳)
 
+import { logger } from '@qqbot/shared';
+import { HealthCheckManager } from '@qqbot/shared/health';
 import type { AIManager } from '@/ai/AIManager';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
 import { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
-import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

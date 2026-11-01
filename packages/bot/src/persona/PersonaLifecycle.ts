@@ -16,11 +16,11 @@
  */
 
 import type { AvatarService } from '@qqbot/avatar';
+import { logger } from '@qqbot/shared';
 import { AutonomousTriggerScheduler } from '@/integrations/avatar/services/AutonomousTriggerScheduler';
 import type { PersonaModulationAdapter } from '@/integrations/avatar/services/PersonaModulationAdapter';
 import type { WanderExecutor } from '@/integrations/avatar/services/wander/types';
 import { WanderScheduler } from '@/integrations/avatar/services/wander/WanderScheduler';
-import { logger } from '@/utils/logger';
 import { derivePersonaPostureBias } from './ode';
 import type { PersonaService } from './PersonaService';
 import type { ReflectionEngine } from './reflection/ReflectionEngine';

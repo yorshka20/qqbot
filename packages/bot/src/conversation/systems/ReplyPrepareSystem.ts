@@ -1,6 +1,7 @@
 // Reply Prepare System - post-process reply before sending
 // Handles text cleanup and sendAsForward computation for ALL reply sources.
 
+import { logger } from '@qqbot/shared';
 import { stripLeakedToolCalls } from '@/ai/utils/dsmlParser';
 import { extractTextFromSegments } from '@/ai/utils/imageUtils';
 import { hasReply } from '@/context/HookContextHelpers';
@@ -11,7 +12,6 @@ import { MessageUtils } from '@/message/MessageUtils';
 import { expandFaceMarkers } from '@/message/qqFace';
 import type { MessageSegment } from '@/message/types';
 import { getProtocolAdapter, isProtocolRegistered } from '@/protocol/ProtocolRegistry';
-import { logger } from '@/utils/logger';
 
 /**
  * Reply Prepare System

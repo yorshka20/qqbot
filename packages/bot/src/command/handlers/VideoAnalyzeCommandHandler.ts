@@ -8,6 +8,7 @@
 // The command spawns a video_analyzer SubAgent in the background and sends the
 // result back to the originating chat when done.
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { getReplyMessageIdFromMessage } from '@/ai/utils/imageUtils';
@@ -19,7 +20,6 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { extractVideoUrl } from '@/plugins/plugins/VideoAnalyzePlugin';
 import { extractUrlsFromLightAppPayload } from '@/protocol/milky/utils/lightAppParser';
-import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

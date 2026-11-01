@@ -1,8 +1,8 @@
 // ActionHandlerRegistry - registry for direct action handlers invoked by schedule items
 // with actionType === 'action'. Handlers execute code directly without LLM involvement.
 
+import { logger } from '@qqbot/shared';
 import type { ProtocolName } from '@/core/config/types/protocol';
-import { logger } from '@/utils/logger';
 import type { AgendaEventContext, AgendaItem } from './types';
 
 /** Context passed to action handlers when executed */

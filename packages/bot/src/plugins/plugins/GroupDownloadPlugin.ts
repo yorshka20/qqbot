@@ -2,6 +2,7 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { logger } from '@qqbot/shared';
 import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getContainer } from '@/core/DIContainer';
@@ -11,7 +12,6 @@ import type { HookContext } from '@/hooks/types';
 import { FileReadService } from '@/services/file/FileReadService';
 import { runDeduplication } from '@/utils/fileDedup';
 import { getDefaultExtension, getExtensionFromUrl, hashForFilename, uniqueFilename } from '@/utils/fileNameHelpers';
-import { logger } from '@/utils/logger';
 import { getDataValue } from '@/utils/segmentData';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';

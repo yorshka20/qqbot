@@ -1,12 +1,11 @@
 import { join } from 'node:path';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { AIService } from '@/ai/AIService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { InfoCardData } from '@/services/card';
 import { FileReadService } from '@/services/file/FileReadService';
 import { formatBytes, runDeduplication } from '@/utils/fileDedup';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

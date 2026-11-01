@@ -22,6 +22,7 @@
       "name": "@qqbot/avatar",
       "version": "1.0.0",
       "dependencies": {
+        "@qqbot/shared": "workspace:*",
         "audio-decode": "^3.9.3",
         "tsyringe": "^4.10.0",
       },
@@ -38,6 +39,7 @@
         "@mozilla/readability": "^0.6.0",
         "@qqbot/api-types": "workspace:*",
         "@qqbot/avatar": "workspace:*",
+        "@qqbot/shared": "workspace:*",
         "@saltify/milky-types": "^1.1.0",
         "@types/jsdom": "^28.0.0",
         "adm-zip": "^0.5.16",
@@ -64,6 +66,18 @@
         "@types/better-sqlite3": "^7.6.13",
         "@types/bun": "latest",
         "@types/node-cron": "^3.0.11",
+      },
+    },
+    "packages/shared": {
+      "name": "@qqbot/shared",
+      "version": "1.0.0",
+      "dependencies": {
+        "tsyringe": "^4.10.0",
+        "uuid": "^13.0.0",
+        "winston": "^3.19.0",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
       },
     },
     "packages/webui": {
@@ -359,6 +373,8 @@
     "@qqbot/avatar": ["@qqbot/avatar@workspace:packages/avatar"],
 
     "@qqbot/bot": ["@qqbot/bot@workspace:packages/bot"],
+
+    "@qqbot/shared": ["@qqbot/shared@workspace:packages/shared"],
 
     "@qqbot/webui": ["@qqbot/webui@workspace:packages/webui"],
 

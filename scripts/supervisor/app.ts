@@ -2,8 +2,7 @@
 // started the supervisor.
 
 import { join } from 'node:path';
-import { botLogsDir } from '../../packages/bot/src/utils/logFiles';
-import { getRepoRoot } from '../../packages/bot/src/utils/repoRoot';
+import { botLogsDir, getRepoRoot } from '@qqbot/shared';
 import { SUPERVISED_ENV, type SupervisorFiles, supervisorFiles } from '../../packages/bot/src/utils/supervisorProtocol';
 
 export interface AppDefinition {

@@ -1,8 +1,8 @@
 // WeChatArticleCleanupService — periodically removes expired (non-evergreen) article data
 // from both Qdrant RAG collections and SQLite to prevent unbounded growth.
 
+import { logger } from '@qqbot/shared';
 import type { RetrievalService } from '@/services/retrieval';
-import { logger } from '@/utils/logger';
 import type { WeChatDatabase } from '../WeChatDatabase';
 
 const TAG = '[ArticleCleanup]';

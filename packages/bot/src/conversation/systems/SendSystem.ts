@@ -1,5 +1,6 @@
 // Send System - handles message delivery (normal or forward) and error notification
 
+import { logger } from '@qqbot/shared';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { SendMessageResult } from '@/api/types';
 import { getReplyContent } from '@/context/HookContextHelpers';
@@ -12,7 +13,6 @@ import type { HookContext } from '@/hooks/types';
 import { getLanRelayRuntime } from '@/lan';
 import type { MessageSegment } from '@/message/types';
 import { getProtocolAdapter, isProtocolRegistered } from '@/protocol/ProtocolRegistry';
-import { logger } from '@/utils/logger';
 
 /**
  * Send System

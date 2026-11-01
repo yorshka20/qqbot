@@ -5,6 +5,7 @@
 // the /group_report command, which runs the report task alone. Scheduled runs are an
 // agenda item (`action fanout`) naming the tasks it wants.
 
+import { logger } from '@qqbot/shared';
 import type { AgendaService } from '@/agenda/AgendaService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -16,7 +17,6 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { GroupDayFanout } from '@/fanout/contexts/groupDay/GroupDayFanout';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { logger } from '@/utils/logger';
 import { RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
 import { PluginCommandHandler } from '../../PluginCommandHandler';

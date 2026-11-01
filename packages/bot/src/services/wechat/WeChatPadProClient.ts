@@ -1,6 +1,6 @@
 // WeChatPadPro HTTP API client — read-only subset only
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Generic response envelope

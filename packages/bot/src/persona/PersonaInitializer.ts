@@ -9,13 +9,13 @@
  * `ode.ts`; the initializer just connects the config + event bus.
  */
 
+import { logger } from '@qqbot/shared';
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { PersonaModulationAdapter } from '@/integrations/avatar/services/PersonaModulationAdapter';
-import { logger } from '@/utils/logger';
 import { type CharacterBible, loadCharacterBible } from './data/CharacterBibleLoader';
 import { type CoreDNA, loadCoreDNA } from './data/CoreDNALoader';
 import { PersonaService } from './PersonaService';

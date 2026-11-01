@@ -2,12 +2,11 @@
 // ScheduleFileService (markdown → DB sync), and AgendaReporter (daily reports).
 
 import { join } from 'node:path';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import type { PromptManager } from '@/ai';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import type { DatabaseManager } from '@/database/DatabaseManager';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { type ActionHandler, ActionHandlerRegistry } from './ActionHandlerRegistry';
 import { AgendaReporter } from './AgendaReporter';
 import { AgendaService } from './AgendaService';

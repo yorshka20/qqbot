@@ -17,8 +17,7 @@
 // Both concerns are owned by the Bridge, which subscribes to `flush` events.
 
 import { EventEmitter } from 'node:events';
-import { logger } from '@/utils/logger';
-import { randomUUID } from '@/utils/randomUUID';
+import { logger, randomUUID } from '@qqbot/shared';
 import type { DanmakuEvent } from './BilibiliLiveClient';
 
 export interface DanmakuBufferOptions {

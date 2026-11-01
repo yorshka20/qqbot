@@ -1,6 +1,6 @@
 // SandboxContext - builds the execution environment for user code
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import { ToolManager } from '../../ToolManager';
 import { DEFAULT_TOOL_TIMEOUT_MS, runWithToolDeadline } from '../../toolDeadline';
 import type { ToolExecutionContext, ToolExecutor, ToolResult, ToolSpec } from '../../types';

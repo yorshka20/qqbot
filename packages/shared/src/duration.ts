@@ -1,4 +1,4 @@
-import { ConfigError } from '@/utils/errors';
+import { ConfigError } from './errors';
 
 /**
  * Parse a duration string to milliseconds: "30s", "5m", "1h", "250ms", or a

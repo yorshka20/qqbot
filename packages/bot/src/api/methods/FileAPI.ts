@@ -1,9 +1,9 @@
 // File API method wrappers for Milky protocol
 
+import { logger } from '@qqbot/shared';
 import type { CommandContext } from '@/command/types';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import type { NormalizedMessageEvent } from '@/events/types';
-import { logger } from '@/utils/logger';
 import type { APIClient } from '../APIClient';
 
 export interface UploadFileResult {

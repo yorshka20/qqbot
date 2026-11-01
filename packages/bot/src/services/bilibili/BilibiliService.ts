@@ -1,9 +1,8 @@
 // Bilibili API service
 // Provides direct access to bilibili's APIs with WBI signing and anti-scraping handling.
 
+import { HttpClient, logger } from '@qqbot/shared';
 import { singleton } from 'tsyringe';
-import { HttpClient } from '@/api/http/HttpClient';
-import { logger } from '@/utils/logger';
 import type {
   BilibiliAPIResponse,
   BilibiliCommentData,

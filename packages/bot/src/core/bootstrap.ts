@@ -5,6 +5,8 @@
 // Everything that opens a live connection belongs to startApp's connect phase instead.
 
 import { AvatarService } from '@qqbot/avatar';
+import { logger } from '@qqbot/shared';
+import { HealthCheckManager } from '@qqbot/shared/health';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { createBaselineProducer } from '@/ai/prompt/producers/BaselineProducer';
@@ -15,6 +17,7 @@ import { createSceneProducer } from '@/ai/prompt/producers/SceneProducer';
 import { createToolInstructProducer } from '@/ai/prompt/producers/ToolInstructProducer';
 import { APIClient } from '@/api/APIClient';
 import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
+import { installLogContextSource, setMessageLogFilter } from '@/context/logContextSource';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
 import { MessagePipeline } from '@/conversation/MessagePipeline';
@@ -28,7 +31,6 @@ import type { Connection } from '@/core/connection';
 import { WebSocketConnection } from '@/core/connection';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { HealthCheckManager } from '@/core/health/HealthCheckManager';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
@@ -48,7 +50,6 @@ import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { initStaticServer } from '@/services/staticServer';
 import type { TTSManager } from '@/services/tts/TTSManager';
 import { VoiceReplyChannel } from '@/services/tts/VoiceReplyChannel';
-import { logger, setMessageLogFilter } from '@/utils/logger';
 import { registerConnectionClass } from './connection/ConnectionManager';
 import { registerProviders } from './wiring';
 
@@ -102,7 +103,8 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   const config = bot.getConfig();
   const container = getContainer();
 
-  // ── Apply per-message log filter (must run before pipeline starts) ──
+  // ── Give the logger its message context, then the filter (both before the pipeline starts) ──
+  installLogContextSource();
   const loggingConfig = config.getLoggingConfig();
   const mf = loggingConfig?.messageFilter;
   if (mf?.enabled) {

@@ -14,6 +14,7 @@
 // Fire-and-forget safety: runReflection() swallows all errors so callers on
 // the reply path are never blocked.
 
+import { logger } from '@qqbot/shared';
 import { z } from 'zod';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
@@ -24,7 +25,6 @@ import type { ConversationHistoryService } from '@/conversation/history/Conversa
 import type { LLMTarget } from '@/core/config/types/ai';
 import type { HookManager } from '@/hooks/HookManager';
 import type { ToolManager } from '@/tools/ToolManager';
-import { logger } from '@/utils/logger';
 import type { PersonaService } from '../PersonaService';
 import type { EpigeneticsStore } from './epigenetics/EpigeneticsStore';
 import type { ReflectionPatch } from './epigenetics/types';

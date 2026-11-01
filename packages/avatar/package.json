@@ -9,6 +9,7 @@
     "gen:vrm-extend": "bun run scripts/generate-vrm-extend-action-map.ts"
   },
   "dependencies": {
+    "@qqbot/shared": "workspace:*",
     "audio-decode": "^3.9.3",
     "tsyringe": "^4.10.0"
   },

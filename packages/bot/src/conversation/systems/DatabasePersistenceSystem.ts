@@ -1,5 +1,6 @@
 // Database Persistence System - saves messages and conversations to database
 
+import { logger } from '@qqbot/shared';
 import { getReply, getReplyContent } from '@/context/HookContextHelpers';
 import { normalizeSessionId } from '@/conversation/history';
 import type { System, SystemContext } from '@/core/system';
@@ -9,7 +10,6 @@ import type { Message } from '@/database/models/types';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
-import { logger } from '@/utils/logger';
 
 /**
  * Database Persistence System

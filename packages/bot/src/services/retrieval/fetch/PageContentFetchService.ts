@@ -2,9 +2,9 @@
 // Purpose: provide clean, normalized text for AI consumption (source + main content).
 
 import { Readability } from '@mozilla/readability';
+import { logger } from '@qqbot/shared';
 import { JSDOM } from 'jsdom';
 import type { SearchFetchConfig } from '@/core/config/types/mcp';
-import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { JinaReaderService } from './JinaReaderService';
 import { isInternalUrl } from './urlGuards';

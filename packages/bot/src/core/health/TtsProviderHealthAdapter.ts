@@ -1,8 +1,8 @@
 // TTS Provider Health Adapter — wraps TTSProvider for HealthCheckManager
 
+import type { HealthCheckable, HealthCheckOptions, HealthCheckResult } from '@qqbot/shared/health';
+import { HealthStatus } from '@qqbot/shared/health';
 import type { TTSProvider } from '@/services/tts/TTSProvider';
-import type { HealthCheckable, HealthCheckOptions, HealthCheckResult } from './types';
-import { HealthStatus } from './types';
 
 /**
  * Adapter that wraps a `TTSProvider` so it can be registered with `HealthCheckManager`

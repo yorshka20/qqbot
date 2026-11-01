@@ -1,11 +1,11 @@
 // Bilibili tool executor - allows LLM/subagent to search and fetch bilibili content
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
-import { logger } from '@/utils/logger';
 import { BilibiliService } from '../BilibiliService';
 
 @Tool({

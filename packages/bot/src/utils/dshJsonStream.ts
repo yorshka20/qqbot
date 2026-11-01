@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 /**
  * Parse the DSH CLI's `--json` stdout into a clean final message.

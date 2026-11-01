@@ -10,7 +10,7 @@
 // descendant tree is killed early on shutdown and synchronously on exit.
 
 import { execFileSync } from 'node:child_process';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 const liveChildPids = new Set<number>();
 let exitHandlerInstalled = false;

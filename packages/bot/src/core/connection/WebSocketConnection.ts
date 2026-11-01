@@ -1,8 +1,7 @@
 // WebSocket-based connection implementation
 // Extracted from the original Connection class — handles WS lifecycle, reconnection, ping.
 
-import { ConnectionError } from '@/utils/errors';
-import { logger } from '@/utils/logger';
+import { ConnectionError, logger } from '@qqbot/shared';
 import { Connection } from './base';
 
 /** Bun WebSocket constructor options (headers not in standard DOM type) */

@@ -4,9 +4,9 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { logger } from '@qqbot/shared';
 import type { Page } from 'puppeteer-core';
 import { BrowserService } from '@/services/browser/BrowserService';
-import { logger } from '@/utils/logger';
 import { renderCardDeck } from './cardTemplates';
 import type { CardData } from './cardTypes';
 import { type CardAppearance, getCardStyles, getProviderTheme } from './styles';

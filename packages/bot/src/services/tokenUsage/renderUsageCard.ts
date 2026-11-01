@@ -4,9 +4,9 @@
 // differently): input is blue, output is amber, repeated in the legend, the
 // per-row proportion bar, and every number pair.
 
+import { logger } from '@qqbot/shared';
 import type { Page } from 'puppeteer-core';
 import { BrowserService } from '@/services/browser/BrowserService';
-import { logger } from '@/utils/logger';
 import type { DailyReport, DailyUsageAgg, ProviderUsageAgg, UserUsageAgg } from './TokenUsageService';
 
 export interface UsageCardData {

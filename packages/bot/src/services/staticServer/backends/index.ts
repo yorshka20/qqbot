@@ -7,8 +7,8 @@
  */
 
 import { join } from 'node:path';
+import { getRepoRoot } from '@qqbot/shared';
 import type { Config } from '@/core/config';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { ClusterAPIBackend } from './ClusterAPIBackend';
 import { CodingAgentAPIBackend } from './CodingAgentAPIBackend';
 import { DailyStatsBackend } from './DailyStatsBackend';

@@ -2,10 +2,8 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { HttpClient } from '@/api/http/HttpClient';
+import { getRepoRoot, HttpClient, logger } from '@qqbot/shared';
 import type { LaozhangProviderConfig } from '@/core/config/types/ai';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import type { LLMCapability } from '../capabilities/LLMCapability';

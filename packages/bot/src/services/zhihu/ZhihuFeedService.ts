@@ -1,6 +1,6 @@
 // ZhihuFeedService — feed polling, deduplication, storage, and content fetching
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { ZhihuFeedItemRow } from './types';
 import type { ZhihuClient } from './ZhihuClient';
 import type { ZhihuContentParser } from './ZhihuContentParser';

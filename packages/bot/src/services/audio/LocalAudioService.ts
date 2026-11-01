@@ -12,7 +12,7 @@
 import { spawn } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 const SYSTEM_SOUND_DIR = '/System/Library/Sounds';
 const SOUND_EXT = '.aiff';

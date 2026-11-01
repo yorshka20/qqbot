@@ -1,6 +1,7 @@
 // WeChat command handler — /wechat <subcommand> [args]
 // Gives QQ bot users access to WeChat data via read-only PadPro API
 
+import { logger } from '@qqbot/shared';
 import type { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { SubAgentType } from '@/agent/types';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
@@ -19,7 +20,6 @@ import type {
 } from '@/services/wechat';
 import type { WechatMomentsAnalysisService } from '@/services/wechat/moments/WechatMomentsAnalysisService';
 import { WechatMomentsIngestService } from '@/services/wechat/moments/WechatMomentsIngestService';
-import { logger } from '@/utils/logger';
 
 const USAGE = `
 /wechat status              — 微信登录状态

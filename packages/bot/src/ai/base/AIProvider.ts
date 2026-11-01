@@ -1,9 +1,8 @@
 // AI Provider abstract base class
 
+import { logger } from '@qqbot/shared';
 import { ContextManager } from '@/context/ContextManager';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
 import type { CapabilityType } from '../capabilities/types';
 import type { AIGenerateOptions, ChatMessage, ConversationMessage } from '../types';
 

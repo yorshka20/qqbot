@@ -11,9 +11,9 @@
  * against any Anthropic-compatible endpoint when env vars are overridden.
  */
 
+import { logger } from '@qqbot/shared';
 import { spawn } from 'bun';
 import { parseClaudeStreamJson } from '@/utils/claudeStreamJson';
-import { logger } from '@/utils/logger';
 import type {
   CredentialProbeConfig,
   CredentialProbeResult,

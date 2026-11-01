@@ -31,8 +31,8 @@
 
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { logger } from '@qqbot/shared';
 import type { PromptManager } from '@/ai';
-import { logger } from '@/utils/logger';
 import type { AgendaService } from './AgendaService';
 import type { AgendaItem, AgendaTriggerType, CreateAgendaItemData } from './types';
 

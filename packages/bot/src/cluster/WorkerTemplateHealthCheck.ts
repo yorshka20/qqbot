@@ -19,8 +19,8 @@
  * Results are logged as warnings; unavailable templates do NOT block startup.
  */
 
+import { logger } from '@qqbot/shared';
 import { spawn } from 'bun';
-import { logger } from '@/utils/logger';
 import type { ClusterConfig, WorkerBackendType, WorkerTemplateConfig } from './config';
 
 export interface TemplateHealthResult {

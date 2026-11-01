@@ -1,3 +1,4 @@
+import { fromRepoRoot, logger } from '@qqbot/shared';
 import { decodeToMonoPcm } from './compiler/audio/decodeToMonoPcm';
 import { computeRmsEnvelope } from './compiler/audio/rms';
 import { RmsStreamer } from './compiler/audio/rmsStreaming';
@@ -9,8 +10,6 @@ import type {
   AvatarSynthesisResult as SynthesisResult,
   AvatarTTSProvider as TTSProvider,
 } from './speech/TTSTypes';
-import { logger } from './utils/logger';
-import { fromRepoRoot } from './utils/repoRoot';
 import { writeFileUnderDirectory } from './utils/writeFileUnderDirectory';
 
 const DEFAULT_GAP_MS = 200;

@@ -1,6 +1,7 @@
 // NSFW reply service — standalone service for NSFW-mode reply generation.
 // Uses a fixed provider (deepseek), no task analysis, no tool use, no card rendering.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { ContextEnrichmentStage } from '@/ai/pipeline/stages/ContextEnrichmentStage';
 import { LLMService } from '@/ai/services/LLMService';
@@ -9,7 +10,6 @@ import { ConversationHistoryService } from '@/conversation/history/ConversationH
 import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
-import { logger } from '@/utils/logger';
 import { WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import type { PromptManager } from '../prompt/PromptManager';
 

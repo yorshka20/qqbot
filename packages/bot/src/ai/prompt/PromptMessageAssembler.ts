@@ -1,8 +1,8 @@
+import { formatTimeSpanCompact } from '@qqbot/shared';
 import type { ChatMessage } from '@/ai/types';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { collectViewableImageSegments } from '@/message/imageSegments';
 import type { MessageSegment } from '@/message/types';
-import { formatTimeSpanCompact } from '@/utils/dateTime';
 import { contentToPlainString } from '../utils/contentUtils';
 import { buildHistoryEntryPrefix } from './speakerTag';
 

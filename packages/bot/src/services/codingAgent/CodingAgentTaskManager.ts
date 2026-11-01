@@ -6,12 +6,10 @@
 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { logger, parseDuration, randomUUID } from '@qqbot/shared';
 import { type Subprocess, spawn } from 'bun';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { CodingAgentConfig } from '@/core/config';
-import { parseDuration } from '@/utils/duration';
-import { logger } from '@/utils/logger';
-import { randomUUID } from '@/utils/randomUUID';
 import { CodingAgentTaskStore } from './CodingAgentTaskStore';
 import type { AgentExecutor } from './executors';
 import type { AgentInvocation } from './executors/AgentExecutor';

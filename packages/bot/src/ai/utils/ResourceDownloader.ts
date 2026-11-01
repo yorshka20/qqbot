@@ -4,8 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
 import { writeFileUnderDirectory } from '@qqbot/avatar';
-import { HttpClient } from '@/api/http/HttpClient';
-import { logger } from '@/utils/logger';
+import { HttpClient, logger } from '@qqbot/shared';
 
 export interface ResourceDownloadOptions {
   /**

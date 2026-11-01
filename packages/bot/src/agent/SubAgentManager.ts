@@ -1,8 +1,7 @@
 // SubAgent Manager - the registry of sub-agent sessions
 
+import { logger, randomUUID } from '@qqbot/shared';
 import { singleton } from 'tsyringe';
-import { logger } from '@/utils/logger';
-import { randomUUID } from '@/utils/randomUUID';
 import type { AggregatedResult, SubAgentConfig, SubAgentSession, SubAgentTask, SubAgentType } from './types';
 
 /**

@@ -4,7 +4,7 @@
 // so it travels through the same read-only runner as user queries — there is no
 // second, more-privileged path into the database.
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { SqlQueryRunner } from './SqlQueryRunner';
 
 /** Row cap for introspection queries; a database with more tables than this is not a real case. */

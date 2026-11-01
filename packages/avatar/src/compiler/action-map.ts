@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { logger } from '../utils/logger';
+import { logger } from '@qqbot/shared';
 import type { IdleClip } from './layers/clips/types';
 import type {
   ActionMapEntry,

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 export const CoreDNASchema = z
   .object({

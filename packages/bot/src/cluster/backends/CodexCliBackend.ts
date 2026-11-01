@@ -27,9 +27,9 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
+import { logger } from '@qqbot/shared';
 import { spawn } from 'bun';
 import { withoutCodexApiKeys } from '@/utils/codexCli';
-import { logger } from '@/utils/logger';
 import type { CredentialProbeConfig, CredentialProbeResult, WorkerBackend, WorkerSpawnConfig } from '../types';
 import { interpretCodexLoginStatus, runCliAuthStatus } from './providerCredentialCheck';
 

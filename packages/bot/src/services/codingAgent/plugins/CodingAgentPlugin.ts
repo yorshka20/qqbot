@@ -6,6 +6,7 @@
  * differ only in which CLI runs the task they create.
  */
 
+import { logger } from '@qqbot/shared';
 import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
 import { getContainer } from '@/core/DIContainer';
@@ -24,7 +25,6 @@ import {
   type AgentTask,
   type ProjectContext,
 } from '@/services/codingAgent/types';
-import { logger } from '@/utils/logger';
 
 function runOptionsUsage(cmd: AgentExecutorName): string {
   return `/${cmd} [--model <模型>] [--effort <强度>] [@<alias>] <prompt>

@@ -1,11 +1,11 @@
 // Protocol Adapter Initializer - sets up protocol adapters and connects them to event router
 
+import { logger } from '@qqbot/shared';
 import type { APIClient } from '@/api/APIClient';
 import type { Config, ProtocolName } from '@/core/config';
 import type { ConnectionManager, WebSocketConnection } from '@/core/connection';
 import type { EventRouter } from '@/events/EventRouter';
 import type { NormalizedEvent } from '@/events/types';
-import { logger } from '@/utils/logger';
 import type { ProtocolAdapter } from './base/ProtocolAdapter';
 import type { BaseEvent } from './base/types';
 import { DiscordAdapter } from './discord/DiscordAdapter';

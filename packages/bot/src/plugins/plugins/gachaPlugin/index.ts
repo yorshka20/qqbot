@@ -1,5 +1,6 @@
 // Gacha Plugin - one-click NAI prompt generation with DeepSeek then proxy to /nai command
 
+import { logger } from '@qqbot/shared';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
 import { CommandBuilder } from '@/command/CommandBuilder';
@@ -13,7 +14,6 @@ import { HookManager } from '@/hooks/HookManager';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
-import { logger } from '@/utils/logger';
 import { parseStandardPrompt, slotsToNaiPrompt } from './parse';
 
 const GACHA_USAGE = '/gacha [theme]';

@@ -1,6 +1,7 @@
 // WechatDigestToolExecutor - retrieves daily WeChat message summaries
 // Used by Agenda cron jobs to generate daily reports
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { WechatDITokens } from '@/services/wechat/tokens';
@@ -8,7 +9,6 @@ import type { WechatDigestService } from '@/services/wechat/WechatDigestService'
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
-import { logger } from '@/utils/logger';
 
 /**
  * WechatDigestToolExecutor

@@ -1,3 +1,4 @@
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from '@/ai';
 import { AIService } from '@/ai/AIService';
@@ -9,7 +10,6 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import type { HookContext } from '@/hooks/types';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
 import type { MessageSegment } from '@/message/types';
-import { logger } from '@/utils/logger';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';

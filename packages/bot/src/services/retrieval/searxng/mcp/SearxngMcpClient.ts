@@ -2,8 +2,8 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { logger } from '@qqbot/shared';
 import type { MCPConfig, MCPRuntime } from '@/core/config/types/mcp';
-import { logger } from '@/utils/logger';
 import { killMcpChild, reapOrphanedMcpChildren, registerMcpChild } from './childReaper';
 import type { MCPTool, MCPToolCallResult } from './types';
 

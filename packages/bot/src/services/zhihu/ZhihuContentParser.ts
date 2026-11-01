@@ -1,6 +1,6 @@
 // ZhihuContentParser — parses heterogeneous feed items into unified ZhihuContentItem
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { ZhihuContentItem, ZhihuFeedItem } from './types';
 
 export interface ZhihuContentParserConfig {

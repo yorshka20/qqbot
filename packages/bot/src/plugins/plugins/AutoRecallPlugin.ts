@@ -1,11 +1,11 @@
 // AutoRecallPlugin - automatically recalls messages with images in private/temp chats
 
+import { logger } from '@qqbot/shared';
 import { hasImages } from '@/ai/utils/imageUtils';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getReplyContent } from '@/context/HookContextHelpers';
 import { getContainer } from '@/core/DIContainer';
 import type { HookContext } from '@/hooks/types';
-import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

@@ -3,12 +3,12 @@
 
 import type { AvatarService } from '@qqbot/avatar';
 import { parseLive2DTags, stripLive2DTags } from '@qqbot/avatar';
+import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { Hook, RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
-import { logger } from '@/utils/logger';
 
 /**
  * Ambient-gain presets keyed to pipeline phase. Lower values suppress the

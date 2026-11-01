@@ -1,8 +1,8 @@
 // Global Config Manager - manages runtime global configuration (in-memory)
 
+import { logger } from '@qqbot/shared';
 import { singleton } from 'tsyringe';
 import type { ConversationConfigData } from '@/database/models/types';
-import { logger } from '@/utils/logger';
 import { updateEnabledDisabled } from './ConfigUtils';
 
 /**

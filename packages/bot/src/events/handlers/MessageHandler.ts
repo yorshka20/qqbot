@@ -1,8 +1,8 @@
 // Message event handler
 
+import { logger } from '@qqbot/shared';
 import type { ConversationManager } from '@/conversation/ConversationManager';
 import { getProtocolSelfId } from '@/protocol/ProtocolRegistry';
-import { logger } from '@/utils/logger';
 import type { NormalizedMessageEvent } from '../types';
 
 export class MessageHandler {

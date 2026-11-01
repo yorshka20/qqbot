@@ -2,12 +2,12 @@
 // Transport-agnostic — only holds connection reference, config, and abstract declarations.
 
 import { EventEmitter } from 'node:events';
+import { APIError, SendDeliveryUnknownError } from '@qqbot/shared';
 import type { APIContext, ForwardedMessageNode, ForwardMessageInput, SendMessageResult, SendTarget } from '@/api/types';
 import type { ProtocolConfig, ProtocolName } from '@/core/config';
 import type { Connection } from '@/core/connection';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { MessageSegment } from '@/message/types';
-import { APIError, SendDeliveryUnknownError } from '@/utils/errors';
 import type { BaseEvent } from './types';
 
 /** The calls that can take effect even though the caller never sees the answer. */

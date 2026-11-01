@@ -1,5 +1,6 @@
 // WeChat article analysis tool — triggers LLM analysis on recent articles via Ollama
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import type { WeChatArticleAnalysisService } from '@/services/wechat/articles/WeChatArticleAnalysisService';
 import { WeChatIngestPlugin } from '@/services/wechat/plugins';
@@ -7,7 +8,6 @@ import { WechatDITokens } from '@/services/wechat/tokens';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
-import { logger } from '@/utils/logger';
 
 const DEFAULT_COUNT = 100;
 

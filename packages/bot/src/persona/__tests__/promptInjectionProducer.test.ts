@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 
 import { beforeEach, describe, expect, it, vi } from 'bun:test';
+import * as shared from '@qqbot/shared';
 import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import type { PromptInjectionContext } from '@/conversation/promptInjection/types';
 import {
@@ -13,13 +14,9 @@ import {
 import { DEFAULT_PERSONA_CONFIG, type PersonaConfig } from '../types';
 
 // Stub logger
-vi.mock('@/utils/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-    error: vi.fn(),
-  },
+vi.mock('@qqbot/shared', () => ({
+  ...shared,
+  logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
 function makeCtx(source: PromptInjectionContext['source'], userId?: string): PromptInjectionContext {

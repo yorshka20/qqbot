@@ -2,8 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { getRepoRoot, logger } from '@qqbot/shared';
 
 /** Workflow node shape (same as RunPod input.workflow entries). */
 export type T2IWorkflowNode = { inputs: Record<string, unknown>; class_type: string };

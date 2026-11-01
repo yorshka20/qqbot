@@ -1,9 +1,9 @@
+import { logger } from '@qqbot/shared';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Bot } from '@/core/Bot';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { PermissionChecker } from '@/permission';
-import { logger } from '@/utils/logger';
 import type { ClusterManager } from './ClusterManager';
 
 /**

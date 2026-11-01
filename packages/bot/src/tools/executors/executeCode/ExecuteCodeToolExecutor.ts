@@ -1,8 +1,8 @@
 // ExecuteCodeToolExecutor - allows LLM to write and execute JavaScript code
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { DITokens } from '@/core/DITokens';
-import { logger } from '@/utils/logger';
 import { Tool } from '../../decorators';
 import type { ToolManager } from '../../ToolManager';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../../types';

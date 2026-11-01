@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { PromptManager } from '@/ai/prompt/PromptManager';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
 import type { FanoutRun } from '@/fanout/core/types';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { getRepoRoot } from '@qqbot/shared';
 import { ComicTask, resolveComicPresetIds } from '../comicTask';
 import type { GroupReportRenderer } from '../GroupReportRenderer';
 import { assembleReport, ReportTask } from '../reportTask';

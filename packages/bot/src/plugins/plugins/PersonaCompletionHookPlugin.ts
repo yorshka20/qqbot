@@ -8,6 +8,7 @@
 // in `PersonaService.getPromptPatchFragmentAsync()` and further upstream in
 // `mind/prompt/PromptPatchAssembler.ts`.
 
+import { logger } from '@qqbot/shared';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
 import { getReply } from '@/context/HookContextHelpers';
@@ -22,7 +23,6 @@ import type { EpigeneticsStore } from '@/persona/reflection/epigenetics/Epigenet
 import { ReflectionEngine } from '@/persona/reflection/ReflectionEngine';
 import { RelationshipUpdater } from '@/persona/reflection/relationships/RelationshipUpdater';
 import type { ToolManager } from '@/tools/ToolManager';
-import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

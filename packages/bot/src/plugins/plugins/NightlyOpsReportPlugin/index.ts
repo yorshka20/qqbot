@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -11,8 +12,6 @@ import type { ProtocolName } from '@/core/config/types/protocol';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { PermissionChecker } from '@/permission';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { RegisterPlugin } from '../../decorators';
 import { PluginBase } from '../../PluginBase';
 

@@ -1,9 +1,9 @@
 // Utility functions for file upload to Milky protocol
 
+import { logger } from '@qqbot/shared';
 import type { FileAPI } from '@/api/methods/FileAPI';
 import type { CommandContext } from '@/command/types';
 import type { NormalizedMessageEvent } from '@/events/types';
-import { logger } from '@/utils/logger';
 
 /**
  * Upload file buffer to Milky protocol and get file_id

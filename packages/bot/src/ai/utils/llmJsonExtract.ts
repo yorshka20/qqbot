@@ -10,10 +10,10 @@
  *   plain text only; do not use the JSON-specific extractors.
  */
 
+import { logger } from '@qqbot/shared';
 import { jsonrepair } from 'jsonrepair';
 import type { z } from 'zod';
 import { type SearchDecisionResult, SearchDecisionSchema } from '@/ai/schemas';
-import { logger } from '@/utils/logger';
 
 /**
  * Parse LLM response that is plain "true" or "false" (case-insensitive).

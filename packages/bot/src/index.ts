@@ -2,9 +2,9 @@
 // IMPORTANT: reflect-metadata must be imported FIRST before any other imports
 import 'reflect-metadata';
 
+import { logger } from '@qqbot/shared';
 import { type App, startApp } from './core/app';
 import { followSupervisor } from './core/supervisor';
-import { logger } from './utils/logger';
 
 async function main() {
   logger.info('Starting bot...');

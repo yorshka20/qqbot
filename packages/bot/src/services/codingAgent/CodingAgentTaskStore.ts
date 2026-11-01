@@ -15,7 +15,7 @@
 
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import {
   renderTaskOutcome,
   renderTaskRecord,

@@ -5,7 +5,7 @@
  * TTL-based expiry as fallback. Locks are not persisted: restart clears all locks.
  */
 
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { FileLock, LockConflict } from '../types';
 import type { EventLog } from './EventLog';
 

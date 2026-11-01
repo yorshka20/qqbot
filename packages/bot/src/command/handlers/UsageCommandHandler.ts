@@ -1,8 +1,8 @@
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { renderUsageCardImage } from '@/services/tokenUsage/renderUsageCard';
 import { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
-import { logger } from '@/utils/logger';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

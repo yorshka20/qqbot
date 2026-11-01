@@ -2,6 +2,7 @@
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import { AIService } from '@/ai/AIService';
@@ -16,8 +17,6 @@ import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { uploadFileBuffer } from '@/utils/fileUpload';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { CommandArgsParser, type ParserConfig } from '../CommandArgsParser';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';

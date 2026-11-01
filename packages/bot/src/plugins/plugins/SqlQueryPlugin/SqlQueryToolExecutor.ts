@@ -1,7 +1,7 @@
 // query_database tool executor - read-only SQL access to the bot's own SQLite database.
 
+import { logger } from '@qqbot/shared';
 import type { ToolCall, ToolExecutor, ToolResult } from '@/tools/types';
-import { logger } from '@/utils/logger';
 import { formatRowsAsTable } from './formatRows';
 import type { SqlQueryRunner } from './SqlQueryRunner';
 import { buildDdlSql, fetchRowCounts, INTROSPECTION_ROW_CAP, isSafeTableName, SCHEMA_SUMMARY_SQL } from './schema';

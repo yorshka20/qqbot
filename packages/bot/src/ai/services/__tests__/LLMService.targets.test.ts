@@ -8,7 +8,7 @@ import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import type { AIManager } from '@/ai/AIManager';
 import type { AIGenerateOptions, AIGenerateResponse, ToolDefinition } from '@/ai/types';
-import { HttpClientError } from '@/api/http/HttpClient';
+import { HttpClientError } from '@qqbot/shared';
 import type { LLMTarget } from '@/core/config/types/ai';
 import { createLLMService, type LLMServiceTestState } from './createLLMService';
 

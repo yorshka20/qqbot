@@ -1,3 +1,4 @@
+import { logger } from '@qqbot/shared';
 import { singleton } from 'tsyringe';
 import { AmbientGainBus, type AmbientSourceName } from './compiler/AmbientGainBus';
 import { AnimationCompiler } from './compiler/AnimationCompiler';
@@ -26,7 +27,6 @@ import { type AvatarActivity, type AvatarActivityPatch, DEFAULT_ACTIVITY, type S
 import type { FaceTarget, GazeTarget, WalkToTarget } from './tags';
 import type { AvatarConfig } from './types';
 import { DEFAULT_AVATAR_CONFIG } from './types';
-import { logger } from './utils/logger';
 
 @singleton()
 export class AvatarService {

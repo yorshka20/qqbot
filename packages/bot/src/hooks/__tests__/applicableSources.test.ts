@@ -13,7 +13,7 @@ import type { MessageSource } from '@/conversation/sources';
 import { HookManager } from '@/hooks/HookManager';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext, HookHandler } from '@/hooks/types';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

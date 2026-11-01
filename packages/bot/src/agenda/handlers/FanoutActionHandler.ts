@@ -6,10 +6,10 @@
 // handed to the fan-out untouched. Tasks deliver their own output, so this returns
 // nothing for the agenda to send.
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { FanoutManager } from '@/fanout/core/FanoutManager';
 import type { FanoutTarget } from '@/fanout/core/types';
-import { logger } from '@/utils/logger';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
 interface FanoutActionParams {

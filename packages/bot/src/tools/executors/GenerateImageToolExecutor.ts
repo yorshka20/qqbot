@@ -15,6 +15,7 @@
 // (the same egress SendSystem uses); the tool then returns a short confirmation so the model can
 // add a one-line caption instead of re-describing the picture.
 
+import { logger, SendDeliveryUnknownError } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import type { Image2ImageOptions, Text2ImageOptions } from '@/ai';
 import { AIService } from '@/ai/AIService';
@@ -25,8 +26,6 @@ import type { SendMessageResult } from '@/api/types';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import { buildMessageFromResponse } from '@/message/MessageBuilderUtils';
-import { SendDeliveryUnknownError } from '@/utils/errors';
-import { logger } from '@/utils/logger';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolModelDescription, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

@@ -2,8 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { getRepoRoot, logger } from '@qqbot/shared';
 
 /** Default negative prompt (shared). */
 export const DEFAULT_NEGATIVE_PROMPT =

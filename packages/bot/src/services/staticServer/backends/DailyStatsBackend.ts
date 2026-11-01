@@ -24,8 +24,7 @@ import type {
   ProviderStats,
   StatsDateListResponse,
 } from '@qqbot/api-types';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 

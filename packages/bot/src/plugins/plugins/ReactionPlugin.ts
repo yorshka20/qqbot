@@ -1,9 +1,9 @@
 // Reaction Plugin - owns every reaction ("贴表情") the bot puts on a group message.
 
+import { logger } from '@qqbot/shared';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { reactionLabel, resolveReactionId } from '@/message/qqFace';
 import type { NormalizedMilkyMessageEvent } from '@/protocol/milky/types';
-import { logger } from '@/utils/logger';
 import { groupHasWhitelistCapability, WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';

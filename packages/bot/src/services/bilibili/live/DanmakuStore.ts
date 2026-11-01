@@ -2,10 +2,10 @@
 // model. Queues inserts so the hot WS receive path never awaits a DB write;
 // a worker drains the queue in-order and logs failures instead of crashing.
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable, singleton } from 'tsyringe';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { BilibiliDanmakuRecord } from '@/database/models/types';
-import { logger } from '@/utils/logger';
 import type { DanmakuEvent } from './BilibiliLiveClient';
 
 export interface PersistOptions {

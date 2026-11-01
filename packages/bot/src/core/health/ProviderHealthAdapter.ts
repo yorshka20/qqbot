@@ -1,8 +1,8 @@
 // Provider Health Adapter - wraps AIProvider to implement HealthCheckable
 
+import type { HealthCheckable, HealthCheckOptions, HealthCheckResult } from '@qqbot/shared/health';
+import { HealthStatus } from '@qqbot/shared/health';
 import type { AIProvider } from '@/ai/base/AIProvider';
-import type { HealthCheckable, HealthCheckOptions, HealthCheckResult } from './types';
-import { HealthStatus } from './types';
 
 /**
  * Adapter that wraps an AIProvider to implement HealthCheckable interface.

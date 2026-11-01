@@ -11,7 +11,7 @@
 
 import { stat } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import { resolveSafe } from './pathSafety';
 import type { Backend } from './types';
 

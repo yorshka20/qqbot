@@ -5,12 +5,12 @@
 // persistence failure must never break reply generation. Aggregation happens at
 // read time (modest volume; keeps the schema flexible and adapter-agnostic).
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { Config, ModelPricingEntry } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { TokenUsageRecord } from '@/database/models/types';
-import { logger } from '@/utils/logger';
 
 export interface TokenUsageEvent {
   userId: string | number;

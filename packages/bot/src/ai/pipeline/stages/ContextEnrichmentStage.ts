@@ -1,5 +1,6 @@
 // Context enrichment stage — memory + RAG retrieval (parallel).
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { AuditEventStore } from '@/conversation/audit/AuditEventStore';
 import type { SessionMemoStore } from '@/conversation/memo/SessionMemoStore';
@@ -10,7 +11,6 @@ import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalServic
 import { QdrantClient } from '@/services/retrieval';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { VKBContextEngine } from '@/services/vkb/VKBContextEngine';
-import { logger } from '@/utils/logger';
 import type { PromptManager } from '../../prompt/PromptManager';
 import { formatRAGConversationContext } from '../../utils/formatRAGConversationContext';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';

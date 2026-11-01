@@ -6,8 +6,8 @@
 // attempts it directly and falls through to the next configured provider when
 // it fails.
 
+import { logger } from '@qqbot/shared';
 import type { SerperConfig } from '@/core/config/types/mcp';
-import { logger } from '@/utils/logger';
 import type { SearchOptions, SearchResult } from '../searxng/types';
 import type { SerperSearchResponse } from './types';
 

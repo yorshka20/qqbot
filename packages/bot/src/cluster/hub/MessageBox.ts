@@ -5,8 +5,7 @@
  * Messages are consumed via hub_sync (merged into updates).
  */
 
-import { logger } from '@/utils/logger';
-import { randomUUID } from '@/utils/randomUUID';
+import { logger, randomUUID } from '@qqbot/shared';
 import type { HubUpdate } from '../types';
 
 export interface PendingMessage {

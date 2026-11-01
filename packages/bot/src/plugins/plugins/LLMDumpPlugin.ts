@@ -14,6 +14,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
 import { isAssembledEnvelope } from '@/ai/prompt/PromptMessageAssembler';
@@ -21,8 +22,6 @@ import { LLMService } from '@/ai/services/LLMService';
 import type { ChatMessage, ChatMessageContent, LLMTraceEntry } from '@/ai/types';
 import { getContainer } from '@/core/DIContainer';
 import { archiveDateDirs } from '@/utils/dateDirArchive';
-import { logger } from '@/utils/logger';
-import { getRepoRoot } from '@/utils/repoRoot';
 import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

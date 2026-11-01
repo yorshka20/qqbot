@@ -1,7 +1,7 @@
 // Provider Factory - creates AI providers from configuration
 
+import { logger } from '@qqbot/shared';
 import type { AIProviderConfig } from '@/core/config';
-import { logger } from '@/utils/logger';
 import type { AIProvider } from './base/AIProvider';
 import { AnthropicProvider } from './providers/AnthropicProvider';
 import { DeepSeekProvider } from './providers/DeepSeekProvider';

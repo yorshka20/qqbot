@@ -1,6 +1,7 @@
 // WechatReportToolExecutor - generates and saves comprehensive WeChat reports
 // Used by AgentLoop to create daily/weekly/monthly reports
 
+import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { getStaticServer } from '@/services/staticServer';
 import { WeChatIngestPlugin } from '@/services/wechat/plugins';
@@ -9,7 +10,6 @@ import type { ReportType, WechatReportService } from '@/services/wechat/WechatRe
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
-import { logger } from '@/utils/logger';
 
 /**
  * WechatReportToolExecutor

@@ -8,7 +8,7 @@ import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
 import { PromptManager } from '@/ai/prompt/PromptManager';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { getRepoRoot } from '@qqbot/shared';
 
 function renderExtract(recentMessagesText: string): string {
   return new PromptManager(join(getRepoRoot(), 'prompts')).render('memory.extract', {

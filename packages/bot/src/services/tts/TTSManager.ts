@@ -1,7 +1,7 @@
-import type { HealthCheckManager } from '@/core/health';
+import { logger } from '@qqbot/shared';
+import type { HealthCheckManager } from '@qqbot/shared/health';
+import { HealthStatus } from '@qqbot/shared/health';
 import { TtsProviderHealthAdapter } from '@/core/health/TtsProviderHealthAdapter';
-import { HealthStatus } from '@/core/health/types';
-import { logger } from '@/utils/logger';
 import type { SynthesisResult, TTSProvider, TTSSynthesizeOptions } from './TTSProvider';
 
 /** A synthesis request routed by the manager rather than aimed at one provider. */

@@ -1,5 +1,6 @@
 // NSFW Mode Plugin - toggle NSFW mode per session; when on, uses fixed reply flow with llm.nsfw_reply template
 
+import { logger } from '@qqbot/shared';
 import { AIService } from '@/ai/AIService';
 import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
@@ -13,7 +14,6 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
-import { logger } from '@/utils/logger';
 
 /** Prefix for exemption: messages starting with this (case-insensitive) are not replied to by NSFW interceptor. */
 const SKIP_PREFIX = 'skip';

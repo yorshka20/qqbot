@@ -9,6 +9,7 @@
 //   - /video command (VideoAnalyzeCommandHandler)
 //   - LLM tool call (analyze_video tool with visibility: ['reply', 'subagent'])
 
+import { logger } from '@qqbot/shared';
 import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import type { SubAgentType } from '@/agent/types';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -20,7 +21,6 @@ import type { EventHandler, NormalizedEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
-import { logger } from '@/utils/logger';
 
 /** SubAgent type for video analysis (matches the preset key registered by the video_analyzer tool). */
 const VIDEO_AGENT_TYPE = 'video_analyzer';

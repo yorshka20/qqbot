@@ -1,5 +1,6 @@
 // ToolRunner - executes tool calls for SubAgent through ToolManager.execute
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { FunctionCall } from '@/ai/types';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
@@ -10,7 +11,6 @@ import { buildSyntheticHookContext } from '@/hooks/syntheticHookContext';
 import type { HookContext } from '@/hooks/types';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
-import { logger } from '@/utils/logger';
 import type { SubAgentSession } from './types';
 
 /**

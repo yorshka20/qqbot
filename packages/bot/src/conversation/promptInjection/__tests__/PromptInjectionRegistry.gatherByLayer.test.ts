@@ -1,9 +1,11 @@
 import 'reflect-metadata';
 import { beforeEach, describe, expect, it, vi } from 'bun:test';
+import * as shared from '@qqbot/shared';
 import { PromptInjectionRegistry } from '../PromptInjectionRegistry';
 import type { PromptInjectionContext, PromptInjectionProducer } from '../types';
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@qqbot/shared', () => ({
+  ...shared,
   logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
@@ -87,7 +89,7 @@ describe('PromptInjectionRegistry.gatherByLayer', () => {
   });
 
   it('throwing producer does not break other layers', async () => {
-    const { logger } = await import('@/utils/logger');
+    const { logger } = await import('@qqbot/shared');
     const thrower: PromptInjectionProducer = {
       name: 'thrower',
       layer: 'baseline',

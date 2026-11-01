@@ -19,11 +19,11 @@
 //
 // This is process-memory only — a bot restart resets all livemode state.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { MessagePipeline } from '@/conversation/MessagePipeline';
 import { makeSyntheticEvent } from '@/conversation/synthetic';
 import { DanmakuBuffer, type FlushPayload } from '@/services/bilibili/live/DanmakuBuffer';
-import { logger } from '@/utils/logger';
 
 export interface LivemodeEnableOptions {
   /** When false, idle-trigger Phase 2c won't fire for this user. Default true. */

@@ -1,5 +1,6 @@
 // SubAgentTriggerHandler - keyword match → spawn subagent → deliver result to group
 
+import { logger } from '@qqbot/shared';
 import type { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { getRolePreset } from '@/agent/SubAgentRolePresets';
 import type { AIService } from '@/ai/AIService';
@@ -10,7 +11,6 @@ import type { ConversationConfigService } from '@/conversation/ConversationConfi
 import type { NormalizedMessageEvent } from '@/events/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { parseDeliveryMarkers } from '@/utils/contentMarkers';
-import { logger } from '@/utils/logger';
 import type { SubAgentTriggerRule } from './types';
 
 /**

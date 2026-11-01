@@ -9,11 +9,11 @@
  * Uses the same prompt templates and normalization as the batch scripts.
  */
 
+import { logger } from '@qqbot/shared';
 import type { LLMService } from '@/ai/services/LLMService';
 import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
 import type { RetrievalService } from '@/services/retrieval';
 import { toQdrantPointId } from '@/services/retrieval/rag/QdrantClient';
-import { logger } from '@/utils/logger';
 import type { WeChatDatabase } from '../WeChatDatabase';
 import { normalizeEntityName, normalizeEntityType } from './momentsEntities';
 import { clampScore, loadCombinedAnalysisPrompt, normalizeAttitudeTags, normalizeSentiment } from './momentsSentiment';

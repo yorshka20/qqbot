@@ -8,12 +8,12 @@
 // the bot was addressed but stayed silent) — never from LLM self-report — which
 // is what makes the ledger trustworthy for "did I already answer this?".
 
+import { logger } from '@qqbot/shared';
 import { getReply } from '@/context/HookContextHelpers';
 import type { AuditEventStore } from '@/conversation/audit/AuditEventStore';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
-import { logger } from '@/utils/logger';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

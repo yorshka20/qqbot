@@ -1,5 +1,6 @@
 // Event Initializer - initializes EventRouter and all event handlers
 
+import { logger } from '@qqbot/shared';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { enterMessageContext } from '@/context/MessageContextStorage';
 import type { ConversationManager } from '@/conversation/ConversationManager';
@@ -7,7 +8,6 @@ import type { MessageRecallRecorder } from '@/conversation/MessageRecallRecorder
 import type { Config } from '@/core/config';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
-import { logger } from '@/utils/logger';
 import { getLogColorForKey, getLogTag } from '@/utils/messageLogContext';
 import { EventRouter } from './EventRouter';
 import { MessageHandler } from './handlers/MessageHandler';

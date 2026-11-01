@@ -22,11 +22,11 @@
 // listened" — without an error listener, Node rethrows `emit('error')`
 // synchronously, which would escape our start()'s try/catch.
 
+import { logger } from '@qqbot/shared';
 import type { MessagePipeline } from '@/conversation/MessagePipeline';
 import { makeSyntheticEvent } from '@/conversation/synthetic';
 import type { MessageProcessingContext } from '@/conversation/types';
 import type { AvatarBatchSender } from '@/integrations/avatar/types';
-import { logger } from '@/utils/logger';
 import type { BilibiliLiveClient, DanmakuEvent } from './BilibiliLiveClient';
 import type { BufferEntry, DanmakuBuffer, FlushPayload } from './DanmakuBuffer';
 import { detectMention } from './DanmakuBuffer';

@@ -22,6 +22,7 @@
 //   - Third-party plugins under `<repo>/plugins/` are NOT YET SUPPORTED —
 //     see `plugins/README.md` for the open design questions.
 
+import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { APIClient } from '@/api/APIClient';
 import type { CommandContext } from '@/command/types';
@@ -33,7 +34,6 @@ import type { EventRouter } from '@/events/EventRouter';
 import { HookManager } from '@/hooks/HookManager';
 import { getHookPriority } from '@/hooks/HookPriority';
 import type { HookHandler } from '@/hooks/types';
-import { logger } from '@/utils/logger';
 import { getAllPluginMetadata, getPluginHooks, type HookMetadata, type PluginMetadata } from './decorators';
 import type { Plugin, PluginContext } from './types';
 

@@ -6,13 +6,13 @@
 // with the same text extraction the trigger uses, so a mine that could never fire is
 // never planted.
 
+import { logger } from '@qqbot/shared';
 import type { AgendaService } from '@/agenda/AgendaService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { ConversationMessageEntry } from '@/conversation/history/ConversationHistoryService';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
 import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
 import { MessageUtils } from '@/message/MessageUtils';
-import { logger } from '@/utils/logger';
 import { asObject } from './normalizeReport';
 
 const TASK_TEMPLATE = 'fanout.group_day.tasks.mines';

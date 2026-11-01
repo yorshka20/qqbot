@@ -6,8 +6,8 @@
  */
 
 import type { Database } from 'bun:sqlite';
+import { logger } from '@qqbot/shared';
 import type { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
-import { logger } from '@/utils/logger';
 import { ClaudeCliBackend } from './backends/ClaudeCliBackend';
 import { CodexCliBackend } from './backends/CodexCliBackend';
 import { DeepseekBackend } from './backends/DeepseekBackend';

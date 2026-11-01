@@ -29,8 +29,8 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { logger } from '@qqbot/shared';
 import { spawn } from 'bun';
-import { logger } from '@/utils/logger';
 import type { CredentialProbeConfig, CredentialProbeResult, WorkerBackend, WorkerSpawnConfig } from '../types';
 import { checkGeminiCredential, readModelArg } from './providerCredentialCheck';
 

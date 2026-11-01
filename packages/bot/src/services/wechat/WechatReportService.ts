@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { logger } from '@/utils/logger';
+import { logger } from '@qqbot/shared';
 import type { ArticleSummary, GroupSummary, WechatDigestService, WechatStats } from './WechatDigestService';
 
 // ────────────────────────────────────────────────────────────────────────────

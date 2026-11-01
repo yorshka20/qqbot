@@ -1,11 +1,11 @@
 // Search service - web search via SearXNG (direct or MCP)
 
+import { logger } from '@qqbot/shared';
+import type { HealthCheckManager } from '@qqbot/shared/health';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
 import { parseSearchDecision as parseSearchDecisionShared } from '@/ai/utils/llmJsonExtract';
 import type { MCPConfig, SearchProvider } from '@/core/config/types/mcp';
-import type { HealthCheckManager } from '@/core/health';
-import { logger } from '@/utils/logger';
 import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { PageContentFetchService } from '../fetch';
 import type { FilterAndRefineOptions, FilterRefineResult } from '../searchFilterRefine';

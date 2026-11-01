@@ -12,12 +12,12 @@
 // Cooldown: per-item minimum interval checked before each run (lastRunAt + cooldownMs).
 // DB: AgendaItem records are persisted so they survive restarts; schedules are re-hydrated on start.
 
+import { logger } from '@qqbot/shared';
 import cron from 'node-cron';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { PluginManager } from '@/plugins/PluginManager';
-import { logger } from '@/utils/logger';
 import type { ActionHandler, ActionHandlerRegistry } from './ActionHandlerRegistry';
 import type { AgendaReporter } from './AgendaReporter';
 import type { AgentLoop } from './AgentLoop';

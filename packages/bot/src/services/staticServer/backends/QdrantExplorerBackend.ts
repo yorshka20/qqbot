@@ -14,9 +14,9 @@ import type {
   QdrantScrollResponse,
   QdrantSearchResponse,
 } from '@qqbot/api-types';
+import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
-import { logger } from '@/utils/logger';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 
