@@ -1,5 +1,5 @@
+import type { LanClientSnapshot } from '@qqbot/api-types';
 import { Send, Skull } from 'lucide-react';
-import type { LanClientSnapshot } from '../../../types';
 import { formatDuration } from '../utils';
 
 /**

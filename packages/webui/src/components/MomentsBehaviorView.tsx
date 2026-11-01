@@ -2,12 +2,11 @@
  * Behavior View — posting patterns: hour/day distribution, gap stats, monthly frequency.
  */
 
+import type { BehaviorResponse } from '@qqbot/api-types';
 import { Activity } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-
 import { getMomentsBehavior } from '../api';
-import type { BehaviorResponse } from '../types';
 import { EmptyState, LoadingSpinner, useChartTooltipStyle } from './MomentsShared';
 
 export function BehaviorView({ isDark }: { isDark: boolean }) {

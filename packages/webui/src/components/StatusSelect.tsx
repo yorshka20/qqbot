@@ -1,6 +1,6 @@
+import type { TicketStatus } from '@qqbot/api-types';
 import * as Select from '@radix-ui/react-select';
 import { Check, ChevronDown } from 'lucide-react';
-import type { TicketStatus } from '../types';
 
 const STATUS_OPTIONS: { value: TicketStatus; label: string; dot: string }[] = [
   { value: 'draft', label: 'draft', dot: 'bg-zinc-400' },

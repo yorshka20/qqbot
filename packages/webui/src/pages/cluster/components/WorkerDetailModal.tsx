@@ -1,8 +1,7 @@
+import type { ClusterTask, ClusterWorkerHistoryEntry, EnrichedWorkerRegistration } from '@qqbot/api-types';
 import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-
 import { getClusterTask } from '../../../api';
-import type { ClusterTask, ClusterWorkerHistoryEntry, EnrichedWorkerRegistration } from '../../../types';
 import { formatEpoch, formatTimestamp } from '../utils';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
 import { Modal } from './Modal';

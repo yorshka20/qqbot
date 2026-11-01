@@ -1,4 +1,4 @@
-import type { MemoryFactEntry, MemoryFactStatus } from '../../types';
+import type { MemoryFactEntry, MemoryFactStatus } from '@qqbot/api-types';
 
 export type MemoryStatusFilter = 'all' | MemoryFactStatus;
 export type MemoryLayerFilter = 'all' | 'manual' | 'auto';

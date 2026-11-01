@@ -1,4 +1,4 @@
-import type { MemoryFactDurability, MemoryFactStatus } from '../../../types';
+import type { MemoryFactDurability, MemoryFactStatus } from '@qqbot/api-types';
 import { STATUS_LABEL } from '../utils';
 
 const STATUS_CLASS: Record<MemoryFactStatus, string> = {

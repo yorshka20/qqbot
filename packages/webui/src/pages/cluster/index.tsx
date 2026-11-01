@@ -24,9 +24,17 @@
  * are small enough that the extra round-trip is fine.
  */
 
+import type {
+  ClusterEventEntry,
+  ClusterHelpRequest,
+  ClusterJob,
+  ClusterLock,
+  ClusterStatus,
+  ClusterTask,
+  ClusterWorkerRegistration,
+} from '@qqbot/api-types';
 import { GitBranch, HelpCircle, History, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
 import {
   getClusterStatus,
   getClusterTask,
@@ -44,15 +52,6 @@ import {
   stopCluster,
 } from '../../api';
 import { getClusterApiBase } from '../../config';
-import type {
-  ClusterEventEntry,
-  ClusterHelpRequest,
-  ClusterJob,
-  ClusterLock,
-  ClusterStatus,
-  ClusterTask,
-  ClusterWorkerRegistration,
-} from '../../types';
 import { BottomPanel } from './components/BottomPanel';
 import { HelpDrawer } from './components/HelpDrawer';
 import { HistoryModal } from './components/HistoryModal';
@@ -438,7 +437,7 @@ export function ClusterPage() {
           note={(() => {
             if (killConfirm.kind !== 'worker') return undefined;
             const w = workers?.find((x) => x.workerId === killConfirm.id);
-            const isOrphan = !!w && w.status !== 'running' && w.status !== 'active' && w.status !== 'exited';
+            const isOrphan = !!w && w.status !== 'active' && w.status !== 'exited';
             return isOrphan
               ? 'No live process found for this worker. Confirming marks the orphan registration as exited so the UI reflects reality.'
               : undefined;

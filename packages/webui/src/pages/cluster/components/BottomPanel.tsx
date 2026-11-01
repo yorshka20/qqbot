@@ -1,7 +1,6 @@
+import type { ClusterEventEntry, ClusterLock } from '@qqbot/api-types';
 import { ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { useState } from 'react';
-
-import type { ClusterEventEntry, ClusterLock } from '../../../types';
 import { formatClusterEventSummary } from '../utils';
 import { LocksPanel } from './LocksPanel';
 

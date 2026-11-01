@@ -2,13 +2,12 @@
  * Browse View — search, filter, and browse moments with tags and timeline chart.
  */
 
+import type { MomentItem, MomentsStats } from '@qqbot/api-types';
 import { Calendar, Clock, Hash, Loader2, Search, Tag, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-
 import { listMoments, searchMoments } from '../api';
 import { getOutputBase } from '../config';
-import type { MomentItem, MomentsStats } from '../types';
 import { type DateFilterValue, MomentsDateFilter } from './MomentsDateFilter';
 import { useChartTooltipStyle } from './MomentsShared';
 

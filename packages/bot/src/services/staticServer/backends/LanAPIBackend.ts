@@ -22,6 +22,14 @@
  * - POST /api/lan/clients/:id/kick
  */
 
+import type {
+  LanClientsResponse,
+  LanDispatchResponse,
+  LanKickResponse,
+  LanReportsResponse,
+  LanStatusResponse,
+  LanStreamInitData,
+} from '@qqbot/api-types';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -82,7 +90,7 @@ export class LanAPIBackend {
       const runtime = getLanRelayRuntime();
       const config = this.resolveConfig();
       const lr = config?.getLanRelayConfig();
-      return jsonResponse({
+      return jsonResponse<LanStatusResponse>({
         enabled: !!lr?.enabled,
         role: runtime ? (runtime.isHostMode() ? 'host' : 'client') : null,
         listen: lr?.instanceRole === 'host' ? { host: lr.listenHost ?? '0.0.0.0', port: lr.listenPort ?? null } : null,
@@ -96,7 +104,7 @@ export class LanAPIBackend {
     const host = gated;
 
     if (subPath === '/clients') {
-      return jsonResponse({ clients: host.listClientSnapshots() });
+      return jsonResponse<LanClientsResponse>({ clients: host.listClientSnapshots() });
     }
 
     if (subPath === '/stream') {
@@ -125,7 +133,7 @@ export class LanAPIBackend {
           ? levelRaw
           : undefined;
       const rows = host.getReports(reportsMatch[1], { limit, level });
-      return jsonResponse({ reports: rows });
+      return jsonResponse<LanReportsResponse>({ reports: rows });
     }
 
     return errorResponse('Not found', 404);
@@ -176,7 +184,7 @@ export class LanAPIBackend {
       if (!ok) {
         return errorResponse('Client not connected', 404);
       }
-      return jsonResponse({ dispatched: true });
+      return jsonResponse<LanDispatchResponse>({ dispatched: true });
     }
 
     // /clients/:id/kick
@@ -186,7 +194,7 @@ export class LanAPIBackend {
       if (!ok) {
         return errorResponse('Client not connected', 404);
       }
-      return jsonResponse({ kicked: true });
+      return jsonResponse<LanKickResponse>({ kicked: true });
     }
 
     return errorResponse('Not found', 404);
@@ -238,7 +246,7 @@ export class LanAPIBackend {
 
         // Initial snapshot so the consumer doesn't have to GET /clients
         // separately on connect.
-        send('init', { clients: host.listClientSnapshots() });
+        send('init', { clients: host.listClientSnapshots() } satisfies LanStreamInitData);
       },
     });
 

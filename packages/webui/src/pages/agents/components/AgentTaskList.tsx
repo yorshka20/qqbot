@@ -1,4 +1,4 @@
-import type { AgentTaskRecord } from '../../../types';
+import type { AgentTaskRecord } from '@qqbot/api-types';
 import { agentStatusBadgeClass, agentStatusLabel, formatDuration, formatTimestamp } from '../utils';
 
 /**

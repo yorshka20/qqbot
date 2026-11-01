@@ -7,6 +7,7 @@
   "extends": "./tsconfig.base.json",
   "files": [],
   "references": [
+    { "path": "./packages/api-types" },
     { "path": "./packages/avatar" },
     { "path": "./packages/bot" },
     { "path": "./packages/webui" },

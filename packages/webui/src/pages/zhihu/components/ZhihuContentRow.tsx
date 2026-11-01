@@ -1,6 +1,5 @@
+import type { ZhihuContentListItem } from '@qqbot/api-types';
 import { ExternalLink, MessageSquare, ThumbsUp } from 'lucide-react';
-
-import type { ZhihuContentListItem } from '../../../types';
 
 export function ZhihuContentRow({ item }: { item: ZhihuContentListItem }) {
   const time = new Date(item.createdTime * 1000).toLocaleTimeString('zh-CN', {

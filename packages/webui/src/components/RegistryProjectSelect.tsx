@@ -1,6 +1,6 @@
+import type { ProjectRegistryEntry } from '@qqbot/api-types';
 import * as Select from '@radix-ui/react-select';
 import { AlertTriangle, Check, ChevronDown } from 'lucide-react';
-import type { ProjectRegistryEntry } from '../types';
 
 const UNKNOWN_SENTINEL = '__project_unknown__';
 

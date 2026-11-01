@@ -1,4 +1,4 @@
-import type { TicketStatus } from '../../types';
+import type { TicketStatus } from '@qqbot/api-types';
 
 const ALLOWED_STATUSES: TicketStatus[] = ['draft', 'ready', 'dispatched', 'done', 'abandoned'];
 const ALLOWED_COMPLEXITY = ['trivial', 'low', 'medium', 'high'] as const;

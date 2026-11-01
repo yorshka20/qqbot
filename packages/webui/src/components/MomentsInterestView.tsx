@@ -3,11 +3,10 @@
  * Layout: months as rows (vertical), tags as columns (horizontal), tag labels sticky at top.
  */
 
+import type { InterestEvolutionResponse } from '@qqbot/api-types';
 import { TrendingUp } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-
 import { getMomentsInterestEvolution } from '../api';
-import type { InterestEvolutionResponse } from '../types';
 import { EmptyState, LoadingSpinner } from './MomentsShared';
 
 const HEATMAP_COLORS = ['#f4f4f5', '#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8', '#1e3a8a'];

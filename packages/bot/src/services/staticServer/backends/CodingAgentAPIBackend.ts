@@ -18,6 +18,14 @@
  * page can say so.
  */
 
+import type {
+  AgentsStatusResponse,
+  AgentTaskCancelledResponse,
+  AgentTaskEvent,
+  AgentTaskOutput,
+  AgentTaskRecord,
+  AgentTasksResponse,
+} from '@qqbot/api-types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
@@ -69,7 +77,7 @@ export class CodingAgentAPIBackend implements Backend {
 
     if (subPath === '/tasks') {
       if (!service) {
-        return jsonResponse({ enabled: false, tasks: [] });
+        return jsonResponse<AgentTasksResponse>({ enabled: false, tasks: [] });
       }
       const limit = parsePositiveInt(url.searchParams.get('limit'), 100);
       const status = url.searchParams.get('status');
@@ -78,13 +86,15 @@ export class CodingAgentAPIBackend implements Backend {
         .list(limit)
         .filter((task) => !status || task.status === status)
         .map(capForList);
-      return jsonResponse({ enabled: true, tasks });
+      return jsonResponse<AgentTasksResponse>({ enabled: true, tasks });
     }
 
     const eventsMatch = subPath.match(/^\/tasks\/([^/]+)\/events$/);
     if (eventsMatch) {
       const listing = this.findTask(service, eventsMatch[1]);
-      return listing ? jsonResponse(service?.getTaskStore().readEvents(listing.directory) ?? []) : notFound();
+      return listing
+        ? jsonResponse<AgentTaskEvent[]>(service?.getTaskStore().readEvents(listing.directory) ?? [])
+        : notFound();
     }
 
     const outputMatch = subPath.match(/^\/tasks\/([^/]+)\/output$/);
@@ -94,7 +104,7 @@ export class CodingAgentAPIBackend implements Backend {
         return notFound();
       }
       const { stdout, stderr } = service.getTaskStore().readOutput(listing.directory);
-      return jsonResponse({
+      return jsonResponse<AgentTaskOutput>({
         stdout: tail(stdout, MAX_TRANSCRIPT_CHARS),
         stderr: tail(stderr, MAX_TRANSCRIPT_CHARS),
         stdoutTruncated: stdout.length > MAX_TRANSCRIPT_CHARS,
@@ -105,7 +115,7 @@ export class CodingAgentAPIBackend implements Backend {
     const taskMatch = subPath.match(/^\/tasks\/([^/]+)$/);
     if (taskMatch) {
       const listing = this.findTask(service, taskMatch[1]);
-      return listing ? jsonResponse(listing) : notFound();
+      return listing ? jsonResponse<AgentTaskRecord>(listing) : notFound();
     }
 
     return notFound();
@@ -119,15 +129,15 @@ export class CodingAgentAPIBackend implements Backend {
     // Cancel acts on a task this process is running; a record of a finished task is not
     // something to cancel, however recent it looks.
     const cancelled = service?.cancelTask(cancelMatch[1]) ?? false;
-    return jsonResponse({ cancelled });
+    return jsonResponse<AgentTaskCancelledResponse>({ cancelled });
   }
 
   private handleStatus(service: CodingAgentService | null): Response {
     if (!service) {
-      return jsonResponse({ enabled: false, executors: [] });
+      return jsonResponse<AgentsStatusResponse>({ enabled: false, executors: [] });
     }
     const status = service.getStatus();
-    return jsonResponse({
+    return jsonResponse<AgentsStatusResponse>({
       enabled: true,
       defaultExecutor: status.defaultExecutor,
       executors: AGENT_EXECUTOR_NAMES.map((name) => ({

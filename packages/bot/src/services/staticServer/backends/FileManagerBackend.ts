@@ -11,6 +11,7 @@
 
 import { readdir, rename, rmdir, stat, unlink } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
+import type { FileItem, ListResponse, MoveBody, RenameBody } from '@qqbot/api-types';
 import { logger } from '@/utils/logger';
 import { resolveSafe } from './pathSafety';
 import type { Backend } from './types';
@@ -23,41 +24,6 @@ type RelativePath = string;
 
 /** Resolved absolute path under baseDir, or null if invalid/traversal. */
 type ResolvedPath = string;
-
-// ---------------------------------------------------------------------------
-// API types (request/response)
-// ---------------------------------------------------------------------------
-
-/** Single entry in a directory listing (name, relative path, type, size, mtime). */
-export interface FileItem {
-  name: string;
-  path: RelativePath;
-  isDir: boolean;
-  size?: number;
-  mtime?: number;
-}
-
-/** Response for GET /api/files/list. */
-export interface ListResponse {
-  items: FileItem[];
-}
-
-/** Request body for POST /api/files/move. */
-export interface MoveBody {
-  from: string;
-  to: string;
-}
-
-/** Request body for POST /api/files/rename. */
-export interface RenameBody {
-  path: string;
-  newName: string;
-}
-
-/** Error payload returned as JSON on 4xx/5xx. */
-export interface ErrorResponse {
-  error: string;
-}
 
 // ---------------------------------------------------------------------------
 // HTTP helpers

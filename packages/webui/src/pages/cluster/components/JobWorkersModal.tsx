@@ -1,6 +1,5 @@
+import type { EnrichedWorkerRegistration } from '@qqbot/api-types';
 import { useMemo, useState } from 'react';
-
-import type { EnrichedWorkerRegistration } from '../../../types';
 import { formatEpoch } from '../utils';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
 import { Modal } from './Modal';

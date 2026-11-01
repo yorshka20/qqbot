@@ -1,4 +1,4 @@
-import type { TicketStatus } from '../../types';
+import type { TicketStatus } from '@qqbot/api-types';
 
 /**
  * Tailwind class set for a ticket status badge. Colors mirror cluster

@@ -1,9 +1,9 @@
+import type { ReportListItem } from '@qqbot/api-types';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { FileText, Loader2, MessageSquare, Newspaper, Users } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { listReports } from '../api';
-import type { ReportListItem } from '../types';
 
 interface ReportListProps {
   onSelectReport: (id: string) => void;

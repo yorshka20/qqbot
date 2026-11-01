@@ -1,6 +1,6 @@
+import type { TicketStatus } from '@qqbot/api-types';
 import * as Select from '@radix-ui/react-select';
 import { Check, ChevronDown, Filter, X } from 'lucide-react';
-import type { TicketStatus } from '../../../types';
 import { ticketStatusBadgeClass } from '../utils';
 
 const ALL_SENTINEL = '__all__';

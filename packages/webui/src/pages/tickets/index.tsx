@@ -20,9 +20,15 @@
  *     in VSCode" cases.
  */
 
+import type {
+  ClusterTemplatesResponse,
+  ProjectRegistryEntry,
+  Ticket,
+  TicketFrontmatter,
+  TicketStatus,
+} from '@qqbot/api-types';
 import { FileText, Plus, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-
 import {
   createClusterJob,
   createTicket,
@@ -34,13 +40,6 @@ import {
   listTickets,
   updateTicket,
 } from '../../api';
-import type {
-  ClusterTemplatesResponse,
-  ProjectRegistryEntry,
-  Ticket,
-  TicketFrontmatter,
-  TicketStatus,
-} from '../../types';
 import { DispatchConfirmDialog } from './components/DispatchConfirmDialog';
 import { TicketDetailPanel } from './components/TicketDetailPanel';
 import { TicketEditor } from './components/TicketEditor';

@@ -1,10 +1,9 @@
+import type { ClusterTemplatesResponse, ProjectRegistryEntry } from '@qqbot/api-types';
 import { Send } from 'lucide-react';
 import { useEffect, useState } from 'react';
-
 import { createClusterJob, getClusterProjects, getClusterTemplates } from '../../../api';
 import { RegistryProjectSelect } from '../../../components/RegistryProjectSelect';
 import { TemplateSelect } from '../../../components/TemplateSelect';
-import type { ClusterTemplatesResponse, ProjectRegistryEntry } from '../../../types';
 
 export function SubmitTaskCard({ started, onSubmitted }: { started: boolean | null; onSubmitted: () => void }) {
   const [projects, setProjects] = useState<ProjectRegistryEntry[]>([]);

@@ -1,4 +1,4 @@
-import type { ClusterJob, ClusterTask } from '../../../types';
+import type { ClusterJob, ClusterTask } from '@qqbot/api-types';
 import { JobRow } from './JobRow';
 
 export function JobsPanel({

@@ -35,6 +35,30 @@
  *   - POST /api/cluster/help/:id/answer
  */
 
+import type {
+  ClusterEventListResponse,
+  ClusterHelpAnswerBody,
+  ClusterHelpAnsweredResponse,
+  ClusterHelpRequest,
+  ClusterJob,
+  ClusterJobCancelledResponse,
+  ClusterJobHistoryResponse,
+  ClusterJobSubmitBody,
+  ClusterJobWithDetail,
+  ClusterLock,
+  ClusterPausedResponse,
+  ClusterStartedResponse,
+  ClusterStatusResponse,
+  ClusterTask,
+  ClusterTaskCancelledResponse,
+  ClusterTaskDetail,
+  ClusterTemplatesResponse,
+  ClusterWorkerHistoryResponse,
+  ClusterWorkerKilledResponse,
+  ClusterWorkerTemplate,
+  EnrichedWorkerRegistration,
+  ProjectsResponse,
+} from '@qqbot/api-types';
 import type { ClusterManager } from '@/cluster/ClusterManager';
 import type { ClusterEventType, TaskRecord, WorkerRegistration } from '@/cluster/types';
 import { getContainer } from '@/core/DIContainer';
@@ -44,18 +68,6 @@ import { logger } from '@/utils/logger';
 import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/cluster';
-
-/** Worker registry row plus resolved job/ticket for WebUI (GET /workers). */
-export type EnrichedWorkerRegistration = WorkerRegistration & {
-  /** Same as stats.registeredAt — process / hub registration time (epoch ms). */
-  spawnedAt: number;
-  boundJobId?: string;
-  boundTicketId?: string;
-  /** Truncated task description for the resolved task. */
-  boundTaskSummary?: string;
-  /** Task id used for resolution (current, last bound, or DB fallback). */
-  resolvedTaskId?: string;
-};
 
 export class ClusterAPIBackend {
   readonly prefix = API_PREFIX;
@@ -163,7 +175,7 @@ export class ClusterAPIBackend {
         if (!cluster) {
           return errorResponse('Agent Cluster not configured (or requires SQLite)', 503);
         }
-        return jsonResponse({
+        return jsonResponse<ClusterStatusResponse>({
           started: cluster.isStarted(),
           status: cluster.getStatus(),
         });
@@ -174,7 +186,7 @@ export class ClusterAPIBackend {
           return errorResponse('Agent Cluster not configured (or requires SQLite)', 503);
         }
         const config = cluster.getConfig();
-        const templates = Object.entries(config.workerTemplates).map(([name, t]) => ({
+        const templates: ClusterWorkerTemplate[] = Object.entries(config.workerTemplates).map(([name, t]) => ({
           name,
           type: t.type,
           role: t.role ?? 'executor',
@@ -187,7 +199,7 @@ export class ClusterAPIBackend {
         for (const [alias, p] of Object.entries(config.projects)) {
           projectDefaults[alias] = p.workerPreference;
         }
-        return jsonResponse({ templates, projectDefaults });
+        return jsonResponse<ClusterTemplatesResponse>({ templates, projectDefaults });
       }
 
       case '/projects': {
@@ -210,7 +222,7 @@ export class ClusterAPIBackend {
             isConfig: registry.isConfigProject(p.alias),
           }));
           projects.sort((a, b) => a.alias.localeCompare(b.alias));
-          return jsonResponse({ defaultAlias, projects });
+          return jsonResponse<ProjectsResponse>({ defaultAlias, projects });
         } catch (err) {
           return errorResponse(err instanceof Error ? err.message : String(err), 500);
         }
@@ -226,32 +238,34 @@ export class ClusterAPIBackend {
 
     switch (subPath) {
       case '/workers':
-        return jsonResponse(this.enrichWorkerRegistrations(live, live.getHub().workerRegistry.getAll()));
+        return jsonResponse<EnrichedWorkerRegistration[]>(
+          this.enrichWorkerRegistrations(live, live.getHub().workerRegistry.getAll()),
+        );
 
       case '/jobs': {
         const limit = parseInt(url.searchParams.get('limit') || '50', 10);
         const offset = parseInt(url.searchParams.get('offset') || '0', 10);
         const status = url.searchParams.get('status') || undefined;
         const jobs = live.getScheduler().getJobs({ status, limit, offset });
-        return jsonResponse(jobs);
+        return jsonResponse<ClusterJob[]>(jobs);
       }
 
       case '/tasks':
-        return jsonResponse(live.getScheduler().getActiveTasks());
+        return jsonResponse<ClusterTask[]>(live.getScheduler().getActiveTasks());
 
       case '/events': {
         const limit = parseInt(url.searchParams.get('limit') || '50', 10);
         const offset = parseInt(url.searchParams.get('offset') || '0', 10);
         const type = url.searchParams.get('type') || undefined;
         const events = live.getHub().eventLog.query({ type: type as ClusterEventType | undefined, limit, offset });
-        return jsonResponse(events);
+        return jsonResponse<ClusterEventListResponse>(events);
       }
 
       case '/locks':
-        return jsonResponse(live.getHub().lockManager.getActiveLocks());
+        return jsonResponse<ClusterLock[]>(live.getHub().lockManager.getActiveLocks());
 
       case '/help':
-        return jsonResponse(live.getHub().getPendingHelpRequests());
+        return jsonResponse<ClusterHelpRequest[]>(live.getHub().getPendingHelpRequests());
 
       case '/stream':
         return this.handleSSEStream(live);
@@ -263,7 +277,7 @@ export class ClusterAPIBackend {
           const offset = parseInt(url.searchParams.get('offset') || '0', 10);
           const status = url.searchParams.get('status') || undefined;
           const result = live.getScheduler().getJobsFromDb({ limit, offset, status });
-          return jsonResponse(result);
+          return jsonResponse<ClusterJobHistoryResponse>(result);
         }
 
         // /history/workers — paginated worker history from DB
@@ -273,7 +287,7 @@ export class ClusterAPIBackend {
           const jobId = url.searchParams.get('jobId') || undefined;
           const project = url.searchParams.get('project') || undefined;
           const result = live.getHub().workerRegistry.getWorkersFromDb({ limit, offset, jobId, project });
-          return jsonResponse(result);
+          return jsonResponse<ClusterWorkerHistoryResponse>(result);
         }
 
         // /jobs/:id/workers — workers for a specific job
@@ -281,7 +295,7 @@ export class ClusterAPIBackend {
         if (jobWorkersMatch) {
           const jobId = jobWorkersMatch[1];
           const workers = live.getHub().workerRegistry.getWorkersByJobId(jobId);
-          return jsonResponse(this.enrichWorkerRegistrations(live, workers));
+          return jsonResponse<EnrichedWorkerRegistration[]>(this.enrichWorkerRegistrations(live, workers));
         }
 
         // /jobs/:id
@@ -294,7 +308,11 @@ export class ClusterAPIBackend {
             .getJobTasks(jobMatch[1])
             .map((t) => this.capTaskForList(t));
           const workers = live.getHub().workerRegistry.getWorkersByJobId(jobMatch[1]);
-          return jsonResponse({ ...job, tasks, workers: this.enrichWorkerRegistrations(live, workers) });
+          return jsonResponse<ClusterJobWithDetail>({
+            ...job,
+            tasks,
+            workers: this.enrichWorkerRegistrations(live, workers),
+          });
         }
 
         // /tasks/:id — single task detail (includes full description, output, metadata)
@@ -304,14 +322,14 @@ export class ClusterAPIBackend {
           if (!task) return errorResponse('Task not found', 404);
           // Include child tasks if this is a planner task
           const children = live.getScheduler().getChildTasks(taskMatch[1]);
-          return jsonResponse({ ...task, children: children.length > 0 ? children : undefined });
+          return jsonResponse<ClusterTaskDetail>({ ...task, children: children.length > 0 ? children : undefined });
         }
 
         // /tasks/:id/events
         const taskEventsMatch = subPath.match(/^\/tasks\/([^/]+)\/events$/);
         if (taskEventsMatch) {
           const events = live.getHub().eventLog.query({ taskId: taskEventsMatch[1] });
-          return jsonResponse(events);
+          return jsonResponse<ClusterEventListResponse>(events);
         }
 
         return errorResponse('Not found', 404);
@@ -333,7 +351,7 @@ export class ClusterAPIBackend {
           return errorResponse(err instanceof Error ? err.message : String(err), 500);
         }
       }
-      return jsonResponse({ started: true });
+      return jsonResponse<ClusterStartedResponse>({ started: true });
     }
 
     if (subPath === '/stop') {
@@ -348,7 +366,7 @@ export class ClusterAPIBackend {
           return errorResponse(err instanceof Error ? err.message : String(err), 500);
         }
       }
-      return jsonResponse({ started: false });
+      return jsonResponse<ClusterStartedResponse>({ started: false });
     }
 
     // ── Gated routes (require a started cluster) ──
@@ -358,19 +376,7 @@ export class ClusterAPIBackend {
 
     switch (subPath) {
       case '/jobs': {
-        let body: {
-          project?: string;
-          description?: string;
-          workerTemplate?: string;
-          /**
-           * Phase 3: when true, scheduler enforces that the resolved
-           * worker template has `role: 'planner'`. Set by the WebUI ticket
-           * dispatch flow when the ticket frontmatter has `usePlanner: true`.
-           */
-          requirePlannerRole?: boolean;
-          /** Ticket id for result writeback. Set by the WebUI dispatch flow. */
-          ticketId?: string;
-        };
+        let body: Partial<ClusterJobSubmitBody>;
         try {
           body = (await req.json()) as typeof body;
         } catch {
@@ -390,17 +396,17 @@ export class ClusterAPIBackend {
             400,
           );
         }
-        return jsonResponse(task, 201);
+        return jsonResponse<ClusterTask>(task, 201);
       }
 
       case '/pause': {
         live.pause();
-        return jsonResponse({ paused: true });
+        return jsonResponse<ClusterPausedResponse>({ paused: true });
       }
 
       case '/resume': {
         live.resume();
-        return jsonResponse({ paused: false });
+        return jsonResponse<ClusterPausedResponse>({ paused: false });
       }
 
       default: {
@@ -408,7 +414,7 @@ export class ClusterAPIBackend {
         const killMatch = subPath.match(/^\/workers\/([^/]+)\/kill$/);
         if (killMatch) {
           const killed = await live.killWorker(killMatch[1]);
-          return jsonResponse({ killed });
+          return jsonResponse<ClusterWorkerKilledResponse>({ killed });
         }
 
         // /tasks/:id/kill
@@ -420,7 +426,11 @@ export class ClusterAPIBackend {
             if (result.code === 'not_found') return errorResponse('Task not found', 404);
             return errorResponse(`Task already terminal (status: ${result.status})`, 409);
           }
-          return jsonResponse({ cancelled: true, taskId: taskKillMatch[1], cascadedChildren: result.cascadedChildren });
+          return jsonResponse<ClusterTaskCancelledResponse>({
+            cancelled: true,
+            taskId: taskKillMatch[1],
+            cascadedChildren: result.cascadedChildren,
+          });
         }
 
         // /jobs/:id/kill
@@ -432,15 +442,19 @@ export class ClusterAPIBackend {
             if (result.code === 'not_found') return errorResponse('Job not found', 404);
             return errorResponse(`Job already terminal (status: ${result.status})`, 409);
           }
-          return jsonResponse({ cancelled: true, jobId: jobKillMatch[1], cancelledTasks: result.cancelledTasks });
+          return jsonResponse<ClusterJobCancelledResponse>({
+            cancelled: true,
+            jobId: jobKillMatch[1],
+            cancelledTasks: result.cancelledTasks,
+          });
         }
 
         // /help/:id/answer
         const answerMatch = subPath.match(/^\/help\/([^/]+)\/answer$/);
         if (answerMatch) {
-          let body: { answer?: string; answeredBy?: string };
+          let body: Partial<ClusterHelpAnswerBody>;
           try {
-            body = (await req.json()) as { answer?: string; answeredBy?: string };
+            body = (await req.json()) as typeof body;
           } catch {
             return errorResponse('Invalid JSON body', 400);
           }
@@ -448,7 +462,7 @@ export class ClusterAPIBackend {
             return errorResponse('Missing required field: answer', 400);
           }
           const answered = live.answerHelpRequest(answerMatch[1], body.answer, body.answeredBy || 'human');
-          return jsonResponse({ answered });
+          return jsonResponse<ClusterHelpAnsweredResponse>({ answered });
         }
 
         return errorResponse('Not found', 404);

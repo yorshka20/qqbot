@@ -1,6 +1,5 @@
+import type { InsightDetail, InsightListItem } from '@qqbot/api-types';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-
-import type { InsightDetail, InsightListItem } from '../../../types';
 import { InsightDetailView } from './InsightDetailView';
 
 export function InsightRow({

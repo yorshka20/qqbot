@@ -4,10 +4,10 @@
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: search hits are positional and have no stable id */
 /** biome-ignore-all lint/a11y/noLabelWithoutControl: labels caption their own field group, not one control */
 
+import type { QdrantCollectionInfo, QdrantSearchHit } from '@qqbot/api-types';
 import { Database, Loader2, Search } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listQdrantCollections, scrollQdrant, searchQdrant } from '../../api';
-import type { QdrantCollectionInfo, QdrantSearchHit } from '../../types';
 import { QdrantPointCard } from './components/QdrantPointCard';
 
 type ViewMode = 'search' | 'browse';

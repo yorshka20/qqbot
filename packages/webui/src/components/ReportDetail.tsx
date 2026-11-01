@@ -1,3 +1,4 @@
+import type { ArticleSummary, GroupSummary, MessageEntry, ReportDetailResponse, WechatStats } from '@qqbot/api-types';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import {
@@ -15,7 +16,6 @@ import { marked } from 'marked';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getReport } from '../api';
 import { getOutputBase } from '../config';
-import type { ArticleSummary, GroupSummary, MessageEntry, ReportDetailResponse, WechatStats } from '../types';
 
 interface ReportDetailProps {
   reportId: string;

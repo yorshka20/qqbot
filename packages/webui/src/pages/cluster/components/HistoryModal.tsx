@@ -1,8 +1,7 @@
+import type { ClusterJob, ClusterTask, ClusterWorkerHistoryEntry } from '@qqbot/api-types';
 import { History, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-
 import { listClusterHistoryJobs, listClusterHistoryWorkers } from '../../../api';
-import type { ClusterJob, ClusterTask, ClusterWorkerHistoryEntry } from '../../../types';
 import { formatEpoch } from '../utils';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
 import { JobRow } from './JobRow';

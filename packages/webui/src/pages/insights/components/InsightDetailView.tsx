@@ -1,6 +1,5 @@
+import type { InsightDetail } from '@qqbot/api-types';
 import { ExternalLink, Tag } from 'lucide-react';
-
-import type { InsightDetail } from '../../../types';
 import { cleanWxUrl } from '../utils';
 
 const IMPORTANCE_COLORS: Record<string, string> = {

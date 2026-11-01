@@ -16,6 +16,11 @@
 // Independent of Agent Cluster (ContextHub) — runs its own Bun.serve.
 
 import type { Database } from 'bun:sqlite';
+import type {
+  LanStreamClientConnectedData,
+  LanStreamClientDisconnectedData,
+  LanStreamInternalReportData,
+} from '@qqbot/api-types';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { SendMessageResult } from '@/api/types';
 import type { Config } from '@/core/config';
@@ -276,7 +281,7 @@ export class LanRelayHost implements ILanRelayRuntime {
     // but it short-circuits on `entry && entry.ws === ws` because we
     // already deleted the entry above. Fire it ourselves so subscribers
     // see kicks reflected without waiting for the WS round-trip.
-    this.emit('client_disconnected', { clientId });
+    this.emit('client_disconnected', { clientId } satisfies LanStreamClientDisconnectedData);
     return true;
   }
 
@@ -327,7 +332,9 @@ export class LanRelayHost implements ILanRelayRuntime {
             if (entry && entry.ws === ws) {
               clientsById.delete(ws.data.clientId);
               logger.info(`[LanRelayHost] Client disconnected: ${ws.data.clientId}`);
-              host.emit('client_disconnected', { clientId: ws.data.clientId });
+              host.emit('client_disconnected', {
+                clientId: ws.data.clientId,
+              } satisfies LanStreamClientDisconnectedData);
             }
           } else {
             logger.info('[LanRelayHost] Unauthenticated client disconnected');
@@ -466,7 +473,10 @@ async function handleHostClientMessage(
     clientsById.set(p.clientId, entry);
     if (ws.data) ws.data.clientId = p.clientId;
     logger.info(`[LanRelayHost] Client registered: ${p.clientId} (${p.lanAddress})`);
-    host.emit('client_connected', host.getClientSnapshot(p.clientId));
+    host.emit(
+      'client_connected',
+      host.getClientSnapshot(p.clientId) satisfies LanStreamClientConnectedData | undefined,
+    );
     return;
   }
 
@@ -487,7 +497,7 @@ async function handleHostClientMessage(
       level: p.level,
       text: p.text,
       ts: p.ts,
-    });
+    } satisfies LanStreamInternalReportData);
     return;
   }
 

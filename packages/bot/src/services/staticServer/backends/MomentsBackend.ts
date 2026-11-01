@@ -17,6 +17,21 @@
  * - GET  /api/moments/clusters                               -> { clusters, clusteredCount }
  */
 
+import type {
+  BehaviorResponse,
+  ClustersResponse,
+  EntitiesResponse,
+  InterestEvolutionResponse,
+  MomentItem,
+  MomentsListResponse,
+  MomentsSearchResponse,
+  MomentsStatsResponse,
+  MomentsTagsResponse,
+  MomentsTimelineResponse,
+  SentimentTrendResponse,
+  TagCount,
+  TimelineEntry,
+} from '@qqbot/api-types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
@@ -28,101 +43,6 @@ import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/moments';
 const COLLECTION = 'wechat_moments';
-
-// ---------------------------------------------------------------------------
-// API types
-// ---------------------------------------------------------------------------
-
-export interface MomentItem {
-  id: string | number;
-  content: string;
-  createTime: string;
-  type: string;
-  mediasCount: number;
-  tags: string[];
-  summary: string;
-  imagePaths: string[];
-  score?: number;
-}
-
-export interface TagCount {
-  tag: string;
-  count: number;
-}
-
-export interface TimelineEntry {
-  month: string; // "YYYY-MM"
-  count: number;
-}
-
-export interface MomentsStats {
-  total: number;
-  tagged: number;
-  untagged: number;
-  timeRange: { earliest: string; latest: string } | null;
-  topTags: TagCount[];
-  monthlyCount: TimelineEntry[];
-}
-
-// Response types
-export interface MomentsStatsResponse {
-  stats: MomentsStats;
-}
-export interface MomentsListResponse {
-  moments: MomentItem[];
-  total: number;
-  nextOffset: string | number | null;
-}
-export interface MomentsTagsResponse {
-  tags: TagCount[];
-}
-export interface MomentsTimelineResponse {
-  timeline: TimelineEntry[];
-}
-export interface MomentsSearchResponse {
-  moments: MomentItem[];
-  query: string;
-}
-
-// ── Analysis response types ──
-
-export interface InterestEvolutionResponse {
-  heatmap: Array<{ tag: string; month: string; count: number }>;
-  tags: string[];
-  months: string[];
-}
-
-export interface BehaviorResponse {
-  hourDistribution: Array<{ hour: number; count: number }>;
-  dayOfWeekDistribution: Array<{ day: number; label: string; count: number }>;
-  monthlyFrequency: Array<{ month: string; count: number; avgGapDays: number }>;
-  gapStats: { avgDays: number; medianDays: number; maxDays: number; minDays: number };
-}
-
-export interface SentimentTrendResponse {
-  trend: Array<{
-    month: string;
-    avgScore: number;
-    positive: number;
-    negative: number;
-    neutral: number;
-    mixed: number;
-    count: number;
-  }>;
-  overall: { avgScore: number; positive: number; negative: number; neutral: number; mixed: number; total: number };
-  analyzedCount: number;
-}
-
-export interface EntitiesResponse {
-  entities: Array<{ name: string; type: string; count: number }>;
-  byType: Record<string, Array<{ name: string; count: number }>>;
-  analyzedCount: number;
-}
-
-export interface ClustersResponse {
-  clusters: Array<{ clusterId: number; label: string; count: number }>;
-  clusteredCount: number;
-}
 
 // ---------------------------------------------------------------------------
 // Payload → MomentItem

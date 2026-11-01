@@ -1,4 +1,4 @@
-import type { PersonaRelationshipView } from '../../../api';
+import type { PersonaRelationshipView } from '@qqbot/api-types';
 import { fmt, fmtTs } from '../utils';
 import { Card } from './Card';
 

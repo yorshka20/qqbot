@@ -1,7 +1,6 @@
+import type { DocsRootInfo, FileItem } from '@qqbot/api-types';
 import { useCallback, useEffect, useState } from 'react';
-
 import { listDocs } from '../../../api';
-import type { DocsRootInfo, FileItem } from '../../../types';
 import { byNewestFirst } from '../utils';
 
 export interface DirListingState {

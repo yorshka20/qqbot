@@ -7,6 +7,13 @@
  * - GET  /api/insights/stats                             -> { stats: InsightStats }
  */
 
+import type {
+  InsightDetail,
+  InsightDetailResponse,
+  InsightListItem,
+  InsightListResponse,
+  InsightStatsResponse,
+} from '@qqbot/api-types';
 import { getContainer } from '@/core/DIContainer';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WeChatArticleInsightRow, WeChatDatabase } from '@/services/wechat/WeChatDatabase';
@@ -15,60 +22,6 @@ import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/insights';
-
-// ---------------------------------------------------------------------------
-// API types
-// ---------------------------------------------------------------------------
-
-export interface InsightListItem {
-  articleMsgId: string;
-  title: string;
-  url: string;
-  source: string;
-  headline: string;
-  categoryTags: string[];
-  worthReporting: boolean;
-  analyzedAt: string;
-  model: string;
-  itemCount: number;
-}
-
-export interface InsightDetail {
-  articleMsgId: string;
-  title: string;
-  url: string;
-  source: string;
-  headline: string;
-  categoryTags: string[];
-  items: Array<{
-    type: string;
-    content: string;
-    tags: string[];
-    importance: string;
-  }>;
-  worthReporting: boolean;
-  analyzedAt: string;
-  model: string;
-}
-
-export interface InsightStats {
-  total: number;
-  worthReporting: number;
-  notWorth: number;
-  byCategory: Array<{ tag: string; count: number }>;
-}
-
-export interface InsightListResponse {
-  insights: InsightListItem[];
-}
-
-export interface InsightDetailResponse {
-  insight: InsightDetail;
-}
-
-export interface InsightStatsResponse {
-  stats: InsightStats;
-}
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -1,7 +1,7 @@
+import type { FileItem } from '@qqbot/api-types';
 import { Loader2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getOutputBase } from '../config';
-import type { FileItem } from '../types';
 import { ResourceCard } from './ResourceCard';
 
 interface CardWallProps {

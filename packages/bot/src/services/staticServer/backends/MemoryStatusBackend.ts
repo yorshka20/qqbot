@@ -16,6 +16,18 @@
  * - DELETE /api/memory/fact/:id                         → delete a fact
  */
 
+import type {
+  MemoryFactCounts,
+  MemoryFactDeletedResponse,
+  MemoryFactEntry,
+  MemoryFactUpdatedResponse,
+  MemoryGroupDetail,
+  MemoryGroupsResponse,
+  MemoryManualSavedResponse,
+  MemorySlotDetail,
+  MemorySlotSummary,
+  MemoryStatsResponse,
+} from '@qqbot/api-types';
 import { getContainer } from '@/core/DIContainer';
 import { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
 import { DatabaseManager } from '@/database/DatabaseManager';
@@ -31,12 +43,6 @@ import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/memory';
 
-interface FactCounts {
-  activeFacts: number;
-  supersededFacts: number;
-  retiredFacts: number;
-}
-
 function decodePathSegment(value: string): string {
   try {
     return decodeURIComponent(value);
@@ -45,7 +51,7 @@ function decodePathSegment(value: string): string {
   }
 }
 
-function countFacts(facts: MemoryFact[]): FactCounts {
+function countFacts(facts: MemoryFact[]): MemoryFactCounts {
   return {
     activeFacts: facts.filter((f) => f.status === 'active').length,
     supersededFacts: facts.filter((f) => f.status === 'superseded').length,
@@ -53,7 +59,7 @@ function countFacts(facts: MemoryFact[]): FactCounts {
   };
 }
 
-function toEntry(fact: MemoryFact) {
+function toEntry(fact: MemoryFact): MemoryFactEntry {
   return {
     id: fact.id,
     scope: fact.scope,
@@ -129,7 +135,9 @@ export class MemoryStatusBackend implements Backend {
 
   private async handleStats(): Promise<Response> {
     const facts = await this.store().listAll();
-    return jsonResponse({ stats: { ...countFacts(facts), manualSlots: this.manual().listSlots().length } });
+    return jsonResponse<MemoryStatsResponse>({
+      stats: { ...countFacts(facts), manualSlots: this.manual().listSlots().length },
+    });
   }
 
   private async handleGroups(): Promise<Response> {
@@ -150,7 +158,7 @@ export class MemoryStatusBackend implements Backend {
         ...countFacts(groupFacts),
       };
     });
-    return jsonResponse({ groups });
+    return jsonResponse<MemoryGroupsResponse>({ groups });
   }
 
   private async handleGroup(groupId: string): Promise<Response> {
@@ -167,7 +175,7 @@ export class MemoryStatusBackend implements Backend {
       names?.lookupLatestNicknames(
         userIds.filter((u) => u !== GROUP_MEMORY_USER_ID).map((userId) => ({ groupId, userId })),
       ) ?? new Map<string, string>();
-    const slots = userIds
+    const slots: MemorySlotSummary[] = userIds
       .map((userId) => {
         const isGroupMemory = userId === GROUP_MEMORY_USER_ID;
         const nickname = isGroupMemory ? undefined : nicknames.get(memorySubjectKey(groupId, userId));
@@ -186,7 +194,7 @@ export class MemoryStatusBackend implements Backend {
         return (a.nickname ?? a.userId).localeCompare(b.nickname ?? b.userId, 'zh-CN');
       });
     const groupName = names?.lookupLatestGroupNames([groupId]).get(groupId);
-    return jsonResponse({ groupId, ...(groupName ? { groupName } : {}), slots });
+    return jsonResponse<MemoryGroupDetail>({ groupId, ...(groupName ? { groupName } : {}), slots });
   }
 
   private async handleSlot(groupId: string, userId: string): Promise<Response> {
@@ -197,7 +205,7 @@ export class MemoryStatusBackend implements Backend {
       : names?.lookupLatestNicknames([{ groupId, userId }]).get(memorySubjectKey(groupId, userId));
     const groupName = names?.lookupLatestGroupNames([groupId]).get(groupId);
     const facts = await this.store().listSlot(groupId, userId);
-    return jsonResponse({
+    return jsonResponse<MemorySlotDetail>({
       groupId,
       ...(groupName ? { groupName } : {}),
       userId,
@@ -234,7 +242,7 @@ export class MemoryStatusBackend implements Backend {
       return errorResponse('content must be a string', 400);
     }
     await this.manual().save(groupId, userId, body.content);
-    return jsonResponse({ saved: true });
+    return jsonResponse<MemoryManualSavedResponse>({ saved: true });
   }
 
   private async handlePutFact(id: string, req: Request): Promise<Response> {
@@ -260,11 +268,13 @@ export class MemoryStatusBackend implements Backend {
       return errorResponse('durability must be stable or transient', 400);
     }
     const updated = await store.patch(id, { content, scope, durability });
-    return updated ? jsonResponse({ fact: toEntry(updated) }) : errorResponse('Fact not found', 404);
+    return updated
+      ? jsonResponse<MemoryFactUpdatedResponse>({ fact: toEntry(updated) })
+      : errorResponse('Fact not found', 404);
   }
 
   private async handleDeleteFact(id: string): Promise<Response> {
     const deleted = await this.store().delete(id);
-    return deleted ? jsonResponse({ deleted: true }) : errorResponse('Fact not found', 404);
+    return deleted ? jsonResponse<MemoryFactDeletedResponse>({ deleted: true }) : errorResponse('Fact not found', 404);
   }
 }

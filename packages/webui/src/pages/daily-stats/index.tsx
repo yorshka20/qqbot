@@ -2,10 +2,9 @@
  * Daily Stats page (route entry) — log-based daily statistics dashboard.
  */
 
+import type { DailyStats } from '@qqbot/api-types';
 import { useCallback, useEffect, useState } from 'react';
-
 import { getDailyStats, getStatsDates } from '../../api';
-import type { DailyStats } from '../../types';
 import { DailyStatsCharts } from './components/DailyStatsCharts';
 import { DailyStatsDateBar } from './components/DailyStatsDateBar';
 import { DailyStatsGroupsAndErrors } from './components/DailyStatsGroupsAndErrors';

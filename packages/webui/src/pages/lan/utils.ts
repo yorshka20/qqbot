@@ -1,4 +1,4 @@
-import type { LanReportLevel } from '../../types';
+import type { LanReportLevel } from '@qqbot/api-types';
 
 /**
  * Human-readable elapsed-time formatter for LAN client lifetimes.

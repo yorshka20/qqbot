@@ -1,10 +1,9 @@
+import type { ClusterEventEntry, ClusterTask, ReportEventData } from '@qqbot/api-types';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Copy, FileCode, Loader2, WrapText, X } from 'lucide-react';
 import { marked } from 'marked';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-
 import { getClusterTask, getClusterTaskEvents } from '../../../api';
-import type { ClusterEventEntry, ClusterTask, ReportEventData } from '../../../types';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
 import { isReportEvent, ReportTimeline } from './ReportTimeline';
 

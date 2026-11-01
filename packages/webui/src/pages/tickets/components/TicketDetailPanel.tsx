@@ -1,15 +1,8 @@
+import type { ClusterJobWithTasks, ClusterTask, Ticket, TicketJobSnapshot } from '@qqbot/api-types';
 import { ExternalLink, FileText, RefreshCw, Server, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-
-import {
-  getClusterJob,
-  getTicketJobSnapshot,
-  getTicketResult,
-  listTicketResults,
-  type TicketJobSnapshot,
-} from '../../../api';
+import { getClusterJob, getTicketJobSnapshot, getTicketResult, listTicketResults } from '../../../api';
 import { getClusterApiBase } from '../../../config';
-import type { ClusterJobWithTasks, ClusterTask, Ticket } from '../../../types';
 import { TaskOutputModal } from '../../cluster/components/TaskOutputModal';
 import { orderTasksAsTree, TaskTreeRow } from '../../cluster/components/TaskTree';
 import { formatTicketTimestamp, ticketStatusBadgeClass } from '../utils';

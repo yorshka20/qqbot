@@ -1,5 +1,5 @@
+import type { ClusterTemplatesResponse, TicketFrontmatter } from '@qqbot/api-types';
 import { Pencil, Send, Trash2 } from 'lucide-react';
-import type { ClusterTemplatesResponse, TicketFrontmatter } from '../../../types';
 import { formatTicketTimestamp, projectBadgeClass, templateRoleBadgeClass, ticketStatusBadgeClass } from '../utils';
 
 /**

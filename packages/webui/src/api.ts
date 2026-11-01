@@ -1,3 +1,79 @@
+import type {
+  AgentsStatusResponse,
+  AgentTaskCancelledResponse,
+  AgentTaskEvent,
+  AgentTaskOutput,
+  AgentTaskRecord,
+  AgentTasksResponse,
+  BehaviorResponse,
+  ClusterEventListResponse,
+  ClusterHelpAnswerBody,
+  ClusterHelpAnsweredResponse,
+  ClusterHelpRequest,
+  ClusterJob,
+  ClusterJobCancelledResponse,
+  ClusterJobHistoryResponse,
+  ClusterJobSubmitBody,
+  ClusterJobWithDetail,
+  ClusterLock,
+  ClusterPausedResponse,
+  ClusterStartedResponse,
+  ClusterStatusResponse,
+  ClustersResponse,
+  ClusterTask,
+  ClusterTaskCancelledResponse,
+  ClusterTaskDetail,
+  ClusterTemplatesResponse,
+  ClusterWorkerHistoryResponse,
+  ClusterWorkerKilledResponse,
+  ClusterWorkerRegistration,
+  DailyStatsResponse,
+  DocsRootsResponse,
+  EnrichedWorkerRegistration,
+  EntitiesResponse,
+  InsightDetailResponse,
+  InsightListResponse,
+  InsightStatsResponse,
+  InterestEvolutionResponse,
+  LanClientSnapshot,
+  LanClientsResponse,
+  LanDispatchResponse,
+  LanKickResponse,
+  LanReportsResponse,
+  LanStatusResponse,
+  ListResponse,
+  MemoryFactDeletedResponse,
+  MemoryFactPatch,
+  MemoryFactUpdatedResponse,
+  MemoryGroupDetail,
+  MemoryGroupsResponse,
+  MemoryManualSavedResponse,
+  MemorySlotDetail,
+  MemoryStatsResponse,
+  MomentsListResponse,
+  MomentsSearchResponse,
+  MomentsStatsResponse,
+  PersonaStateResponse,
+  ProjectsResponse,
+  QdrantCollectionsResponse,
+  QdrantScrollResponse,
+  QdrantSearchResponse,
+  ReportDetailResponse,
+  ReportListResponse,
+  SentimentTrendResponse,
+  StatsDateListResponse,
+  Ticket,
+  TicketCreateBody,
+  TicketFrontmatter,
+  TicketJobSnapshot,
+  TicketResultFileResponse,
+  TicketResultsResponse,
+  TicketsListResponse,
+  TicketTemplateResponse,
+  TicketUpdateBody,
+  ZhihuContentsResponse,
+  ZhihuStatsResponse,
+} from '@qqbot/api-types';
 import {
   getAgentsApiBase,
   getClusterApiBase,
@@ -15,63 +91,6 @@ import {
   getTicketsApiBase,
   getZhihuApiBase,
 } from './config';
-import type {
-  AgentsStatusResponse,
-  AgentTaskEvent,
-  AgentTaskOutput,
-  AgentTaskRecord,
-  AgentTasksResponse,
-  BehaviorResponse,
-  ClusterEventListResponse,
-  ClusterHelpRequest,
-  ClusterJob,
-  ClusterJobWithDetail,
-  ClusterLock,
-  ClusterStatus,
-  ClustersResponse,
-  ClusterTask,
-  ClusterTemplatesResponse,
-  ClusterWorkerHistoryEntry,
-  ClusterWorkerRegistration,
-  DailyStatsResponse,
-  DocsRootsResponse,
-  EnrichedWorkerRegistration,
-  EntitiesResponse,
-  InsightDetailResponse,
-  InsightListResponse,
-  InsightStatsResponse,
-  InterestEvolutionResponse,
-  LanClientSnapshot,
-  LanClientsResponse,
-  LanReportsResponse,
-  LanStatusResponse,
-  ListResponse,
-  MemoryFactEntry,
-  MemoryFactPatch,
-  MemoryGlobalStats,
-  MemoryGroupDetail,
-  MemoryGroupStats,
-  MemorySlotDetail,
-  MomentsListResponse,
-  MomentsSearchResponse,
-  MomentsStatsResponse,
-  PaginatedResponse,
-  ProjectsResponse,
-  QdrantCollectionsResponse,
-  QdrantScrollResponse,
-  QdrantSearchResponse,
-  ReportDetailResponse,
-  ReportListResponse,
-  SentimentTrendResponse,
-  StatsDateListResponse,
-  Ticket,
-  TicketFrontmatter,
-  TicketStatus,
-  TicketsListResponse,
-  ZhihuContentDetailResponse,
-  ZhihuContentsResponse,
-  ZhihuStatsResponse,
-} from './types';
 
 function apiBase(): string {
   return getFileApiBase();
@@ -259,15 +278,6 @@ export async function listZhihuContents(opts?: {
     throw new Error(err.error ?? `List zhihu contents failed: ${res.status}`);
   }
   return res.json() as Promise<ZhihuContentsResponse>;
-}
-
-export async function getZhihuContent(targetType: string, targetId: number): Promise<ZhihuContentDetailResponse> {
-  const res = await fetch(`${zhihuApiBase()}/content/${targetType}/${targetId}`);
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error ?? `Get zhihu content failed: ${res.status}`);
-  }
-  return res.json() as Promise<ZhihuContentDetailResponse>;
 }
 
 export async function getZhihuStats(): Promise<ZhihuStatsResponse> {
@@ -479,11 +489,11 @@ async function memoryRequest<T>(path: string, init: RequestInit | undefined, wha
   return res.json() as Promise<T>;
 }
 
-export function getMemoryStats(): Promise<{ stats: MemoryGlobalStats }> {
+export function getMemoryStats(): Promise<MemoryStatsResponse> {
   return memoryRequest('/stats', undefined, 'Get memory stats');
 }
 
-export function getMemoryGroups(): Promise<{ groups: MemoryGroupStats[] }> {
+export function getMemoryGroups(): Promise<MemoryGroupsResponse> {
   return memoryRequest('/groups', undefined, 'Get memory groups');
 }
 
@@ -499,7 +509,7 @@ export function getMemorySlot(groupId: string, userId: string): Promise<MemorySl
   );
 }
 
-export function saveManualMemory(groupId: string, userId: string, content: string): Promise<{ saved: boolean }> {
+export function saveManualMemory(groupId: string, userId: string, content: string): Promise<MemoryManualSavedResponse> {
   return memoryRequest(
     `/group/${encodeURIComponent(groupId)}/user/${encodeURIComponent(userId)}/manual`,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) },
@@ -507,7 +517,7 @@ export function saveManualMemory(groupId: string, userId: string, content: strin
   );
 }
 
-export function updateMemoryFact(id: string, patch: MemoryFactPatch): Promise<{ fact: MemoryFactEntry }> {
+export function updateMemoryFact(id: string, patch: MemoryFactPatch): Promise<MemoryFactUpdatedResponse> {
   return memoryRequest(
     `/fact/${encodeURIComponent(id)}`,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) },
@@ -515,7 +525,7 @@ export function updateMemoryFact(id: string, patch: MemoryFactPatch): Promise<{ 
   );
 }
 
-export function deleteMemoryFact(id: string): Promise<{ deleted: boolean }> {
+export function deleteMemoryFact(id: string): Promise<MemoryFactDeletedResponse> {
   return memoryRequest(`/fact/${encodeURIComponent(id)}`, { method: 'DELETE' }, 'Delete memory fact');
 }
 
@@ -541,31 +551,31 @@ export async function listProjects(): Promise<ProjectsResponse> {
  * not the cluster is currently started — `started` reflects the live
  * state and `status` is always populated (counters are zero when stopped).
  */
-export async function getClusterStatus(): Promise<{ started: boolean; status: ClusterStatus }> {
+export async function getClusterStatus(): Promise<ClusterStatusResponse> {
   const res = await fetch(`${clusterApiBase()}/status`);
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Get cluster status failed: ${res.status}`);
   }
-  return res.json() as Promise<{ started: boolean; status: ClusterStatus }>;
+  return res.json() as Promise<ClusterStatusResponse>;
 }
 
-export async function startCluster(): Promise<{ started: boolean }> {
+export async function startCluster(): Promise<ClusterStartedResponse> {
   const res = await fetch(`${clusterApiBase()}/start`, { method: 'POST' });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Start cluster failed: ${res.status}`);
   }
-  return res.json() as Promise<{ started: boolean }>;
+  return res.json() as Promise<ClusterStartedResponse>;
 }
 
-export async function stopCluster(): Promise<{ started: boolean }> {
+export async function stopCluster(): Promise<ClusterStartedResponse> {
   const res = await fetch(`${clusterApiBase()}/stop`, { method: 'POST' });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Stop cluster failed: ${res.status}`);
   }
-  return res.json() as Promise<{ started: boolean }>;
+  return res.json() as Promise<ClusterStartedResponse>;
 }
 
 export async function listClusterWorkers(): Promise<ClusterWorkerRegistration[]> {
@@ -640,13 +650,13 @@ export async function listClusterTasks(): Promise<ClusterTask[]> {
 }
 
 /** Fetch a single task with full detail (description, output, metadata, children). */
-export async function getClusterTask(taskId: string): Promise<ClusterTask & { children?: ClusterTask[] }> {
+export async function getClusterTask(taskId: string): Promise<ClusterTaskDetail> {
   const res = await fetch(`${clusterApiBase()}/tasks/${encodeURIComponent(taskId)}`);
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Get cluster task failed: ${res.status}`);
   }
-  return res.json() as Promise<ClusterTask & { children?: ClusterTask[] }>;
+  return res.json() as Promise<ClusterTaskDetail>;
 }
 
 export async function listClusterEvents(opts?: {
@@ -694,13 +704,7 @@ export async function listClusterHelpRequests(): Promise<ClusterHelpRequest[]> {
   return res.json() as Promise<ClusterHelpRequest[]>;
 }
 
-export async function createClusterJob(input: {
-  project: string;
-  description: string;
-  workerTemplate?: string;
-  requirePlannerRole?: boolean;
-  ticketId?: string;
-}): Promise<ClusterTask> {
+export async function createClusterJob(input: ClusterJobSubmitBody): Promise<ClusterTask> {
   const res = await fetch(`${clusterApiBase()}/jobs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -713,37 +717,34 @@ export async function createClusterJob(input: {
   return res.json() as Promise<ClusterTask>;
 }
 
-export async function pauseCluster(): Promise<{ paused: boolean }> {
+export async function pauseCluster(): Promise<ClusterPausedResponse> {
   const res = await fetch(`${clusterApiBase()}/pause`, { method: 'POST' });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Pause cluster failed: ${res.status}`);
   }
-  return res.json() as Promise<{ paused: boolean }>;
+  return res.json() as Promise<ClusterPausedResponse>;
 }
 
-export async function resumeCluster(): Promise<{ paused: boolean }> {
+export async function resumeCluster(): Promise<ClusterPausedResponse> {
   const res = await fetch(`${clusterApiBase()}/resume`, { method: 'POST' });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Resume cluster failed: ${res.status}`);
   }
-  return res.json() as Promise<{ paused: boolean }>;
+  return res.json() as Promise<ClusterPausedResponse>;
 }
 
-export async function killClusterWorker(workerId: string): Promise<{ killed: boolean }> {
+export async function killClusterWorker(workerId: string): Promise<ClusterWorkerKilledResponse> {
   const res = await fetch(`${clusterApiBase()}/workers/${encodeURIComponent(workerId)}/kill`, { method: 'POST' });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Kill worker failed: ${res.status}`);
   }
-  return res.json() as Promise<{ killed: boolean }>;
+  return res.json() as Promise<ClusterWorkerKilledResponse>;
 }
 
-export async function killClusterTask(
-  taskId: string,
-  reason?: string,
-): Promise<{ cancelled: boolean; taskId: string; cascadedChildren: number }> {
+export async function killClusterTask(taskId: string, reason?: string): Promise<ClusterTaskCancelledResponse> {
   const res = await fetch(`${clusterApiBase()}/tasks/${encodeURIComponent(taskId)}/kill`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -753,13 +754,10 @@ export async function killClusterTask(
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Kill task failed: ${res.status}`);
   }
-  return res.json() as Promise<{ cancelled: boolean; taskId: string; cascadedChildren: number }>;
+  return res.json() as Promise<ClusterTaskCancelledResponse>;
 }
 
-export async function killClusterJob(
-  jobId: string,
-  reason?: string,
-): Promise<{ cancelled: boolean; jobId: string; cancelledTasks: number }> {
+export async function killClusterJob(jobId: string, reason?: string): Promise<ClusterJobCancelledResponse> {
   const res = await fetch(`${clusterApiBase()}/jobs/${encodeURIComponent(jobId)}/kill`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -769,13 +767,13 @@ export async function killClusterJob(
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Kill job failed: ${res.status}`);
   }
-  return res.json() as Promise<{ cancelled: boolean; jobId: string; cancelledTasks: number }>;
+  return res.json() as Promise<ClusterJobCancelledResponse>;
 }
 
 export async function answerClusterHelpRequest(
   askId: string,
-  input: { answer: string; answeredBy?: string },
-): Promise<{ answered: boolean }> {
+  input: ClusterHelpAnswerBody,
+): Promise<ClusterHelpAnsweredResponse> {
   const res = await fetch(`${clusterApiBase()}/help/${encodeURIComponent(askId)}/answer`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -785,7 +783,7 @@ export async function answerClusterHelpRequest(
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Answer help request failed: ${res.status}`);
   }
-  return res.json() as Promise<{ answered: boolean }>;
+  return res.json() as Promise<ClusterHelpAnsweredResponse>;
 }
 
 /** Paginated job history from DB (not limited to in-memory window). */
@@ -793,7 +791,7 @@ export async function listClusterHistoryJobs(opts?: {
   limit?: number;
   offset?: number;
   status?: string;
-}): Promise<PaginatedResponse<ClusterJob>> {
+}): Promise<ClusterJobHistoryResponse> {
   const params = new URLSearchParams();
   if (opts?.limit) params.set('limit', String(opts.limit));
   if (opts?.offset) params.set('offset', String(opts.offset));
@@ -803,7 +801,7 @@ export async function listClusterHistoryJobs(opts?: {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `List cluster history jobs failed: ${res.status}`);
   }
-  return res.json() as Promise<PaginatedResponse<ClusterJob>>;
+  return res.json() as Promise<ClusterJobHistoryResponse>;
 }
 
 /** Paginated worker history from DB (full history, no time window). */
@@ -812,7 +810,7 @@ export async function listClusterHistoryWorkers(opts?: {
   offset?: number;
   jobId?: string;
   project?: string;
-}): Promise<PaginatedResponse<ClusterWorkerHistoryEntry>> {
+}): Promise<ClusterWorkerHistoryResponse> {
   const params = new URLSearchParams();
   if (opts?.limit) params.set('limit', String(opts.limit));
   if (opts?.offset) params.set('offset', String(opts.offset));
@@ -823,7 +821,7 @@ export async function listClusterHistoryWorkers(opts?: {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `List cluster history workers failed: ${res.status}`);
   }
-  return res.json() as Promise<PaginatedResponse<ClusterWorkerHistoryEntry>>;
+  return res.json() as Promise<ClusterWorkerHistoryResponse>;
 }
 
 /** Get all workers for a specific job (from DB, no time window limit). */
@@ -894,7 +892,7 @@ export async function listLanReports(
   return res.json() as Promise<LanReportsResponse>;
 }
 
-export async function dispatchLanCommand(clientId: string, text: string): Promise<{ dispatched: boolean }> {
+export async function dispatchLanCommand(clientId: string, text: string): Promise<LanDispatchResponse> {
   const res = await fetch(`${lanApiBase()}/clients/${encodeURIComponent(clientId)}/dispatch`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -904,10 +902,10 @@ export async function dispatchLanCommand(clientId: string, text: string): Promis
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Dispatch LAN command failed: ${res.status}`);
   }
-  return res.json() as Promise<{ dispatched: boolean }>;
+  return res.json() as Promise<LanDispatchResponse>;
 }
 
-export async function kickLanClient(clientId: string): Promise<{ kicked: boolean }> {
+export async function kickLanClient(clientId: string): Promise<LanKickResponse> {
   const res = await fetch(`${lanApiBase()}/clients/${encodeURIComponent(clientId)}/kick`, {
     method: 'POST',
   });
@@ -915,7 +913,7 @@ export async function kickLanClient(clientId: string): Promise<{ kicked: boolean
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Kick LAN client failed: ${res.status}`);
   }
-  return res.json() as Promise<{ kicked: boolean }>;
+  return res.json() as Promise<LanKickResponse>;
 }
 
 /**
@@ -975,7 +973,7 @@ export async function getTicketTemplate(): Promise<string> {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `getTicketTemplate failed: ${res.status}`);
   }
-  const data = (await res.json()) as { content: string };
+  const data = (await res.json()) as TicketTemplateResponse;
   return data.content;
 }
 
@@ -983,19 +981,7 @@ export async function getTicketTemplate(): Promise<string> {
  * Create a new ticket. The server allocates the id from `<date>-<slug>`
  * (slug derived from title) and returns the full Ticket.
  */
-export async function createTicket(input: {
-  title: string;
-  status?: TicketStatus;
-  template?: string;
-  project?: string;
-  body?: string;
-  /** Phase 3: enable planner-mode dispatch for this ticket. */
-  usePlanner?: boolean;
-  /** Phase 3: optional cap on planner child workers (passed via prompt). */
-  maxChildren?: number;
-  /** Hints for planner executor selection: trivial | low | medium | high. */
-  estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high';
-}): Promise<Ticket> {
+export async function createTicket(input: TicketCreateBody): Promise<Ticket> {
   const res = await fetch(`${ticketsApiBase()}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1013,20 +999,7 @@ export async function createTicket(input: {
  * passing `null` to a nullable field clears it (used to remove
  * `template` / `project` / `dispatchedJobId`).
  */
-export async function updateTicket(
-  id: string,
-  patch: {
-    title?: string;
-    status?: TicketStatus;
-    template?: string | null;
-    project?: string | null;
-    body?: string;
-    dispatchedJobId?: string | null;
-    usePlanner?: boolean | null;
-    maxChildren?: number | null;
-    estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high' | null;
-  },
-): Promise<Ticket> {
+export async function updateTicket(id: string, patch: TicketUpdateBody): Promise<Ticket> {
   const res = await fetch(`${ticketsApiBase()}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -1051,7 +1024,7 @@ export async function deleteTicket(id: string): Promise<void> {
 export async function listTicketResults(id: string): Promise<string[]> {
   const res = await fetch(`${ticketsApiBase()}/${encodeURIComponent(id)}/results`);
   if (!res.ok) return [];
-  const body = (await res.json()) as { files: string[] };
+  const body = (await res.json()) as TicketResultsResponse;
   return body.files;
 }
 
@@ -1062,7 +1035,7 @@ export async function getTicketResult(id: string, filename: string): Promise<str
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Get ticket result failed: ${res.status}`);
   }
-  const body = (await res.json()) as { filename: string; content: string };
+  const body = (await res.json()) as TicketResultFileResponse;
   return body.content;
 }
 
@@ -1073,57 +1046,11 @@ export async function getTicketResult(id: string, filename: string): Promise<str
  * cluster-tickets repo (via git sync) — unlike the live /api/cluster/jobs/:id
  * endpoint which only returns data for the local cluster instance.
  */
-export interface TicketJobSnapshot {
-  schemaVersion: number;
-  clusterId: string;
-  job: {
-    id: string;
-    ticketId?: string;
-    project: string;
-    status: string;
-    createdAt: string;
-    startedAt?: string;
-    completedAt?: string;
-    taskCount: number;
-    tasksCompleted: number;
-    tasksFailed: number;
-  };
-  tasks: Array<{
-    id: string;
-    shortId: string;
-    parentTaskId?: string;
-    workerId?: string;
-    workerTemplate?: string;
-    source: string;
-    status: string;
-    createdAt: string;
-    startedAt?: string;
-    completedAt?: string;
-    diffSummary?: string;
-    filesModified?: string;
-    error?: string;
-    resultFile: string;
-  }>;
-  workers: Array<{
-    workerId: string;
-    role: string;
-    templateName: string;
-    project: string;
-    status: string;
-    lastBoundTaskId?: string;
-    lastReportStatus?: string;
-    lastReportSummary?: string;
-    registeredAt: number;
-    exitedAt?: number;
-    stats: { tasksCompleted: number; tasksFailed: number; totalReports: number };
-  }>;
-}
-
 export async function getTicketJobSnapshot(id: string): Promise<TicketJobSnapshot | null> {
   const res = await fetch(`${ticketsApiBase()}/${encodeURIComponent(id)}/results/job.json`);
   if (res.status === 404) return null;
   if (!res.ok) return null;
-  const body = (await res.json()) as { filename: string; content: string };
+  const body = (await res.json()) as TicketResultFileResponse;
   try {
     return JSON.parse(body.content) as TicketJobSnapshot;
   } catch {
@@ -1134,54 +1061,6 @@ export async function getTicketJobSnapshot(id: string): Promise<TicketJobSnapsho
 // ────────────────────────────────────────────────────────────────────────────
 // Persona State API
 // ────────────────────────────────────────────────────────────────────────────
-
-export interface PersonaPhenotype {
-  fatigue: number;
-  attention: number;
-  stimulusCount: number;
-  lastStimulusAt?: number;
-}
-
-export interface PersonaModulation {
-  intensityScale: number;
-  speedScale: number;
-  durationBias: number;
-}
-
-export interface PersonaEpigeneticsView {
-  currentTone: string;
-  behavioralBiases: Record<string, unknown>;
-  topicMastery: Record<string, unknown>;
-  learnedPreferences: Record<string, unknown>;
-  updatedAt: number;
-}
-
-export interface PersonaReflectionView {
-  id: number;
-  timestamp: number;
-  trigger: string;
-  tone: string | null;
-  insightMd: string;
-}
-
-export interface PersonaRelationshipView {
-  userId: string;
-  affinity: number;
-  familiarity: number;
-  tags: string[];
-  lastInteractionAt: number;
-}
-
-export interface PersonaStateResponse {
-  enabled: boolean;
-  personaId: string;
-  phenotype: PersonaPhenotype;
-  modulation: PersonaModulation;
-  capturedAt: number;
-  epigenetics: PersonaEpigeneticsView | null;
-  recentReflections: PersonaReflectionView[];
-  relationships: PersonaRelationshipView[];
-}
 
 export async function fetchPersonaState(): Promise<PersonaStateResponse> {
   const res = await fetch(`${getPersonaApiBase()}/state`);
@@ -1250,11 +1129,11 @@ export async function getAgentTaskOutput(id: string): Promise<AgentTaskOutput> {
 }
 
 /** Cancel a task this bot process is running. `cancelled: false` when it is not running. */
-export async function cancelAgentTask(id: string): Promise<{ cancelled: boolean }> {
+export async function cancelAgentTask(id: string): Promise<AgentTaskCancelledResponse> {
   const res = await fetch(`${getAgentsApiBase()}/tasks/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `Cancel agent task failed: ${res.status}`);
   }
-  return res.json() as Promise<{ cancelled: boolean }>;
+  return res.json() as Promise<AgentTaskCancelledResponse>;
 }

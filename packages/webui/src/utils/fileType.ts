@@ -4,8 +4,8 @@
  * Uses date-fns for week/date grouping.
  */
 
+import type { FileItem } from '@qqbot/api-types';
 import { endOfWeek, format, startOfWeek } from 'date-fns';
-import type { FileItem } from '../types';
 
 export const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
 export const VIDEO_EXT = new Set(['.mp4', '.webm', '.ogg', '.mov']);

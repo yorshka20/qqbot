@@ -3,6 +3,7 @@
  * Browse, preview, rename, move, and delete files in the output directory.
  */
 
+import type { FileItem } from '@qqbot/api-types';
 import { Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { deleteFile, listFiles, moveFile, renameFile } from '../../api';
@@ -14,7 +15,6 @@ import { MoveModal } from '../../components/MoveModal';
 import { PreviewModal } from '../../components/PreviewModal';
 import { RenameModal } from '../../components/RenameModal';
 import { Sidebar } from '../../components/Sidebar';
-import type { FileItem } from '../../types';
 import {
   type FilterType,
   filterByType,

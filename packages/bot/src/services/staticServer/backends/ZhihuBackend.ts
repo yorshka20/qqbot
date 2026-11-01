@@ -7,6 +7,14 @@
  * - GET  /api/zhihu/stats                                     -> { stats: ZhihuPageStats }
  */
 
+import type {
+  ZhihuContentListItem,
+  ZhihuContentsResponse,
+  ZhihuFeedListItem,
+  ZhihuFeedResponse,
+  ZhihuPageStats,
+  ZhihuStatsResponse,
+} from '@qqbot/api-types';
 import { getContainer } from '@/core/DIContainer';
 import { ZhihuDITokens } from '@/services/zhihu/tokens';
 import type { ZhihuFeedItemRow } from '@/services/zhihu/types';
@@ -16,49 +24,6 @@ import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/zhihu';
-
-// ---------------------------------------------------------------------------
-// API types
-// ---------------------------------------------------------------------------
-
-export interface ZhihuContentListItem {
-  targetType: string;
-  targetId: number;
-  title: string;
-  url: string;
-  authorName: string;
-  authorUrlToken: string;
-  authorAvatarUrl: string | null;
-  excerpt: string;
-  voteupCount: number;
-  commentCount: number;
-  questionTitle: string | null;
-  createdTime: number;
-  fetchedAt: string;
-}
-
-export interface ZhihuFeedListItem {
-  id: string;
-  verb: string;
-  verbLabel: string;
-  targetType: string;
-  targetId: number;
-  title: string;
-  excerpt: string;
-  url: string;
-  authorName: string;
-  voteupCount: number;
-  commentCount: number;
-  actorNames: string[];
-  createdTime: number;
-}
-
-export interface ZhihuPageStats {
-  totalFeedItems: number;
-  feedByType: Array<{ targetType: string; count: number }>;
-  feedByVerb: Array<{ verb: string; verbLabel: string; count: number }>;
-  lastFetchTs: number;
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -203,7 +168,7 @@ export class ZhihuBackend implements Backend {
         }
       }
 
-      return jsonResponse({ contents: rows.map(feedRowToContentListItem) });
+      return jsonResponse<ZhihuContentsResponse>({ contents: rows.map(feedRowToContentListItem) });
     } catch (err) {
       logger.error('[ZhihuBackend] contents error:', err);
       return errorResponse('Failed to list contents', 500);
@@ -215,7 +180,7 @@ export class ZhihuBackend implements Backend {
       const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 200);
       const verb = url.searchParams.get('verb') || undefined;
       const rows = db.getRecentItems(limit, verb);
-      return jsonResponse({ items: rows.map((r) => feedRowToListItem(r)) });
+      return jsonResponse<ZhihuFeedResponse>({ items: rows.map((r) => feedRowToListItem(r)) });
     } catch (err) {
       logger.error('[ZhihuBackend] feed error:', err);
       return errorResponse('Failed to list feed', 500);
@@ -233,7 +198,7 @@ export class ZhihuBackend implements Backend {
       }));
       const lastFetchTs = db.getLastFetchTimestamp();
 
-      return jsonResponse({
+      return jsonResponse<ZhihuStatsResponse>({
         stats: {
           totalFeedItems,
           feedByType,

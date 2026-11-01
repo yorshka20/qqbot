@@ -22,10 +22,10 @@
 
 import { access, readdir, readFile, stat } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
+import type { DocsListResponse, DocsRootInfo, DocsRootsResponse, FileItem } from '@qqbot/api-types';
 import type { DocsPreviewConfig } from '@/core/config/types/docsPreview';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
-import type { FileItem } from './FileManagerBackend';
 import { resolveSafe } from './pathSafety';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
@@ -51,22 +51,6 @@ const BUILTIN_EXCLUDE = new Set<string>([
   '.next',
   '.DS_Store',
 ]);
-
-export interface DocsRootInfo {
-  id: string;
-  label: string;
-  /** Absolute path on disk (for display / debugging). */
-  absPath: string;
-  exists: boolean;
-}
-
-interface RootsResponse {
-  roots: DocsRootInfo[];
-}
-
-interface ListResponse {
-  items: FileItem[];
-}
 
 function buildBuiltinRoots(): Array<[string, { label: string; absPath: string }]> {
   const repo = getRepoRoot();
@@ -213,7 +197,7 @@ export class DocsPreviewBackend implements Backend {
       }
       roots.push({ id, label, absPath, exists });
     }
-    return jsonResponse<RootsResponse>({ roots });
+    return jsonResponse<DocsRootsResponse>({ roots });
   }
 
   private resolveRootDir(rootId: string): string | null {
@@ -259,7 +243,7 @@ export class DocsPreviewBackend implements Backend {
         if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
-      return jsonResponse<ListResponse>({ items });
+      return jsonResponse<DocsListResponse>({ items });
     } catch (err) {
       logger.error('[DocsPreviewBackend] list error: %s', err);
       const { status, message } = fsErrorToStatusAndMessage(err);

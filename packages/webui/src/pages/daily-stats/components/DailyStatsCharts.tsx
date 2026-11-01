@@ -1,3 +1,4 @@
+import type { DailyStats } from '@qqbot/api-types';
 import {
   Bar,
   BarChart,
@@ -11,8 +12,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-
-import type { DailyStats } from '../../../types';
 import { DAILY_STATS_PIE_COLORS } from '../utils';
 
 export function DailyStatsCharts({ stats }: { stats: DailyStats }) {

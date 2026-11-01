@@ -1,6 +1,5 @@
+import type { FileItem } from '@qqbot/api-types';
 import { FileText, Folder, Loader2 } from 'lucide-react';
-
-import type { FileItem } from '../../../types';
 import type { SelectedDoc } from '../utils';
 
 export function DocsFileList({

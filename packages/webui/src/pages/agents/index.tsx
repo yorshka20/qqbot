@@ -1,3 +1,4 @@
+import type { AgentsStatusResponse, AgentTaskEvent, AgentTaskOutput, AgentTaskRecord } from '@qqbot/api-types';
 import { Bot, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -8,7 +9,6 @@ import {
   getAgentTaskOutput,
   listAgentTasks,
 } from '../../api';
-import type { AgentsStatusResponse, AgentTaskEvent, AgentTaskOutput, AgentTaskRecord } from '../../types';
 import { AgentTaskDetail } from './components/AgentTaskDetail';
 import { AgentTaskList } from './components/AgentTaskList';
 

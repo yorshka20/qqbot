@@ -13,6 +13,8 @@ export interface Backend {
 // Shared HTTP helpers (used across backends)
 // ────────────────────────────────────────────────────────────────────────────
 
+import type { ErrorResponse } from '@qqbot/api-types';
+
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
 
 export function jsonResponse<T extends object>(data: T, status = 200): Response {
@@ -20,5 +22,5 @@ export function jsonResponse<T extends object>(data: T, status = 200): Response 
 }
 
 export function errorResponse(message: string, status: number): Response {
-  return jsonResponse({ error: message }, status);
+  return jsonResponse<ErrorResponse>({ error: message }, status);
 }

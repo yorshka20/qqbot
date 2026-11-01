@@ -1,9 +1,9 @@
+import type { ClusterTemplatesResponse, ProjectRegistryEntry, TicketStatus } from '@qqbot/api-types';
 import { Save, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { RegistryProjectSelect } from '../../../components/RegistryProjectSelect';
 import { StatusSelect } from '../../../components/StatusSelect';
 import { TemplateSelect } from '../../../components/TemplateSelect';
-import type { ClusterTemplatesResponse, ProjectRegistryEntry, TicketStatus } from '../../../types';
 import { extractFrontmatter } from '../frontmatter';
 
 /**

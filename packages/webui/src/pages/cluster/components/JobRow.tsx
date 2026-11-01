@@ -1,8 +1,7 @@
+import type { ClusterJob, ClusterJobWithDetail, ClusterTask } from '@qqbot/api-types';
 import { ChevronDown, ChevronRight, Dot, Skull, Users } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-
 import { getClusterJob } from '../../../api';
-import type { ClusterJob, ClusterJobWithDetail, ClusterTask } from '../../../types';
 import { formatTimestamp } from '../utils';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
 import { JobWorkersModal } from './JobWorkersModal';

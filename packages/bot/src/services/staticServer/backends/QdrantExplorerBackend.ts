@@ -5,9 +5,15 @@
  * - GET  /api/qdrant/collections                                      -> { collections: CollectionInfo[] }
  * - GET  /api/qdrant/collection/:name                                 -> { info: CollectionDetail }
  * - GET  /api/qdrant/search?collection=&q=&limit=&minScore=           -> { results: SearchHit[], query: string }
- * - GET  /api/qdrant/scroll?collection=&limit=&offset=                -> { points: PointItem[], nextOffset: string|number|null }
+ * - GET  /api/qdrant/scroll?collection=&limit=                       -> { points: PointItem[], total: number }
  */
 
+import type {
+  QdrantCollectionDetailResponse,
+  QdrantCollectionsResponse,
+  QdrantScrollResponse,
+  QdrantSearchResponse,
+} from '@qqbot/api-types';
 import { getContainer } from '@/core/DIContainer';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { logger } from '@/utils/logger';
@@ -84,7 +90,7 @@ export class QdrantExplorerBackend implements Backend {
           }
         }),
       );
-      return jsonResponse({ collections: infos });
+      return jsonResponse<QdrantCollectionsResponse>({ collections: infos });
     } catch (err) {
       logger.error('[QdrantExplorerBackend] collections error:', err);
       return errorResponse('Failed to list collections', 500);
@@ -94,7 +100,7 @@ export class QdrantExplorerBackend implements Backend {
   private async handleCollectionInfo(retrieval: RetrievalService, name: string): Promise<Response> {
     try {
       const info = await retrieval.getCollectionInfo(name);
-      return jsonResponse({ info: { name, ...info } });
+      return jsonResponse<QdrantCollectionDetailResponse>({ info: { name, ...info } });
     } catch (err) {
       logger.error('[QdrantExplorerBackend] collection info error:', err);
       return errorResponse('Failed to get collection info', 500);
@@ -119,7 +125,7 @@ export class QdrantExplorerBackend implements Backend {
         payload: h.payload,
       }));
 
-      return jsonResponse({ results, query, collection });
+      return jsonResponse<QdrantSearchResponse>({ results, query, collection });
     } catch (err) {
       logger.error('[QdrantExplorerBackend] search error:', err);
       return errorResponse('Failed to search', 500);
@@ -139,7 +145,7 @@ export class QdrantExplorerBackend implements Backend {
         break; // Only one page
       }
 
-      return jsonResponse({
+      return jsonResponse<QdrantScrollResponse>({
         points: points.map((p) => ({ id: p.id, payload: p.payload })),
         total: points.length,
       });

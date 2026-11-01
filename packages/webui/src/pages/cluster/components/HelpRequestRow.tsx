@@ -1,8 +1,7 @@
+import type { ClusterHelpRequest } from '@qqbot/api-types';
 import { HelpCircle } from 'lucide-react';
 import { useCallback, useState } from 'react';
-
 import { answerClusterHelpRequest } from '../../../api';
-import type { ClusterHelpRequest } from '../../../types';
 
 export function HelpRequestRow({ request, onAnswered }: { request: ClusterHelpRequest; onAnswered: () => void }) {
   const [expanded, setExpanded] = useState(false);

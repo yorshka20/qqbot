@@ -4,9 +4,9 @@
  * recent reflections, relationships.
  */
 
+import type { PersonaStateResponse } from '@qqbot/api-types';
 import { useEffect, useState } from 'react';
-
-import { fetchPersonaState, type PersonaStateResponse } from '../../api';
+import { fetchPersonaState } from '../../api';
 import { EpigeneticsCard } from './components/EpigeneticsCard';
 import { ModulationCard } from './components/ModulationCard';
 import { PhenotypeCard } from './components/PhenotypeCard';

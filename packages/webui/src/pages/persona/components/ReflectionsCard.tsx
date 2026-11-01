@@ -1,6 +1,5 @@
+import type { PersonaReflectionView } from '@qqbot/api-types';
 import { useState } from 'react';
-
-import type { PersonaReflectionView } from '../../../api';
 import { fmtTs } from '../utils';
 import { Card } from './Card';
 

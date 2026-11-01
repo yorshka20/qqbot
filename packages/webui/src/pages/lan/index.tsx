@@ -19,9 +19,9 @@
  *     other endpoints all return 503 in that state — we don't even call them.
  */
 
+import type { LanClientSnapshot, LanReportRow, LanStatusResponse } from '@qqbot/api-types';
 import { Network, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-
 import {
   dispatchLanCommand,
   getLanStatus,
@@ -30,7 +30,6 @@ import {
   listLanClients,
   listLanReports,
 } from '../../api';
-import type { LanClientSnapshot, LanReportRow, LanStatusResponse } from '../../types';
 import { ClientsTable } from './components/ClientsTable';
 import { DispatchDialog } from './components/DispatchDialog';
 import { LanCard } from './components/LanCard';

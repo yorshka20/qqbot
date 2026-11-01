@@ -1,8 +1,7 @@
+import type { ClusterWorkerRegistration } from '@qqbot/api-types';
 import { ChevronDown, ChevronUp, Clock, FileText, GitBranch, Hash, Skull, Tag, Timer } from 'lucide-react';
 import { marked } from 'marked';
 import { useLayoutEffect, useRef, useState } from 'react';
-
-import type { ClusterWorkerRegistration } from '../../../types';
 import { useNow } from '../hooks/useNow';
 import { formatEpoch, formatMs } from '../utils';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
@@ -29,7 +28,7 @@ export function WorkerBlock({
   onRequestKill: (workerId: string) => void;
 }) {
   const now = useNow();
-  const isRunning = w.status === 'running' || w.status === 'active';
+  const isRunning = w.status === 'active';
   const canKill = w.status !== 'exited';
   const spawnedMs = w.spawnedAt ?? w.stats?.registeredAt;
   const taskId = w.resolvedTaskId ?? w.currentTaskId ?? w.lastBoundTaskId;

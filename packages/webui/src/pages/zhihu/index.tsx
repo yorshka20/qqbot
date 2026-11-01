@@ -2,11 +2,10 @@
  * Zhihu page (route entry) — browse Zhihu feed items with excerpts and links to originals.
  */
 
+import type { ZhihuContentListItem, ZhihuPageStats } from '@qqbot/api-types';
 import { Calendar, FileText, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-
 import { getZhihuStats, listZhihuContents } from '../../api';
-import type { ZhihuContentListItem, ZhihuPageStats } from '../../types';
 import { groupByZhLocaleDate } from '../../utils/zhLocaleDateGroups';
 import { ZhihuContentRow } from './components/ZhihuContentRow';
 import { getZhihuPresetSinceTs, ZHIHU_DATE_PRESETS, type ZhihuDatePreset } from './utils';

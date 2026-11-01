@@ -2,8 +2,8 @@
  * Moments page (route entry) — view and explore WeChat moments data with multiple analysis modes.
  */
 
+import type { MomentsStats } from '@qqbot/api-types';
 import { useEffect, useState } from 'react';
-
 import { getMomentsStats } from '../../api';
 import { BehaviorView } from '../../components/MomentsBehaviorView';
 import { BrowseView } from '../../components/MomentsBrowseView';
@@ -12,7 +12,6 @@ import { EntitiesView } from '../../components/MomentsEntitiesView';
 import { InterestEvolutionView } from '../../components/MomentsInterestView';
 import { SentimentView } from '../../components/MomentsSentimentView';
 import { useDarkMode } from '../../components/MomentsShared';
-import type { MomentsStats } from '../../types';
 import { MOMENTS_VIEW_MODES, type MomentsViewMode } from './view-modes';
 
 export function MomentsPage() {

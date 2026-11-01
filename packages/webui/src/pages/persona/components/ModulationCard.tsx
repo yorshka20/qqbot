@@ -1,4 +1,4 @@
-import type { PersonaStateResponse } from '../../../api';
+import type { PersonaStateResponse } from '@qqbot/api-types';
 import { fmt } from '../utils';
 import { Card } from './Card';
 

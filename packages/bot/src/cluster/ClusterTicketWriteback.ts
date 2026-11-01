@@ -22,6 +22,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { readdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { TicketJobSnapshot } from '@qqbot/api-types';
 import { findTicketDir } from '@/services/staticServer/backends/ticketStorage';
 import { logger } from '@/utils/logger';
 import type { ClusterManager } from './ClusterManager';
@@ -184,7 +185,7 @@ async function writeResults(
   // Structured snapshot — consumed by remote WebUI viewers for nice rendering
   // without having to parse markdown. Only terminal-state fields are written
   // (no heartbeat/syncCursor noise).
-  const jobSnapshot = {
+  const jobSnapshot: TicketJobSnapshot = {
     schemaVersion: 1,
     clusterId,
     job: {

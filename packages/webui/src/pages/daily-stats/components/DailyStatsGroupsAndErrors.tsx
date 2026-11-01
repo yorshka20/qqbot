@@ -1,4 +1,4 @@
-import type { DailyStats } from '../../../types';
+import type { DailyStats } from '@qqbot/api-types';
 
 export function DailyStatsGroupsAndErrors({ stats }: { stats: DailyStats }) {
   return (

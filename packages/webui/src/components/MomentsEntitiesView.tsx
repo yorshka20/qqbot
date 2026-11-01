@@ -2,11 +2,10 @@
  * Entities View — named entity exploration with type tabs and frequency ranking.
  */
 
+import type { EntitiesResponse } from '@qqbot/api-types';
 import { Activity, MapPin, Tag, TrendingUp, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
-
 import { getMomentsEntities } from '../api';
-import type { EntitiesResponse } from '../types';
 import { EmptyState, LoadingSpinner } from './MomentsShared';
 
 const ENTITY_TYPE_CONFIG: Record<string, { label: string; color: string; icon: typeof Users }> = {

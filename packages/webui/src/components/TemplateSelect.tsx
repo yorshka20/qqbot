@@ -1,7 +1,7 @@
+import type { ClusterWorkerTemplate } from '@qqbot/api-types';
 import * as Select from '@radix-ui/react-select';
 import { AlertTriangle, Check, ChevronDown, Cpu, Network } from 'lucide-react';
 import { useMemo } from 'react';
-import type { ClusterWorkerTemplate } from '../types';
 
 const DEFAULT_SENTINEL = '__project_default__';
 

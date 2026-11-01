@@ -23,6 +23,9 @@
   },
   "references": [
     {
+      "path": "../api-types"
+    },
+    {
       "path": "../avatar"
     }
   ],

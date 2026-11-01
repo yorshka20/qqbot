@@ -15,64 +15,21 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type {
+  DailyStats,
+  DailyStatsResponse,
+  ErrorEntry,
+  GroupActivity,
+  HourlyActivity,
+  ProviderStats,
+  StatsDateListResponse,
+} from '@qqbot/api-types';
 import { logger } from '@/utils/logger';
 import { getRepoRoot } from '@/utils/repoRoot';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/stats';
-
-// ---------------------------------------------------------------------------
-// API types
-// ---------------------------------------------------------------------------
-
-export interface ErrorEntry {
-  timestamp: string;
-  component: string;
-  message: string;
-}
-
-export interface ProviderStats {
-  provider: string;
-  callCount: number;
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-  promptChars: number;
-  responseChars: number;
-}
-
-export interface HourlyActivity {
-  hour: number;
-  messagesReceived: number;
-  messagesSent: number;
-  llmCalls: number;
-}
-
-export interface GroupActivity {
-  groupName: string;
-  groupId: string;
-  messageCount: number;
-}
-
-export interface DailyStats {
-  date: string;
-  summary: {
-    totalMessagesReceived: number;
-    totalMessagesSent: number;
-    totalLLMCalls: number;
-    totalErrors: number;
-    totalWarnings: number;
-    totalTokensUsed: number;
-    totalPromptChars: number;
-    totalResponseChars: number;
-  };
-  providerStats: ProviderStats[];
-  hourlyActivity: HourlyActivity[];
-  topGroups: GroupActivity[];
-  recentErrors: ErrorEntry[];
-  logFileCount: number;
-}
 
 // ---------------------------------------------------------------------------
 // Log parsing
@@ -347,7 +304,7 @@ export class DailyStatsBackend implements Backend {
   private handleDates(): Response {
     try {
       const dates = getAvailableDates(this.logsDir);
-      return jsonResponse({ dates });
+      return jsonResponse<StatsDateListResponse>({ dates });
     } catch (err) {
       logger.error('[DailyStatsBackend] dates error:', err);
       return errorResponse('Failed to list dates', 500);
@@ -367,7 +324,7 @@ export class DailyStatsBackend implements Backend {
       }
 
       const stats = parseLogFiles(this.logsDir, date);
-      return jsonResponse({ stats });
+      return jsonResponse<DailyStatsResponse>({ stats });
     } catch (err) {
       logger.error('[DailyStatsBackend] stats error:', err);
       return errorResponse('Failed to parse stats', 500);

@@ -1,4 +1,4 @@
-import type { FileItem } from '../../types';
+import type { FileItem } from '@qqbot/api-types';
 
 export type PreviewMode = 'markdown' | 'log' | 'text' | 'image' | 'pdf' | 'binary';
 

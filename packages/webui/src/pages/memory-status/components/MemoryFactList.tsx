@@ -1,7 +1,7 @@
+import type { MemoryFactDurability, MemoryFactEntry } from '@qqbot/api-types';
 import { ChevronDown, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { deleteMemoryFact, updateMemoryFact } from '../../../api';
-import type { MemoryFactDurability, MemoryFactEntry } from '../../../types';
 import { buildScopeTree, formatMemoryDate, type ScopeNode, scopeFactCount } from '../utils';
 import { HighlightText } from './HighlightText';
 import { MemoryDurabilityBadge, MemoryStatusBadge } from './MemoryBadges';

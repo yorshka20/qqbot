@@ -2,12 +2,11 @@
  * Cluster View — content clustering results visualization.
  */
 
+import type { ClustersResponse } from '@qqbot/api-types';
 import { Layers } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-
 import { getMomentsClusters } from '../api';
-import type { ClustersResponse } from '../types';
 import { EmptyState, LoadingSpinner, useChartTooltipStyle } from './MomentsShared';
 
 const CLUSTER_COLORS = [

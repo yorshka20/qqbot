@@ -1,6 +1,6 @@
+import type { AgentTaskEvent, AgentTaskOutput, AgentTaskRecord } from '@qqbot/api-types';
 import { Ban, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
-import type { AgentTaskEvent, AgentTaskOutput, AgentTaskRecord } from '../../../types';
 import {
   agentEventLabel,
   agentStatusBadgeClass,

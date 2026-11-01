@@ -5,6 +5,7 @@
  * - GET  /api/persona/state  -> PersonaStateResponse
  */
 
+import type { PersonaStateResponse } from '@qqbot/api-types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { PersonaService } from '@/persona/PersonaService';
@@ -14,48 +15,6 @@ import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/persona';
-
-// ---------------------------------------------------------------------------
-// API types
-// ---------------------------------------------------------------------------
-
-export interface PersonaStateResponse {
-  enabled: boolean;
-  personaId: string;
-  phenotype: {
-    fatigue: number;
-    attention: number;
-    stimulusCount: number;
-    lastStimulusAt?: number;
-  };
-  modulation: {
-    intensityScale: number;
-    speedScale: number;
-    durationBias: number;
-  };
-  capturedAt: number;
-  epigenetics: {
-    currentTone: string;
-    behavioralBiases: Record<string, number | string>;
-    topicMastery: Record<string, number>;
-    learnedPreferences: Record<string, unknown>;
-    updatedAt: number;
-  } | null;
-  recentReflections: Array<{
-    id: number;
-    timestamp: number;
-    trigger: string;
-    tone: string | null;
-    insightMd: string;
-  }>;
-  relationships: Array<{
-    userId: string;
-    affinity: number;
-    familiarity: number;
-    tags: string[];
-    lastInteractionAt: number;
-  }>;
-}
 
 // ---------------------------------------------------------------------------
 // PersonaBackend

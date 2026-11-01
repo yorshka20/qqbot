@@ -1,4 +1,4 @@
-import type { AgentTaskEvent, AgentTaskRecord, AgentTaskStatus } from '../../types';
+import type { AgentTaskEvent, AgentTaskRecord, AgentTaskStatus } from '@qqbot/api-types';
 
 /**
  * Tailwind class set for a task status badge. Same vocabulary as cluster task and

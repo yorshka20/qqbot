@@ -1,5 +1,5 @@
+import type { LanReportRow } from '@qqbot/api-types';
 import { Activity } from 'lucide-react';
-import type { LanReportRow } from '../../../types';
 import { formatTimestamp, levelBadgeClass } from '../utils';
 
 /**

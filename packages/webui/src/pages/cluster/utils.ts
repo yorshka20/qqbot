@@ -30,7 +30,7 @@ export function formatEpoch(epoch?: number): string {
   }
 }
 
-import type { ClusterEventEntry } from '../../types';
+import type { ClusterEventEntry } from '@qqbot/api-types';
 
 /**
  * Human-readable one-line summary for cluster event log rows (replaces raw JSON in the main view).

@@ -1,7 +1,6 @@
+import type { DailyStats } from '@qqbot/api-types';
 import { AlertTriangle, Cpu, FileText, MessageSquare, Send, Users, Zap } from 'lucide-react';
-
 import { StatCard } from '../../../components/StatCard';
-import type { DailyStats } from '../../../types';
 import { formatNumber } from '../utils';
 
 export function DailyStatsSummaryCards({ stats }: { stats: DailyStats }) {

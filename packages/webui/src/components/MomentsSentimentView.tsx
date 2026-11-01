@@ -2,6 +2,7 @@
  * Sentiment View — emotion analysis with trend charts and distribution.
  */
 
+import type { SentimentTrendResponse } from '@qqbot/api-types';
 import { Smile } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
@@ -16,9 +17,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-
 import { getMomentsSentimentTrend } from '../api';
-import type { SentimentTrendResponse } from '../types';
 import { EmptyState, LoadingSpinner, useChartTooltipStyle } from './MomentsShared';
 
 const SENTIMENT_COLORS: Record<string, string> = {

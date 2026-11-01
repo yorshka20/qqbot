@@ -3,10 +3,9 @@
  * Uses shared StaticServer (`VITE_STATIC_SERVER_BASE`) so you can read host docs from a remote machine.
  */
 
+import type { DocsRootInfo } from '@qqbot/api-types';
 import { useEffect, useMemo, useState } from 'react';
-
 import { listDocsRoots } from '../../api';
-import type { DocsRootInfo } from '../../types';
 import { DocPreview } from './components/DocPreview';
 import { DocsBreadcrumb } from './components/DocsBreadcrumb';
 import { DocsFileList } from './components/DocsFileList';

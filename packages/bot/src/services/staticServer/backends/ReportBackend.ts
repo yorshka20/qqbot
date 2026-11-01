@@ -7,42 +7,14 @@
  * - GET  /api/reports/:id/markdown  -> raw markdown text
  */
 
+import type { ReportDetailResponse, ReportListItem, ReportListResponse } from '@qqbot/api-types';
 import { getContainer } from '@/core/DIContainer';
-import { type ReportFile, type ReportMetadata, WechatDITokens, type WechatReportService } from '@/services/wechat';
+import { WechatDITokens, type WechatReportService } from '@/services/wechat';
 import { logger } from '@/utils/logger';
 import type { Backend } from './types';
 import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/reports';
-
-// ---------------------------------------------------------------------------
-// API types
-// ---------------------------------------------------------------------------
-
-/** Summary info for report list (without full content) */
-export interface ReportListItem {
-  id: string;
-  type: string;
-  title: string;
-  generatedAt: string;
-  period: string;
-  stats: {
-    totalMessages: number;
-    totalArticles: number;
-    groupCount: number;
-  };
-}
-
-/** Response for GET /api/reports/list */
-export interface ReportListResponse {
-  reports: ReportListItem[];
-}
-
-/** Response for GET /api/reports/:id */
-export interface ReportDetailResponse {
-  report: ReportFile['report'];
-  metadata: ReportMetadata;
-}
 
 // ---------------------------------------------------------------------------
 // HTTP helpers

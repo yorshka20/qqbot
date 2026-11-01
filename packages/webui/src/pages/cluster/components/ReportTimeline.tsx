@@ -1,6 +1,5 @@
+import type { ClusterEventEntry, ReportEventData } from '@qqbot/api-types';
 import { AlertCircle, CheckCircle2, Clock, Pause } from 'lucide-react';
-
-import type { ClusterEventEntry, ReportEventData } from '../../../types';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
 
 const REPORT_EVENT_TYPES = new Set(['worker_progress', 'task_completed', 'task_failed', 'task_blocked']);

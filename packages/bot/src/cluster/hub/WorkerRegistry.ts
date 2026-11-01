@@ -213,7 +213,7 @@ export class WorkerRegistry {
    * Paginated worker history from DB.
    */
   getWorkersFromDb(opts: { limit: number; offset: number; jobId?: string; project?: string }): {
-    items: any[];
+    items: Array<WorkerRegistration & { jobId?: string }>;
     total: number;
     hasMore: boolean;
   } {

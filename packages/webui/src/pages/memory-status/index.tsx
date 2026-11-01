@@ -5,17 +5,17 @@
  * A slot shows its manual.txt and its automatic facts, which can be corrected or deleted.
  */
 
-import { Archive, ArrowLeft, Brain, ChevronRight, Library, RefreshCw, Shield, UserRound, Zap } from 'lucide-react';
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { getMemoryGroupDetail, getMemoryGroups, getMemorySlot, getMemoryStats } from '../../api';
-import { StatCard } from '../../components/StatCard';
 import type {
   MemoryFactCounts,
   MemoryGlobalStats,
   MemoryGroupDetail,
   MemoryGroupStats,
   MemorySlotDetail,
-} from '../../types';
+} from '@qqbot/api-types';
+import { Archive, ArrowLeft, Brain, ChevronRight, Library, RefreshCw, Shield, UserRound, Zap } from 'lucide-react';
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { getMemoryGroupDetail, getMemoryGroups, getMemorySlot, getMemoryStats } from '../../api';
+import { StatCard } from '../../components/StatCard';
 import { HighlightText } from './components/HighlightText';
 import { ManualMemoryPanel } from './components/ManualMemoryPanel';
 import { MemoryFactList } from './components/MemoryFactList';

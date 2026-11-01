@@ -29,7 +29,7 @@
  * Keeps ticket storage and cluster scheduling decoupled.
  *
  * Routes (prefix `/api/tickets`):
- *   GET    /api/tickets               { tickets: TicketSummary[] } (frontmatter only, no body)
+ *   GET    /api/tickets               { tickets: TicketFrontmatter[] } (frontmatter only, no body)
  *   GET    /api/tickets/template      { content } — default ticket body template
  *   GET    /api/tickets/:id           full ticket { id, frontmatter, body }
  *   GET    /api/tickets/:id/results   list result files
@@ -42,6 +42,19 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from 'node:fs';
 import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import type {
+  Ticket,
+  TicketCreateBody,
+  TicketDeletedResponse,
+  TicketFrontmatter,
+  TicketPlan,
+  TicketResultFileResponse,
+  TicketResultsResponse,
+  TicketStatus,
+  TicketsListResponse,
+  TicketTemplateResponse,
+  TicketUpdateBody,
+} from '@qqbot/api-types';
 import { logger } from '@/utils/logger';
 import {
   bucketForProject,
@@ -55,78 +68,7 @@ import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/tickets';
 
-/**
- * Allowed status values. Lifecycle:
- *   draft     → editing, dispatch disabled
- *   ready     → done editing, can dispatch
- *   dispatched → cluster job created, dispatchedJobId filled
- *   done      → worker finished, result captured (manually for now)
- *   abandoned → won't do, kept as record
- */
-const ALLOWED_STATUSES = ['draft', 'ready', 'dispatched', 'done', 'abandoned'] as const;
-type TicketStatus = (typeof ALLOWED_STATUSES)[number];
-
-interface TicketFrontmatter {
-  id: string;
-  title: string;
-  status: TicketStatus;
-  template?: string;
-  project?: string;
-  created: string;
-  updated: string;
-  dispatchedJobId?: string;
-  /**
-   * Phase 3 multi-agent: optional cap on how many child workers the planner
-   * is allowed to spawn. Only meaningful when the selected `template` has
-   * `role: 'planner'` — otherwise ignored. Surfaced to the planner via the
-   * prompt; the hub does NOT hard-enforce this number. Default is 5
-   * (mirrored in the planner system prompt).
-   */
-  maxChildren?: number;
-  /**
-   * Hints to the planner about task complexity, used for executor selection:
-   *   trivial | low  → planner may dispatch as a single task directly
-   *   medium             → normal executor selection
-   *   high              → planner should consider claude-sonnet executor
-   */
-  estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high';
-}
-
-interface Ticket {
-  id: string;
-  frontmatter: TicketFrontmatter;
-  body: string;
-  /**
-   * Plan artifact attached to this ticket, if the cluster planner wrote one
-   * via `hub_write_plan`. Lives at `tickets/<id>/plan.md`. `null` when no
-   * plan has been written yet (non-planner tickets always have `null`).
-   * Archives (`plan-v<N>.md`) live next to `plan.md`; not included here to
-   * keep the detail response small — the WebUI can list them separately if
-   * it needs to surface history.
-   */
-  plan?: TicketPlan | null;
-}
-
-interface TicketPlan {
-  content: string;
-  /** Parsed from `plan_version` field in the plan.md frontmatter, if present. */
-  version?: number;
-}
-
-interface TicketSummary {
-  // Equivalent to TicketFrontmatter but kept as a separate type so the
-  // wire shape is documented at the type level.
-  id: string;
-  title: string;
-  status: TicketStatus;
-  template?: string;
-  project?: string;
-  created: string;
-  updated: string;
-  dispatchedJobId?: string;
-  maxChildren?: number;
-  estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high';
-}
+const ALLOWED_STATUSES: readonly TicketStatus[] = ['draft', 'ready', 'dispatched', 'done', 'abandoned'];
 
 export class TicketBackend {
   readonly prefix = API_PREFIX;
@@ -277,7 +219,7 @@ export class TicketBackend {
     const templatePath = join(this.ticketsDir, '.templates', 'ticket.md');
     try {
       const content = await readFile(templatePath, 'utf-8');
-      return jsonResponse({ content });
+      return jsonResponse<TicketTemplateResponse>({ content });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         logger.warn(`[TicketBackend] Ticket template not found at ${templatePath}`);
@@ -290,7 +232,7 @@ export class TicketBackend {
   private async handleGet(subPath: string): Promise<Response> {
     if (subPath === '' || subPath === '/') {
       const tickets = await this.listAll();
-      return jsonResponse({ tickets });
+      return jsonResponse<TicketsListResponse>({ tickets });
     }
 
     // /template — return the default ticket template body
@@ -315,7 +257,7 @@ export class TicketBackend {
     if (idMatch) {
       const ticket = await this.readTicket(idMatch[1]);
       if (!ticket) return errorResponse('Ticket not found', 404);
-      return jsonResponse(ticket);
+      return jsonResponse<Ticket>(ticket);
     }
 
     return errorResponse('Not found', 404);
@@ -327,9 +269,9 @@ export class TicketBackend {
     const resultsDir = join(dir, 'results');
     try {
       const files = await readdir(resultsDir);
-      return jsonResponse({ files: files.filter((f) => f.endsWith('.md')) });
+      return jsonResponse<TicketResultsResponse>({ files: files.filter((f) => f.endsWith('.md')) });
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return jsonResponse({ files: [] });
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return jsonResponse<TicketResultsResponse>({ files: [] });
       throw err;
     }
   }
@@ -344,7 +286,7 @@ export class TicketBackend {
     const filePath = join(dir, 'results', filename);
     try {
       const content = await readFile(filePath, 'utf-8');
-      return jsonResponse({ filename, content });
+      return jsonResponse<TicketResultFileResponse>({ filename, content });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return errorResponse('Result file not found', 404);
       throw err;
@@ -352,8 +294,8 @@ export class TicketBackend {
   }
 
   /** List frontmatter-only summaries, sorted by `created` desc. */
-  private async listAll(): Promise<TicketSummary[]> {
-    const summaries: TicketSummary[] = [];
+  private async listAll(): Promise<TicketFrontmatter[]> {
+    const summaries: TicketFrontmatter[] = [];
     for (const { id, ticketDir } of iterateAllTickets(this.ticketsDir)) {
       try {
         const raw = await readFile(join(ticketDir, 'ticket.md'), 'utf-8');
@@ -415,15 +357,7 @@ export class TicketBackend {
       return errorResponse('Not found', 404);
     }
 
-    let body: {
-      title?: string;
-      status?: string;
-      template?: string;
-      project?: string;
-      body?: string;
-      maxChildren?: number;
-      estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high';
-    };
+    let body: Partial<TicketCreateBody>;
     try {
       body = (await req.json()) as typeof body;
     } catch {
@@ -434,7 +368,7 @@ export class TicketBackend {
       return errorResponse('Missing required field: title', 400);
     }
 
-    const status = (body.status ?? 'draft') as TicketStatus;
+    const status = body.status ?? 'draft';
     if (!ALLOWED_STATUSES.includes(status)) {
       return errorResponse(`Invalid status; must be one of ${ALLOWED_STATUSES.join(', ')}`, 400);
     }
@@ -458,7 +392,7 @@ export class TicketBackend {
     };
 
     await this.writeTicket(ticket);
-    return jsonResponse(ticket, 201);
+    return jsonResponse<Ticket>(ticket, 201);
   }
 
   /**
@@ -490,23 +424,14 @@ export class TicketBackend {
     const existing = await this.readTicket(id);
     if (!existing) return errorResponse('Ticket not found', 404);
 
-    let patch: {
-      title?: string;
-      status?: string;
-      template?: string | null;
-      project?: string | null;
-      body?: string;
-      dispatchedJobId?: string | null;
-      maxChildren?: number | null;
-      estimatedComplexity?: 'trivial' | 'low' | 'medium' | 'high' | null;
-    };
+    let patch: TicketUpdateBody;
     try {
       patch = (await req.json()) as typeof patch;
     } catch {
       return errorResponse('Invalid JSON body', 400);
     }
 
-    if (patch.status !== undefined && !ALLOWED_STATUSES.includes(patch.status as TicketStatus)) {
+    if (patch.status !== undefined && !ALLOWED_STATUSES.includes(patch.status)) {
       return errorResponse(`Invalid status; must be one of ${ALLOWED_STATUSES.join(', ')}`, 400);
     }
 
@@ -531,7 +456,7 @@ export class TicketBackend {
       frontmatter: {
         id,
         title: patch.title?.trim() || existing.frontmatter.title,
-        status: (patch.status as TicketStatus) ?? existing.frontmatter.status,
+        status: patch.status ?? existing.frontmatter.status,
         template: patchField(patch.template, existing.frontmatter.template, trimmedString),
         project: patchField(patch.project, existing.frontmatter.project, trimmedString),
         created: existing.frontmatter.created,
@@ -544,7 +469,7 @@ export class TicketBackend {
     };
 
     await this.writeTicket(next);
-    return jsonResponse(next);
+    return jsonResponse<Ticket>(next);
   }
 
   // ── DELETE ─────────────────────────────────────────────────────────────
@@ -566,7 +491,7 @@ export class TicketBackend {
       }
       throw err;
     }
-    return jsonResponse({ deleted: true });
+    return jsonResponse<TicketDeletedResponse>({ deleted: true });
   }
 
   // ── Storage helpers ────────────────────────────────────────────────────

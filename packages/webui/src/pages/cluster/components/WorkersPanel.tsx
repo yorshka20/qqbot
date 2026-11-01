@@ -1,4 +1,4 @@
-import type { ClusterWorkerRegistration } from '../../../types';
+import type { ClusterWorkerRegistration } from '@qqbot/api-types';
 import { WorkerBlock } from './WorkerBlock';
 
 export function WorkersPanel({

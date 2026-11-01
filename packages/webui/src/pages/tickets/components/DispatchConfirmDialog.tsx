@@ -1,7 +1,7 @@
+import type { ProjectRegistryEntry, Ticket } from '@qqbot/api-types';
 import { Send, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { RegistryProjectSelect } from '../../../components/RegistryProjectSelect';
-import type { ProjectRegistryEntry, Ticket } from '../../../types';
 
 /**
  * Confirm dialog before dispatching a ticket as a cluster job. Shows the

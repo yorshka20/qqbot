@@ -1,4 +1,4 @@
-import type { ClusterLock } from '../../../types';
+import type { ClusterLock } from '@qqbot/api-types';
 
 export function LocksPanel({ locks }: { locks: ClusterLock[] | null }) {
   if (!locks || locks.length === 0) {

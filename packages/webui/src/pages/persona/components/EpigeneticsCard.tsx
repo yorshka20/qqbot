@@ -1,4 +1,4 @@
-import type { PersonaEpigeneticsView } from '../../../api';
+import type { PersonaEpigeneticsView } from '@qqbot/api-types';
 import { fmt, fmtTs } from '../utils';
 import { Card } from './Card';
 

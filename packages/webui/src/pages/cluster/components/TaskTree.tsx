@@ -1,7 +1,6 @@
+import type { ClusterTask } from '@qqbot/api-types';
 import { Skull } from 'lucide-react';
 import type { ReactNode } from 'react';
-
-import type { ClusterTask } from '../../../types';
 import { formatTimestamp } from '../utils';
 import { ClusterStatusBadge } from './ClusterStatusBadge';
 

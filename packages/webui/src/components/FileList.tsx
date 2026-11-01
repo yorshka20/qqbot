@@ -1,4 +1,4 @@
-import type { FileItem } from '../types';
+import type { FileItem } from '@qqbot/api-types';
 
 interface FileListProps {
   items: FileItem[];

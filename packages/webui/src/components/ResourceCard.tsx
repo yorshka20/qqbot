@@ -1,8 +1,7 @@
+import type { FileItem } from '@qqbot/api-types';
 import { Check, FileText, Folder, ImageIcon, Music, Play } from 'lucide-react';
 import { memo } from 'react';
-
 import { useLazyLoad } from '../hooks/useLazyLoad';
-import type { FileItem } from '../types';
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from '../utils/fileType';
 
 function ext(name: string): string {

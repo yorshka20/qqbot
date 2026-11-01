@@ -2,11 +2,10 @@
  * Insights page (route entry) — WeChat article analysis results.
  */
 
+import type { InsightDetail, InsightListItem, InsightStats } from '@qqbot/api-types';
 import { Calendar, ChevronDown, Filter, Newspaper, Tag } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-
 import { getInsight, getInsightStats, listInsights } from '../../api';
-import type { InsightDetail, InsightListItem, InsightStats } from '../../types';
 import { groupByZhLocaleDate } from '../../utils/zhLocaleDateGroups';
 import { InsightRow } from './components/InsightRow';
 import { getInsightPresetStartDate, INSIGHT_DATE_PRESETS, type InsightDatePreset } from './utils';

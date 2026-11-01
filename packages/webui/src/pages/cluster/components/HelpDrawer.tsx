@@ -1,7 +1,6 @@
+import type { ClusterHelpRequest } from '@qqbot/api-types';
 import { HelpCircle, X } from 'lucide-react';
 import { useEffect } from 'react';
-
-import type { ClusterHelpRequest } from '../../../types';
 import { HelpRequestRow } from './HelpRequestRow';
 
 /**
