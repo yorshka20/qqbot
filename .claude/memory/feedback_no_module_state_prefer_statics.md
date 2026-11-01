@@ -13,5 +13,5 @@ Two corrections given in the same review pass, both about **where behavior and s
 **How to apply:**
 - Before adding a module `let`, ask who already knows this. Usually a manager/registry/service does — add a small public sync accessor there and read it. (Concrete case: plugin enablement lives in `PluginManager.enabledPlugins`; the fix was `PluginManager.isPluginEnabled(name)` + `WeChatIngestPlugin.isEnabled()` static, not a `wechat/availability.ts` flag.)
 - Put the accessor on the concrete class that owns the concern, reading its own constant.
-- **Do not** reach for a generic `static` on a base class that depends on polymorphic `this` — bun's transpiler inlines `this` in a static body to the *declaring* class, so subclass calls silently read the base class. Typecheck stays green. See `.claude-learnings/monorepo.md`.
+- **Do not** reach for a generic `static` on a base class that depends on polymorphic `this` — bun's transpiler inlines `this` in a static body to the *declaring* class, so subclass calls silently read the base class. Typecheck stays green. See `_kb/learnings/monorepo.md`.
 - Related: [[feedback_no_defensive_optionals]], [[feedback_avoid_prop_drilling]] — same family of "don't add a layer that pretends to own something it doesn't".

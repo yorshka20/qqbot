@@ -132,7 +132,7 @@ function collectEnvelopeChannels(entry: ActionMapEntry): string[] {
  * loaded VRM idle loop clip — e.g. `arm.left` / `arm.right` aliases collide
  * with the peace_sign idle's `vrm.leftUpperArm` / `vrm.rightUpperArm`. Those
  * cases still use explicit `modelSupport: 'cubism'` in the action-map, and
- * see `.claude-learnings/avatar.md` for the dynamic-conflict-set TODO.
+ * see `_kb/learnings/avatar.md` for the dynamic-conflict-set TODO.
  */
 function deriveFromChannels(channels: readonly string[]): 'vrm' | 'both' {
   for (const c of channels) {

@@ -1,7 +1,7 @@
 # `@qqbot/avatar` 包的 bot 端集成层
 
 bot 主包消费 `@qqbot/avatar` 包（保持 bot-agnostic）的 adapter / plugin / driver。
-**目录约定参考**：[`.claude-learnings/core.md` "bot ↔ external-package integration 目录约定"](../../../../../.claude-learnings/core.md)。
+**目录约定参考**：`_kb/learnings/core.md` 的 "bot ↔ external-package integration 目录约定"。
 
 ## 子目录组织
 

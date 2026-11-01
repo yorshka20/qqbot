@@ -1619,10 +1619,12 @@
   // WebUI docs preview (optional) — adds extra browse roots to the
   // `/api/docs/*` backend that powers the WebUI 文档 page.
   //
-  // Three built-in roots always exist: `docs`, `claude-learnings`,
-  // `claude-workbook` (mapped to <repoRoot>/docs, <repoRoot>/.claude-learnings,
-  // <repoRoot>/.claude-workbook). `roots` adds more — declare a `repo` root
-  // to browse source code from the WebUI.
+  // Built-in roots always exist: `docs`, `logs`, `data`, plus four that live in
+  // the local knowledge base reached through the repo's `_kb` symlink —
+  // `claude-learnings` (<repoRoot>/_kb/learnings), `claude-workbook`
+  // (<repoRoot>/_kb/workbook), `kb-design` and `kb-tasks`. The kb roots are
+  // empty when `_kb` is missing on this machine. `roots` adds more — declare a
+  // `repo` root to browse source code from the WebUI.
   //
   // `exclude` is APPENDED to a built-in noise deny-list (node_modules, .git,
   // dist, build, coverage, .turbo, .cache, output, .next, .DS_Store). The

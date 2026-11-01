@@ -2,9 +2,9 @@
  * Configuration for the WebUI docs preview backend
  * (`DocsPreviewBackend`, served under `/api/docs/*`).
  *
- * Three built-in roots always exist: `docs`, `claude-learnings`, `claude-workbook`
- * (mapped to `<repoRoot>/docs`, `<repoRoot>/.claude-learnings`,
- * `<repoRoot>/.claude-workbook`). This config adds extra roots — typically
+ * Built-in roots always exist: `docs`, `logs`, `data`, `claude-learnings`, `claude-workbook`, `kb-design`, `kb-tasks`
+ * (mapped to `<repoRoot>/docs`, `<repoRoot>/_kb/learnings`,
+ * `<repoRoot>/_kb/workbook`). This config adds extra roots — typically
  * a full repo root or a `packages/<name>/src` subtree — so the WebUI doc
  * browser can read any project file.
  *
@@ -16,7 +16,7 @@
  */
 export interface DocsPreviewRootConfig {
   /** Stable id used in URLs and the WebUI dropdown. Must not collide with the
-   * three built-in ids (`docs`, `claude-learnings`, `claude-workbook`). */
+   * built-in ids (`docs`, `logs`, `data`, `claude-learnings`, `claude-workbook`, `kb-design`, `kb-tasks`). */
   id: string;
   /** Human-readable label shown in the WebUI root dropdown. */
   label: string;

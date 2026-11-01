@@ -9,7 +9,7 @@
  *
  * The structure is intentionally nested by *pipeline injection point*
  * (amplitude / timing / …), not by personality trait. See
- * `.claude-learnings/mind.md` §PersonaModulation for the rationale.
+ * `_kb/learnings/persona.md` §PersonaModulation for the rationale.
  *
  * Phase 1 only populates `amplitude.intensityScale` + `timing.speedScale`.
  * Every other field is optional and ignored by the avatar package today —

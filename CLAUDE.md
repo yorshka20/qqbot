@@ -156,7 +156,7 @@ When writing comments, it is **forbidden** to smuggle in anything that can only 
 - ❌ "Called by X / used by flow Y" (this info belongs in the PR description or git blame; it goes stale as the code evolves)
 - ❌ Adding standalone JSDoc to one type / interface field while no other field in the same interface has comments — this kind of "abrupt local explanation" is almost always session-context leakage.
 
-If a passage can't be understood by someone outside the current conversation, or is just "a decision log for this change", then it belongs in the commit message / PR description / `.claude-workbook/`, **not in a code comment**.
+If a passage can't be understood by someone outside the current conversation, or is just "a decision log for this change", then it belongs in the commit message / PR description / `_kb/workbook/`, **not in a code comment**.
 
 ### Allowed Comment Types
 
@@ -253,14 +253,27 @@ Non-obvious specifics that are easy to get wrong:
 
 ## Where Conventions Live
 
-Anything the user states as a convention, preference, or working agreement has two possible homes, **both tracked in this repo** so they travel with the user across machines:
+A rule's home depends on who has to see it:
 
-- **`CLAUDE.md`** (this file) — the structured, hand-maintained instruction set: commands, architecture, code conventions, comment style, commit style, testing, workflow. A rule about *how code is written or how work is delivered* belongs here, next to its peers.
-- **`.claude/memory/`** — accumulated learned preferences and hard-won project facts, one file per entry, indexed by `.claude/memory/MEMORY.md`. The kind of thing that surfaces through a correction ("don't thread that value through", "that silence marker is intentional") belongs here rather than as a new section above.
+- **`CLAUDE.md`** (this file, tracked) — commands, architecture, code conventions, comment style,
+  commit style, testing. **A rule about how code is written or how work is delivered belongs here**,
+  next to its peers.
+- **`.claude/memory/`** (tracked) — accumulated learned preferences and hard-won project facts, one
+  file per entry, indexed by `.claude/memory/MEMORY.md`. The kind of thing that surfaces through a
+  correction ("don't thread that value through", "that silence marker is intentional").
+- **`_kb/CLAUDE.md`** (the local knowledge base, a separate private repo) — how the **documentation**
+  is organised: roadmap, tasks, workbook, learnings, design docs. Rules about recording work go there.
 
-**Never** record such a rule only in an agent's own private memory store. Per-agent memory directories live on a single machine, so a convention parked there silently stops applying the moment the user switches machines — and it is invisible to the cluster's CLI workers, which read this repo's files and cannot see another agent's private memory.
+**Code rules stay tracked in this repo on purpose.** The user works across several machines, and the
+cluster's CLI workers read this repository's files — they cannot see a knowledge base that exists on one
+machine. A code convention parked in `_kb/` (or in an agent's own private memory directory) silently
+stops applying the moment the user switches machines or a worker picks up a ticket.
 
-`AGENTS.md` is a pointer to this file, not a second copy — codex and gemini read it and are directed here. Do not start a parallel rule list there.
+So an agent working on this code reads **two** files: this one (how to write code) and `_kb/CLAUDE.md`
+(how to record what you did). Do not consolidate them — a copy in either direction just drifts.
+
+`AGENTS.md` is a pointer to this file, not a second copy — codex and gemini read it and are directed
+here. Do not start a parallel rule list there.
 
 ## Git Commit Messages
 
@@ -273,7 +286,7 @@ Concretely: **body ≤ 5 lines of prose, and no bullet lists, tables, code block
 for any of those means the content belongs in the workbook, not here. A body that enumerates every
 affected call site is already too long — name the defect once and point at the report.
 
-Those details go into that day's `.claude-workbook/` report, and the commit body points at it:
+Those details go into that day's `_kb/workbook/` report, and the commit body points at it:
 
 ```
 refactor(cluster): check worker credentials over HTTP instead of spawning CLIs
@@ -289,122 +302,39 @@ Write the workbook entry first, then write the commit against it. The analysis t
 
 The `Co-Authored-By:` trailer convention is unchanged.
 
-## Workflow: Workbook & Learnings
+## Workflow: Planning Docs Live in the Local Knowledge Base (`_kb/`)
 
-`.claude-workbook/` and `.claude-learnings/` are listed in `.gitignore` — they are **local-only notes**; do not `git add` or push them. Delivery and collaboration rely on the tracked code and docs inside the repo.
+The roadmap, per-task plans, workbook and learnings are **not in this repo** anymore. They live in a
+private local knowledge base, linked into the repo as **`_kb/`** (a symlink ignored via
+`.git/info/exclude`). Moved out on 2026-11-02 so the code history never carries private notes and the
+docs can be committed on their own.
 
-The project maintains these two directories; you are **encouraged** (optional but useful) to read them at the start of each work session and update them when done:
+**Read `_kb/CLAUDE.md`** for the documentation conventions — it governs how the roadmap, tasks,
+workbook and learnings are organised, and it replaces what this section used to describe at length.
 
-### When Starting Work
+| What | Where |
+|---|---|
+| Active work, one row per task | `_kb/ROADMAP.md` |
+| Task list (21 tasks) | `_kb/tasks/index.md`, then that task's `plan.md` |
+| A task's items / open decisions | `_kb/tasks/NN-<code>/roadmap.md` · `todo.md` |
+| Start-context for a half-finished task | `_kb/tasks/NN-<code>/handoff/` |
+| Dated work reports (problem / root cause / fix / verification) | `_kb/workbook/YYYY-MM/` |
+| Knowledge per scope (key details, pitfalls) | `_kb/learnings/<scope>.md` |
+| Local design docs (was `docs/local/`) | `_kb/design/` |
 
-1. Read this file (`CLAUDE.md`)
-2. Read `.claude/memory/MEMORY.md` — the index of learned preferences and project facts; open the entries relevant to the task. Nothing loads these automatically.
-3. Read `.claude-workbook/index.md` — to understand past work (read the index first, then specific dated reports as needed)
-4. Read `.claude-learnings/index.md` — to understand the project's key details and design points (read the index first, then the relevant scope files as needed)
-5. Start the task
+**When starting work:** read this file, then `_kb/CLAUDE.md`; scan `_kb/ROADMAP.md`, and for the task
+at hand its `plan.md` / `roadmap.md` and latest handoff; `grep -rn "keyword" _kb/workbook/` instead of
+reading reports top to bottom.
 
-### When Work Is Done
+**When work is done:** write the workbook entry (`_kb/workbook/YYYY-MM/YYYY-MM-DD-<topic>.md`), put new
+facts and pitfalls in the matching `_kb/learnings/<scope>.md`, update the task's `roadmap.md` / `todo.md`,
+then refresh the generated scope views: `cd _kb && python3 ../_shared/scripts/kb-roadmap.py .`
+(the `## Roadmap（生成视图）` block at the top of each learnings file is generated — never edit it by hand).
 
-1. **Update `.claude-workbook/`** (local): in the current month's folder, record your work in that day's dated file (`YYYY-MM/YYYY-MM-DD.md`) — problem description, root-cause analysis, solution, files involved, verification results — then update **that month's** `YYYY-MM/index.md` (add a line). **One session writes one workbook file by default**: later tasks in the same session are appended as new sections of that file, not given a file each. On the first day of a new month, create the month folder + month index, and add a line for the month in the top-level `index.md`.
-2. **Update `.claude-learnings/`** (local): write newly discovered key details and points into the corresponding scope file, or create a new scope file. Then update the `index.md` index.
-3. When committing and pushing, **include only** changes that the repo should track; **do not** add the two directories above to `git add`.
+**If `_kb` is missing** on this machine or in a fresh worktree, ask the user for the kb root and run
+`<kb>/kb-link.sh qqbot` from the repo root.
 
-### Directory Structure
-
-```
-.claude-workbook/
-├── index.md              # Top level: lists months only + grep guidance (no individual daily reports)
-├── 2026-06/
-│   ├── index.md          # Month index: one line per day
-│   ├── 2026-06-07.md     # Daily work reports by date
-│   └── ...
-├── 2026-04/
-│   ├── index.md
-│   └── ...
-└── ...                   # New folder per month (YYYY-MM/)
-
-.claude-learnings/
-├── index.md              # Pure pointer layer: one line per scope (stores no content)
-├── rendering.md          # Scope: Puppeteer / rendering
-├── wechat.md             # Scope: WeChat API
-├── core.md               # Scope: core utility functions / common patterns
-├── ai-providers.md       # Scope: LLM provider integration points
-├── plugins.md            # Scope: plugin development points
-└── ...                   # Add scope files as needed
-```
-
-### Rules
-
-#### `index.md` Is a **Pure Pointer Layer**, Not a Content Summary (Core Constraint)
-
-The sole job of the `index.md` in both directories is to **let you scan it in one glance and decide which file to open**. It **stores no content** — the single source of truth for content is the body of the scope files (learnings) / the daily files (workbook).
-
-- **Format**: one line per file, `- [filename](file.md) — <one-line hook>` (aligned with the mature pattern in `memory/MEMORY.md`). The hook only answers "roughly what's in this file, and when to open it" — just enough to decide, no more.
-- **🚫 Do not append dated deltas to the index** (`2026-XX-XX added: …`). This is the root cause of the current index bloat — every work session writes the change into an index cell, turning it into a second copy of the scope content with unbounded growth. Dated deltas belong in the body of the scope files (learnings) or the daily files (workbook), **not in the index**.
-- **When to change an index line**: only when the file's overall theme / coverage changes do you update that one hook line; routine appends to a scope file **leave the index untouched**.
-- **Size budget**: keep each `index.md` to a size you can read in one sitting (rule of thumb ≲ 60 lines / ≲ 4KB). If it exceeds that, it means content is being stuffed in again — go back and pull it into the scope / daily files per the rules above.
-
-#### Workbook (Folders by Month, grep First)
-
-- **Folders by month** `YYYY-MM/`, with daily files `YYYY-MM/YYYY-MM-DD.md` (a second file on the same day takes a short meaningful kebab-case suffix naming its topic, e.g. `2026-09-26-reasoning.md` — never a bare counter like `-2`/`-3`) recording complete work (problem / root cause / solution / files involved / verification).
-- **Search primarily with grep, don't read everything**: search by content with `grep -rn "keyword" .claude-workbook/` (across months); pin down a specific day with the month index. The index only tells you "roughly what was done on which day" — it doesn't replace grep.
-- The three index layers each have their own job:
-  - Top-level `index.md`: lists **months only** (`- [YYYY-MM](YYYY-MM/index.md) — <one-line theme for the month>`) + grep guidance. **Does not list** individual daily reports.
-  - Month `YYYY-MM/index.md`: one line per day (`- [YYYY-MM-DD](YYYY-MM-DD.md) — <topic, ≤14 chars>`), dates in reverse order, multiple files on the same day newest first, the link text carrying the suffix (`- [2026-09-26 reasoning](2026-09-26-reasoning.md) — …`). Files named with the older `-2`/`-3` counters stay as they are.
-  - Daily files: the full content lives only here.
-
-#### Learnings
-
-- Split files by scope; scopes can be added as needed; judge whether content goes into an existing scope or a new one.
-- Each scope file maintains at its **top**, in order: ① (only for large files) a "Table of Contents" TOC linking the major `##` sections via anchors, so people can jump without reading the whole thing; ② a Roadmap table (see "Roadmap Maintenance" below). Dated deltas, design details, and pitfalls all go in the body sections.
-- **TOC trigger threshold**: when a scope file exceeds roughly 600 lines / 20KB, it must have a "Table of Contents" TOC at the top. Add a TOC line whenever you add a major section.
-- `index.md`: one line per scope; the hook only states what domain the scope covers (e.g. `- [avatar](avatar.md) — Live2D/VRM animation compiler, layer stack, tag syntax, TTS/lipsync`), and **does not list** the specific changes under that scope.
-
-### Roadmap Maintenance (Two-Layer Structure)
-
-This repo's roadmap has two layers, **both gitignored, local-only notes**:
-
-#### Cross-Scope Index: `/ROADMAP.md` (Repo Root)
-
-`/ROADMAP.md` is the cross-scope dashboard / index of active tasks:
-
-- Lists only the **currently active** P0/P1/P2/P3 items + links back to the scope details (including pre-merge checklists / short-term follow-ups / not-yet-started phases)
-- **Does not duplicate** completed items (mark them ✅ in the scope file + fill in the commit hash / workbook date; here, a single "merged-history pointer" paragraph pointing at each scope is enough)
-- Before **each work session**, scan the active section first to decide the next step; for a **newly discovered requirement**, record it here first, then expand it into the scope file
-
-#### Per-Scope Details: Top of `.claude-learnings/<scope>.md`
-
-Each scope file maintains a ROADMAP table at its **top**, aggregating all todo / in-progress / completed items under that scope (including the full historical phase table). This is the single source of truth within the scope — commit hashes / workbook dates are registered only here, and `/ROADMAP.md` merely references them.
-
-Reference example: [`/Users/yorshka/project/video-knowledge-backend/ROADMAP.md`](file:///Users/yorshka/project/video-knowledge-backend/ROADMAP.md) (the VKB repo's global roadmap — similar pattern but flatter).
-
-#### Status Legend
-
-- 🔴 **P0** — blocks other work / data correctness / missing core functionality
-- 🟡 **P1** — important but not blocking, proceed per plan
-- 🟢 **P2** — an improvement, do it when there's time
-- ⚪ **P3** — optimization / nice-to-have / recorded but deferred
-- ✅ **DONE** — completed
-- 🚧 **WIP** — in progress
-- 📋 **TODO** — to be implemented
-- 💭 **DESIGN** — to be designed / decided
-
-#### Table Format
-
-```markdown
-## Roadmap
-
-| Status | Priority | Task | Link / Notes |
-|---|---|---|---|
-| ✅ | — | **Completed item title** | workbook YYYY-MM-DD / commit hash / notes |
-| 🚧 | 🟡 P1 | **In-progress title** | ticket id or current worker |
-| 📋 | 🟢 P2 | **Todo title** | design doc link / brief |
-| 💭 | ⚪ P3 | **To-be-designed title** | key question / reason deferred |
-```
-
-#### When to Update
-
-- **After work is done**: in the scope file, move newly finished items to ✅ + fill in the workbook date / commit; at the same time remove them from the `/ROADMAP.md` active section (since they're no longer active).
-- **Newly discovered requirement**: first record a 📋 line in the `/ROADMAP.md` active section (so it isn't forgotten), then expand it in the corresponding scope file (nailing down details, design, dependencies).
-- **Before each work session**: scan the `/ROADMAP.md` active section first, then dive into scope files as needed.
-- **When scopes depend on each other**: cross-reference them in the scope files' notes (e.g. the phenotype task in `persona.md` depends on the SQLite table in `core.md`).
+**What stays in this repo:** the docs under `docs/` that describe the shipped architecture
+(`ARCHITECTURE.md`, `FLOW_DIAGRAMS_EN.md`, `CONTEXT_METADATA.md`, `REPLY_PERSISTENCE.md`,
+`SETUP_OUTLINE.md`, `AGENT_CLUSTER_DESIGN.md`), this file, `AGENTS.md`, `README.md` and
+`.claude/memory/` — see "Where Conventions Live".

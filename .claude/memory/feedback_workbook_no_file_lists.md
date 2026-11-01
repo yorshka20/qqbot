@@ -8,7 +8,7 @@ metadata:
   modified: 2026-08-22T15:25:11.368Z
 ---
 
-Workbook（`.claude-workbook/` 日报）里**不要写"涉及文件"清单段**。
+Workbook（`_kb/workbook/` 日报）里**不要写"涉及文件"清单段**。
 
 **Why:** git log / commit diff 已经完整记录了每次改动涉及的文件，日报再抄一遍是浪费空间的重复信息（2026-08-23 owner 明确指出）。
 

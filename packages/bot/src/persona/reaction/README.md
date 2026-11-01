@@ -29,4 +29,4 @@ Persona 三时间尺度的最快一档：
 
 Schema 形态依赖**真实对话日志**反推。提前固化 schema 大概率重写。先在 DM 跑 1-2 周 mind / reflection 闭环，看哪些 Triggers / Reflexes pattern 真的稳定再做。
 
-参考：[`docs/local/mind-system-design.md`](../../../../../docs/local/mind-system-design.md) Phase 4 / `.claude-learnings/mind.md` "Phase 3.6"。
+参考：`_kb/design/persona/mind-system-design.md` Phase 4 / `_kb/learnings/persona.md` "Phase 3.6"。

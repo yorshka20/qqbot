@@ -81,17 +81,15 @@ data/
 !data/mind/persona/*/bible.md
 !data/mind/persona/*/core-dna.json
 output/
-docs/local
 scripts/local
 packages/bot/scripts/local/
 dist-types/
 
 .git.backup.*
 
-# Local-only notes (gitignore applies to untracked files; remove from index if ever committed)
-.claude-workbook/
-.claude-learnings/
-/ROADMAP.md
+# Planning docs (roadmap / tasks / workbook / learnings / local design docs) live in the local
+# knowledge base, linked into this repo as `_kb` and ignored via .git/info/exclude.
+docs/local
 
 repomix-*.xml
 repomix-*.md

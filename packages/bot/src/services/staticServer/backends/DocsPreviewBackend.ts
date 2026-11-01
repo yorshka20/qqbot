@@ -8,8 +8,12 @@
  *
  * Built-in roots (all under monorepo root):
  * - docs: <repo>/docs
- * - claude-learnings: <repo>/.claude-learnings
- * - claude-workbook: <repo>/.claude-workbook
+ * - claude-learnings: <repo>/_kb/learnings
+ * - claude-workbook: <repo>/_kb/workbook
+ *
+ * The two kb roots are reached through the `_kb` symlink, which points at this
+ * project's folder in the local knowledge base; they are empty when that link
+ * is missing on a machine.
  *
  * Extra roots can be injected via `DocsPreviewConfig.roots` (see
  * `config.d/webui.jsonc`). Listings filter out a built-in noise deny-list
@@ -68,8 +72,10 @@ function buildBuiltinRoots(): Array<[string, { label: string; absPath: string }]
   const repo = getRepoRoot();
   return [
     ['logs', { label: 'logs/', absPath: join(repo, 'logs') }],
-    ['claude-learnings', { label: 'claude-learnings/', absPath: join(repo, '.claude-learnings') }],
-    ['claude-workbook', { label: 'claude-workbook/', absPath: join(repo, '.claude-workbook') }],
+    ['claude-learnings', { label: '_kb/learnings/', absPath: join(repo, '_kb', 'learnings') }],
+    ['claude-workbook', { label: '_kb/workbook/', absPath: join(repo, '_kb', 'workbook') }],
+    ['kb-design', { label: '_kb/design/', absPath: join(repo, '_kb', 'design') }],
+    ['kb-tasks', { label: '_kb/tasks/', absPath: join(repo, '_kb', 'tasks') }],
     ['docs', { label: 'docs/', absPath: join(repo, 'docs') }],
     ['data', { label: 'data/', absPath: join(repo, 'data') }],
   ];

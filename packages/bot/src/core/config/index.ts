@@ -143,7 +143,7 @@ export interface BotConfig {
   tickets?: TicketsConfig;
   /**
    * WebUI docs preview backend (`/api/docs/*`). When absent, only the three
-   * built-in roots (`docs`, `claude-learnings`, `claude-workbook`) are
+   * built-in roots (`docs`, `logs`, `data`, `claude-learnings`, `claude-workbook`, `kb-design`, `kb-tasks`) are
    * exposed. See `DocsPreviewConfig` for the full rationale.
    */
   docsPreview?: DocsPreviewConfig;

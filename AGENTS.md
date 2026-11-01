@@ -9,7 +9,8 @@ This file exists only so that agents which look for `AGENTS.md` (codex, gemini) 
 - Code conventions and comment style
 - Bug-fixing principle — root cause first, no stacking patches
 - Git commit message convention
-- The workbook / learnings workflow and roadmap maintenance
+- Where the planning docs live: the roadmap, tasks, workbook, learnings and local design docs are in the
+  local knowledge base linked as **`_kb/`** — read `_kb/CLAUDE.md` too, it governs how work is recorded
 
 Accumulated user preferences and project facts live in [`.claude/memory/`](./.claude/memory/) — start from its `MEMORY.md` index.
 

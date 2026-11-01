@@ -125,7 +125,7 @@ export function getPersonaApiBase(): string {
   return serverBase ? `${serverBase}/api/persona` : '/api/persona';
 }
 
-/** Base URL for read-only docs preview (repo `docs/`, `claude-learnings/`, `claude-workbook/`). Uses shared host when `VITE_STATIC_SERVER_BASE` is set. */
+/** Base URL for read-only docs preview (repo `docs/`, plus `_kb/learnings/`, `_kb/workbook/`, `_kb/design/`, `_kb/tasks/`). Uses shared host when `VITE_STATIC_SERVER_BASE` is set. */
 export function getDocsApiBase(): string {
   const serverBase = getStaticServerBase();
   return serverBase ? `${serverBase}/api/docs` : '/api/docs';
