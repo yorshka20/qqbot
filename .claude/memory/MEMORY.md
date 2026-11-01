@@ -11,6 +11,7 @@ Accumulated user preferences and project facts for this repo, one file per entry
 - [feedback_workbook_small_changes_skip.md](feedback_workbook_small_changes_skip.md) — 小改动不写 workbook 日报，commit message 足够
 - [feedback_commit_current_branch.md](feedback_commit_current_branch.md) — 始终在当前分支提交，不主动开分支
 - [feedback_ticket_series_naming.md](feedback_ticket_series_naming.md) — 同批 ticket（≥2）title 用 `series [i/N]` 命名
+- [feedback_no_os_service_integration.md](feedback_no_os_service_integration.md) — 进程守护留在 Bun/Node 生态内（scripts/supervisor），不装 launchd/systemd/Windows 服务
 - [feedback_config_example_sync.md](feedback_config_example_sync.md) — config.d/<topic>.jsonc 是运行时真相，example 是参考文档，两边同改
 
 ## Code-shape corrections

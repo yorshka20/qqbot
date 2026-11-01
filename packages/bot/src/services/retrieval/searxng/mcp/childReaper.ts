@@ -54,8 +54,8 @@ function isAlive(pid: number): boolean {
 }
 
 // MCP search servers are stateless, so the grace window before SIGKILL is
-// short — it must also stay under PM2's default kill_timeout (1600ms) so the
-// children are reaped before PM2 SIGKILLs the bot itself.
+// short: it runs first in shutdown, which has to finish within the
+// supervisor's stop timeout before the bot itself is killed.
 async function killTree(pid: number, graceMs = 800): Promise<void> {
   const tree: number[] = [];
   collectTree(pid, tree);
@@ -102,15 +102,16 @@ export async function killAllMcpChildren(): Promise<void> {
 }
 
 /**
- * Edge-case layer (NOT a root fix): a bot killed with SIGKILL (OOM, `kill -9`,
- * `pm2 delete --force`) cannot run any in-process cleanup, so its MCP subtree
- * is reparented to init. On the next boot the bot reclaims its own kind of
+ * Edge-case layer (NOT a root fix): a bot killed with SIGKILL (OOM, `kill -9`)
+ * cannot run any in-process cleanup, so its MCP subtree is reparented to init.
+ * Under the supervisor this cannot happen — it kills the bot's whole process
+ * group once the bot exits — but a bot run by hand has no one to do that. On the next boot the bot reclaims its own kind of
  * orphan before spawning a fresh one — the standard supervisor-restart
  * reclamation pattern for "the supervisor itself may die uncleanly". It is
  * intentionally narrow: it matches the MCP package name AND ppid==1, so a live
  * bot's healthy child (whose ppid is that live bot) is never touched.
- * Follow-up: drop this once the MCP SDK supports detached/process-group spawn
- * so PM2 can own subtree teardown directly.
+ * Follow-up: drop this once a bot run by hand also tears down its subtree
+ * (e.g. the MCP SDK supporting process-group spawn).
  */
 export function reapOrphanedMcpChildren(packageName: string): void {
   let pids: number[] = [];

@@ -72,7 +72,7 @@ Each sub-section follows the pattern **Why / Config / Verify**.
 
 ### §6 — Keep it running
 
-- 6.1 PM2 via the included `ecosystem.config.cjs`
+- 6.1 The bundled supervisor: `bun run start` (on macOS from Terminal.app or SSH, for local network access), `status`, `stop`
 - 6.2 Where logs live (`logs/`), how to tail, rotation
 - 6.3 Restart / upgrade safely
 

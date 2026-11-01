@@ -934,7 +934,7 @@ export function getLanStreamUrl(): string {
 
 import { getLogsApiBase } from './config';
 
-/** SSE stream URL for real-time pm2 log output (streams from now, no history). */
+/** SSE stream URL for the bot's log file as it grows (streams from now, no history). */
 export function getLogsStreamUrl(): string {
   return `${getLogsApiBase()}/stream`;
 }

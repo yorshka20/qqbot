@@ -125,7 +125,7 @@ export class Bot extends EventEmitter {
       // Never re-emit this as `error`. EventEmitter throws an unlistened `error`, which turns
       // a connection fault the transport has already scheduled a retry for into an uncaught
       // exception — and the process boundary then exits. One blip at startup would otherwise
-      // cost a full PM2 restart_delay of downtime instead of a 1s reconnect.
+      // cost a full supervisor restart throttle of downtime instead of a 1s reconnect.
       this.emit('connectionError', protocol, error);
     });
   }

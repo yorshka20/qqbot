@@ -445,7 +445,7 @@ export class CodingAgentPlugin extends PluginBase {
         `  bot_notify_task - 任务状态通知\n` +
         `  bot_send_message - 发送消息\n` +
         `  bot_info - 获取 Bot 信息\n` +
-        `  bot_command - 维护命令（restart/reload-plugins/status）\n\n` +
+        `  bot_command - 维护命令（restart/deploy/reload-plugins/status）\n\n` +
         `当前状态:\n` +
         `  待处理任务: ${status.pendingTasks}\n` +
         `  运行中任务: ${status.runningTasks}`,

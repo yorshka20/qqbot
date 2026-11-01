@@ -8,9 +8,9 @@
  */
 
 import { isAbsolute, join } from 'node:path';
-import { spawn } from 'bun';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { CodingAgentConfig, ProtocolName } from '@/core/config';
+import { checkDeploy, isSupervised, requestDeploy, requestRestart } from '@/core/supervisor';
 import { parseCardDeck } from '@/services/card/cardTypes';
 import { logger } from '@/utils/logger';
 import { AgentDelivery, type AgentDeliveryDeps, type DeliveryResult } from './AgentDelivery';
@@ -32,6 +32,8 @@ import type {
 } from './types';
 
 const DEFAULT_MAX_FILE_MB = 30;
+const NOT_SUPERVISED =
+  'The bot was started by hand, not under the supervisor: nothing would start it again after it stops, so it cannot restart or deploy itself.';
 
 export interface TriggerTaskOptions {
   /** Defaults to `codingAgent.defaultExecutor`. */
@@ -374,7 +376,10 @@ export class CodingAgentService {
 
     switch (command) {
       case 'restart':
-        return await this.handleRestartCommand();
+        return this.handleRestartCommand();
+
+      case 'deploy':
+        return await this.handleDeployCommand();
 
       case 'reload-plugins':
         return await this.handleReloadPluginsCommand();
@@ -387,68 +392,26 @@ export class CodingAgentService {
     }
   }
 
-  /**
-   * Handle restart command - pull code, update dependencies, restart bot
-   */
-  private async handleRestartCommand(): Promise<ExecuteCommandResult> {
-    const workDir = this.config.workingDirectory || process.cwd();
-
-    try {
-      // Step 1: Git pull
-      logger.info('[CodingAgentService] Pulling latest code...');
-      const gitPull = spawn({
-        cmd: ['git', 'pull'],
-        cwd: workDir,
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
-      const gitExitCode = await gitPull.exited;
-      if (gitExitCode !== 0) {
-        const stderr = await new Response(gitPull.stderr).text();
-        return { success: false, error: `Git pull failed: ${stderr}` };
-      }
-      const gitOutput = await new Response(gitPull.stdout).text();
-      logger.info(`[CodingAgentService] Git pull output: ${gitOutput.trim()}`);
-
-      // Step 2: Install dependencies
-      logger.info('[CodingAgentService] Installing dependencies...');
-      const bunInstall = spawn({
-        cmd: ['bun', 'install'],
-        cwd: workDir,
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
-      const bunExitCode = await bunInstall.exited;
-      if (bunExitCode !== 0) {
-        const stderr = await new Response(bunInstall.stderr).text();
-        return { success: false, error: `Bun install failed: ${stderr}` };
-      }
-      logger.info('[CodingAgentService] Dependencies installed');
-
-      // Step 3: Schedule restart
-      logger.info('[CodingAgentService] Scheduling restart...');
-
-      // Send message before restart
-      const restartMessage = '🔄 Bot 正在重启，请稍候...';
-      // We can't easily send to all users, so just log
-      logger.info(`[CodingAgentService] ${restartMessage}`);
-
-      // Schedule restart after a short delay to allow response to be sent
-      setTimeout(() => {
-        logger.info('[CodingAgentService] Restarting bot...');
-        process.exit(0); // Exit with code 0, supervisor should restart
-      }, 1000);
-
-      return {
-        success: true,
-        message: 'Bot will restart in 1 second. Code pulled and dependencies updated.',
-        data: { gitOutput: gitOutput.trim() },
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('[CodingAgentService] Restart command failed:', error);
-      return { success: false, error: errorMessage };
+  /** Restart on the code already checked out; updating it is `deploy`. */
+  private handleRestartCommand(): ExecuteCommandResult {
+    if (!isSupervised()) {
+      return { success: false, error: NOT_SUPERVISED };
     }
+    requestRestart();
+    return { success: true, message: 'The bot restarts in a moment on the code already checked out.' };
+  }
+
+  /** `bun run deploy`, after its dry run has shown it would not be refused. */
+  private async handleDeployCommand(): Promise<ExecuteCommandResult> {
+    if (!isSupervised()) {
+      return { success: false, error: NOT_SUPERVISED };
+    }
+    const check = await checkDeploy();
+    if (!check.ok) {
+      return { success: false, error: check.report };
+    }
+    const logPath = requestDeploy();
+    return { success: true, message: `${check.report}\nDeploying; the bot stops and starts again. Output: ${logPath}` };
   }
 
   /**

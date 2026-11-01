@@ -166,16 +166,24 @@ bun run dev           # bot + admin UI, hot reload
 
 `smoke-test` runs `startApp()` and then shuts down. It checks dependency-injection registration, module order, and plugin init. A change is not done until it exits 0.
 
-Production, under PM2:
+Production, under the bot's own supervisor (`scripts/supervisor/`):
 
 ```bash
 bun run build
-bun run start         # bun install, pm2 start ecosystem.config.cjs (app name: qq-bot) on the current checkout
-bun run deploy        # update: fetch, fast-forward only, bun install, restart (--check to preview)
-bun run ui:start      # admin UI, separate from that PM2 app
+bun run start         # start the supervisor in the background; it starts the bot and restarts it whenever it exits
+bun run status        # supervisor and bot state, last exit, the tail of the bot's own output
+bun run restart       # restart on the checked-out code, like `/restart` in chat
+bun run stop          # stop the bot, then the supervisor
+bun run logs          # follow the bot's log file under logs/
+bun run deploy        # update: fetch, fast-forward only, bun install, restart (--check to preview; `/deploy` in chat)
+bun run ui:start      # admin UI, separate from the supervisor
 ```
 
-`pm2 restart qq-bot` is the restart path, including a restart the bot triggers on itself (`/restart`). A restart runs the checked-out code and never pulls or installs; `bun run deploy` is how code and dependencies change, and it refuses before stopping the bot when the branch has diverged or the tree has uncommitted changes. Logs: `pm2 logs qq-bot`, and files under `logs/`. `LOG_LEVEL=debug` for protocol detail. `CONFIG_PATH` overrides the config location.
+The supervisor is an ordinary background process, the same on every platform: nothing is installed into the operating system, so nothing starts it at boot or login, and nothing brings it back if it dies — the bot shuts down with it, so a later `bun run start` never finds a second bot running. A bot that exits is started again at once, or, when it ran for less than a minute, a minute after its previous start. Stopping it sends a shutdown message over IPC and kills its process tree if it has not exited after 10s. The bot gets the environment of the terminal `bun run start` ran in. Its own log is under `logs/<date>/`; `logs/supervisor/` holds the supervisor's state, `supervisor.log`, `bot-output.log` (only what the logger does not write: output from before it is up, a runtime crash) and `deploy.log`.
+
+On macOS, start the supervisor from Terminal.app or over SSH. Only programs started there reach hosts on the local network unconditionally ([Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)); one started from another app, such as an IDE's terminal, depends on that app's Local Network permission, which an update of the app can withdraw from processes already running. `bun run start` warns when it is not run from Terminal or SSH. A launchd agent gets no local network access at all, which is why the bot does not run as one.
+
+A restart runs the checked-out code and never pulls or installs; `bun run deploy` is how code and dependencies change, and it refuses before stopping the bot when the branch has diverged or the tree has uncommitted changes. `bun run bot` runs the bot in the foreground without a supervisor: nothing restarts it, and `/restart` and `/deploy` refuse. `LOG_LEVEL=debug` for protocol detail. `CONFIG_PATH` overrides the config location.
 
 ## Configuration notes
 

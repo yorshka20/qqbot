@@ -9,6 +9,7 @@ import type { CapabilityType } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { ProactiveConversationService } from '@/conversation/proactive';
 import { DITokens } from '@/core/DITokens';
+import { checkDeploy, isSupervised, requestDeploy, requestRestart } from '@/core/supervisor';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { PermissionLevel } from '@/permission';
 import { PluginManager } from '@/plugins/PluginManager';
@@ -318,18 +319,18 @@ export class RoleCommand implements CommandHandler {
   }
 }
 
-/** Delay before triggering PM2 restart (ms), so the reply is sent first */
-const RESTART_DELAY_MS = 2000;
+/** Reply to /restart and /deploy when the bot was started by hand, with no supervisor to start it again. */
+const NOT_SUPERVISED =
+  '这个 bot 是手动启动的（不在 supervisor 下），停下后没有谁会把它重新拉起来，所以没法自重启或自部署。请到它运行的终端里手动操作。';
 
-/** PM2 app name (must match ecosystem.config.cjs). The WebUI is not PM2-managed. */
-const PM2_APP_BOT = 'qq-bot';
+const textResult = (text: string): CommandResult => ({
+  success: true,
+  segments: new MessageBuilder().text(text).build(),
+});
 
 /**
- * Restart command: ask PM2 to restart qq-bot via two-level spawn. It runs the code already
- * checked out — updating code and dependencies is `bun run deploy`, never a restart.
- * Spawns scripts/pm2/pm2-restart-helper.cjs (detached), which runs "pm2 restart ... --no-treekill".
- * So the process that runs pm2 is not the direct child of this process, and is not killed
- * when PM2 restarts us. Ecosystem has treekill: false so the helper is not killed either.
+ * Restart command: the supervisor restarts the bot on the code already checked out — updating code
+ * and dependencies is `/deploy`, never a restart.
  * Requires admin or owner permission.
  */
 @Command({
@@ -345,32 +346,44 @@ export class RestartCommand implements CommandHandler {
   usage = '/restart';
 
   execute(_args: string[]): CommandResult {
-    const messageBuilder = new MessageBuilder();
-    messageBuilder.text('正在重启...');
+    if (!isSupervised()) {
+      return textResult(NOT_SUPERVISED);
+    }
+    requestRestart();
+    return textResult('正在重启...');
+  }
+}
 
-    setTimeout(() => {
-      const helperPath = path.join(getRepoRoot(), 'scripts', 'pm2', 'pm2-restart-helper.cjs');
-      const restartAppNames = PM2_APP_BOT;
-      const child = spawn(process.execPath, [helperPath], {
-        env: { ...process.env, RESTART_APP_NAMES: restartAppNames },
-        cwd: process.cwd(),
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.on('error', (err) => {
-        logger.error('[RestartCommand] failed to spawn restart helper: %s', err.message);
-      });
-      child.unref();
-      logger.info(
-        '[RestartCommand] triggered pm2 restart via helper (apps: %s); this process will exit when PM2 restarts',
-        restartAppNames,
-      );
-    }, RESTART_DELAY_MS);
+/**
+ * Deploy command: `bun run deploy`, run by the supervisor — fast-forward to the upstream branch,
+ * install dependencies while the bot is stopped, start it again. The dry run goes first, so a deploy
+ * that would be refused (diverged branch, uncommitted changes) is reported without stopping anything.
+ * Requires owner permission.
+ */
+@Command({
+  name: 'deploy',
+  description: 'Update to the pushed code (fast-forward only), install dependencies and restart. Owner only.',
+  usage: '/deploy',
+  permissions: ['owner'],
+})
+@injectable()
+export class DeployCommand implements CommandHandler {
+  name = 'deploy';
+  description = 'Update to the pushed code (fast-forward only), install dependencies and restart. Owner only.';
+  usage = '/deploy';
 
-    return {
-      success: true,
-      segments: messageBuilder.build(),
-    };
+  async execute(_args: string[]): Promise<CommandResult> {
+    if (!isSupervised()) {
+      return textResult(NOT_SUPERVISED);
+    }
+    const check = await checkDeploy();
+    if (!check.ok) {
+      return textResult(`不部署：\n${check.report}`);
+    }
+    const logPath = requestDeploy();
+    return textResult(
+      `${check.report}\n开始部署，bot 会先停下再启动；过程输出在 ${path.relative(getRepoRoot(), logPath)}`,
+    );
   }
 }
 

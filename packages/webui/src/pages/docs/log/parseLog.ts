@@ -2,7 +2,7 @@
  * Parser for FileLogger output (`logs/**.log`). Each entry starts at a
  * `[YYYY-MM-DD HH:mm:ss] [LEVEL] ` line; every following line without that
  * header belongs to it (meta JSON, stack traces, dumped prompts). Files
- * written by other producers (pm2 stdout in `logs/webui.log`) have no headers
+ * written by other producers (the WebUI dev server's stdout in `logs/webui.log`) have no headers
  * at all, so a header-less line stands as its own entry instead of being
  * folded into the previous one.
  *
@@ -64,6 +64,11 @@ function appendBodyLine(entry: LogEntry, line: string): void {
   } else {
     entry.sections.push({ label: null, lines: [line] });
   }
+}
+
+/** Level of a line that opens an entry, upper-cased; null for any other line. */
+export function entryLevel(line: string): string | null {
+  return HEADER.exec(line)?.[2].toUpperCase() ?? null;
 }
 
 export function parseLog(raw: string): LogFile {

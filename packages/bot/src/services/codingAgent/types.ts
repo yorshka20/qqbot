@@ -81,7 +81,7 @@ export interface BotInfo {
 }
 
 // Command execution types
-export type BotCommandName = 'restart' | 'reload-plugins' | 'status';
+export type BotCommandName = 'restart' | 'deploy' | 'reload-plugins' | 'status';
 
 export interface ExecuteCommandParams {
   command: BotCommandName;

@@ -18,7 +18,7 @@ import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';
 
 /** Commands that must never be executed by the AI, regardless of user permission. */
-const BLOCKED_COMMANDS = new Set(['shell', 'restart']);
+const BLOCKED_COMMANDS = new Set(['deploy', 'restart', 'shell']);
 
 @Tool({
   name: 'execute_command',

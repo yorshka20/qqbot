@@ -134,6 +134,10 @@ export class BrowserService {
           headless: 'new',
           args: launchArgs,
           executablePath,
+          // Puppeteer starts Chrome in a process group of its own, so nothing ends it along with the
+          // bot. Over a pipe Chrome exits when the bot does, a killed bot included; over the default
+          // WebSocket it would live on as an orphan.
+          pipe: true,
         });
 
         logger.info('[BrowserService] Browser initialized successfully');

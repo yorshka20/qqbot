@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import winston from 'winston';
 import { getCurrentMessageContext } from '@/context/MessageContextStorage';
-import { getRepoRoot } from '@/utils/repoRoot';
+import { botLogsDir, localDateString, logFilePathAt } from '@/utils/logFiles';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -121,22 +121,6 @@ function formatMeta(meta: Record<string, unknown>): string {
   return parts.length > 0 ? `\n${parts.join('\n')}` : '';
 }
 
-// Get local date string in YYYY-MM-DD format
-function getLocalDateString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-// Get log file path with date and time
-function getLogFilePath(logsDir: string): string {
-  const now = new Date();
-  const dateStr = getLocalDateString(now); // YYYY-MM-DD (local time)
-  const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-'); // HH-MM-SS
-  return join(logsDir, `${dateStr}/${dateStr}-${timeStr}.log`);
-}
-
 // Color codes for console output
 const colors = {
   reset: '\x1b[0m',
@@ -184,14 +168,14 @@ class FileLogger implements Logger {
   private currentDate: string;
   private fileTransport: winston.transports.FileTransportInstance;
 
-  constructor(level: LogLevel = 'info') {
+  constructor(level: LogLevel, consoleOutput: boolean) {
     // Ensure logs directory exists
-    this.logsDir = join(getRepoRoot(), 'logs');
+    this.logsDir = botLogsDir();
     if (!existsSync(this.logsDir)) {
       mkdirSync(this.logsDir, { recursive: true });
     }
 
-    this.currentDate = getLocalDateString(new Date());
+    this.currentDate = localDateString(new Date());
 
     // File format — suppress format runs first so non-whitelisted entries are dropped
     // before printf (with [STATS] bypass for daily-stats parsing).
@@ -213,7 +197,7 @@ class FileLogger implements Logger {
     );
 
     // Create file transport with new file on startup
-    const logFilePath = getLogFilePath(this.logsDir);
+    const logFilePath = logFilePathAt(this.logsDir, new Date());
     // Ensure date directory exists
     const dateDir = join(this.logsDir, this.currentDate);
     if (!existsSync(dateDir)) {
@@ -284,7 +268,7 @@ class FileLogger implements Logger {
     // Create winston logger
     this.winstonLogger = winston.createLogger({
       level,
-      transports: [this.fileTransport, consoleTransport],
+      transports: consoleOutput ? [this.fileTransport, consoleTransport] : [this.fileTransport],
     });
 
     // Check date periodically for long-running processes
@@ -294,11 +278,11 @@ class FileLogger implements Logger {
   }
 
   private checkDateChange(): void {
-    const today = getLocalDateString(new Date());
+    const today = localDateString(new Date());
     if (today !== this.currentDate) {
       // Date changed, create new file transport
       this.currentDate = today;
-      const newLogFilePath = getLogFilePath(this.logsDir);
+      const newLogFilePath = logFilePathAt(this.logsDir, new Date());
 
       // Ensure new date directory exists
       const dateDir = join(this.logsDir, this.currentDate);
@@ -414,10 +398,15 @@ class ConsoleOnlyLogger implements Logger {
 // Get default log level from environment variable or use 'info' as fallback
 const defaultLogLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
 const disableFileLog = process.env.NO_FILE_LOG === '1';
-let defaultLogger: Logger = disableFileLog ? new ConsoleOnlyLogger(defaultLogLevel) : new FileLogger(defaultLogLevel);
+// Under a service manager stdout is an unrotated capture file; the log files already hold every
+// entry, so a copy there would only grow without bound.
+const consoleOutput = process.env.NO_CONSOLE_LOG !== '1';
+const createLogger = (level: LogLevel): Logger =>
+  disableFileLog ? new ConsoleOnlyLogger(level) : new FileLogger(level, consoleOutput);
+let defaultLogger: Logger = createLogger(defaultLogLevel);
 
 export function setLogLevel(level: LogLevel): void {
-  defaultLogger = disableFileLog ? new ConsoleOnlyLogger(level) : new FileLogger(level);
+  defaultLogger = createLogger(level);
 }
 
 export function getLogger(): Logger {

@@ -1,6 +1,6 @@
 // Deploy — bring the bot up to the latest code: fetch, fast-forward only, install dependencies,
 // restart. This is the only path that changes code or dependencies; a restart (crash restart,
-// `/restart`, the process manager's restart) runs whatever is checked out. So a crash restart can
+// `/restart`, the supervisor's restart) runs whatever is checked out. So a crash restart can
 // never pull unreviewed code, and a branch that has diverged can never stop the bot from starting.
 //
 // A deploy is refused before the running bot is touched when the checkout and its upstream have
@@ -14,8 +14,9 @@
 // Usage: bun run deploy            update and restart
 //        bun run deploy --check    report what a deploy would do; exit 1 if it would be refused
 
-import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { BOT_APP } from './supervisor/app';
+import { connectSupervisor } from './supervisor/client';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -36,11 +37,17 @@ function run(cmd: string[]): void {
   }
 }
 
-/** The bot under its process manager (PM2). The one place to change when the manager is replaced. */
+// The deploy holds the bot stopped while it updates and releases it after; the supervisor itself
+// keeps running throughout. Without a supervisor there is no bot to stop or start: a bot run by
+// hand (`bun run bot`) has to be stopped before deploying.
+const supervisor = await connectSupervisor(BOT_APP.files);
 const botService = {
-  stop: () => run(['pm2', 'stop', 'qq-bot']),
-  // Starting the ecosystem resumes the stopped app, or registers it when PM2 has never seen it.
-  start: () => run(['pm2', 'start', path.join(ROOT, 'ecosystem.config.cjs')]),
+  stop: async () => {
+    await supervisor?.holdBot();
+  },
+  start: async () => {
+    await supervisor?.releaseBot();
+  },
 };
 
 type Plan = { pull: false; localCommits: number } | { pull: true; upstream: string; upstreamCommits: number };
@@ -67,11 +74,12 @@ function planDeploy(): Plan {
 }
 
 function describe(plan: Plan): string {
+  const install = supervisor ? 'install, restart' : 'install (no supervisor is running, so no restart)';
   if (plan.pull) {
-    return `fast-forward ${plan.upstreamCommits} commit(s) from ${plan.upstream}, install, restart`;
+    return `fast-forward ${plan.upstreamCommits} commit(s) from ${plan.upstream}, ${install}`;
   }
   const local = plan.localCommits > 0 ? ` (${plan.localCommits} local commit(s) not yet pushed)` : '';
-  return `nothing to pull${local}; install, restart`;
+  return `nothing to pull${local}; ${install}`;
 }
 
 let plan: Plan;
@@ -87,7 +95,7 @@ if (process.argv.includes('--check')) {
 }
 
 const running = git('rev-parse', 'HEAD');
-botService.stop();
+await botService.stop();
 try {
   if (plan.pull) {
     run(['git', 'merge', '--ff-only', plan.upstream]);
@@ -98,9 +106,13 @@ try {
   if (git('rev-parse', 'HEAD') !== running) {
     run(['git', 'reset', '--hard', running]);
   }
-  console.error(`deploy failed: ${(error as Error).message}; starting the bot on ${running.slice(0, 8)}`);
-  botService.start();
+  const next = supervisor ? 'starting the bot on' : 'the checkout is back on';
+  console.error(`deploy failed: ${(error as Error).message}; ${next} ${running.slice(0, 8)}`);
+  await botService.start();
   process.exit(1);
 }
-botService.start();
+await botService.start();
 console.log(`deploy: done at ${git('rev-parse', '--short', 'HEAD')}`);
+if (!supervisor) {
+  console.log('start the bot with `bun run start`');
+}

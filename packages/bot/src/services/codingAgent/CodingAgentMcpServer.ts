@@ -419,11 +419,15 @@ export class CodingAgentMcpServer {
       'bot_command',
       {
         description:
-          'Run a bot maintenance command. `restart` pulls code, updates dependencies and restarts the bot ' +
-          '(this will kill your own task — call it last). `reload-plugins` reloads all plugins in place. ' +
-          '`status` returns current runtime state. Not available to workspace tasks.',
+          'Run a bot maintenance command. `restart` restarts the bot on the code already checked out. ' +
+          '`deploy` brings the bot to the pushed code: fetch, fast-forward only, install dependencies, restart; ' +
+          'it is refused when the checkout has diverged or has uncommitted changes. Both kill your own task — ' +
+          'call them last. `reload-plugins` reloads all plugins in place. `status` returns current runtime state. ' +
+          'Not available to workspace tasks.',
         inputSchema: {
-          command: z.enum(['restart', 'reload-plugins', 'status']).describe('Which maintenance command to run.'),
+          command: z
+            .enum(['restart', 'deploy', 'reload-plugins', 'status'])
+            .describe('Which maintenance command to run.'),
           args: z.array(z.string()).optional().describe('Extra arguments for the command.'),
         },
       },

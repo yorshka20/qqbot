@@ -1,6 +1,6 @@
 {
-  // Bun reads the cwd's tsconfig for compiler options, and every root-cwd entry point
-  // (pm2's wrapper, `bun run dev`, smoke-test) is transpiled against this file. Without the
+  // Bun reads the cwd's tsconfig for compiler options, and every root-cwd entry point (the
+  // supervisor's bot process, `bun run dev`, smoke-test) is transpiled against this file. Without the
   // shared options here, decorators emit no metadata and tsyringe fails at resolve time with
   // "TypeInfo not known" — while a run from inside packages/ still works, so it looks like
   // an environment quirk rather than a missing compiler option.
@@ -9,6 +9,7 @@
   "references": [
     { "path": "./packages/avatar" },
     { "path": "./packages/bot" },
-    { "path": "./packages/webui" }
+    { "path": "./packages/webui" },
+    { "path": "./scripts" }
   ]
 }

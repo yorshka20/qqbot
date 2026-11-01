@@ -46,8 +46,8 @@ export async function startApp(configPath: string | undefined, options: StartApp
 
   const shutdown = async (): Promise<void> => {
     // Kill MCP child subtrees FIRST: every later step can throw or hang,
-    // and this must complete before PM2 escalates to SIGKILL, otherwise
-    // the bunx/node subtree is orphaned to init.
+    // and this must complete before a forced kill (the supervisor's stop
+    // timeout, or `kill -9`), otherwise the bunx/node subtree is orphaned to init.
     await killAllMcpChildren();
     await pluginManager.stopAll();
     stopStaticServer();

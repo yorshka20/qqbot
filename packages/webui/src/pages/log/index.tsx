@@ -1,18 +1,18 @@
 /**
  * Real-time log viewer page.
  *
- * Connects to /api/logs/stream (SSE) which pipes pm2 log output.
+ * Connects to /api/logs/stream (SSE), which follows the bot's log file under logs/.
  * Features: auto-scroll, pause/resume, clear, text filter, line limit.
  */
 
 import { ArrowDown, Circle, Pause, Play, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getLogsStreamUrl } from '../../api';
+import { entryLevel } from '../docs/log/parseLog';
 
 interface LogLine {
   id: number;
   text: string;
-  source: 'stdout' | 'stderr';
   ts: number;
 }
 
@@ -55,11 +55,10 @@ export function LogsPage() {
 
     es.addEventListener('log', (e) => {
       try {
-        const data = JSON.parse(e.data) as { text: string; source: 'stdout' | 'stderr' };
+        const data = JSON.parse(e.data) as { text: string };
         const line: LogLine = {
           id: ++lineIdCounter,
           text: data.text,
-          source: data.source,
           ts: Date.now(),
         };
 
@@ -77,9 +76,6 @@ export function LogsPage() {
       setConnected(true);
     });
 
-    es.addEventListener('end', () => {
-      setConnected(false);
-    });
     es.onerror = () => {
       setConnected(false);
       es.close();
@@ -231,7 +227,7 @@ export function LogsPage() {
           filteredLines.map((line) => (
             <div
               key={line.id}
-              className={`whitespace-pre-wrap break-all ${line.source === 'stderr' ? 'text-red-400' : ''}`}
+              className={`whitespace-pre-wrap break-all ${entryLevel(line.text) === 'ERROR' ? 'text-red-400' : ''}`}
             >
               {line.text}
             </div>

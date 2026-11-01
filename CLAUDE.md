@@ -8,8 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Development with hot reload + WebUI
 bun run dev
 
-# Production build and start
+# Production: build, then run under the supervisor (scripts/supervisor/)
 bun run build && bun run start
+bun run status | restart | stop | logs
 
 # Update a running deployment: fetch, fast-forward only, bun install, restart
 bun run deploy          # `bun run deploy --check` reports what it would do
@@ -38,7 +39,7 @@ bun run debug
 bun run build:admin
 ```
 
-**Restarting vs. deploying.** A restart — `pm2 restart qq-bot`, a crash restart, or `/restart` in chat — runs the code already checked out and never pulls or installs; use it, not `nohup` + `start.sh`. Updating is `bun run deploy`: fetch, fast-forward only, stop the bot, `bun install` while it is stopped (nothing holds `node_modules`, so no bun `EEXIST`), start it. It refuses before stopping the bot when the branch has diverged or a fast-forward would run over uncommitted changes. The WebUI is not under PM2 (`bun run ui:start`).
+**Restarting vs. deploying.** In production the bot runs under its own supervisor (`scripts/supervisor/`, `bun run start`), which restarts it whenever it exits. A restart — `bun run restart`, a crash restart, or `/restart` in chat — runs the code already checked out and never pulls or installs. Updating is `bun run deploy` (or `/deploy`): fetch, fast-forward only, hold the bot stopped, `bun install` while it is stopped (nothing holds `node_modules`, so no bun `EEXIST`), start it. It refuses before stopping the bot when the branch has diverged or a fast-forward would run over uncommitted changes. On macOS start the supervisor from Terminal.app or over SSH: only those reach the local network unconditionally (Apple TN3179), and a launchd agent does not reach it at all. The WebUI is separate (`bun run ui:start`).
 
 ## High-Level Architecture
 
