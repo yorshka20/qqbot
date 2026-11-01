@@ -170,11 +170,12 @@ Production, under PM2:
 
 ```bash
 bun run build
-bun run start         # git pull, bun install, pm2 start ecosystem.config.cjs (app name: qq-bot)
+bun run start         # bun install, pm2 start ecosystem.config.cjs (app name: qq-bot) on the current checkout
+bun run deploy        # update: fetch, fast-forward only, bun install, restart (--check to preview)
 bun run ui:start      # admin UI, separate from that PM2 app
 ```
 
-`pm2 restart qq-bot` is the restart path, including a restart the bot triggers on itself. Logs: `pm2 logs qq-bot`, and files under `logs/`. `LOG_LEVEL=debug` for protocol detail. `CONFIG_PATH` overrides the config location.
+`pm2 restart qq-bot` is the restart path, including a restart the bot triggers on itself (`/restart`). A restart runs the checked-out code and never pulls or installs; `bun run deploy` is how code and dependencies change, and it refuses before stopping the bot when the branch has diverged or the tree has uncommitted changes. Logs: `pm2 logs qq-bot`, and files under `logs/`. `LOG_LEVEL=debug` for protocol detail. `CONFIG_PATH` overrides the config location.
 
 ## Configuration notes
 

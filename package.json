@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "start": "bash start.sh",
+    "deploy": "bun run scripts/deploy.ts",
     "web": "bun run --filter @qqbot/webui dev",
     "ui:start": "bash scripts/ui.sh start",
     "ui:stop": "bash scripts/ui.sh stop",

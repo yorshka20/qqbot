@@ -325,7 +325,8 @@ const RESTART_DELAY_MS = 2000;
 const PM2_APP_BOT = 'qq-bot';
 
 /**
- * Restart command: ask PM2 to restart qq-bot via two-level spawn.
+ * Restart command: ask PM2 to restart qq-bot via two-level spawn. It runs the code already
+ * checked out — updating code and dependencies is `bun run deploy`, never a restart.
  * Spawns scripts/pm2/pm2-restart-helper.cjs (detached), which runs "pm2 restart ... --no-treekill".
  * So the process that runs pm2 is not the direct child of this process, and is not killed
  * when PM2 restarts us. Ecosystem has treekill: false so the helper is not killed either.
@@ -333,19 +334,19 @@ const PM2_APP_BOT = 'qq-bot';
  */
 @Command({
   name: 'restart',
-  description: 'Update code (git pull), install deps, then restart the bot. Admin/owner only.',
+  description: 'Restart the bot on the current code (no pull, no install). Admin/owner only.',
   usage: '/restart',
   permissions: ['admin', 'owner'],
 })
 @injectable()
 export class RestartCommand implements CommandHandler {
   name = 'restart';
-  description = 'Update code (git pull), install deps, then restart the bot. Admin/owner only.';
+  description = 'Restart the bot on the current code (no pull, no install). Admin/owner only.';
   usage = '/restart';
 
   execute(_args: string[]): CommandResult {
     const messageBuilder = new MessageBuilder();
-    messageBuilder.text(`正在拉取代码并重启...`);
+    messageBuilder.text('正在重启...');
 
     setTimeout(() => {
       const helperPath = path.join(getRepoRoot(), 'scripts', 'pm2', 'pm2-restart-helper.cjs');

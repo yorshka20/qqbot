@@ -11,6 +11,9 @@ bun run dev
 # Production build and start
 bun run build && bun run start
 
+# Update a running deployment: fetch, fast-forward only, bun install, restart
+bun run deploy          # `bun run deploy --check` reports what it would do
+
 # Type checking
 bun run typecheck
 # or
@@ -35,7 +38,7 @@ bun run debug
 bun run build:admin
 ```
 
-**Restarting under PM2** (including a restart the bot triggers on itself): use `pm2 restart qq-bot qq-bot-ui`, not `nohup` + `start.sh`. PM2 exits the process first, so the ecosystem scripts (`pm2-bot.sh`) run `git pull` + `bun install` in a fresh process — which is what avoids bun `EEXIST` and interleaved logs.
+**Restarting vs. deploying.** A restart — `pm2 restart qq-bot`, a crash restart, or `/restart` in chat — runs the code already checked out and never pulls or installs; use it, not `nohup` + `start.sh`. Updating is `bun run deploy`: fetch, fast-forward only, stop the bot, `bun install` while it is stopped (nothing holds `node_modules`, so no bun `EEXIST`), start it. It refuses before stopping the bot when the branch has diverged or a fast-forward would run over uncommitted changes. The WebUI is not under PM2 (`bun run ui:start`).
 
 ## High-Level Architecture
 
