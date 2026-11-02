@@ -44,7 +44,7 @@ export interface ProtocolConfig {
 
 export interface APIConfig {
   strategy: APIStrategy;
-  preferredProtocol?: ProtocolName;
+  preferredProtocol: ProtocolName;
 }
 
 export interface EventConfig {

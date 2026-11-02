@@ -79,6 +79,7 @@
   // API configuration
   "api": {
     "strategy": "priority",
+    // Required: must name a configured protocol. Bot-initiated sends (agenda) go out on it.
     "preferredProtocol": "milky"
   },
   // Event deduplication configuration

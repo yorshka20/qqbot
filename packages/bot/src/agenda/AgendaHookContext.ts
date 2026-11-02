@@ -25,7 +25,7 @@ export function buildAgendaHookContext(
   item: AgendaItem,
   contextId: string,
   eventContext: AgendaEventContext,
-  protocol: ProtocolName = 'milky',
+  protocol: ProtocolName,
 ): HookContext {
   const isPrivate = !item.groupId;
   const groupIdNum = isPrivate ? 0 : Number(contextId);

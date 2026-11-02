@@ -15,6 +15,7 @@ import type { ChatMessage, ToolDefinition } from '@/ai/types';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getQueuedCard, withTrailingText } from '@/context/HookContextHelpers';
 import { ConversationHistoryService, normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
+import type { Config } from '@/core/config';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
@@ -48,7 +49,7 @@ interface GeneratedReply {
  */
 @injectable()
 export class AgentLoop {
-  private readonly preferredProtocol: ProtocolName = 'milky';
+  private readonly preferredProtocol: ProtocolName;
 
   constructor(
     @inject(LLMService) private llmService: LLMService,
@@ -59,7 +60,10 @@ export class AgentLoop {
     @inject(HookManager) private hookManager: HookManager,
     @inject(AIService) private aiService: AIService,
     @inject(SubAgentOrchestrator) private subAgents: SubAgentOrchestrator,
-  ) {}
+    @inject(DITokens.CONFIG) config: Config,
+  ) {
+    this.preferredProtocol = config.getAPIConfig().preferredProtocol;
+  }
 
   /**
    * Execute an agenda item via LLM loop (actionType === 'intent' or default).

@@ -308,6 +308,14 @@ export class Config {
     this.validateLanRelayConfig(lr);
     this.validateLLMTargets(this.config.ai);
 
+    // Bot-initiated sends (agenda) have no inbound message to take a protocol from.
+    const preferredProtocol = this.config.api?.preferredProtocol;
+    if (!this.config.protocols.some((p) => p.name === preferredProtocol)) {
+      throw new ConfigError(
+        `api.preferredProtocol must name a configured protocol (got ${preferredProtocol === undefined ? 'nothing' : `"${preferredProtocol}"`})`,
+      );
+    }
+
     // Validate each protocol config
     for (const protocol of this.config.protocols) {
       // Discord manages its own connection via discord.js; url/apiUrl are not needed.
