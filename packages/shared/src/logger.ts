@@ -312,6 +312,10 @@ class FileLogger implements Logger {
     }
   }
 
+  setLevel(level: LogLevel): void {
+    this.winstonLogger.level = level;
+  }
+
   debug(message: string, ...args: unknown[]): void {
     this.winstonLogger.debug(message, ...args);
   }
@@ -367,6 +371,10 @@ class ConsoleOnlyLogger implements Logger {
     });
   }
 
+  setLevel(level: LogLevel): void {
+    this.winstonLogger.level = level;
+  }
+
   debug(message: string, ...args: unknown[]): void {
     this.winstonLogger.debug(message, ...args);
   }
@@ -387,16 +395,14 @@ const disableFileLog = process.env.NO_FILE_LOG === '1';
 // Under a service manager stdout is an unrotated capture file; the log files already hold every
 // entry, so a copy there would only grow without bound.
 const consoleOutput = process.env.NO_CONSOLE_LOG !== '1';
-const createLogger = (level: LogLevel): Logger =>
+const createLogger = (level: LogLevel): FileLogger | ConsoleOnlyLogger =>
   disableFileLog ? new ConsoleOnlyLogger(level) : new FileLogger(level, consoleOutput);
-let defaultLogger: Logger = createLogger(defaultLogLevel);
+// One instance for the whole process: a FileLogger owns its log file and a date-check timer, so
+// building a second one would open a second file and leak the first one's timer.
+const defaultLogger = createLogger(defaultLogLevel);
 
 export function setLogLevel(level: LogLevel): void {
-  defaultLogger = createLogger(level);
+  defaultLogger.setLevel(level);
 }
 
-export function getLogger(): Logger {
-  return defaultLogger;
-}
-
-export const logger = defaultLogger;
+export const logger: Logger = defaultLogger;
