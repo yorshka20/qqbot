@@ -8,7 +8,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { logger, parseDuration, randomUUID } from '@qqbot/shared';
 import { type Subprocess, spawn } from 'bun';
-import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { CodingAgentConfig } from '@/core/config';
 import { CodingAgentTaskStore } from './CodingAgentTaskStore';
 import type { AgentExecutor } from './executors';
@@ -17,6 +16,12 @@ import type { TaskRecordEvent } from './taskWorkspace';
 import type { AgentExecutorName, AgentTask, AgentTaskType, ProjectContext, TaskNotification } from './types';
 
 type TaskUpdateCallback = (task: AgentTask) => void;
+
+/** The named templates a task prompt is rendered from. */
+export interface TaskPromptTemplates {
+  getTemplate(name: string): unknown;
+  render(name: string, variables?: Record<string, string>): string;
+}
 
 export interface TaskProgressUpdate {
   status: 'started' | 'progress';
@@ -107,7 +112,7 @@ export class CodingAgentTaskManager {
   private running = new Map<string, RunningProcess>();
   private taskUpdateCallback: TaskUpdateCallback | null = null;
   private taskProgressCallback: TaskProgressCallback | null = null;
-  private promptManager: PromptManager | null = null;
+  private promptTemplates: TaskPromptTemplates | null = null;
   private readonly idleTimeoutMs: number;
   private readonly timeoutMs: number;
   private readonly watchdogIntervalMs: number;
@@ -131,21 +136,17 @@ export class CodingAgentTaskManager {
     this.taskStore = new CodingAgentTaskStore(config.workspaceRoot || join(tmpdir(), 'qqbot-agent-workspaces'));
   }
 
-  /**
-   * Set PromptManager for template rendering
-   */
-  setPromptManager(promptManager: PromptManager): void {
-    this.promptManager = promptManager;
-    logger.info('[CodingAgentTaskManager] PromptManager set');
+  setPromptTemplates(templates: TaskPromptTemplates): void {
+    this.promptTemplates = templates;
   }
 
   /**
-   * Process prompt template with variables using PromptManager.
+   * Process prompt template with variables.
    * Dynamically selects template based on task type and project context.
    */
   private processPromptTemplate(task: AgentTask): string {
-    if (!this.promptManager) {
-      logger.warn('[CodingAgentTaskManager] PromptManager not set, using raw prompt');
+    if (!this.promptTemplates) {
+      logger.warn('[CodingAgentTaskManager] Prompt templates not set, using raw prompt');
       return task.prompt;
     }
 
@@ -162,7 +163,7 @@ export class CodingAgentTaskManager {
     } else if (ctx) {
       // Has project context → try project-specific template, then generic
       const projectSpecificKey = `coding-agent.task.${ctx.alias}`;
-      templateKey = this.promptManager.getTemplate(projectSpecificKey)
+      templateKey = this.promptTemplates.getTemplate(projectSpecificKey)
         ? projectSpecificKey
         : 'coding-agent.task.generic';
     } else {
@@ -171,7 +172,7 @@ export class CodingAgentTaskManager {
     }
 
     // Final fallback to existing coding-agent.task if chosen template doesn't exist
-    if (!this.promptManager.getTemplate(templateKey)) {
+    if (!this.promptTemplates.getTemplate(templateKey)) {
       templateKey = 'coding-agent.task';
     }
 
@@ -190,8 +191,8 @@ export class CodingAgentTaskManager {
     };
 
     try {
-      variables.progressProtocol = this.promptManager.render('coding-agent.progress-protocol', variables);
-      return this.promptManager.render(templateKey, variables);
+      variables.progressProtocol = this.promptTemplates.render('coding-agent.progress-protocol', variables);
+      return this.promptTemplates.render(templateKey, variables);
     } catch (error) {
       logger.warn('[CodingAgentTaskManager] Failed to render template, using raw prompt:', error);
       return task.prompt;

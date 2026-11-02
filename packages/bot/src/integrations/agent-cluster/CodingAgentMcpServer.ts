@@ -36,7 +36,12 @@ import { z } from 'zod';
 import type { ToolDefinition } from '@/ai/types';
 import type { CodingAgentConfig } from '@/core/config';
 import { CARD_DECK_DESCRIPTION } from '@/services/card/cardTypes';
-import type { BotInfo, ExecuteCommandParams, ExecuteCommandResult, TaskNotification } from './types';
+import type {
+  BotInfo,
+  ExecuteCommandParams,
+  ExecuteCommandResult,
+  TaskNotification,
+} from '@/services/codingAgent/types';
 
 type TaskNotificationHandler = (notification: TaskNotification) => void;
 type DeliveryResult = { success: boolean; messageId?: string; error?: string };

@@ -20,11 +20,11 @@ import type { CommandContext, CommandResult } from '@/command/types';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import type { CodingAgentService } from '@/integrations/agent-cluster/CodingAgentService';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
-import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
 import type { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 
 const USAGE = `/todo <content> - 添加 TODO 到默认项目

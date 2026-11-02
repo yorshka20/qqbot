@@ -15,8 +15,6 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
-import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
-import { type ParsedAgentCommand, parseAgentCommand } from '@/services/codingAgent/parseAgentCommand';
 import { AgentRunOptionsError } from '@/services/codingAgent/runOptions';
 import {
   AGENT_EXECUTOR_NAMES,
@@ -25,6 +23,8 @@ import {
   type AgentTask,
   type ProjectContext,
 } from '@/services/codingAgent/types';
+import type { CodingAgentService } from '../CodingAgentService';
+import { type ParsedAgentCommand, parseAgentCommand } from '../parseAgentCommand';
 
 function runOptionsUsage(cmd: AgentExecutorName): string {
   return `/${cmd} [--model <模型>] [--effort <强度>] [@<alias>] <prompt>

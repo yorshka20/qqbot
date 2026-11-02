@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import type { CommandContext, CommandResult } from '@/command/types';
 import type { CodingAgentService, TriggerTaskOptions } from '../CodingAgentService';
 import { CodingAgentPlugin } from '../plugins/CodingAgentPlugin';
-import type { AgentExecutorName } from '../types';
+import type { AgentExecutorName } from '@/services/codingAgent/types';
 
 interface PluginInternals {
   agentService: CodingAgentService;

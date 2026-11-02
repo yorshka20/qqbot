@@ -34,7 +34,9 @@ import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
+import { CodingAgentInitializer } from '@/integrations/agent-cluster';
 import { wireClusterEscalation } from '@/integrations/agent-cluster/ClusterEscalation';
+import type { CodingAgentService } from '@/integrations/agent-cluster/CodingAgentService';
 import { LivemodeInterceptor } from '@/integrations/avatar/livemode/LivemodeInterceptor';
 import { type PersonaModulationAdapter, type PersonaService, startPersonaSubsystem } from '@/persona';
 import { PluginInitializer } from '@/plugins/PluginInitializer';
@@ -44,8 +46,6 @@ import { BilibiliLiveBridge } from '@/services/bilibili/live/BilibiliLiveBridge'
 import { BilibiliLiveClient } from '@/services/bilibili/live/BilibiliLiveClient';
 import { DanmakuBuffer } from '@/services/bilibili/live/DanmakuBuffer';
 import { DanmakuStore } from '@/services/bilibili/live/DanmakuStore';
-import { CodingAgentInitializer } from '@/services/codingAgent';
-import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
 import { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { initStaticServer } from '@/services/staticServer';

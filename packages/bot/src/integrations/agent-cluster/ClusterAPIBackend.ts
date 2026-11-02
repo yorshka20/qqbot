@@ -64,7 +64,7 @@ import type { ClusterManager } from '@/cluster/ClusterManager';
 import type { ClusterEventType, TaskRecord, WorkerRegistration } from '@/cluster/types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
+import type { CodingAgentService } from '@/integrations/agent-cluster/CodingAgentService';
 import { errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 
 const API_PREFIX = '/api/cluster';

@@ -28,10 +28,10 @@ import type {
 } from '@qqbot/api-types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
 import type { TaskRecordListing } from '@/services/codingAgent/CodingAgentTaskStore';
 import { AGENT_EXECUTOR_NAMES } from '@/services/codingAgent/types';
 import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
+import type { CodingAgentService } from './CodingAgentService';
 
 const API_PREFIX = '/api/agents';
 

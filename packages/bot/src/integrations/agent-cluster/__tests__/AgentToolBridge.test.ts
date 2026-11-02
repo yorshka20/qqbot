@@ -7,7 +7,7 @@ import { ToolManager } from '@/tools/ToolManager';
 import type { ToolExecutionContext, ToolSpec } from '@/tools/types';
 import { AgentToolBridge } from '../AgentToolBridge';
 import { toZodShape } from '../CodingAgentMcpServer';
-import type { AgentTask } from '../types';
+import type { AgentTask } from '@/services/codingAgent/types';
 
 const PARAMS: ToolSpec['parameters'] = {
   keyword: { type: 'string', required: true, description: '关键词' },

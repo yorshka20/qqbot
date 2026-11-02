@@ -7,7 +7,7 @@ import { logger } from '@qqbot/shared';
 import { injectable } from 'tsyringe';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
+import type { CodingAgentService } from '@/integrations/agent-cluster/CodingAgentService';
 import { AgentRunOptionsError } from '@/services/codingAgent/runOptions';
 import { AGENT_EXECUTOR_NAMES, type AgentExecutorName } from '@/services/codingAgent/types';
 import { Tool } from '../decorators';

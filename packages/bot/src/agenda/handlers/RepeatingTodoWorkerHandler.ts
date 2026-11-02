@@ -6,7 +6,7 @@ import { logger } from '@qqbot/shared';
 import { injectable } from 'tsyringe';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
+import type { CodingAgentService } from '@/integrations/agent-cluster/CodingAgentService';
 import type { ProjectContext } from '@/services/codingAgent/types';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 

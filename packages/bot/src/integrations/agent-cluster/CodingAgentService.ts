@@ -13,14 +13,11 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { CodingAgentConfig, ProtocolName } from '@/core/config';
 import { checkDeploy, isSupervised, requestDeploy, requestRestart } from '@/core/supervisor';
 import { parseCardDeck } from '@/services/card/cardTypes';
-import { AgentDelivery, type AgentDeliveryDeps, type DeliveryResult } from './AgentDelivery';
-import type { AgentToolBridge } from './AgentToolBridge';
-import { CodingAgentMcpServer } from './CodingAgentMcpServer';
-import { CodingAgentTaskManager, type TaskProgressUpdate } from './CodingAgentTaskManager';
-import type { CodingAgentTaskStore } from './CodingAgentTaskStore';
-import { type AgentExecutor, createAgentExecutors } from './executors';
-import type { ProjectRegistry } from './ProjectRegistry';
-import { resolveRunOptions } from './runOptions';
+import { CodingAgentTaskManager, type TaskProgressUpdate } from '@/services/codingAgent/CodingAgentTaskManager';
+import type { CodingAgentTaskStore } from '@/services/codingAgent/CodingAgentTaskStore';
+import { type AgentExecutor, createAgentExecutors } from '@/services/codingAgent/executors';
+import type { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
+import { resolveRunOptions } from '@/services/codingAgent/runOptions';
 import type {
   AgentExecutorName,
   AgentRunOptions,
@@ -29,7 +26,10 @@ import type {
   ExecuteCommandParams,
   ExecuteCommandResult,
   ProjectContext,
-} from './types';
+} from '@/services/codingAgent/types';
+import { AgentDelivery, type AgentDeliveryDeps, type DeliveryResult } from './AgentDelivery';
+import type { AgentToolBridge } from './AgentToolBridge';
+import { CodingAgentMcpServer } from './CodingAgentMcpServer';
 
 const DEFAULT_MAX_FILE_MB = 30;
 const NOT_SUPERVISED =
@@ -156,7 +156,7 @@ export class CodingAgentService {
    * Set PromptManager for template rendering
    */
   setPromptManager(promptManager: PromptManager): void {
-    this.taskManager.setPromptManager(promptManager);
+    this.taskManager.setPromptTemplates(promptManager);
   }
 
   /**

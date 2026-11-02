@@ -147,7 +147,7 @@ describe('CodingAgentTaskManager workspace tasks', () => {
       { claude: executor, codex: executor, dsh: executor },
       'http://127.0.0.1:0/mcp',
     );
-    manager.setPromptManager(new PromptManager());
+    manager.setPromptTemplates(new PromptManager());
     return { manager, invocations };
   }
 

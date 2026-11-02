@@ -13,7 +13,7 @@ import '@/integrations/agent-cluster/TicketBackend';
 import '@/lan/host/LanAPIBackend';
 import '@/memory/MemoryStatusBackend';
 import '@/persona/PersonaBackend';
-import '@/services/codingAgent/CodingAgentAPIBackend';
+import '@/integrations/agent-cluster/CodingAgentAPIBackend';
 import '@/services/retrieval/QdrantExplorerBackend';
 import '@/services/staticServer/backends/DailyStatsBackend';
 import '@/services/staticServer/backends/DocsPreviewBackend';

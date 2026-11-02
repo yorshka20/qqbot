@@ -13,9 +13,9 @@ import type { ProtocolName } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
 import { buildSyntheticHookContext } from '@/hooks/syntheticHookContext';
+import type { AgentTask } from '@/services/codingAgent/types';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolResult } from '@/tools/types';
-import type { AgentTask } from './types';
 
 @singleton()
 export class AgentToolBridge {
