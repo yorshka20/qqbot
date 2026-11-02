@@ -65,7 +65,6 @@ export type {
   SearchProvider,
   SearXNGConfig,
   SerperConfig,
-  TriggerStrategy,
 } from './types/mcp';
 export type { MemoryConfig } from './types/memory';
 export type { PluginsConfig } from './types/plugins';

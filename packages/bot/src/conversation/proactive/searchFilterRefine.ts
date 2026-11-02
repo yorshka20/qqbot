@@ -1,4 +1,10 @@
-// Filter-refine types and helpers for search results (used by SearchService / RetrievalService)
+// Filter-refine of web search results for proactive replies: an LLM judges which results are
+// relevant and either returns refined reference text (DONE) or asks for supplement queries (MORE).
+
+/** Max filter-refine rounds (avoid infinite loop). */
+export const FILTER_REFINE_MAX_ROUNDS = 2;
+/** Max results per supplement search when filter returns MORE. */
+export const FILTER_SUPPLEMENT_MAX_RESULTS = 4;
 
 export type FilterRefineResult = { done: true; refinedText: string } | { done: false; queries: string[] };
 

@@ -1074,8 +1074,6 @@
       // SearXNG instance gets blocked and is not a fallback.
       "fallbackOrder": [],
       "mode": "direct", // "direct" (SearXNG API) or "mcp" (MCP server). Only applies to the searxng provider.
-      "autoTrigger": true, // Automatically trigger search when needed
-      "triggerStrategy": "llm", // "llm" (use LLM to judge) | "keywords" | "none"
       "maxResults": 5, // Maximum number of search results
       "language": "all", // Default language for search results
       "engines": "bing,duckduckgo,google,baidu", // Default search engines (SearXNG only uses wikipedia by default)

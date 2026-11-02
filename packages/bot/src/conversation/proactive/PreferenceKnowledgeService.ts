@@ -6,14 +6,17 @@ import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
 import { DITokens } from '@/core/DITokens';
 import type { SearchResult } from '@/services/retrieval';
+import { extractEntriesFromChunks } from '@/services/retrieval/fetch';
+import { RetrievalService } from '@/services/retrieval/RetrievalService';
+import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import {
   buildSummariesFromStringChunks,
   FILTER_REFINE_MAX_ROUNDS,
   FILTER_SUPPLEMENT_MAX_RESULTS,
-} from '@/services/retrieval';
-import { extractEntriesFromChunks } from '@/services/retrieval/fetch';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
-import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
+  type FilterAndRefineOptions,
+  type FilterRefineResult,
+  parseFilterRefineResponse,
+} from './searchFilterRefine';
 
 export interface PreferenceKnowledgeRetrieveOptions {
   /** Max number of chunks to return. Default implementation may ignore. */
@@ -116,7 +119,7 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
       let currentChunks = chunks;
       for (let round = 1; round <= FILTER_REFINE_MAX_ROUNDS; round++) {
         const resultSummaries = buildSummariesFromStringChunks(currentChunks);
-        const result = await this.retrievalService.filterAndRefineSearchResults(this.llmService, {
+        const result = await this.filterAndRefine({
           topic,
           resultSummaries,
           round,
@@ -169,6 +172,44 @@ export class SearXNGPreferenceKnowledgeService implements PreferenceKnowledgeSer
 
     const capped = refinedChunks.slice(0, limit);
     return capped;
+  }
+
+  /**
+   * Filter-refine: one LLM call judges relevance and returns refined reference text (DONE) or
+   * supplement queries (MORE). On parse failure or LLM error, returns the summaries as refined
+   * text so the proactive reply can continue.
+   */
+  private async filterAndRefine(options: FilterAndRefineOptions): Promise<FilterRefineResult> {
+    const { topic, resultSummaries, round, maxRounds } = options;
+
+    const prompt = this.promptManager.render('search.results_filter_refine', {
+      topic,
+      resultSummaries: resultSummaries || '(无)',
+      round: String(round),
+      maxRounds: String(maxRounds),
+    });
+
+    let responseText: string;
+    try {
+      const response = await this.llmService.generate(prompt, {
+        temperature: 0.2,
+        reasoningEffort: 'none',
+      });
+      responseText = (response.text || '').trim();
+    } catch (err) {
+      logger.warn(
+        `[SearXNGPreferenceKnowledgeService] Filter-refine LLM call failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return { done: true, refinedText: resultSummaries };
+    }
+
+    const parsed = parseFilterRefineResponse(responseText);
+    if (parsed) {
+      return parsed;
+    }
+
+    logger.warn('[SearXNGPreferenceKnowledgeService] Filter-refine: could not parse DONE/MORE, using summaries');
+    return { done: true, refinedText: resultSummaries };
   }
 
   /**

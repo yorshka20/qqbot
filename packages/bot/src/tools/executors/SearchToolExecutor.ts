@@ -2,6 +2,8 @@
 
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
+import { DITokens } from '@/core/DITokens';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import type { SearchResult } from '@/services/retrieval/searxng/types';
 import { Tool } from '../decorators';
@@ -62,7 +64,10 @@ const MAX_RESULTS_PER_QUERY = 6;
 export class SearchToolExecutor extends BaseToolExecutor {
   name = 'search';
 
-  constructor(@inject(RetrievalService) private retrievalService: RetrievalService) {
+  constructor(
+    @inject(RetrievalService) private retrievalService: RetrievalService,
+    @inject(DITokens.PROMPT_MANAGER) private promptManager: PromptManager,
+  ) {
     super();
   }
 
@@ -134,18 +139,40 @@ export class SearchToolExecutor extends BaseToolExecutor {
    */
   private formatBatches(queries: string[], batches: SearchResult[][]): string {
     if (queries.length === 1) {
-      return this.retrievalService.formatSearchResults(batches[0] ?? [], MAX_RESULTS_PER_QUERY);
+      return this.formatResults(batches[0] ?? []);
     }
 
     return queries
       .map((query, index) => {
         const results = batches[index] ?? [];
-        const body =
-          results.length === 0
-            ? '没有匹配的结果。'
-            : this.retrievalService.formatSearchResults(results, MAX_RESULTS_PER_QUERY);
+        const body = results.length === 0 ? '没有匹配的结果。' : this.formatResults(results);
         return `### 查询：${query}\n\n${body}`;
       })
       .join('\n\n');
+  }
+
+  private formatResults(results: SearchResult[]): string {
+    if (results.length === 0) return '';
+
+    const formatted = results
+      .slice(0, MAX_RESULTS_PER_QUERY)
+      .map((result, index) => {
+        // Use full snippet so reference knowledge is complete (no truncation)
+        const snippet = (result.snippet || result.content || '').trim();
+        let domain = '';
+        try {
+          domain = new URL(result.url).hostname.replace('www.', '');
+        } catch {
+          domain = '未知来源';
+        }
+        const dateLine = result.date ? `\n   日期: ${result.date}` : '';
+        return `${index + 1}. **${result.title}**\n   来源: ${domain}${dateLine}\n   摘要: ${snippet}\n   链接: ${result.url}`;
+      })
+      .join('\n\n');
+
+    return this.promptManager.render('search.format_results', {
+      totalResults: results.length.toString(),
+      formattedResults: formatted,
+    });
   }
 }

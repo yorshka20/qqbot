@@ -1,5 +1,5 @@
 /**
- * Unit tests for LLM JSON extraction (extractJsonFromLlmText, parseLlmJson, parseSearchDecision).
+ * Unit tests for LLM JSON extraction (extractJsonFromLlmText, parseLlmJson).
  */
 
 import { describe, expect, test } from 'bun:test';
@@ -8,7 +8,6 @@ import {
   extractExpectedJsonFromLlmText,
   extractJsonFromLlmText,
   parseLlmJson,
-  parseSearchDecision,
 } from './llmJsonExtract';
 
 // ---------------------------------------------------------------------------
@@ -190,123 +189,6 @@ describe('parseLlmJson', () => {
     const text = 'ANSWER:\n{"id": 99}';
     const withOptions = parseLlmJson(text, Schema, { strategies: ['answer', 'codeBlock'] });
     expect(withOptions).toEqual({ id: 99 });
-  });
-});
-
-describe('parseSearchDecision', () => {
-  test('parses JSON output when valid', () => {
-    const json = '{"needsSearch": true, "query": "test query", "isMultiSearch": false}';
-    const result = parseSearchDecision(json);
-    expect(result).toEqual({
-      needsSearch: true,
-      query: 'test query',
-      isMultiSearch: false,
-    });
-  });
-
-  test('parses JSON with queries array (multi-search)', () => {
-    const json = `{"needsSearch": true, "queries": [{"query": "q1", "explanation": "e1"}, {"query": "q2", "explanation": "e2"}], "isMultiSearch": true}`;
-    const result = parseSearchDecision(json);
-    expect(result).toEqual({
-      needsSearch: true,
-      queries: [
-        { query: 'q1', explanation: 'e1' },
-        { query: 'q2', explanation: 'e2' },
-      ],
-      isMultiSearch: true,
-    });
-  });
-
-  test('parses NO_SEARCH plain text', () => {
-    expect(parseSearchDecision('NO_SEARCH')).toEqual({
-      needsSearch: false,
-      isMultiSearch: false,
-    });
-    expect(parseSearchDecision('no_search')).toEqual({
-      needsSearch: false,
-      isMultiSearch: false,
-    });
-    expect(parseSearchDecision('Something else entirely')).toEqual({
-      needsSearch: false,
-      isMultiSearch: false,
-    });
-  });
-
-  test('parses SEARCH: plain text', () => {
-    const result = parseSearchDecision('SEARCH: 明日方舟终末地最新情报');
-    expect(result).toEqual({
-      needsSearch: true,
-      query: '明日方舟终末地最新情报',
-      isMultiSearch: false,
-    });
-  });
-
-  test('parses SEARCH: case-insensitively', () => {
-    const result = parseSearchDecision('search: hello world');
-    expect(result).toEqual({
-      needsSearch: true,
-      query: 'hello world',
-      isMultiSearch: false,
-    });
-  });
-
-  test('parses SEARCH: with empty query as needsSearch false', () => {
-    const result = parseSearchDecision('SEARCH:   ');
-    expect(result).toEqual({
-      needsSearch: false,
-      query: undefined,
-      isMultiSearch: false,
-    });
-  });
-
-  test('parses MULTI_SEARCH plain text with 查询N: format', () => {
-    const text = `MULTI_SEARCH:
-查询1: 关键词一 | 第一个查询说明
-查询2: 关键词二 | 第二个说明`;
-    const result = parseSearchDecision(text);
-    expect(result.needsSearch).toBe(true);
-    expect(result.isMultiSearch).toBe(true);
-    expect(result.queries).toHaveLength(2);
-    expect(result.queries?.[0]).toEqual({ query: '关键词一', explanation: '第一个查询说明' });
-    expect(result.queries?.[1]).toEqual({ query: '关键词二', explanation: '第二个说明' });
-  });
-
-  test('parses MULTI_SEARCH case-insensitively', () => {
-    const text = 'multi_search:\n查询1: foo | bar';
-    const result = parseSearchDecision(text);
-    expect(result.needsSearch).toBe(true);
-    expect(result.isMultiSearch).toBe(true);
-    expect(result.queries).toEqual([{ query: 'foo', explanation: 'bar' }]);
-  });
-
-  test('MULTI_SEARCH fallback for non-matching lines uses whole line as query', () => {
-    const text = 'MULTI_SEARCH:\nplain line one\nplain line two';
-    const result = parseSearchDecision(text);
-    expect(result.queries).toHaveLength(2);
-    expect(result.queries?.[0]).toEqual({ query: 'plain line one', explanation: 'Auto-extracted search query' });
-    expect(result.queries?.[1]).toEqual({ query: 'plain line two', explanation: 'Auto-extracted search query' });
-  });
-
-  test('falls back to plain text when JSON has wrong shape (schema validation fails)', () => {
-    const wrongShape = '{"needsSearch": "true"}';
-    const result = parseSearchDecision(wrongShape);
-    expect(result).toEqual({ needsSearch: false, isMultiSearch: false });
-  });
-
-  test('JSON path wins when both valid JSON and SEARCH: prefix could apply', () => {
-    const text = 'SEARCH: {"needsSearch": false}';
-    const result = parseSearchDecision(text);
-    expect(result.needsSearch).toBe(false);
-    expect(result.isMultiSearch).toBeFalsy();
-  });
-
-  test('trims whitespace around response', () => {
-    expect(parseSearchDecision('  \n  NO_SEARCH  \n  ')).toEqual({
-      needsSearch: false,
-      isMultiSearch: false,
-    });
-    const searchResult = parseSearchDecision('  SEARCH: trimmed query  ');
-    expect(searchResult.query).toBe('trimmed query');
   });
 });
 

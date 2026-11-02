@@ -9,7 +9,7 @@ retrieval/
 ├── RetrievalService.ts    # Facade - delegates to SearchService and RAGService
 ├── index.ts               # Public exports
 ├── searxng/               # Web search submodule
-│   ├── SearchService.ts   # Search logic (direct/MCP, formatting, smart search)
+│   ├── SearchService.ts   # Search logic (direct/MCP, provider fallback)
 │   ├── SearXNGClient.ts   # HTTP client for SearXNG API
 │   └── types.ts
 └── rag/                   # Vector RAG submodule
@@ -37,8 +37,7 @@ retrieval/
 ### Features
 
 - **Basic search**: `search(query, options)` returns `SearchResult[]`.
-- **Result formatting**: `formatSearchResults` and `formatMultiSearchResults` produce LLM-ready text via `PromptManager`.
-- **Smart search**: `performSmartSearch(userMessage, llmService)` uses an LLM to decide whether to search and which queries to run (supports single and multi-query).
+- **No LLM inside**: the module only searches. Rendering results for a model (`search` tool) and LLM filter-refine (proactive replies) live with their callers.
 - **Health checks**: In direct mode, `SearXNGClient` is registered with `HealthCheckManager`. Search is skipped if the service is unhealthy.
 
 ### Configuration
@@ -142,7 +141,6 @@ const retrieval = container.resolve<RetrievalService>(DITokens.RETRIEVAL_SERVICE
 // Search
 if (retrieval.isSearchEnabled()) {
   const results = await retrieval.search('query');
-  const formatted = retrieval.formatSearchResults(results);
 }
 
 // RAG (collections are ensured internally on first use)

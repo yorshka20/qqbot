@@ -3,17 +3,13 @@
 import { logger } from '@qqbot/shared';
 import { HealthCheckManager } from '@qqbot/shared/health';
 import { inject, singleton } from 'tsyringe';
-import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { LLMService } from '@/ai/services/LLMService';
 import type { Config } from '@/core/config';
 import type { MCPConfig } from '@/core/config/types/mcp';
 import type { RAGConfig } from '@/core/config/types/rag';
 import { DITokens } from '@/core/DITokens';
-import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { PageContentFetchService } from './fetch';
 import { RAGService } from './rag/RAGService';
 import type { RAGDocument, RAGSearchMultiOptions, RAGSearchOptions, RAGSearchResult } from './rag/types';
-import type { FilterAndRefineOptions, FilterRefineResult } from './searchFilterRefine';
 import { SearchService } from './searxng/SearchService';
 import type { SearchOptions, SearchResult } from './searxng/types';
 
@@ -26,7 +22,6 @@ export class RetrievalService {
   constructor(
     @inject(DITokens.CONFIG) config: Config,
     @inject(HealthCheckManager) healthCheckManager: HealthCheckManager,
-    @inject(DITokens.PROMPT_MANAGER) promptManager: PromptManager,
   ) {
     const mcpConfig: MCPConfig | undefined = config.getMCPConfig();
     const ragConfig: RAGConfig | undefined = config.getRAGConfig();
@@ -35,7 +30,6 @@ export class RetrievalService {
     });
     this.searchService = new SearchService({
       config: mcpConfig,
-      promptManager,
       healthCheckManager,
       pageContentFetchService: this.pageContentFetchService,
     });
@@ -76,54 +70,12 @@ export class RetrievalService {
     return this.searchService.searchBatch(queries, options);
   }
 
-  formatSearchResults(results: SearchResult[], maxItems?: number): string {
-    return this.searchService.formatSearchResults(results, maxItems);
-  }
-
-  /**
-   * Multi-round smart search + filter-refine loop + optional page fetch. Use this for reply flow (replaces in-service search logic).
-   */
-  async performRecursiveSearchRefined(
-    userMessage: string,
-    llmService: LLMService,
-    sessionId?: string,
-    maxIterations: number = 5,
-    fetchProgressNotifier?: FetchProgressNotifier,
-  ): Promise<string> {
-    return this.searchService.performRecursiveSearchRefined(
-      userMessage,
-      llmService,
-      sessionId,
-      maxIterations,
-      fetchProgressNotifier,
-    );
-  }
-
   getPageContentFetchService(): PageContentFetchService {
     return this.searchService.getPageContentFetchService();
   }
 
-  async performSmartSearchWithResults(
-    userMessage: string,
-    llmService: LLMService,
-    sessionId?: string,
-    maxIterations?: number,
-  ): Promise<{ formattedText: string; results: SearchResult[] }> {
-    return this.searchService.performSmartSearchWithResults(userMessage, llmService, sessionId, maxIterations);
-  }
-
   isSearchEnabled(): boolean {
     return this.searchService.isEnabled();
-  }
-
-  /**
-   * Filter-refine: LLM judges relevance of search/chunk summaries and returns refined text (DONE) or supplement queries (MORE).
-   */
-  async filterAndRefineSearchResults(
-    llmService: LLMService,
-    options: FilterAndRefineOptions,
-  ): Promise<FilterRefineResult> {
-    return this.searchService.filterAndRefineSearchResults(llmService, options);
   }
 
   // --- RAG (delegate to RAGService) ---

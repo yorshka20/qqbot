@@ -53,8 +53,6 @@ function setupDIContainer(): ToolManager {
         { title: `Result 1 for "${query}"`, url: 'https://example.com/1', content: `Snippet about ${query}` },
         { title: `Result 2 for "${query}"`, url: 'https://example.com/2', content: `More about ${query}` },
       ],
-      formatSearchResults: (results: { title: string; url: string; content: string }[]) =>
-        results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.content}`).join('\n\n'),
       getPageContentFetchService: () => ({
         isEnabled: () => true,
         fetchPages: async (entries: { url: string; title?: string }[]) =>

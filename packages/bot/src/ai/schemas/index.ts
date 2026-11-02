@@ -10,5 +10,4 @@ export {
   T2IImageParamsSchema,
 } from './imagePrompt';
 export { type PreliminaryAnalysisResult, PreliminaryAnalysisSchema } from './preliminaryAnalysis';
-export { type SearchDecisionResult, SearchDecisionSchema } from './searchDecision';
 export { KeepIndicesSchema } from './summarize';

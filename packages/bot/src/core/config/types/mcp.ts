@@ -43,7 +43,6 @@ export interface MCPServerConfig {
 
 export type SearchMode = 'direct' | 'mcp';
 export type SearchProvider = 'searxng' | 'serper';
-export type TriggerStrategy = 'llm' | 'keywords' | 'none';
 
 /**
  * Optional config for full-page fetch after filter-refine (fetch HTML and extract main content for top 2-3 results).
@@ -89,18 +88,12 @@ export interface SearchConfig {
   fallbackOrder?: SearchProvider[];
   // Search mode for SearXNG backend: "direct" (SearXNG API) or "mcp" (MCP server). Ignored when provider=serper.
   mode: SearchMode;
-  // Whether to automatically trigger search
-  autoTrigger: boolean;
-  // Trigger strategy: "llm" (use LLM to judge), "keywords" (keyword detection), "none" (manual only)
-  triggerStrategy?: TriggerStrategy;
   // Maximum number of search results to return (default: 5)
   maxResults?: number;
   // Default language for search results (default: "all"). Use "zh" for Chinese-focused results.
   language?: string;
   // Optional comma-separated engine names (e.g. "baidu,bing") for Chinese-focused results. Engine weighting is done server-side in SearXNG settings.yml.
   engines?: string;
-  // Custom keywords for keyword-based trigger strategy
-  keywords?: string[];
   // Optional full-page fetch config (after filter-refine)
   fetch?: SearchFetchConfig;
 }

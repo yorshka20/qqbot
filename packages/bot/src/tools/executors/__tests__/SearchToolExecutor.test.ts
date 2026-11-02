@@ -4,6 +4,7 @@
 
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
+import { PromptManager } from '@/ai/prompt/PromptManager';
 import type { RetrievalService } from '@/services/retrieval';
 import type { SearchResult } from '@/services/retrieval/searxng/types';
 import type { ToolCall, ToolExecutionContext } from '@/tools/types';
@@ -13,10 +14,12 @@ const callWith = (queries: unknown): ToolCall => ({ type: 'search', executor: 's
 const call = callWith(['gamescom 2026']);
 const context: ToolExecutionContext = { userId: 1, messageType: 'private' };
 
+const promptManager = new PromptManager();
+
 const hit = (title: string): SearchResult => ({ title, url: `https://x.test/${title}`, snippet: `about ${title}` });
 
 function executorWith(retrieval: Partial<RetrievalService>): SearchToolExecutor {
-  return new SearchToolExecutor(retrieval as RetrievalService);
+  return new SearchToolExecutor(retrieval as RetrievalService, promptManager);
 }
 
 describe('search tool result contract', () => {
@@ -37,7 +40,6 @@ describe('search tool result contract', () => {
     const executor = executorWith({
       isSearchEnabled: () => true,
       searchBatch: () => Promise.resolve([[]]),
-      formatSearchResults: () => '',
     });
 
     const result = await executor.execute(call, context);
@@ -64,7 +66,6 @@ describe('search tool multi-query', () => {
         received = queries;
         return Promise.resolve(queries.map((q) => [hit(q)]));
       },
-      formatSearchResults: (results) => results.map((r) => r.title).join(','),
     });
 
     const result = await executor.execute(callWith(['bun 2.0 release', 'bun 2.0 breaking changes']), context);
@@ -77,7 +78,6 @@ describe('search tool multi-query', () => {
     const executor = executorWith({
       isSearchEnabled: () => true,
       searchBatch: (queries) => Promise.resolve(queries.map((q) => [hit(q)])),
-      formatSearchResults: (results) => results.map((r) => r.title).join(','),
     });
 
     const result = await executor.execute(callWith(['alpha', 'beta']), context);
@@ -90,7 +90,6 @@ describe('search tool multi-query', () => {
     const executor = executorWith({
       isSearchEnabled: () => true,
       searchBatch: (queries) => Promise.resolve(queries.map((q, i) => (i === 0 ? [hit(q)] : []))),
-      formatSearchResults: (results) => results.map((r) => r.title).join(','),
     });
 
     const result = await executor.execute(callWith(['found', 'missing']), context);
@@ -109,7 +108,6 @@ describe('search tool multi-query', () => {
         received = queries;
         return Promise.resolve([[hit('x')]]);
       },
-      formatSearchResults: () => 'x',
     });
 
     const result = await executor.execute(callWith('single query'), context);
@@ -126,7 +124,6 @@ describe('search tool multi-query', () => {
         received = queries;
         return Promise.resolve(queries.map(() => [hit('x')]));
       },
-      formatSearchResults: () => 'x',
     });
 
     await executor.execute(callWith(['dup', 'dup', '  ', 'other']), context);

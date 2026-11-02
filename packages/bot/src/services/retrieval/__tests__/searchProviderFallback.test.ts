@@ -17,14 +17,13 @@ function configWith(order: MCPConfig['search']['fallbackOrder']): MCPConfig {
     searxng: { url: 'http://searxng.test' },
     serper: { apiKey: 'test-key' },
     server: { enabled: false, runtime: 'bunx' },
-    search: { enabled: true, provider: 'serper', fallbackOrder: order, mode: 'direct', autoTrigger: false },
+    search: { enabled: true, provider: 'serper', fallbackOrder: order, mode: 'direct' },
   };
 }
 
 function serviceWith(config: MCPConfig): SearchService {
   return new SearchService({
     config,
-    promptManager: {} as never,
     healthCheckManager: {
       registerService: () => {},
     } as unknown as HealthCheckManager,
