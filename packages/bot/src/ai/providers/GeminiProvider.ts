@@ -34,6 +34,7 @@ import {
 import { assertGeminiReferenceCount, geminiImageConfig } from '../utils/geminiImageRequest';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
 import { clampMaxTokens } from './maxTokens';
+import { pickAcceptedReasoningLevel } from './reasoningLevel';
 
 /** Flat Part[] payload — simple prompts and vision requests. */
 type GeminiRequestParts = Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>;
@@ -314,11 +315,13 @@ export class GeminiProvider
       );
       return {};
     }
-    const order = GeminiProvider.THINKING_LEVELS_ASCENDING;
-    const requestedRank = order.indexOf(GeminiProvider.REQUESTED_THINKING_LEVEL[effort]);
-    const thinkingLevel =
-      accepted.find((level) => order.indexOf(level) >= requestedRank) ?? accepted[accepted.length - 1];
-    return { thinkingLevel };
+    return {
+      thinkingLevel: pickAcceptedReasoningLevel(
+        GeminiProvider.REQUESTED_THINKING_LEVEL[effort],
+        accepted,
+        GeminiProvider.THINKING_LEVELS_ASCENDING,
+      ),
+    };
   }
 
   /**

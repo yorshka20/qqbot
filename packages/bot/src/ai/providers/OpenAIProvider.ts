@@ -29,26 +29,68 @@ import { contentToPlainString } from '../utils/contentUtils';
 import { visionImageToDataUrl } from '../utils/imageUtils';
 import { ResourceDownloader } from '../utils/ResourceDownloader';
 import { clampMaxTokens, PREMIUM_MAX_TOKENS_CEILING } from './maxTokens';
+import { pickAcceptedReasoningLevel } from './reasoningLevel';
+
+type OpenAIReasoningEffort = NonNullable<OpenAI.ReasoningEffort>;
+
+export const OPENAI_REASONING_EFFORTS_ASCENDING: readonly OpenAIReasoningEffort[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+];
 
 /**
- * Translate the pipeline's reasoning effort into the Responses API `reasoning` param.
- * `'minimal'` is not an accepted value (only none/low/medium/high/xhigh), so it
- * clamps up to `'low'` — the smallest valid effort, preserving the latency intent.
+ * `reasoning.effort` values each model accepts, ascending. The set changes between model
+ * generations (GPT-6.1 Sol and GPT-6 Astra dropped `none`; no current model takes
+ * `minimal`), the API does not report it, and a value outside it is a 400. Rows were
+ * checked against the API by OpenAIProvider.reasoningEffort.network.test.ts; levels the
+ * pipeline never requests above `high` (e.g. `max`) are left out.
+ */
+export const OPENAI_MODEL_REASONING_EFFORTS: Record<string, readonly OpenAIReasoningEffort[]> = {
+  'gpt-5.6-luna': ['none', 'low', 'medium', 'high', 'xhigh'],
+  'gpt-5.6-sol': ['none', 'low', 'medium', 'high', 'xhigh'],
+  'gpt-5.6-terra': ['none', 'low', 'medium', 'high', 'xhigh'],
+  'gpt-6-astra': ['low', 'medium', 'high', 'xhigh'],
+  'gpt-6-luna': ['none', 'low', 'medium', 'high', 'xhigh'],
+  'gpt-6-sol': ['none', 'low', 'medium', 'high', 'xhigh'],
+  'gpt-6.1-sol': ['low', 'medium', 'high', 'xhigh'],
+  'gpt-6.1-terra': ['none', 'low', 'medium', 'high', 'xhigh'],
+};
+
+/**
+ * Translate the pipeline's reasoning effort into a Responses API `reasoning` param `model`
+ * accepts: the requested effort, else the nearest accepted effort above it. A model missing
+ * from the table gets no `reasoning` param, so it runs at its own default — the one value it
+ * is sure to accept — and the effort is not honoured, which is worth a warning. Dated
+ * snapshot ids (`gpt-6.1-sol-2026-09-30`) resolve to their alias's row.
  *
  * When reasoning is on, `summary: 'auto'` asks the API to return reasoning-summary
  * items in the output, which parseResponsesOutput normalizes into reasoningContent
  * (the raw chain of thought is never returned by the Responses API).
  */
-function mapReasoningEffortToOpenAI(
+export function mapReasoningEffortToOpenAI(
   effort: AIGenerateOptions['reasoningEffort'],
+  model: string,
 ): OpenAI.Responses.ResponseCreateParams['reasoning'] {
   if (!effort) {
     return undefined;
   }
-  if (effort === 'none') {
-    return { effort: 'none' };
+  const accepted = OPENAI_MODEL_REASONING_EFFORTS[model.replace(/-\d{4}-\d{2}-\d{2}$/, '')];
+  if (!accepted) {
+    logger.warn(
+      `[OpenAIProvider] Model ${model} has no reasoning-effort entry; reasoningEffort=${effort} not applied, add the model to OPENAI_MODEL_REASONING_EFFORTS`,
+    );
+    return undefined;
   }
-  return { effort: effort === 'minimal' ? 'low' : effort, summary: 'auto' };
+  const resolved = pickAcceptedReasoningLevel<OpenAIReasoningEffort>(
+    effort,
+    accepted,
+    OPENAI_REASONING_EFFORTS_ASCENDING,
+  );
+  return resolved === 'none' ? { effort: 'none' } : { effort: resolved, summary: 'auto' };
 }
 
 /** Map a ChatMessage's content to Responses input content (text + image parts). */
@@ -311,7 +353,7 @@ export class OpenAIProvider
       max_output_tokens: clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens, PREMIUM_MAX_TOKENS_CEILING),
       store: false,
     };
-    const reasoning = mapReasoningEffortToOpenAI(options?.reasoningEffort);
+    const reasoning = mapReasoningEffortToOpenAI(options?.reasoningEffort, model);
     if (reasoning) {
       body.reasoning = reasoning;
     }
