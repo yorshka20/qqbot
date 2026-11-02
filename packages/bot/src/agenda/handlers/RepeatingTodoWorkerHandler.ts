@@ -2,12 +2,12 @@
 // multiple times with a configurable interval. Designed for cron-based daily
 // automated development sessions (e.g., 5 runs at 30-minute intervals starting at 2 AM).
 
+import type { ProjectContext } from '@qqbot/agent-cluster';
 import { logger } from '@qqbot/shared';
 import { injectable } from 'tsyringe';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { CodingAgentService } from '@/integrations/agent-cluster/CodingAgentService';
-import type { ProjectContext } from '@/services/codingAgent/types';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
 const TAG = '[RepeatingTodoWorkerHandler]';

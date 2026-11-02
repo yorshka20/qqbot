@@ -1,8 +1,8 @@
 import { rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AgentExecutorConfig } from '@/core/config';
-import { parseClaudeStreamJson } from '@/utils/claudeStreamJson';
+import { parseClaudeStreamJson } from '../../cli/claudeStreamJson';
+import type { AgentExecutorConfig } from '../../config';
 import type { AgentExecutor, AgentInvocation, AgentInvocationInput, ExecutorModel } from './AgentExecutor';
 
 /**

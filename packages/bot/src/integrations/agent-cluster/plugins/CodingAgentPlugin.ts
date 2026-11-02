@@ -6,6 +6,14 @@
  * differ only in which CLI runs the task they create.
  */
 
+import {
+  AGENT_EXECUTOR_NAMES,
+  type AgentExecutorName,
+  type AgentRunOptions,
+  AgentRunOptionsError,
+  type AgentTask,
+  type ProjectContext,
+} from '@qqbot/agent-cluster';
 import { logger } from '@qqbot/shared';
 import { CommandManager } from '@/command/CommandManager';
 import type { CommandContext, CommandResult } from '@/command/types';
@@ -15,14 +23,6 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
-import { AgentRunOptionsError } from '@/services/codingAgent/runOptions';
-import {
-  AGENT_EXECUTOR_NAMES,
-  type AgentExecutorName,
-  type AgentRunOptions,
-  type AgentTask,
-  type ProjectContext,
-} from '@/services/codingAgent/types';
 import type { CodingAgentService } from '../CodingAgentService';
 import { type ParsedAgentCommand, parseAgentCommand } from '../parseAgentCommand';
 

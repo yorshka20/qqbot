@@ -29,7 +29,7 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { logger } from '@qqbot/shared';
 import { spawn } from 'bun';
-import { withoutCodexApiKeys } from '@/utils/codexCli';
+import { withoutCodexApiKeys } from '../../cli/codexCli';
 import type { CredentialProbeConfig, CredentialProbeResult, WorkerBackend, WorkerSpawnConfig } from '../types';
 import { interpretCodexLoginStatus, runCliAuthStatus } from './providerCredentialCheck';
 

@@ -2,9 +2,9 @@
 // No LLM; schedule: `执行: action cluster_tickets_sync`
 // Optional `actionParams`: JSON `{"alias":"other"}` (default alias: cluster-tickets).
 
+import { runClusterTicketsSyncWithRegistry } from '@qqbot/agent-cluster';
+import { ProjectRegistry } from '@qqbot/agent-cluster/projects';
 import { inject, injectable } from 'tsyringe';
-import { runClusterTicketsSyncWithRegistry } from '@/cluster/clusterTicketsGitSync';
-import { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
 @injectable()

@@ -12,6 +12,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import type { ProjectRegistry } from '@qqbot/agent-cluster/projects';
 import { getRepoRoot, logger } from '@qqbot/shared';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
@@ -25,7 +26,6 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginCommandHandler } from '@/plugins/PluginCommandHandler';
-import type { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 
 const USAGE = `/todo <content> - 添加 TODO 到默认项目
 /todo @<alias> <content> - 添加 TODO 到指定项目`;

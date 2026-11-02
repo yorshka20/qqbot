@@ -1,5 +1,5 @@
-import type { AgentExecutorConfig } from '@/core/config';
-import { codexMcpServerArgs, listCodexModels, withoutCodexApiKeys } from '@/utils/codexCli';
+import { codexMcpServerArgs, listCodexModels, withoutCodexApiKeys } from '../../cli/codexCli';
+import type { AgentExecutorConfig } from '../../config';
 import type { AgentExecutor, AgentInvocation, AgentInvocationInput, ExecutorModel } from './AgentExecutor';
 
 /** Pinned for the same reason as the claude model: the CLI default follows the operator's interactive setting. */

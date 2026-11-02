@@ -18,7 +18,7 @@
  * - --effort <level> | -e <level> | --effort=<level>
  */
 
-import type { AgentRunOptions } from '@/services/codingAgent/types';
+import type { AgentRunOptions } from '@qqbot/agent-cluster';
 
 const RUN_OPTION_FLAGS: Record<string, keyof AgentRunOptions> = {
   '--model': 'model',

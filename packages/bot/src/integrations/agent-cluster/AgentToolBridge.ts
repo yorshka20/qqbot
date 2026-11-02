@@ -6,6 +6,7 @@
  * and nothing else.
  */
 
+import type { AgentTask } from '@qqbot/agent-cluster';
 import { inject, singleton } from 'tsyringe';
 import type { ToolDefinition } from '@/ai/types';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
@@ -13,7 +14,6 @@ import type { ProtocolName } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
 import { buildSyntheticHookContext } from '@/hooks/syntheticHookContext';
-import type { AgentTask } from '@/services/codingAgent/types';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolResult } from '@/tools/types';
 

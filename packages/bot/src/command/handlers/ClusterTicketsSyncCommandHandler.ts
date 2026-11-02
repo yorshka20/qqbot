@@ -6,10 +6,10 @@
  *   /cluster-sync <alias>      → another registered project path
  */
 
+import { CLUSTER_TICKETS_REGISTRY_ALIAS, runClusterTicketsSyncWithRegistry } from '@qqbot/agent-cluster';
+import { ProjectRegistry } from '@qqbot/agent-cluster/projects';
 import { inject, injectable } from 'tsyringe';
-import { CLUSTER_TICKETS_REGISTRY_ALIAS, runClusterTicketsSyncWithRegistry } from '@/cluster/clusterTicketsGitSync';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
 

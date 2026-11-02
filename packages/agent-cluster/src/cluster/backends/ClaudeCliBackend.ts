@@ -13,7 +13,7 @@
 
 import { logger } from '@qqbot/shared';
 import { spawn } from 'bun';
-import { parseClaudeStreamJson } from '@/utils/claudeStreamJson';
+import { parseClaudeStreamJson } from '../../cli/claudeStreamJson';
 import type {
   CredentialProbeConfig,
   CredentialProbeResult,

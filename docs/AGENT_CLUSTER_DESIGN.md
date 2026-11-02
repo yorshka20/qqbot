@@ -1,6 +1,6 @@
 # Agent Cluster 设计方案
 
-> **Status**: design spec — original implementation plan, since merged. Current behavior is defined by code under `packages/bot/src/cluster/`; this doc preserves the original design intent and decision rationale, and may have drifted from the implementation. When the two disagree, the code wins.
+> **Status**: design spec — original implementation plan, since merged. Current behavior is defined by code under `packages/agent-cluster/src/cluster/` (the `@qqbot/agent-cluster` package; the paths in §9 predate it) and the bot-side glue in `packages/bot/src/integrations/agent-cluster/` (owner escalation, the `/api/cluster` and `/api/tickets` backends); this doc preserves the original design intent and decision rationale, and may have drifted from the implementation. When the two disagree, the code wins.
 >
 > 目标：在 QQ Bot 上构建一个自主运行的 worker pool，通过 ContextHub（MCP server）实现 worker 间通信与状态同步，WebUI 为主要监控面板。
 

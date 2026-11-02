@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CodingAgentService } from '../CodingAgentService';
-import { CodingAgentTaskStore } from '@/services/codingAgent/CodingAgentTaskStore';
-import type { AgentTask } from '@/services/codingAgent/types';
+import { CodingAgentTaskStore } from '@qqbot/agent-cluster';
+import type { AgentTask } from '@qqbot/agent-cluster';
 import { CodingAgentAPIBackend } from '../CodingAgentAPIBackend';
 
 const dirs: string[] = [];

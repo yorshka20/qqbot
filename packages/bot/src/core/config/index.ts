@@ -2,6 +2,7 @@
 
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { CodingAgentConfig, ProjectRegistryConfig, TicketsConfig } from '@qqbot/agent-cluster';
 import { ConfigError, getRepoRoot, logger } from '@qqbot/shared';
 import { loadConfigAuto } from './loadConfigDir';
 // Import all config types
@@ -15,13 +16,7 @@ import {
   type SessionProviderConfig,
 } from './types/ai';
 import type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';
-import type {
-  BotSelfConfig,
-  CodingAgentConfig,
-  FileReadServiceConfig,
-  ProjectRegistryConfig,
-  StaticServerConfig,
-} from './types/bot';
+import type { BotSelfConfig, FileReadServiceConfig, StaticServerConfig } from './types/bot';
 import type { CardRenderConfig } from './types/cardRender';
 import type { DatabaseConfig } from './types/database';
 import type { DocsPreviewConfig } from './types/docsPreview';
@@ -34,7 +29,6 @@ import type { PortraitConfig } from './types/portrait';
 import type { PromptsConfig } from './types/prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './types/protocol';
 import type { RAGConfig } from './types/rag';
-import type { TicketsConfig } from './types/tickets';
 import type { TTSConfig } from './types/tts';
 import type { VideoKnowledgeConfig } from './types/videoKnowledge';
 import type { VKBContextEngineConfig } from './types/vkbContextEngine';
@@ -64,14 +58,7 @@ export type {
   SessionProviderConfig,
 } from './types/ai';
 export type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';
-export type {
-  AgentExecutorConfig,
-  BotSelfConfig,
-  CodingAgentConfig,
-  DshExecutorConfig,
-  ProjectRegistryConfig,
-  StaticServerConfig,
-} from './types/bot';
+export type { BotSelfConfig, StaticServerConfig } from './types/bot';
 export type { CardAppearanceMode, CardRenderConfig } from './types/cardRender';
 export type { LogLevel } from './types/const';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './types/database';
@@ -106,7 +93,6 @@ export type {
   ReconnectConfig,
 } from './types/protocol';
 export type { RAGConfig } from './types/rag';
-export type { TicketsConfig } from './types/tickets';
 export type { TTSConfig } from './types/tts';
 export type { VideoKnowledgeConfig } from './types/videoKnowledge';
 export type { VKBContextEngineConfig, VKBContextEngineScope } from './types/vkbContextEngine';

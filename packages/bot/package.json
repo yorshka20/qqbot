@@ -24,6 +24,7 @@
     "@google/genai": "^1.52.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@mozilla/readability": "^0.6.0",
+    "@qqbot/agent-cluster": "workspace:*",
     "@qqbot/api-types": "workspace:*",
     "@qqbot/avatar": "workspace:*",
     "@qqbot/shared": "workspace:*",

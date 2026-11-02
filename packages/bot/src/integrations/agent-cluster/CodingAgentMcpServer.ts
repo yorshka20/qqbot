@@ -31,17 +31,17 @@ import { resolve as resolvePath } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
-import { z } from 'zod';
-import type { ToolDefinition } from '@/ai/types';
-import type { CodingAgentConfig } from '@/core/config';
-import { CARD_DECK_DESCRIPTION } from '@/services/card/cardTypes';
 import type {
   BotInfo,
+  CodingAgentConfig,
   ExecuteCommandParams,
   ExecuteCommandResult,
   TaskNotification,
-} from '@/services/codingAgent/types';
+} from '@qqbot/agent-cluster';
+import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
+import { z } from 'zod';
+import type { ToolDefinition } from '@/ai/types';
+import { CARD_DECK_DESCRIPTION } from '@/services/card/cardTypes';
 
 type TaskNotificationHandler = (notification: TaskNotification) => void;
 type DeliveryResult = { success: boolean; messageId?: string; error?: string };

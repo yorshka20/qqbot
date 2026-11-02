@@ -4,6 +4,8 @@
 // the debug CLI all use, so the initialization sequence can never drift between them.
 // Everything that opens a live connection belongs to startApp's connect phase instead.
 
+import { ClusterManager, parseClusterConfig, wireClusterTicketWriteback } from '@qqbot/agent-cluster';
+import { ProjectRegistry } from '@qqbot/agent-cluster/projects';
 import { AvatarService } from '@qqbot/avatar';
 import { logger } from '@qqbot/shared';
 import { HealthCheckManager } from '@qqbot/shared/health';
@@ -16,7 +18,6 @@ import { createProviderPatchProducer } from '@/ai/prompt/producers/ProviderPatch
 import { createSceneProducer } from '@/ai/prompt/producers/SceneProducer';
 import { createToolInstructProducer } from '@/ai/prompt/producers/ToolInstructProducer';
 import { APIClient } from '@/api/APIClient';
-import { ClusterManager, parseClusterConfig, wireClusterTicketWriteback } from '@/cluster';
 import { installLogContextSource, setMessageLogFilter } from '@/context/logContextSource';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
@@ -46,7 +47,6 @@ import { BilibiliLiveBridge } from '@/services/bilibili/live/BilibiliLiveBridge'
 import { BilibiliLiveClient } from '@/services/bilibili/live/BilibiliLiveClient';
 import { DanmakuBuffer } from '@/services/bilibili/live/DanmakuBuffer';
 import { DanmakuStore } from '@/services/bilibili/live/DanmakuStore';
-import { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { initStaticServer } from '@/services/staticServer';
 import type { TTSManager } from '@/services/tts/TTSManager';
@@ -197,11 +197,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
       if (!rawDb) {
         throw new Error('[Bootstrap] Agent Cluster requires SQLite — raw DB not available');
       }
-      const projectRegistry =
-        container.resolve<InstanceType<typeof import('@/services/codingAgent/ProjectRegistry').ProjectRegistry>>(
-          ProjectRegistry,
-        );
-      clusterManager = new ClusterManager(clusterConfig, rawDb, projectRegistry, ticketsDir);
+      clusterManager = new ClusterManager(clusterConfig, rawDb, container.resolve(ProjectRegistry), ticketsDir);
       container.registerInstance(DITokens.CLUSTER_MANAGER, clusterManager);
 
       await wireClusterEscalation(clusterManager, config);

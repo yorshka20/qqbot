@@ -1,4 +1,4 @@
-import type { CodingAgentConfig } from '@/core/config';
+import type { CodingAgentConfig } from '../../config';
 import type { AgentExecutorName } from '../types';
 import type { AgentExecutor } from './AgentExecutor';
 import { ClaudeExecutor } from './ClaudeExecutor';

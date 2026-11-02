@@ -2,8 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PromptManager } from '@/ai/prompt/PromptManager';
-import type { CodingAgentConfig } from '@/core/config';
+import type { CodingAgentConfig } from '../../config';
 import { CodingAgentTaskManager, type TaskProgressUpdate } from '../CodingAgentTaskManager';
 import type { AgentExecutor } from '../executors';
 import type { AgentInvocationInput } from '../executors/AgentExecutor';
@@ -147,7 +146,6 @@ describe('CodingAgentTaskManager workspace tasks', () => {
       { claude: executor, codex: executor, dsh: executor },
       'http://127.0.0.1:0/mcp',
     );
-    manager.setPromptTemplates(new PromptManager());
     return { manager, invocations };
   }
 
@@ -236,17 +234,5 @@ describe('CodingAgentTaskManager workspace tasks', () => {
     expect(first.queue.queuePosition).toBe(0);
     expect(second.queue.queuePosition).toBe(1);
     await manager.awaitTaskCompletion(second.task.id);
-  });
-
-  test('the prompt comes from the workspace template with the progress protocol filled in', async () => {
-    const { manager, invocations } = recordingManager(mkdtempSync(join(tmpdir(), 'coding-agent-ws-')));
-    const { task } = workspaceTask(manager, '对比甲乙两个方案');
-    await manager.awaitTaskCompletion(task.id);
-    const prompt = invocations[0].prompt;
-    expect(prompt).toContain('和任何项目仓库都无关');
-    expect(prompt).toContain('对比甲乙两个方案');
-    expect(prompt).toContain(task.workingDirectory ?? '');
-    expect(prompt).toContain('bot_notify_task');
-    expect(prompt).not.toContain('{{');
   });
 });

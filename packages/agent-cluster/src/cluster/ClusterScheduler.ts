@@ -6,7 +6,7 @@
 
 import type { Database } from 'bun:sqlite';
 import { logger, randomUUID } from '@qqbot/shared';
-import type { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
+import type { ProjectRegistry } from '../codingAgent/ProjectRegistry';
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { TaskSource } from './sources/TaskSource';

@@ -248,6 +248,16 @@ them, so the dependency only ever runs bot → package.
   the domain object it sends with an explicit `jsonResponse<T>(...)` at the response site.
 - **`@qqbot/avatar`** (`packages/avatar/`) — VRM / Cubism body layer; depends only on
   `@qqbot/shared` and `tsyringe`.
+- **`@qqbot/agent-cluster`** (`packages/agent-cluster/`) — everything that runs coding-agent CLIs:
+  the cluster (`src/cluster/`: scheduler, worker pool, hub + `HubMCPServer`, ticket storage and
+  format), the coding-agent task layer (`src/codingAgent/`: executors, `CodingAgentTaskManager`, its
+  on-disk record store, `ProjectRegistry`) and the CLI stream parsers (`src/cli/`). Its config types
+  (`CodingAgentConfig`, `ProjectRegistryConfig`, `TicketsConfig`) live in `src/config.ts`.
+  `ProjectRegistry` is the separate `@qqbot/agent-cluster/projects` entry for the same reason as
+  health above, and takes its options through the package's `PROJECT_REGISTRY_OPTIONS` token, which
+  `core/wiring.ts` registers. The chat side — `CodingAgentService` with its MCP server, delivery and
+  tool bridge, the `/claude` `/codex` `/dsh` plugin, owner escalation for `hub_ask`, and the cluster,
+  ticket and task WebUI backends — is glue in `packages/bot/src/integrations/agent-cluster/`.
 - **`@qqbot/webui`** (`packages/webui/`) — Vite + React admin console; talks to the bot only over HTTP.
 
 Remaining splits are planned in the knowledge base (`_kb/tasks/09-monorepo-and-package-split/`).
@@ -261,7 +271,7 @@ Remaining splits are planned in the knowledge base (`_kb/tasks/09-monorepo-and-p
 - **AI Service**: `packages/bot/src/ai/AIService.ts`
 - **TTS (bot core)**: `packages/bot/src/services/tts/` — `TTSManager`, providers (`FishAudioProvider`, `SovitsProvider`), health adapters under `packages/bot/src/core/health/TtsProviderHealthAdapter.ts`; `/tts` command: `packages/bot/src/command/handlers/TTSCommandHandler.ts`
 - **HTTP backends (WebUI/REST)**: `packages/bot/src/services/staticServer/backend.ts` — the `Backend` extension point and its registry. Each module registers its own routes at import time (`ClusterAPIBackend` in `cluster/`, `MemoryStatusBackend` in `memory/`, …); `packages/bot/src/core/staticBackends.ts` is the list the composition root pulls in. `staticServer` must not import a feature module.
-- **Cluster tickets**: `packages/bot/src/cluster/tickets/` — `storage.ts` (on-disk bucket layout), `markdown.ts` (frontmatter format), `TicketBackend.ts` (`/api/tickets`). The cluster hub, the agenda dispatcher and the WebUI all read tickets through these.
+- **Cluster tickets**: `packages/agent-cluster/src/cluster/tickets/` — `storage.ts` (on-disk bucket layout), `markdown.ts` (frontmatter format); `/api/tickets` is `packages/bot/src/integrations/agent-cluster/TicketBackend.ts`. The cluster hub, the agenda dispatcher and the WebUI all read tickets through these.
 - **Tool System**: `packages/bot/src/tools/ToolManager.ts`
 - **Plugin Manager**: `packages/bot/src/plugins/PluginManager.ts`
 - **Session Memo Store**: `packages/bot/src/conversation/memo/SessionMemoStore.ts` — LLM-writable per-session memo/blackboard with TTL + pin. Complements AuditEventStore (bot-written) and MemoryService (long-term).

@@ -35,6 +35,7 @@
  *   - POST /api/cluster/help/:id/answer
  */
 
+import type { ClusterEventType, ClusterManager, TaskRecord, WorkerRegistration } from '@qqbot/agent-cluster';
 import type {
   ClusterEventListResponse,
   ClusterHelpAnswerBody,
@@ -60,8 +61,6 @@ import type {
   ProjectsResponse,
 } from '@qqbot/api-types';
 import { logger } from '@qqbot/shared';
-import type { ClusterManager } from '@/cluster/ClusterManager';
-import type { ClusterEventType, TaskRecord, WorkerRegistration } from '@/cluster/types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { CodingAgentService } from '@/integrations/agent-cluster/CodingAgentService';

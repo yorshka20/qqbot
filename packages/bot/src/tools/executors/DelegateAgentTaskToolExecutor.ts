@@ -3,13 +3,12 @@
 // The reply ends right away; the agent's progress and final report arrive in this
 // conversation later through CodingAgentService.
 
+import { AGENT_EXECUTOR_NAMES, type AgentExecutorName, AgentRunOptionsError } from '@qqbot/agent-cluster';
 import { logger } from '@qqbot/shared';
 import { injectable } from 'tsyringe';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { CodingAgentService } from '@/integrations/agent-cluster/CodingAgentService';
-import { AgentRunOptionsError } from '@/services/codingAgent/runOptions';
-import { AGENT_EXECUTOR_NAMES, type AgentExecutorName } from '@/services/codingAgent/types';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

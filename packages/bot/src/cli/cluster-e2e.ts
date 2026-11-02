@@ -67,9 +67,8 @@
 import 'reflect-metadata';
 
 import { spawnSync } from 'node:child_process';
+import type { ClusterManager, EventEntry, TaskRecord } from '@qqbot/agent-cluster';
 import { logger, randomUUID } from '@qqbot/shared';
-import type { ClusterManager } from '@/cluster/ClusterManager';
-import type { EventEntry, TaskRecord } from '@/cluster/types';
 import { type App, startApp } from '@/core/app';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
@@ -604,7 +603,7 @@ async function main() {
   // We deliberately do NOT restore the bootstrap notifier on teardown:
   // the e2e process exits right after, so the bootstrap notifier never
   // gets a chance to run anyway.
-  let recordedEscalation: import('@/cluster/types').HelpRequest | null = null;
+  let recordedEscalation: import('@qqbot/agent-cluster').HelpRequest | null = null;
   if (args.mcpTool === 'hub_ask') {
     cluster.attachEscalationNotifier((request) => {
       logger.info(
@@ -813,7 +812,7 @@ async function main() {
       // escalation callback's HelpRequest.question is the canonical
       // assert source. We narrow the type because TS doesn't know the
       // closure mutated `recordedEscalation` from null.
-      const captured = recordedEscalation as import('@/cluster/types').HelpRequest | null;
+      const captured = recordedEscalation as import('@qqbot/agent-cluster').HelpRequest | null;
       mcpEventMatched = captured !== null && captured.question === args.mcpAskQuestion;
       logger.info(
         `[ClusterE2E] MCP mode assertion: escalation callback fired? ${captured !== null}; ` +

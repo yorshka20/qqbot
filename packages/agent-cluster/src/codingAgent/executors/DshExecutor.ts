@@ -1,8 +1,8 @@
 import { rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { DshExecutorConfig } from '@/core/config';
-import { parseDshJsonStream } from '@/utils/dshJsonStream';
+import { parseDshJsonStream } from '../../cli/dshJsonStream';
+import type { DshExecutorConfig } from '../../config';
 import type { AgentExecutor, AgentInvocation, AgentInvocationInput, ExecutorModel } from './AgentExecutor';
 
 /** Pinned for the same reason as the other executors: without it the run follows the CLI's own stored default. */

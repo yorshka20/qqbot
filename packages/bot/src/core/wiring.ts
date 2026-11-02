@@ -5,6 +5,7 @@
 // outside the container, factories that assemble a registry from config, and an
 // interface token.
 
+import { PROJECT_REGISTRY_OPTIONS } from '@qqbot/agent-cluster';
 import { HealthCheckManager } from '@qqbot/shared/health';
 import { createAIManager } from '@/ai/createAIManager';
 import type { APIClient } from '@/api/APIClient';
@@ -19,9 +20,11 @@ import { createToolManager } from '@/tools/createToolManager';
 export function registerProviders(config: Config, apiClient: APIClient): void {
   const container = getContainer();
 
-  // Built outside the container (the Bot owns the config; the API client is built from it).
+  // Built outside the container (the Bot owns the config; the API client and the packages'
+  // config slices are built from it).
   container.registerInstance(DITokens.CONFIG, config);
   container.registerInstance(DITokens.API_CLIENT, apiClient);
+  container.registerInstance(PROJECT_REGISTRY_OPTIONS, config.getProjectRegistryConfig() ?? {});
 
   // Registries whose contents come from config or decorator metadata, assembled on build.
   container.registerSingletonFactory(DITokens.AI_MANAGER, () => createAIManager(config));

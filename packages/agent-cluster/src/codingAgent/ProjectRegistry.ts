@@ -12,8 +12,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileS
 import { dirname, resolve } from 'node:path';
 import { getRepoRoot, logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
-import type { Config } from '@/core/config';
-import { DITokens } from '@/core/DITokens';
+import { PROJECT_REGISTRY_OPTIONS } from '../tokens';
 
 export interface ProjectEntry {
   /** Unique alias for referencing in commands */
@@ -62,8 +61,7 @@ export class ProjectRegistry {
   private defaultProject: string;
   private persistPath: string;
 
-  constructor(@inject(DITokens.CONFIG) config: Config) {
-    const opts: ProjectRegistryOptions = config.getProjectRegistryConfig() ?? {};
+  constructor(@inject(PROJECT_REGISTRY_OPTIONS) opts: ProjectRegistryOptions) {
     this.allowedBasePaths = (opts.allowedBasePaths ?? [process.cwd()]).map((p) => resolve(p));
     this.defaultProject = opts.defaultProject ?? 'default';
     this.persistPath = opts.persistPath || resolve(getRepoRoot(), 'data/projects.json');

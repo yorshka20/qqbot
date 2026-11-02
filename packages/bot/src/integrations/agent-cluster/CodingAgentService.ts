@@ -8,25 +8,30 @@
  */
 
 import { isAbsolute, join } from 'node:path';
-import { logger } from '@qqbot/shared';
-import type { PromptManager } from '@/ai/prompt/PromptManager';
-import type { CodingAgentConfig, ProtocolName } from '@/core/config';
-import { checkDeploy, isSupervised, requestDeploy, requestRestart } from '@/core/supervisor';
-import { parseCardDeck } from '@/services/card/cardTypes';
-import { CodingAgentTaskManager, type TaskProgressUpdate } from '@/services/codingAgent/CodingAgentTaskManager';
-import type { CodingAgentTaskStore } from '@/services/codingAgent/CodingAgentTaskStore';
-import { type AgentExecutor, createAgentExecutors } from '@/services/codingAgent/executors';
-import type { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
-import { resolveRunOptions } from '@/services/codingAgent/runOptions';
 import type {
   AgentExecutorName,
   AgentRunOptions,
   AgentTask,
   AgentTaskType,
+  CodingAgentConfig,
+  CodingAgentTaskStore,
   ExecuteCommandParams,
   ExecuteCommandResult,
   ProjectContext,
-} from '@/services/codingAgent/types';
+} from '@qqbot/agent-cluster';
+import {
+  type AgentExecutor,
+  CodingAgentTaskManager,
+  createAgentExecutors,
+  resolveRunOptions,
+  type TaskProgressUpdate,
+} from '@qqbot/agent-cluster';
+import type { ProjectRegistry } from '@qqbot/agent-cluster/projects';
+import { logger } from '@qqbot/shared';
+import type { PromptManager } from '@/ai/prompt/PromptManager';
+import type { ProtocolName } from '@/core/config';
+import { checkDeploy, isSupervised, requestDeploy, requestRestart } from '@/core/supervisor';
+import { parseCardDeck } from '@/services/card/cardTypes';
 import { AgentDelivery, type AgentDeliveryDeps, type DeliveryResult } from './AgentDelivery';
 import type { AgentToolBridge } from './AgentToolBridge';
 import { CodingAgentMcpServer } from './CodingAgentMcpServer';

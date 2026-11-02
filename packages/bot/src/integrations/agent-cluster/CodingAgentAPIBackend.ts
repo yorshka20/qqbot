@@ -18,6 +18,8 @@
  * page can say so.
  */
 
+import type { TaskRecordListing } from '@qqbot/agent-cluster';
+import { AGENT_EXECUTOR_NAMES } from '@qqbot/agent-cluster';
 import type {
   AgentsStatusResponse,
   AgentTaskCancelledResponse,
@@ -28,8 +30,6 @@ import type {
 } from '@qqbot/api-types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import type { TaskRecordListing } from '@/services/codingAgent/CodingAgentTaskStore';
-import { AGENT_EXECUTOR_NAMES } from '@/services/codingAgent/types';
 import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 import type { CodingAgentService } from './CodingAgentService';
 

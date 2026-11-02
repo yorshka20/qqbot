@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { logger, parseDuration, randomUUID } from '@qqbot/shared';
 import { type Subprocess, spawn } from 'bun';
-import type { CodingAgentConfig } from '@/core/config';
+import type { CodingAgentConfig } from '../config';
 import { CodingAgentTaskStore } from './CodingAgentTaskStore';
 import type { AgentExecutor } from './executors';
 import type { AgentInvocation } from './executors/AgentExecutor';

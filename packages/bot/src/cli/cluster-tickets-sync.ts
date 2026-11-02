@@ -5,9 +5,9 @@
 
 import 'reflect-metadata';
 
-import { CLUSTER_TICKETS_REGISTRY_ALIAS, runClusterTicketsSyncWithRegistry } from '@/cluster/clusterTicketsGitSync';
+import { CLUSTER_TICKETS_REGISTRY_ALIAS, runClusterTicketsSyncWithRegistry } from '@qqbot/agent-cluster';
+import { ProjectRegistry } from '@qqbot/agent-cluster/projects';
 import { Config } from '@/core/config';
-import { ProjectRegistry } from '@/services/codingAgent/ProjectRegistry';
 
 function getArg(name: string): string | undefined {
   const idx = process.argv.indexOf(`--${name}`);
@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   const alias = getArg('alias');
   const configPath = process.env.CONFIG_PATH;
   const config = configPath ? new Config(configPath) : new Config();
-  const registry = new ProjectRegistry(config);
+  const registry = new ProjectRegistry(config.getProjectRegistryConfig() ?? {});
 
   console.log(`Syncing cluster-tickets repo (alias "${alias ?? CLUSTER_TICKETS_REGISTRY_ALIAS}")...`);
   const r = await runClusterTicketsSyncWithRegistry(registry, alias);
