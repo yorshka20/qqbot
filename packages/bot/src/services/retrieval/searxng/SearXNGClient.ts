@@ -1,8 +1,7 @@
 // SearXNG HTTP API client (Direct mode)
 
-import { logger } from '@qqbot/shared';
-import type { HealthCheckable, HealthCheckOptions, HealthCheckResult } from '@qqbot/shared/health';
-import { HealthStatus } from '@qqbot/shared/health';
+import type { HealthCheckable, HealthCheckOptions, HealthCheckResult } from '@qqbot/shared';
+import { HealthStatus, logger } from '@qqbot/shared';
 import type { SearXNGConfig } from '@/core/config/types/mcp';
 import type { SearchOptions, SearchResult, SearXNGSearchResponse } from './types';
 

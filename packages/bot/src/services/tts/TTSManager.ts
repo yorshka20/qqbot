@@ -1,6 +1,5 @@
-import { logger } from '@qqbot/shared';
+import { HealthStatus, logger } from '@qqbot/shared';
 import type { HealthCheckManager } from '@qqbot/shared/health';
-import { HealthStatus } from '@qqbot/shared/health';
 import { TtsProviderHealthAdapter } from '@/core/health/TtsProviderHealthAdapter';
 import type { SynthesisResult, TTSProvider, TTSSynthesizeOptions } from './TTSProvider';
 
