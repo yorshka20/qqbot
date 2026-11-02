@@ -2,7 +2,7 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { getRepoRoot, logger } from '@qqbot/shared';
+import { getRepoRoot, logger, ResourceDownloader } from '@qqbot/shared';
 import OpenAI, { toFile } from 'openai';
 import type { OpenAIImageConfig } from '@/core/config/types/ai';
 import { AIProvider } from '../base/AIProvider';
@@ -27,7 +27,6 @@ import type {
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
 import { visionImageToDataUrl } from '../utils/imageUtils';
-import { ResourceDownloader } from '../utils/ResourceDownloader';
 import { clampMaxTokens, PREMIUM_MAX_TOKENS_CEILING } from './maxTokens';
 import { pickAcceptedReasoningLevel } from './reasoningLevel';
 

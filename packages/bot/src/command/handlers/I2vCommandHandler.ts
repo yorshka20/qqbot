@@ -3,11 +3,11 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getRepoRoot, logger } from '@qqbot/shared';
+import { prepareImageForI2v } from '@qqbot/shared/image';
 import { inject, injectable } from 'tsyringe';
 import type { AIManager } from '@/ai/AIManager';
 import { AIService } from '@/ai/AIService';
 import { isImage2VideoCapability } from '@/ai/capabilities/Image2VideoCapability';
-import { prepareImageForI2v } from '@/ai/utils/imageResize';
 import { extractImagesFromMessageAndReply, visionImageToBuffer } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';
 import { FileAPI } from '@/api/methods/FileAPI';

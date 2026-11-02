@@ -1,7 +1,7 @@
 // Image resize utility for img2img - resize to exact dimensions and return raw base64
 
-import { logger } from '@qqbot/shared';
 import sharp from 'sharp';
+import { logger } from '../logger';
 
 /**
  * Detect MIME type from raw image bytes via sharp metadata.

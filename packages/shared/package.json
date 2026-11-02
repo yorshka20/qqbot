@@ -9,6 +9,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "sharp": "^0.33.5",
     "tsyringe": "^4.10.0",
     "uuid": "^13.0.0",
     "winston": "^3.19.0"
@@ -18,6 +19,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./health": "./src/health/index.ts"
+    "./health": "./src/health/index.ts",
+    "./image": "./src/image/imageResize.ts"
   }
 }

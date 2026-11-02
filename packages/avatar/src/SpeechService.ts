@@ -1,4 +1,4 @@
-import { fromRepoRoot, logger } from '@qqbot/shared';
+import { fromRepoRoot, logger, writeFileUnderDirectory } from '@qqbot/shared';
 import { decodeToMonoPcm } from './compiler/audio/decodeToMonoPcm';
 import { computeRmsEnvelope } from './compiler/audio/rms';
 import { RmsStreamer } from './compiler/audio/rmsStreaming';
@@ -10,7 +10,6 @@ import type {
   AvatarSynthesisResult as SynthesisResult,
   AvatarTTSProvider as TTSProvider,
 } from './speech/TTSTypes';
-import { writeFileUnderDirectory } from './utils/writeFileUnderDirectory';
 
 const DEFAULT_GAP_MS = 200;
 /** RMS hop matches the one applied inside AudioEnvelopeLayer; keep them in sync. */

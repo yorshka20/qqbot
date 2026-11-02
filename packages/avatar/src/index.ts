@@ -27,4 +27,3 @@ export type { FaceTarget, GazeTarget, LegacyLive2DTag, ParsedTag, WalkMotion, Wa
 export { parseLive2DTags, parseRichTags, stripLive2DTags } from './tags';
 export type { AvatarConfig, AvatarMemoryExtractionConfig, PreviewServerConfig } from './types';
 export { DEFAULT_AVATAR_CONFIG } from './types';
-export { writeFileUnderDirectory } from './utils/writeFileUnderDirectory';

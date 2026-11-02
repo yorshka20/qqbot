@@ -1,6 +1,7 @@
 // Anthropic Provider implementation
 
-import { HttpClient, logger } from '@qqbot/shared';
+import { HttpClient, logger, ResourceDownloader } from '@qqbot/shared';
+import { detectMimeType } from '@qqbot/shared/image';
 import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';
@@ -16,8 +17,6 @@ import type {
   ToolDefinition,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
-import { detectMimeType } from '../utils/imageResize';
-import { ResourceDownloader } from '../utils/ResourceDownloader';
 import { clampMaxTokens, PREMIUM_MAX_TOKENS_CEILING } from './maxTokens';
 
 export interface AnthropicProviderConfig {

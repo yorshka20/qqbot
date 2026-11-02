@@ -3,7 +3,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FileState, GoogleGenAI } from '@google/genai';
-import { getRepoRoot, logger } from '@qqbot/shared';
+import { getRepoRoot, logger, ResourceDownloader } from '@qqbot/shared';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
@@ -30,7 +30,6 @@ import {
   handleNoImageData,
 } from '../utils/geminiErrorHandler';
 import { assertGeminiReferenceCount, geminiImageConfig } from '../utils/geminiImageRequest';
-import { ResourceDownloader } from '../utils/ResourceDownloader';
 import { clampMaxTokens } from './maxTokens';
 import { pickAcceptedReasoningLevel } from './reasoningLevel';
 

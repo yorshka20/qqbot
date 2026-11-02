@@ -8,9 +8,8 @@
 
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { getRepoRoot, logger } from '@qqbot/shared';
+import { getRepoRoot, logger, ResourceDownloader } from '@qqbot/shared';
 import { singleton } from 'tsyringe';
-import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
 
 /** Directory where temp video files are written. */
 const VIDEO_TEMP_DIR = join(getRepoRoot(), 'output', 'video-analysis');

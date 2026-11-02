@@ -2,8 +2,7 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { logger, resolveFromRepoRoot } from '@qqbot/shared';
-import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
+import { logger, ResourceDownloader, resolveFromRepoRoot } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';

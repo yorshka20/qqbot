@@ -2,7 +2,8 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
-import { getRepoRoot, logger } from '@qqbot/shared';
+import { getRepoRoot, logger, ResourceDownloader } from '@qqbot/shared';
+import { resizeImageToBase64WithMaxSide } from '@qqbot/shared/image';
 import AdmZip from 'adm-zip';
 import type { NovelAIProviderConfig } from '@/core/config';
 import { AIProvider } from '../base/AIProvider';
@@ -14,8 +15,6 @@ import type {
   ProviderImageGenerationResponse,
   Text2ImageOptions,
 } from '../capabilities/types';
-import { resizeImageToBase64WithMaxSide } from '../utils/imageResize';
-import { ResourceDownloader } from '../utils/ResourceDownloader';
 
 /**
  * Guidance scale the NovelAI web client defaults to, per model. Doubles as the set of

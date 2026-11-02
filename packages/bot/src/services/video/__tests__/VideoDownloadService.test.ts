@@ -2,7 +2,7 @@ import 'reflect-metadata';
 
 import { afterEach, describe, expect, it, vi } from 'bun:test';
 import * as fsPromises from 'node:fs/promises';
-import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
+import { ResourceDownloader } from '@qqbot/shared';
 import { logger } from '@qqbot/shared';
 import { VideoDownloadService } from '../VideoDownloadService';
 

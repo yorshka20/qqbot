@@ -2,7 +2,7 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { getRepoRoot, HttpClient, logger } from '@qqbot/shared';
+import { getRepoRoot, HttpClient, logger, ResourceDownloader } from '@qqbot/shared';
 import type { LaozhangProviderConfig } from '@/core/config/types/ai';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
@@ -25,7 +25,6 @@ import {
   handleNoImageData,
 } from '../utils/geminiErrorHandler';
 import { assertGeminiReferenceCount } from '../utils/geminiImageRequest';
-import { ResourceDownloader } from '../utils/ResourceDownloader';
 import { clampMaxTokens } from './maxTokens';
 
 /**

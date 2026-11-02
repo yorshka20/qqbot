@@ -3,8 +3,10 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
-import { writeFileUnderDirectory } from '@qqbot/avatar';
-import { HttpClient, logger, resolveFromRepoRoot } from '@qqbot/shared';
+import { writeFileUnderDirectory } from '../fs/writeFileUnderDirectory';
+import { logger } from '../logger';
+import { resolveFromRepoRoot } from '../repoRoot';
+import { HttpClient } from './HttpClient';
 
 export interface ResourceDownloadOptions {
   /**
