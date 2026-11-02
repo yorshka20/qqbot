@@ -1,8 +1,8 @@
 // Fetch page task executor - fetches main article/page content from a URL for agent use
 
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

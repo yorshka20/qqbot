@@ -4,8 +4,8 @@
 import { Readability } from '@mozilla/readability';
 import { logger } from '@qqbot/shared';
 import { JSDOM } from 'jsdom';
-import type { SearchFetchConfig } from '@/core/config/types/mcp';
-import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
+import type { SearchFetchConfig } from '../config';
+import type { FetchProgressNotifier } from './FetchProgressNotifier';
 import { JinaReaderService } from './JinaReaderService';
 import { isInternalUrl } from './urlGuards';
 

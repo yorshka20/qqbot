@@ -1,5 +1,8 @@
 // Proactive Reply Context Builder - one function per injection type; build methods only assemble
 
+import type { FetchProgressNotifier } from '@qqbot/retrieval';
+import { QdrantClient } from '@qqbot/retrieval';
+import type { RetrievalService } from '@qqbot/retrieval/service';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { formatRAGConversationContext } from '@/ai/utils/formatRAGConversationContext';
 import type { ProactiveReplyInjectContext } from '@/context/types';
@@ -9,9 +12,6 @@ import {
   normalizeGroupId,
 } from '@/conversation/history';
 import type { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';
-import type { RetrievalService } from '@/services/retrieval';
-import { QdrantClient } from '@/services/retrieval';
-import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import type { ProactiveThread, ThreadService } from '../thread/ThreadService';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 

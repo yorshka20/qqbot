@@ -239,10 +239,10 @@ them, so the dependency only ever runs bot → package.
   `@qqbot/shared/image` entry so the root barrel never loads a native binding. The logger
   knows nothing about messages: it reads per-entry context through `setLogContextSource`, which the
   bot installs in `bootstrap.ts` from `packages/bot/src/context/logContextSource.ts` (where the
-  per-group/user filter rules live). The health-check framework is the separate
-  `@qqbot/shared/health` entry, deliberately not in the root barrel — it is a tsyringe singleton, and
-  tsyringe throws on import without `reflect-metadata`, which the barrel's 370 importers should not
-  have to load for a logger.
+  per-group/user filter rules live). The health-check contract (`HealthCheckable`, `HealthStatus`,
+  `BaseHttpHealthCheck`) is in the root barrel; `HealthCheckManager`, which runs the checks, is the
+  separate `@qqbot/shared/health` entry — it is a tsyringe singleton, and tsyringe throws on import
+  without `reflect-metadata`, which the barrel's 370 importers should not have to load for a logger.
 - **`@qqbot/api-types`** (`packages/api-types/`) — the HTTP contract between
   `packages/bot/src/services/staticServer/` backends and the WebUI. Types only, no runtime code, no
   dependencies. Both sides import it, so a response shape that changes on one side alone fails to
@@ -269,6 +269,14 @@ them, so the dependency only ever runs bot → package.
   (DeepSeek's DSML is parsed in `DeepSeekProvider`). Which provider a message goes to (`ProviderRouter`,
   `ProviderSelector`, `LLMService` fallback), the prompt it gets and what happens to the reply stay in
   the bot — so do `LLMService`'s own types (tool-loop options, trace entries) in `packages/bot/src/ai/types.ts`.
+- **`@qqbot/retrieval`** (`packages/retrieval/`) — retrieval without an LLM: web search (SearXNG
+  direct or over MCP, Serper, provider fallback), page fetching (Readability, Jina Reader, SSRF
+  guards) and vector RAG (embeddings + Qdrant). Its config types (`MCPConfig` for the `mcp` key,
+  `RAGConfig` for `rag`) live in `src/config.ts`. `RetrievalService` is the separate
+  `@qqbot/retrieval/service` entry (a tsyringe singleton) and injects the package's
+  `RETRIEVAL_OPTIONS`, which `core/wiring.ts` registers. Deciding what to search, rendering results
+  for a model (the `search` tool) and LLM filter-refine (proactive replies) stay in the bot, as does
+  the Qdrant explorer WebUI backend (`packages/bot/src/integrations/retrieval/`).
 - **`@qqbot/webui`** (`packages/webui/`) — Vite + React admin console; talks to the bot only over HTTP.
 
 Remaining splits are planned in the knowledge base (`_kb/tasks/09-monorepo-and-package-split/`).

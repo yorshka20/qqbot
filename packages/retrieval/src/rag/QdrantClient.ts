@@ -4,7 +4,7 @@
 
 import { HttpClient, logger } from '@qqbot/shared';
 import { validate as uuidValidate, v5 as uuidv5 } from 'uuid';
-import type { QdrantConfig } from '@/core/config/types/rag';
+import type { QdrantConfig } from '../config';
 
 /** Use RFC DNS namespace for deterministic UUID v5 from RAG document ids (e.g. message id). Same id => same point id. */
 const RAG_POINT_ID_NAMESPACE = uuidv5.DNS;

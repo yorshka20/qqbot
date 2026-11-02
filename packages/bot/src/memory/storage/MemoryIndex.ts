@@ -6,9 +6,9 @@
 // derived id, so every search hit maps straight back to the fact it came from. `source` tells
 // the two apart, which lets one manual slot be reconciled without touching anything else.
 
+import type { RAGService } from '@qqbot/retrieval';
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { inject, singleton } from 'tsyringe';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
-import type { RAGService } from '@/services/retrieval/rag/RAGService';
 import { GROUP_MEMORY_USER_ID } from '../model/constants';
 import { coreScopeOf } from '../model/scopes';
 

@@ -32,10 +32,10 @@ import type {
   TagCount,
   TimelineEntry,
 } from '@qqbot/api-types';
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WeChatDatabase } from '@/services/wechat/WeChatDatabase';

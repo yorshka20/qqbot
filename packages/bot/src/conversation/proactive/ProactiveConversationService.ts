@@ -1,6 +1,8 @@
 // Proactive Conversation Service - orchestrates debounced analysis, Ollama, thread, and proactive reply (Phase 1 + Phase 2 RAG)
 
 import type { LLMTarget, VisionImage } from '@qqbot/llm';
+import type { FetchProgressNotifier } from '@qqbot/retrieval';
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { AIService } from '@/ai/AIService';
@@ -26,8 +28,7 @@ import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalServic
 import type { MessageSegment } from '@/message/types';
 import { PluginManager } from '@/plugins/PluginManager';
 import type { ReactionPlugin } from '@/plugins/plugins/ReactionPlugin';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
-import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
+import { MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { groupHasWhitelistCapability, WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import {
   isReadableTextForThread,

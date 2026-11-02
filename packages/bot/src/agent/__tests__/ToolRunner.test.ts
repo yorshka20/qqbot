@@ -11,7 +11,7 @@ import { ToolRunner } from '../ToolRunner';
 import type { SubAgentSession } from '../types';
 import { SubAgentType } from '../types';
 import { createFileReadService } from '@/services/file/__tests__/createFileReadService';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
+import { RetrievalService } from '@qqbot/retrieval/service';
 
 function createMockSession(overrides?: Partial<SubAgentSession>): SubAgentSession {
   return {

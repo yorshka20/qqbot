@@ -7,7 +7,7 @@
 // it fails.
 
 import { logger } from '@qqbot/shared';
-import type { SerperConfig } from '@/core/config/types/mcp';
+import type { SerperConfig } from '../config';
 import type { SearchOptions, SearchResult } from '../searxng/types';
 import type { SerperSearchResponse } from './types';
 

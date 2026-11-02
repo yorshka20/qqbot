@@ -1,8 +1,8 @@
 // WeChat moments semantic search — search over personal moments in Qdrant
 
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { Tool } from '@/tools/decorators';
 import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';

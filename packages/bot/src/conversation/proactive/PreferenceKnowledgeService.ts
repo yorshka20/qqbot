@@ -1,14 +1,13 @@
 // PreferenceKnowledgeService - RAG retrieval for proactive reply (Phase 2)
 
+import type { FetchProgressNotifier, SearchResult } from '@qqbot/retrieval';
+import { extractEntriesFromChunks } from '@qqbot/retrieval';
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
 import { DITokens } from '@/core/DITokens';
-import type { SearchResult } from '@/services/retrieval';
-import { extractEntriesFromChunks } from '@/services/retrieval/fetch';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
-import type { FetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import {
   buildSummariesFromStringChunks,
   FILTER_REFINE_MAX_ROUNDS,

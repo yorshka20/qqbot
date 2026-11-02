@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
-import type { RetrievalService } from '@/services/retrieval/RetrievalService';
-import type { RAGDocument } from '@/services/retrieval/rag/types';
+import type { RetrievalService } from '@qqbot/retrieval/service';
+import type { RAGDocument } from '@qqbot/retrieval';
 import { type IndexedFact, MemoryIndex } from '../MemoryIndex';
 
 const GROUP = '100000001';

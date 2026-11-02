@@ -1,6 +1,7 @@
 // Conversation Initializer - initializes all conversation-related components
 
 import type { AIManager } from '@qqbot/llm';
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import { HealthCheckManager } from '@qqbot/shared/health';
 import { AgendaInitializer } from '@/agenda';
@@ -22,7 +23,6 @@ import { DatabaseManager } from '@/database/DatabaseManager';
 import { HookManager } from '@/hooks/HookManager';
 import { MessageUtils } from '@/message/MessageUtils';
 import { PersonaInitializer } from '@/persona';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import type { ToolManager } from '@/tools';
 import { COMMAND_PREFIXES } from './CommandRouter';
 import { ConversationManager } from './ConversationManager';

@@ -35,6 +35,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { LLMTarget } from '@qqbot/llm';
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { resolveFromRepoRoot } from '@qqbot/shared';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
@@ -59,7 +60,6 @@ import { ManualMemoryStore } from '@/memory/storage/ManualMemoryStore';
 import { MemoryFactStore } from '@/memory/storage/MemoryFactStore';
 import { MemoryIndex } from '@/memory/storage/MemoryIndex';
 import { MemoryIndexSync } from '@/memory/storage/MemoryIndexSync';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
 
 const MEMORY_DIR = resolveFromRepoRoot('data/memory');
 const MIGRATE_DIR = resolveFromRepoRoot('data/backup/memory/migrate');

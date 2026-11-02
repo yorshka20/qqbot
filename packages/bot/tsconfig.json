@@ -17,6 +17,12 @@
         "./packages/bot/src/*"
       ],
     },
+    // DOM: the callbacks passed to Puppeteer's page.evaluate run inside Chromium (cards,
+    // reports, portraits, the browser fingerprint patch).
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
     "types": [
       "bun-types"
     ]
@@ -33,6 +39,9 @@
     },
     {
       "path": "../llm"
+    },
+    {
+      "path": "../retrieval"
     },
     {
       "path": "../shared"

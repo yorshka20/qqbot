@@ -1,7 +1,7 @@
 // Embedding client for an OpenAI-compatible POST {url}/embeddings endpoint (SiliconFlow).
 
 import { HttpClient, HttpClientError, logger } from '@qqbot/shared';
-import type { EmbeddingConfig } from '@/core/config/types/rag';
+import type { EmbeddingConfig } from '../config';
 
 const DEFAULT_BATCH_SIZE = 32;
 const DEFAULT_TIMEOUT_MS = 60_000;

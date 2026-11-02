@@ -1,9 +1,9 @@
 // WeChat moments topic analysis — retrieves relevant moments then calls LLMService for deep analysis
 
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { LLMService } from '@/ai/services/LLMService';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { loadAnalysisPrompt } from '@/services/wechat/moments/momentsTags';
 import { WeChatIngestPlugin } from '@/services/wechat/plugins';
 import { Tool } from '@/tools/decorators';

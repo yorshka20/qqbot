@@ -14,9 +14,9 @@ import type {
   QdrantScrollResponse,
   QdrantSearchResponse,
 } from '@qqbot/api-types';
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 
 const API_PREFIX = '/api/qdrant';

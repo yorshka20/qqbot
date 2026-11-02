@@ -1,11 +1,11 @@
 // Search task executor - handles web search queries
 
+import type { SearchResult } from '@qqbot/retrieval';
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { DITokens } from '@/core/DITokens';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
-import type { SearchResult } from '@/services/retrieval/searxng/types';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

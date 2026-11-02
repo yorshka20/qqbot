@@ -5,7 +5,7 @@ import type { SessionMemoStore } from '@/conversation/memo/SessionMemoStore';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
 import type { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';
-import type { RetrievalService } from '@/services/retrieval/RetrievalService';
+import type { RetrievalService } from '@qqbot/retrieval/service';
 import type { VKBContextEngine } from '@/services/vkb/VKBContextEngine';
 import type { PromptManager } from '../../../prompt/PromptManager';
 import { ReplyPipelineContext } from '../../ReplyPipelineContext';

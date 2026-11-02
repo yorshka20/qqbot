@@ -8,8 +8,9 @@
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import type { RAGDocument } from '@qqbot/retrieval';
+import type { RetrievalService } from '@qqbot/retrieval/service';
 import { logger, resolveFromRepoRoot } from '@qqbot/shared';
-import type { RAGDocument, RetrievalService } from '@/services/retrieval';
 import type { WeChatPadProClient, WXMoment } from '../WeChatPadProClient';
 import type { ParsedMomentMedia } from './momentsParser';
 import { parseMomentObjectDesc } from './momentsParser';

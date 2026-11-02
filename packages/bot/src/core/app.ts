@@ -7,6 +7,7 @@
 // in production and in the smoke test.
 
 import type { Database } from 'bun:sqlite';
+import { killAllMcpChildren } from '@qqbot/retrieval';
 import { logger } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { CodingAgentInitializer } from '@/integrations/agent-cluster';
@@ -14,7 +15,6 @@ import { AvatarIdleTrigger } from '@/integrations/avatar/services/AvatarIdleTrig
 import { initLanRelay } from '@/lan';
 import { MemoryIndexSync } from '@/memory/storage/MemoryIndexSync';
 import { PluginManager } from '@/plugins/PluginManager';
-import { killAllMcpChildren } from '@/services/retrieval/searxng/mcp/childReaper';
 import { stopStaticServer } from '@/services/staticServer';
 import type { TTSManager } from '@/services/tts/TTSManager';
 import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';

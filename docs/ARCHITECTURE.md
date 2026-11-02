@@ -1137,7 +1137,7 @@ The bot talks MCP on three surfaces — once as a client, twice as a server.
 
 | Surface | Direction | Location | Purpose |
 |---|---|---|---|
-| `SearxngMcpClient` | Bot is the **client** | `src/services/retrieval/searxng/mcp/` | Spawns a stdio MCP server (`mcp-searxng`) and calls its `searxng_web_search` tool. This is not a general MCP client — it is one of SearXNG's two transports, the sibling of `SearXNGClient`'s direct HTTP. |
+| `SearxngMcpClient` | Bot is the **client** | `packages/retrieval/src/searxng/mcp/` | Spawns a stdio MCP server (`mcp-searxng`) and calls its `searxng_web_search` tool. This is not a general MCP client — it is one of SearXNG's two transports, the sibling of `SearXNGClient`'s direct HTTP. |
 | `HubMCPServer` | Bot is the **server** | `packages/agent-cluster/src/cluster/hub/` | Streamable-HTTP endpoint at `/mcp`, consumed by cluster workers' CLI MCP clients. Caller identity comes from an `X-Worker-Id` header. |
 | `CodingAgentMcpServer` | Bot is the **server** | `src/integrations/agent-cluster/` | Streamable-HTTP endpoint at `/mcp` on its own port, consumed by the `claude` / `codex` / `dsh` CLI that `CodingAgentTaskManager` spawns through its executor. Exposes only what the CLI cannot do for itself: `bot_notify_task` / `bot_send_message` (the channel back to the requester) and `bot_info` / `bot_command`. Caller identity comes from an `X-Task-Id` header. |
 
@@ -1152,6 +1152,10 @@ a trusted private network. That assumption is load-bearing: adding capability to
 either server widens what any host on that network can do as the bot.
 
 ### Search transports
+
+Search, page fetching and RAG are the `@qqbot/retrieval` package (`packages/retrieval/`), which has
+no LLM inside: the `search` tool renders results for the model, and proactive replies run the LLM
+filter-refine over them.
 
 `SearchService` owns all three search transports and picks one from
 `mcp.search.provider` + `mcp.search.mode`: `SerperClient` (provider=serper),

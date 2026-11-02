@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import type { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
-import type { RetrievalService } from '@/services/retrieval/RetrievalService';
+import type { RetrievalService } from '@qqbot/retrieval/service';
 import type { ToolExecutionContext } from '../../types';
 import { ResearchToolExecutor } from '../ResearchToolExecutor';
 

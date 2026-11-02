@@ -5,9 +5,9 @@ import '../executors';
 
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { chunkText } from '@qqbot/retrieval';
+import type { RetrievalService } from '@qqbot/retrieval/service';
 import { logger, ResourceDownloader } from '@qqbot/shared';
-import type { RetrievalService } from '@/services/retrieval';
-import { chunkText } from '@/services/retrieval/rag/chunkText';
 import { fetchArticleText, stripHtml } from '../articles/fetchArticleText';
 import type {
   MessageCategory,

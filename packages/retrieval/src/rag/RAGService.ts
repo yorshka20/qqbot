@@ -1,7 +1,7 @@
 // RAG service - vector retrieval via an OpenAI-compatible embeddings endpoint + Qdrant
 
 import { logger } from '@qqbot/shared';
-import type { RAGConfig } from '@/core/config/types/rag';
+import type { RAGConfig } from '../config';
 import { EmbeddingClient } from './EmbeddingClient';
 import { QdrantClient } from './QdrantClient';
 import type { RAGDocument, RAGSearchMultiOptions, RAGSearchOptions, RAGSearchResult } from './types';

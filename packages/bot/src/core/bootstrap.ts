@@ -7,6 +7,7 @@
 import { ClusterManager, parseClusterConfig, wireClusterTicketWriteback } from '@qqbot/agent-cluster';
 import { ProjectRegistry } from '@qqbot/agent-cluster/projects';
 import { AvatarService } from '@qqbot/avatar';
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import { HealthCheckManager } from '@qqbot/shared/health';
 import { PromptInitializer } from '@/ai/prompt/PromptInitializer';
@@ -47,7 +48,6 @@ import { BilibiliLiveBridge } from '@/services/bilibili/live/BilibiliLiveBridge'
 import { BilibiliLiveClient } from '@/services/bilibili/live/BilibiliLiveClient';
 import { DanmakuBuffer } from '@/services/bilibili/live/DanmakuBuffer';
 import { DanmakuStore } from '@/services/bilibili/live/DanmakuStore';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { initStaticServer } from '@/services/staticServer';
 import type { TTSManager } from '@/services/tts/TTSManager';
 import { VoiceReplyChannel } from '@/services/tts/VoiceReplyChannel';

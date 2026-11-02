@@ -14,7 +14,7 @@ import '@/lan/host/LanAPIBackend';
 import '@/memory/MemoryStatusBackend';
 import '@/persona/PersonaBackend';
 import '@/integrations/agent-cluster/CodingAgentAPIBackend';
-import '@/services/retrieval/QdrantExplorerBackend';
+import '@/integrations/retrieval/QdrantExplorerBackend';
 import '@/services/staticServer/backends/DailyStatsBackend';
 import '@/services/staticServer/backends/DocsPreviewBackend';
 import '@/services/staticServer/backends/FileManagerBackend';

@@ -12,6 +12,7 @@
     { "path": "./packages/avatar" },
     { "path": "./packages/bot" },
     { "path": "./packages/llm" },
+    { "path": "./packages/retrieval" },
     { "path": "./packages/shared" },
     { "path": "./packages/webui" },
     { "path": "./scripts" }

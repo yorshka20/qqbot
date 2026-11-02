@@ -3,6 +3,9 @@
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { LLMTarget } from '@qqbot/llm';
+import type { RAGDocument } from '@qqbot/retrieval';
+import { QdrantClient } from '@qqbot/retrieval';
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger, resolveFromRepoRoot } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { isNoReplyPath } from '@/context/HookContextHelpers';
@@ -17,9 +20,6 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
 import { MemoryConsolidationService } from '@/memory/consolidation/MemoryConsolidationService';
-import { QdrantClient } from '@/services/retrieval';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
-import type { RAGDocument } from '@/services/retrieval/rag/types';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 

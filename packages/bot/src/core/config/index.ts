@@ -4,6 +4,7 @@ import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { CodingAgentConfig, ProjectRegistryConfig, TicketsConfig } from '@qqbot/agent-cluster';
 import type { LLMTarget } from '@qqbot/llm';
+import type { MCPConfig, RAGConfig } from '@qqbot/retrieval';
 import { ConfigError, getRepoRoot, logger } from '@qqbot/shared';
 import { loadConfigAuto } from './loadConfigDir';
 // Import all config types
@@ -22,13 +23,11 @@ import type { DatabaseConfig } from './types/database';
 import type { DocsPreviewConfig } from './types/docsPreview';
 import type { LanRelayConfig } from './types/lanRelay';
 import type { LoggingConfig } from './types/logging';
-import type { MCPConfig } from './types/mcp';
 import type { MemoryConfig } from './types/memory';
 import type { PluginsConfig } from './types/plugins';
 import type { PortraitConfig } from './types/portrait';
 import type { PromptsConfig } from './types/prompts';
 import type { APIConfig, EventConfig, ProtocolConfig, ProtocolName } from './types/protocol';
-import type { RAGConfig } from './types/rag';
 import type { TTSConfig } from './types/tts';
 import type { VideoKnowledgeConfig } from './types/videoKnowledge';
 import type { VKBContextEngineConfig } from './types/vkbContextEngine';
@@ -55,17 +54,6 @@ export type { LogLevel } from './types/const';
 export type { DatabaseConfig, DatabaseType, MongoDBConfig, SQLiteConfig } from './types/database';
 export type { DocsPreviewConfig, DocsPreviewRootConfig } from './types/docsPreview';
 export type { LanRelayConfig, LanRelayInstanceRole } from './types/lanRelay';
-export type {
-  MCPConfig,
-  MCPServerConfig,
-  ProxyConfig,
-  SearchConfig,
-  SearchFetchConfig,
-  SearchMode,
-  SearchProvider,
-  SearXNGConfig,
-  SerperConfig,
-} from './types/mcp';
 export type { MemoryConfig } from './types/memory';
 export type { PluginsConfig } from './types/plugins';
 export type {
@@ -82,7 +70,6 @@ export type {
   ProtocolName,
   ReconnectConfig,
 } from './types/protocol';
-export type { RAGConfig } from './types/rag';
 export type { TTSConfig } from './types/tts';
 export type { VideoKnowledgeConfig } from './types/videoKnowledge';
 export type { VKBContextEngineConfig, VKBContextEngineScope } from './types/vkbContextEngine';

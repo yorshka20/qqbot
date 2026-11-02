@@ -3,15 +3,13 @@
 import { logger } from '@qqbot/shared';
 import { HealthCheckManager } from '@qqbot/shared/health';
 import { inject, singleton } from 'tsyringe';
-import type { Config } from '@/core/config';
-import type { MCPConfig } from '@/core/config/types/mcp';
-import type { RAGConfig } from '@/core/config/types/rag';
-import { DITokens } from '@/core/DITokens';
+import type { MCPConfig, RAGConfig, RetrievalOptions } from './config';
 import { PageContentFetchService } from './fetch';
 import { RAGService } from './rag/RAGService';
 import type { RAGDocument, RAGSearchMultiOptions, RAGSearchOptions, RAGSearchResult } from './rag/types';
 import { SearchService } from './searxng/SearchService';
 import type { SearchOptions, SearchResult } from './searxng/types';
+import { RETRIEVAL_OPTIONS } from './tokens';
 
 @singleton()
 export class RetrievalService {
@@ -20,11 +18,11 @@ export class RetrievalService {
   private readonly pageContentFetchService: PageContentFetchService;
 
   constructor(
-    @inject(DITokens.CONFIG) config: Config,
+    @inject(RETRIEVAL_OPTIONS) options: RetrievalOptions,
     @inject(HealthCheckManager) healthCheckManager: HealthCheckManager,
   ) {
-    const mcpConfig: MCPConfig | undefined = config.getMCPConfig();
-    const ragConfig: RAGConfig | undefined = config.getRAGConfig();
+    const mcpConfig: MCPConfig | undefined = options.mcp;
+    const ragConfig: RAGConfig | undefined = options.rag;
     this.pageContentFetchService = new PageContentFetchService({
       config: mcpConfig?.search?.fetch ?? undefined,
     });

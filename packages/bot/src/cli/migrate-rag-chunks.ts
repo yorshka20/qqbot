@@ -8,10 +8,8 @@
 
 import 'reflect-metadata';
 
+import { chunkText, EmbeddingClient, QdrantClient } from '@qqbot/retrieval';
 import { loadConfigAuto } from '@/core/config/loadConfigDir';
-import { chunkText } from '@/services/retrieval/rag/chunkText';
-import { EmbeddingClient } from '@/services/retrieval/rag/EmbeddingClient';
-import { QdrantClient } from '@/services/retrieval/rag/QdrantClient';
 
 // ── Parse CLI args ──
 

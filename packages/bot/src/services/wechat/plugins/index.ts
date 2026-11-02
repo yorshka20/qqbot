@@ -1,6 +1,7 @@
 // WeChat Ingest Plugin — thin wrapper that wires up the WeChat service layer
 // All core logic lives in src/services/wechat/
 
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import type { InternalEventBus } from '@/agenda/InternalEventBus';
 import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
@@ -15,7 +16,6 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import { RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
 import { PluginManager } from '@/plugins/PluginManager';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import type { WeChatIngestConfig, WeChatRealtimeRule } from '@/services/wechat';
 import {
   resolveConfig,

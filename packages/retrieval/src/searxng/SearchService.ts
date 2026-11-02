@@ -2,7 +2,7 @@
 
 import { logger } from '@qqbot/shared';
 import type { HealthCheckManager } from '@qqbot/shared/health';
-import type { MCPConfig, SearchProvider } from '@/core/config/types/mcp';
+import type { MCPConfig, SearchProvider } from '../config';
 import type { PageContentFetchService } from '../fetch';
 import { SerperClient } from '../serper/SerperClient';
 import { SearxngMcpClient } from './mcp/SearxngMcpClient';

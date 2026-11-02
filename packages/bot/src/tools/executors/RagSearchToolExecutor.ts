@@ -1,8 +1,8 @@
 // RAG search task executor - retrieves local vector-store results for the current conversation or a named collection
 
+import { QdrantClient } from '@qqbot/retrieval';
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { inject, injectable } from 'tsyringe';
-import { QdrantClient } from '@/services/retrieval';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
 import { BaseToolExecutor } from './BaseToolExecutor';

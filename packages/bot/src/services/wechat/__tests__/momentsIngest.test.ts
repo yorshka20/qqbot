@@ -9,7 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { resolve } from 'node:path';
-import type { RAGDocument } from '@/services/retrieval';
+import type { RAGDocument } from '@qqbot/retrieval';
 import { parseMomentObjectDesc } from '../moments/momentsParser';
 import { WechatMomentsIngestService } from '../moments/WechatMomentsIngestService';
 import type { WeChatPadProClient, WXMoment } from '../WeChatPadProClient';
@@ -54,7 +54,7 @@ function createMockRetrieval(ragEnabled = true) {
       upsertDocuments: mock(async (collection: string, documents: RAGDocument[]) => {
         upsertedDocs.push({ collection, documents });
       }),
-    } as unknown as import('@/services/retrieval').RetrievalService,
+    } as unknown as import('@qqbot/retrieval/service').RetrievalService,
     upsertedDocs,
   };
 }

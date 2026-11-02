@@ -33,7 +33,7 @@ import type { ToolCall, ToolResult } from '@/tools/types';
 import { createLLMService } from '@/ai/services/__tests__/createLLMService';
 import { CommandManager } from '@/command/CommandManager';
 import { FileReadService } from '@/services/file/FileReadService';
-import { RetrievalService } from '@/services/retrieval/RetrievalService';
+import { RetrievalService } from '@qqbot/retrieval/service';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';
 import { PluginManager } from '@/plugins/PluginManager';

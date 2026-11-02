@@ -1,4 +1,4 @@
-// MCP configuration types
+// Retrieval configuration: web search (config key `mcp`) and vector RAG (config key `rag`).
 
 export interface ProxyConfig {
   http?: string;
@@ -109,4 +109,41 @@ export interface MCPConfig {
   server: MCPServerConfig;
   // Search behavior configuration
   search: SearchConfig;
+}
+
+// RAG (OpenAI-compatible embeddings + Qdrant)
+
+/** An OpenAI-compatible embeddings endpoint (SiliconFlow). `url` is the base, without `/embeddings`. */
+export interface EmbeddingConfig {
+  url: string;
+  apiKey: string;
+  model: string;
+  timeout?: number;
+  /** Texts per request. Default 32. */
+  batchSize?: number;
+}
+
+export interface QdrantConfig {
+  url: string;
+  apiKey?: string;
+  timeout?: number;
+}
+
+export interface RAGConfig {
+  enabled: boolean;
+  embedding: EmbeddingConfig;
+  qdrant: QdrantConfig;
+  queryInstructionPrefix?: string;
+  defaultVectorSize?: number;
+  defaultDistance?: 'Cosine' | 'Euclid' | 'Dot';
+  /** Idle minutes after last message to close a conversation window (default 5). */
+  conversationWindowIdleMinutes?: number;
+  /** Max messages per window before closing (default 10). */
+  conversationWindowMaxMessages?: number;
+}
+
+/** What `RetrievalService` is built from; the application registers it under `RETRIEVAL_OPTIONS`. */
+export interface RetrievalOptions {
+  mcp?: MCPConfig;
+  rag?: RAGConfig;
 }

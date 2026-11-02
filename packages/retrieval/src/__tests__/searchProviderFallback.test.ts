@@ -5,7 +5,7 @@
 
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
-import type { MCPConfig } from '@/core/config/types/mcp';
+import type { MCPConfig } from '../config';
 import type { HealthCheckManager } from '@qqbot/shared/health';
 import type { PageContentFetchService } from '../fetch';
 import { SearchService } from '../searxng/SearchService';

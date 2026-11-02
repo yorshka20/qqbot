@@ -10,10 +10,10 @@
  */
 
 import { describeLLMTarget, type LLMTarget } from '@qqbot/llm';
+import { toQdrantPointId } from '@qqbot/retrieval';
+import type { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import type { LLMService } from '@/ai/services/LLMService';
-import type { RetrievalService } from '@/services/retrieval';
-import { toQdrantPointId } from '@/services/retrieval/rag/QdrantClient';
 import type { WeChatDatabase } from '../WeChatDatabase';
 import { normalizeEntityName, normalizeEntityType } from './momentsEntities';
 import { clampScore, loadCombinedAnalysisPrompt, normalizeAttitudeTags, normalizeSentiment } from './momentsSentiment';

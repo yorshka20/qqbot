@@ -6,6 +6,7 @@
 // interface token.
 
 import { PROJECT_REGISTRY_OPTIONS } from '@qqbot/agent-cluster';
+import { RETRIEVAL_OPTIONS } from '@qqbot/retrieval';
 import { HealthCheckManager } from '@qqbot/shared/health';
 import { createAIManager } from '@/ai/createAIManager';
 import type { APIClient } from '@/api/APIClient';
@@ -25,6 +26,7 @@ export function registerProviders(config: Config, apiClient: APIClient): void {
   container.registerInstance(DITokens.CONFIG, config);
   container.registerInstance(DITokens.API_CLIENT, apiClient);
   container.registerInstance(PROJECT_REGISTRY_OPTIONS, config.getProjectRegistryConfig() ?? {});
+  container.registerInstance(RETRIEVAL_OPTIONS, { mcp: config.getMCPConfig(), rag: config.getRAGConfig() });
 
   // Registries whose contents come from config or decorator metadata, assembled on build.
   container.registerSingletonFactory(DITokens.AI_MANAGER, () => createAIManager(config));

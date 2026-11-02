@@ -5,8 +5,8 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import { PromptManager } from '@/ai/prompt/PromptManager';
-import type { RetrievalService } from '@/services/retrieval';
-import type { SearchResult } from '@/services/retrieval/searxng/types';
+import type { RetrievalService } from '@qqbot/retrieval/service';
+import type { SearchResult } from '@qqbot/retrieval';
 import type { ToolCall, ToolExecutionContext } from '@/tools/types';
 import { SearchToolExecutor } from '../SearchToolExecutor';
 

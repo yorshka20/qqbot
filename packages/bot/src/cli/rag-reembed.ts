@@ -19,10 +19,9 @@
 import 'reflect-metadata';
 
 import { existsSync } from 'node:fs';
+import type { RAGConfig } from '@qqbot/retrieval';
+import { EmbeddingClient, QdrantClient } from '@qqbot/retrieval';
 import { loadConfigAuto } from '@/core/config/loadConfigDir';
-import type { RAGConfig } from '@/core/config/types/rag';
-import { EmbeddingClient } from '@/services/retrieval/rag/EmbeddingClient';
-import { QdrantClient } from '@/services/retrieval/rag/QdrantClient';
 
 const PAGE_SIZE = 128;
 

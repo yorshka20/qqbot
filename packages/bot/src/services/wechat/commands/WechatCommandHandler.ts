@@ -1,6 +1,7 @@
 // WeChat command handler — /wechat <subcommand> [args]
 // Gives QQ bot users access to WeChat data via read-only PadPro API
 
+import type { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import type { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { SubAgentType } from '@/agent/types';
@@ -8,7 +9,6 @@ import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { CommandContext, CommandHandler, CommandResult } from '@/command/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { PermissionLevel } from '@/permission';
-import type { RetrievalService } from '@/services/retrieval';
 import type {
   WeChatDatabase,
   WeChatPadProClient,
