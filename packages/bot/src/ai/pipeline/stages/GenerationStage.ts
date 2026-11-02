@@ -1,5 +1,13 @@
 // Generation stage — LLM call with retry/fallback + tool execution loop.
 
+import type {
+  AIGenerateResponse,
+  ChatMessage,
+  FunctionCall,
+  LLMTarget,
+  ReasoningEffort,
+  ToolDefinition,
+} from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { LLMService } from '@/ai/services/LLMService';
@@ -7,7 +15,6 @@ import { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { ConversationMessageSender } from '@/conversation/ConversationMessageSender';
 import { normalizeSessionForConfig } from '@/core/config/SessionUtils';
-import type { LLMTarget, ReasoningEffort } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
@@ -15,7 +22,6 @@ import { MessageBuilder } from '@/message/MessageBuilder';
 import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
 import type { ToolManager } from '@/tools/ToolManager';
 import { executeSkillCall } from '../../tools/replyTools';
-import type { AIGenerateResponse, ChatMessage, FunctionCall, ToolDefinition } from '../../types';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
 import type { ReplyStage } from '../types';
 

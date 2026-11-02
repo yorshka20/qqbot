@@ -1,8 +1,8 @@
 // WeChat Ingest Plugin - Type definitions
 
 import { readFileSync } from 'node:fs';
+import type { LLMTarget } from '@qqbot/llm';
 import { resolveFromRepoRoot } from '@qqbot/shared';
-import type { LLMTarget } from '@/core/config/types/ai';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Webhook payload from WeChatPadPro

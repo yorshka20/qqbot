@@ -1,0 +1,211 @@
+// A thinking model charges its hidden CoT against max_tokens, so the cap can be
+// spent entirely on reasoning and the response arrives with finish_reason=length
+// and no content. Returning that as an empty string makes a truncated generation
+// indistinguishable from "nothing to say", which is how a memory-extract failure
+// went silent.
+
+import { describe, expect, it } from 'bun:test';
+import type { DeepSeekProviderConfig } from '../../config';
+import type { AIGenerateOptions, ToolDefinition } from '../../types';
+import { DeepSeekProvider } from '../DeepSeekProvider';
+import { clampMaxTokens } from '../maxTokens';
+
+interface Choice {
+  finish_reason?: string;
+  message: {
+    content?: string;
+    reasoning_content?: string;
+    tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>;
+  };
+}
+
+/** Stub the HTTP layer so no network is hit; the provider sees one canned choice. */
+function providerReturning(choice: Choice): DeepSeekProvider {
+  const provider = new DeepSeekProvider({
+    type: 'deepseek',
+    apiKey: 'test-key',
+    model: 'deepseek-v4-pro',
+  } as DeepSeekProviderConfig);
+  (provider as unknown as { httpClient: { post: () => Promise<unknown> } }).httpClient = {
+    post: async () => ({
+      choices: [choice],
+      usage: { prompt_tokens: 15238, completion_tokens: 8192, total_tokens: 23430 },
+      model: 'deepseek-v4-pro',
+    }),
+  };
+  return provider;
+}
+
+describe('DeepSeekProvider truncation', () => {
+  it('throws when the budget was spent on reasoning and no content came back', async () => {
+    const provider = providerReturning({
+      finish_reason: 'length',
+      message: { reasoning_content: 'thought at length, never answered' },
+    });
+
+    await expect(provider.generate('extract memories')).rejects.toThrow(/finish_reason=length/);
+  });
+
+  it('passes an empty answer through when the model simply stopped', async () => {
+    const provider = providerReturning({ finish_reason: 'stop', message: { content: '' } });
+
+    const res = await provider.generate('extract memories');
+    expect(res.text).toBe('');
+  });
+
+  it('keeps a truncated but non-empty answer rather than discarding it', async () => {
+    const provider = providerReturning({ finish_reason: 'length', message: { content: '{"group_facts": [' } });
+
+    const res = await provider.generate('extract memories');
+    expect(res.text).toBe('{"group_facts": [');
+  });
+});
+
+/** Capture the request body the provider would post, answering with an empty stop. */
+function providerCapturing(): { provider: DeepSeekProvider; bodies: Array<Record<string, unknown>> } {
+  const provider = providerReturning({ finish_reason: 'stop', message: { content: '' } });
+  const bodies: Array<Record<string, unknown>> = [];
+  (provider as unknown as { httpClient: { post: (u: string, b: unknown) => Promise<unknown> } }).httpClient = {
+    post: async (_url, body) => {
+      bodies.push(body as Record<string, unknown>);
+      return { choices: [{ finish_reason: 'stop', message: { content: '' } }], model: 'deepseek-v4-pro' };
+    },
+  };
+  return { provider, bodies };
+}
+
+// With tools on, the thinking mode rejects any assistant message after the last user message
+// that has no reasoning_content field — which is what a fallback from another provider
+// mid tool loop used to send, as the folded recap of that provider's tool round.
+describe('DeepSeekProvider reasoning_content on the wire', () => {
+  const tool: ToolDefinition = { name: 'search', description: 'search', parameters: { type: 'object', properties: {} } };
+
+  it('carries the foreign round reasoning onto the folded recap after a fallback', async () => {
+    const { provider, bodies } = providerCapturing();
+    await provider.generate('', {
+      tools: [tool],
+      messages: [
+        { role: 'user', content: '甲是谁？' },
+        {
+          role: 'assistant',
+          content: '',
+          provider: 'gemini',
+          reasoning_content: 'I should look this up.',
+          tool_calls: [{ id: 'g1', name: 'search', arguments: '{"q":"甲"}' }],
+        },
+        { role: 'tool', tool_call_id: 'g1', content: '甲是测试用户' },
+      ],
+    });
+
+    const sent = bodies[0].messages as Array<Record<string, unknown>>;
+    const recap = sent[sent.length - 1];
+    expect(recap.role).toBe('assistant');
+    expect(recap.tool_calls).toBeUndefined();
+    expect(recap.content).toContain('我调用了 search');
+    expect(recap.reasoning_content).toBe('I should look this up.');
+  });
+
+  it('sends an empty reasoning_content on assistant messages that have none', async () => {
+    const { provider, bodies } = providerCapturing();
+    await provider.generate('', {
+      tools: [tool],
+      messages: [
+        { role: 'user', content: '你好' },
+        { role: 'assistant', content: '你好呀' },
+        { role: 'user', content: '甲是谁？' },
+        {
+          role: 'assistant',
+          content: '',
+          provider: 'openai',
+          tool_calls: [{ id: 'o1', name: 'search', arguments: '{}' }],
+        },
+        { role: 'tool', tool_call_id: 'o1', content: '甲是测试用户' },
+      ],
+    });
+
+    const assistants = (bodies[0].messages as Array<Record<string, unknown>>).filter((m) => m.role === 'assistant');
+    expect(assistants).toHaveLength(2);
+    for (const m of assistants) {
+      expect(m.reasoning_content).toBe('');
+    }
+  });
+});
+
+// minimal / medium are compatibility aliases on DeepSeek's side; the request carries the documented values.
+describe('DeepSeekProvider reasoning_effort', () => {
+  const cases: Array<[NonNullable<AIGenerateOptions['reasoningEffort']>, string]> = [
+    ['none', 'none'],
+    ['minimal', 'low'],
+    ['low', 'low'],
+    ['medium', 'high'],
+    ['high', 'high'],
+  ];
+
+  for (const [effort, sent] of cases) {
+    it(`sends reasoningEffort=${effort} as ${sent}`, async () => {
+      const { provider, bodies } = providerCapturing();
+
+      await provider.generate('hi', { reasoningEffort: effort });
+
+      expect(bodies[0].reasoning_effort).toBe(sent);
+    });
+  }
+});
+
+describe('DeepSeekProvider max_tokens', () => {
+  it('sends the ceiling when the call sets no budget, leaving reasoning room for the answer', async () => {
+    const { provider, bodies } = providerCapturing();
+
+    await provider.generate('hi', { reasoningEffort: 'low' });
+
+    expect(bodies[0].max_tokens).toBe(clampMaxTokens(undefined));
+  });
+});
+
+// DeepSeek can write a tool call as DSML text in `content` instead of `tool_calls`; the
+// provider turns it into a call when tools were offered and never lets the markup out.
+describe('DeepSeekProvider DSML tool calls', () => {
+  const tool: ToolDefinition = { name: 'search', description: 'search', parameters: { type: 'object', properties: {} } };
+  const dsml = [
+    '好的，我查一下。',
+    '<｜DSML｜function_calls>',
+    '<｜DSML｜invoke name="search">',
+    '<｜DSML｜parameter name="query" string="true">甲</｜DSML｜parameter>',
+    '<｜DSML｜parameter name="limit" string="false">3</｜DSML｜parameter>',
+    '</｜DSML｜invoke>',
+    '</｜DSML｜function_calls>',
+  ].join('\n');
+
+  it('parses DSML into a function call when tools were offered', async () => {
+    const provider = providerReturning({ finish_reason: 'stop', message: { content: dsml } });
+
+    const res = await provider.generate('', { tools: [tool], messages: [{ role: 'user', content: '甲是谁？' }] });
+
+    expect(res.functionCalls).toEqual([{ name: 'search', arguments: JSON.stringify({ query: '甲', limit: 3 }) }]);
+    expect(res.text).toBe('好的，我查一下。');
+  });
+
+  it('only strips the markup when the request carried no tools', async () => {
+    const provider = providerReturning({ finish_reason: 'stop', message: { content: dsml } });
+
+    const res = await provider.generate('', { messages: [{ role: 'user', content: '甲是谁？' }] });
+
+    expect(res.functionCalls).toBeUndefined();
+    expect(res.text).toBe('好的，我查一下。');
+  });
+
+  it('prefers structured tool_calls over DSML in the text', async () => {
+    const provider = providerReturning({
+      finish_reason: 'tool_calls',
+      message: {
+        content: dsml,
+        tool_calls: [{ id: 'd1', function: { name: 'search', arguments: '{"query":"乙"}' } }],
+      },
+    });
+
+    const res = await provider.generate('', { tools: [tool], messages: [{ role: 'user', content: '乙是谁？' }] });
+
+    expect(res.functionCalls).toEqual([{ name: 'search', arguments: '{"query":"乙"}', toolCallId: 'd1' }]);
+    expect(res.text).toBe('好的，我查一下。');
+  });
+});

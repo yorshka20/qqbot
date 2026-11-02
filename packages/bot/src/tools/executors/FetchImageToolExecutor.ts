@@ -1,8 +1,8 @@
 // Fetch image tool executor - retrieves historical images by message ID for AI vision analysis
 
+import type { ContentPart } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
-import type { ContentPart } from '@/ai/types';
 import { extractImagesFromSegmentsAsync, normalizeVisionImages } from '@/ai/utils/imageUtils';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { DatabaseManager } from '@/database/DatabaseManager';

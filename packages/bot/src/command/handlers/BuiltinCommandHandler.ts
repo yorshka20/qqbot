@@ -2,11 +2,10 @@
 
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import type { AIManager, CapabilityType } from '@qqbot/llm';
 import { getRepoRoot, logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
-import type { AIManager } from '@/ai/AIManager';
 import { AIService } from '@/ai/AIService';
-import type { CapabilityType } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { ProactiveConversationService } from '@/conversation/proactive';
 import { DITokens } from '@/core/DITokens';

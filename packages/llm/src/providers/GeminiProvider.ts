@@ -1,0 +1,1239 @@
+// Gemini Provider implementation
+
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { FileState, GoogleGenAI } from '@google/genai';
+import { getRepoRoot, logger, ResourceDownloader } from '@qqbot/shared';
+import { AIProvider } from '../base/AIProvider';
+import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
+import type { LLMCapability } from '../capabilities/LLMCapability';
+import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
+import type {
+  CapabilityType,
+  Image2ImageOptions,
+  ProviderImageGenerationResponse,
+  Text2ImageOptions,
+  VideoAnalysisOptions,
+  VideoAnalysisResult,
+  VisionImage,
+} from '../capabilities/types';
+import type { VideoAnalysisCapability, VideoAnalysisUploadedFile } from '../capabilities/VideoAnalysisCapability';
+import type { VisionCapability } from '../capabilities/VisionCapability';
+import type { GeminiProviderConfig } from '../config';
+import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler, ToolDefinition } from '../types';
+import { contentToPlainString } from '../utils/contentUtils';
+import {
+  handleFinishReason,
+  handleGeneralError,
+  handleInvalidContent,
+  handleNoCandidates,
+  handleNoImageData,
+} from '../utils/geminiErrorHandler';
+import { assertGeminiReferenceCount, geminiImageConfig } from '../utils/geminiImageRequest';
+import { clampMaxTokens } from './maxTokens';
+import { pickAcceptedReasoningLevel } from './reasoningLevel';
+
+/** Flat Part[] payload — simple prompts and vision requests. */
+type GeminiRequestParts = Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>;
+
+/** Content[] payload — multi-turn history, including tool-use rounds. */
+type GeminiRequestContents = Array<{
+  role: string;
+  parts: Array<{
+    text?: string;
+    functionCall?: { name: string; args: Record<string, unknown> };
+    functionResponse?: { name: string; response: Record<string, unknown> };
+    inlineData?: { mimeType: string; data: string };
+    thoughtSignature?: string;
+  }>;
+}>;
+
+type GeminiThinkingLevel = 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH';
+
+interface GeminiGenerateContentOptions {
+  temperature?: number;
+  maxTokens?: number;
+  tools?: ToolDefinition[];
+  systemInstruction?: string;
+  disableThinking?: boolean;
+  reasoningEffort?: AIGenerateOptions['reasoningEffort'];
+  timeoutMs?: number;
+  nativeWebSearch?: boolean;
+  jsonMode?: boolean;
+}
+
+/**
+ * Gemini Provider implementation
+ * LLM, vision, video analysis, text2img and img2img via Google Gemini API.
+ * Capabilities are enabled by config: llm, vision, text2img each optional and independent.
+ */
+
+export class GeminiProvider
+  extends AIProvider
+  implements Text2ImageCapability, Image2ImageCapability, LLMCapability, VisionCapability, VideoAnalysisCapability
+{
+  readonly name = 'gemini';
+  override readonly supportsToolUse = true;
+  private config: GeminiProviderConfig;
+  private _capabilities: CapabilityType[];
+  private client: GoogleGenAI | null = null;
+
+  private outputPath = join(getRepoRoot(), 'output', 'gemini');
+
+  // Default values for text2img when not overridden by config
+  private static readonly DEFAULT_T2I_MODEL = 'gemini-2.5-flash-image';
+  private static readonly DEFAULT_WIDTH = 1024;
+  private static readonly DEFAULT_HEIGHT = 1024;
+
+  /** Default per-call timeout for generateContent. The SDK can silently hang under
+   *  network anomalies, so we apply this both via httpOptions.timeout and via an
+   *  outer Promise.race guard. Callers may override via AIGenerateOptions.timeout. */
+  private static readonly DEFAULT_REQUEST_TIMEOUT_MS = 90_000;
+
+  constructor(config: GeminiProviderConfig) {
+    super();
+    this.config = config;
+
+    // Build capabilities from structured config: llm, vision, video_analysis, text2img (+ img2img)
+    this._capabilities = [];
+    if (config.llm) {
+      this._capabilities.push('llm', 'function_calling');
+      if (config.llm.nativeWebSearch) {
+        this._capabilities.push('native_web_search');
+      }
+    }
+    // Vision uses the same generateContent path as LLM; when llm is set, multimodal input is supported
+    // without a separate vision block (model falls back to llm.model in generateWithVision).
+    if (config.vision || config.llm) {
+      this._capabilities.push('vision');
+    }
+    this._capabilities.push('video_analysis');
+    if (config.text2img) {
+      this._capabilities.push('text2img', 'img2img');
+    }
+
+    logger.info('[GeminiProvider] Initialized');
+  }
+
+  private getClient(): GoogleGenAI {
+    if (!this.client) {
+      this.client = new GoogleGenAI({ apiKey: this.config.apiKey });
+    }
+    return this.client;
+  }
+
+  /**
+   * Race a long-running SDK call against a hard timeout. The @google/genai SDK
+   * has been observed to silently hang past httpOptions.timeout; this guard always
+   * fires after timeoutMs and throws so LLMService can react.
+   */
+  private async callWithHardTimeout<T>(fn: () => Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race<T>([
+        fn(),
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`Gemini ${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /** Text2img/img2img model from config.text2img */
+  private getText2ImgModel(): string {
+    return this.config.text2img?.model ?? GeminiProvider.DEFAULT_T2I_MODEL;
+  }
+
+  /** Default width from config.text2img */
+  private getDefaultWidth(): number {
+    return this.config.text2img?.defaultWidth ?? GeminiProvider.DEFAULT_WIDTH;
+  }
+
+  /** Default height from config.text2img */
+  private getDefaultHeight(): number {
+    return this.config.text2img?.defaultHeight ?? GeminiProvider.DEFAULT_HEIGHT;
+  }
+
+  isAvailable(): boolean {
+    return !!this.config.apiKey;
+  }
+
+  async checkAvailability(): Promise<boolean> {
+    if (!this.isAvailable()) {
+      return false;
+    }
+    try {
+      const client = this.getClient();
+      const model =
+        this.config.llm?.model ?? this.config.videoAnalysisModel ?? this.config.vision?.model ?? 'gemini-2.5-flash';
+      await client.models.get({ model });
+      return true;
+    } catch (error) {
+      logger.debug('[GeminiProvider] Availability check failed:', error);
+      if (error instanceof Error && error.message.includes('timeout')) {
+        return false;
+      }
+      // Non-timeout errors (401, 400) mean API is reachable
+      return true;
+    }
+  }
+
+  getConfig(): Record<string, unknown> {
+    return {
+      llm: this.config.llm ?? undefined,
+      vision: this.config.vision ?? undefined,
+      videoAnalysisModel: this.config.videoAnalysisModel ?? undefined,
+      text2img: this.config.text2img ?? undefined,
+    };
+  }
+
+  getCapabilities(): CapabilityType[] {
+    return this._capabilities;
+  }
+
+  /** The LLM model lives under `llm`, not at the top level the base class reads. */
+  override getDefaultModel(): string | undefined {
+    return this.config.llm?.model;
+  }
+
+  /**
+   * Save image data to local file
+   * Supports both Buffer and base64 string input
+   * @returns Relative path from output directory (e.g., 'gemini/image.png') or null if save failed
+   */
+  private async saveImageToFile(imageData: Buffer | string, originalFilename: string): Promise<string | null> {
+    try {
+      const outputDir = this.outputPath;
+      await mkdir(outputDir, { recursive: true });
+
+      const timestamp = Date.now();
+      const filename = `${timestamp}_${originalFilename}`;
+      const filepath = join(outputDir, filename);
+
+      let imageBuffer: Buffer;
+      if (imageData instanceof Buffer) {
+        imageBuffer = imageData;
+      } else if (typeof imageData === 'string') {
+        imageBuffer = Buffer.from(imageData, 'base64');
+      } else {
+        throw new Error('Invalid imageData type');
+      }
+      await writeFile(filepath, imageBuffer);
+
+      const relativePath = `gemini/${filename}`;
+      logger.info(`[GeminiProvider] Saved image to: ${filepath} (${imageBuffer.length} bytes)`);
+      return relativePath;
+    } catch (error) {
+      logger.warn(
+        `[GeminiProvider] Failed to save image to file: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  private static readonly THINKING_LEVELS_ASCENDING: readonly GeminiThinkingLevel[] = [
+    'MINIMAL',
+    'LOW',
+    'MEDIUM',
+    'HIGH',
+  ];
+
+  /**
+   * Thinking levels each model accepts, ascending — the model table at
+   * https://ai.google.dev/gemini-api/docs/thinking. The set differs per model, the API does
+   * not report it (models.get exposes only `thinking: boolean`), and a level outside it is a
+   * 400 ("Thinking level MINIMAL is not supported for this model"). gemini-3.1-flash-lite is
+   * not in the table; its row was checked against the API.
+   */
+  private static readonly MODEL_THINKING_LEVELS: Record<string, readonly GeminiThinkingLevel[]> = {
+    'gemini-2.5-flash': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-2.5-flash-lite': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-2.5-pro': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3-flash-preview': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3-pro-preview': ['LOW', 'HIGH'],
+    'gemini-3.1-flash-lite': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3.1-flash-lite-image': ['MINIMAL', 'HIGH'],
+    'gemini-3.1-pro-preview': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3.5-flash': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3.5-flash-lite': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3.6-flash': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3.7-flash': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-3.8-flash': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-robotics-er-2-preview': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+  };
+
+  /**
+   * Gemini has no documented way to switch thinking off on these models (`thinkingBudget: 0`
+   * is the legacy dial, and some models reject it), so `none` asks for the lowest level.
+   */
+  private static readonly REQUESTED_THINKING_LEVEL: Record<
+    NonNullable<AIGenerateOptions['reasoningEffort']>,
+    GeminiThinkingLevel
+  > = {
+    none: 'MINIMAL',
+    minimal: 'MINIMAL',
+    low: 'LOW',
+    medium: 'MEDIUM',
+    high: 'HIGH',
+  };
+
+  /**
+   * Translate the pipeline's reasoning effort into a thinking level `model` accepts: the
+   * requested level, else the nearest accepted level above it. A model missing from the table
+   * gets no level, so it runs at its own default — the one value it is sure to accept — and the
+   * effort is not honoured, which is worth a warning.
+   */
+  private static mapReasoningEffortToThinking(
+    effort: AIGenerateOptions['reasoningEffort'],
+    model: string,
+  ): { thinkingLevel?: GeminiThinkingLevel } {
+    if (!effort) {
+      return {};
+    }
+    const accepted = GeminiProvider.MODEL_THINKING_LEVELS[model.replace(/^models\//, '')];
+    if (!accepted) {
+      logger.warn(
+        `[GeminiProvider] Model ${model} has no thinking-level entry; reasoningEffort=${effort} not applied, add the model to MODEL_THINKING_LEVELS`,
+      );
+      return {};
+    }
+    return {
+      thinkingLevel: pickAcceptedReasoningLevel(
+        GeminiProvider.REQUESTED_THINKING_LEVEL[effort],
+        accepted,
+        GeminiProvider.THINKING_LEVELS_ASCENDING,
+      ),
+    };
+  }
+
+  /**
+   * Map ToolDefinition[] to Gemini API tools format (functionDeclarations).
+   */
+  private static mapToolsToGemini(tools: ToolDefinition[]): Array<{
+    functionDeclarations: Array<{
+      name?: string;
+      description?: string;
+      parameters?: unknown;
+      parametersJsonSchema?: unknown;
+    }>;
+  }> {
+    if (!tools.length) {
+      return [];
+    }
+    const functionDeclarations = tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      parametersJsonSchema: t.parameters,
+    }));
+    return [{ functionDeclarations }];
+  }
+
+  /**
+   * Map ChatMessage[] to Gemini multi-turn Content[] format.
+   * - System messages → combined into systemInstruction
+   * - User messages → {role:'user', parts:[{text}]}
+   * - Assistant messages (no tool_calls) → {role:'model', parts:[{text}]}
+   * - Assistant messages (with tool_calls) → {role:'model', parts:[{functionCall:{name,args}}]}
+   * - Tool messages → {role:'user', parts:[{functionResponse:{name,response}}]}
+   *
+   * Also returns `hasUnsignedToolCall`: true when at least one assistant tool_call in the history
+   * lacks a `thought_signature`. This happens when a prior turn was handled by another provider
+   * (e.g. OpenAI/DeepSeek) and the conversation is now falling back to Gemini. Gemini's thinking
+   * models reject such requests with 400 INVALID_ARGUMENT, so the caller must disable thinking
+   * (thinkingBudget=0) for this request.
+   */
+  private static mapChatMessagesToGeminiContents(messages: ChatMessage[]): {
+    systemInstruction?: string;
+    hasUnsignedToolCall: boolean;
+    contents: Array<{
+      role: string;
+      parts: Array<{
+        text?: string;
+        functionCall?: { name: string; args: Record<string, unknown> };
+        functionResponse?: { name: string; response: Record<string, unknown> };
+        inlineData?: { mimeType: string; data: string };
+        thoughtSignature?: string;
+      }>;
+    }>;
+  } {
+    // Extract system messages → systemInstruction
+    const systemParts = messages
+      .filter((m) => m.role === 'system')
+      .map((m) => contentToPlainString(m.content))
+      .filter(Boolean);
+    const systemInstruction = systemParts.join('\n\n') || undefined;
+
+    // Build a lookup: tool_call_id → tool_name (from assistant messages with tool_calls)
+    const toolCallIdToName = new Map<string, string>();
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && msg.tool_calls?.length) {
+        for (const tc of msg.tool_calls) {
+          toolCallIdToName.set(tc.id, tc.name);
+        }
+      }
+    }
+
+    const contents: Array<{
+      role: string;
+      parts: Array<{
+        text?: string;
+        functionCall?: { name: string; args: Record<string, unknown> };
+        functionResponse?: { name: string; response: Record<string, unknown> };
+        inlineData?: { mimeType: string; data: string };
+        thoughtSignature?: string;
+      }>;
+    }> = [];
+
+    let hasUnsignedToolCall = false;
+
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        continue; // handled as systemInstruction
+      }
+
+      if (msg.role === 'assistant') {
+        const parts: Array<{
+          text?: string;
+          functionCall?: { name: string; args: Record<string, unknown> };
+          thoughtSignature?: string;
+        }> = [];
+
+        const textContent = contentToPlainString(msg.content).trim();
+        if (textContent) {
+          parts.push({ text: textContent });
+        }
+
+        if (msg.tool_calls?.length) {
+          for (const tc of msg.tool_calls) {
+            let args: Record<string, unknown>;
+            try {
+              const parsed = JSON.parse(tc.arguments);
+              args = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+            } catch {
+              args = {};
+            }
+            const part: {
+              functionCall: { name: string; args: Record<string, unknown> };
+              thoughtSignature?: string;
+            } = { functionCall: { name: tc.name, args } };
+            // Echo back thoughtSignature for Gemini thinking models.
+            if (tc.thought_signature) {
+              part.thoughtSignature = tc.thought_signature;
+            } else {
+              // Tool call was produced by a non-Gemini provider during fallback; no signature available.
+              hasUnsignedToolCall = true;
+            }
+            parts.push(part);
+          }
+        }
+
+        if (parts.length > 0) {
+          contents.push({ role: 'model', parts });
+        }
+        continue;
+      }
+
+      if (msg.role === 'tool') {
+        const toolName = msg.tool_call_id ? (toolCallIdToName.get(msg.tool_call_id) ?? 'unknown_tool') : 'unknown_tool';
+        const rawContent = contentToPlainString(msg.content);
+        let response: Record<string, unknown>;
+        try {
+          const parsed = JSON.parse(rawContent);
+          response =
+            typeof parsed === 'object' && parsed !== null
+              ? (parsed as Record<string, unknown>)
+              : { result: rawContent };
+        } catch {
+          response = { result: rawContent };
+        }
+        contents.push({
+          role: 'user',
+          parts: [{ functionResponse: { name: toolName, response } }],
+        });
+        continue;
+      }
+
+      // user role — handle both plain string and ContentPart[] (with image_url)
+      if (typeof msg.content === 'string') {
+        if (msg.content) {
+          contents.push({ role: 'user', parts: [{ text: msg.content }] });
+        }
+      } else if (Array.isArray(msg.content)) {
+        const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
+        for (const part of msg.content) {
+          if (part.type === 'text') {
+            if (part.text) parts.push({ text: part.text });
+          } else if (part.type === 'image_url') {
+            const url = part.image_url.url;
+            const dataUrlMatch = /^data:([^;]+);base64,(.+)$/.exec(url);
+            if (dataUrlMatch) {
+              parts.push({ inlineData: { mimeType: dataUrlMatch[1], data: dataUrlMatch[2] } });
+            }
+          }
+        }
+        if (parts.length > 0) {
+          contents.push({ role: 'user', parts });
+        }
+      }
+    }
+
+    return { systemInstruction, contents, hasUnsignedToolCall };
+  }
+
+  /**
+   * Call generateContent for text response (LLM or vision). Optional tools for function calling.
+   * Returns text, usage, and if the model chose to call a function: functionCall + toolCallId.
+   * Accepts either Part[] (for simple/vision requests) or Content[] (for multi-turn tool use).
+   */
+  private async generateContentText(
+    model: string,
+    contentsOrParts: GeminiRequestParts | GeminiRequestContents,
+    options?: GeminiGenerateContentOptions,
+  ): Promise<{
+    text: string;
+    usage?: AIGenerateResponse['usage'];
+    functionCalls?: AIGenerateResponse['functionCalls'];
+    reasoningContent?: string;
+  }> {
+    const config: Record<string, unknown> = {
+      temperature: options?.temperature ?? 0.7,
+    };
+    // Thinking tokens count against this budget, so a cap sized for the answer can be fully consumed
+    // by thinking, yielding finishReason=MAX_TOKENS with no text parts; unset means the ceiling.
+    config.maxOutputTokens = clampMaxTokens(options?.maxTokens);
+    // Tools array can hold both functionDeclarations and googleSearch grounding entries.
+    // Drop caller-supplied `search` tool when grounding is on so the model uses grounding instead.
+    const effectiveTools = options?.nativeWebSearch
+      ? (options?.tools ?? []).filter((t) => t.name !== 'search')
+      : options?.tools;
+    const geminiTools: Array<unknown> = [];
+    if (effectiveTools?.length) {
+      geminiTools.push(...GeminiProvider.mapToolsToGemini(effectiveTools));
+    }
+    if (options?.nativeWebSearch) {
+      geminiTools.push({ googleSearch: {} });
+    }
+    if (geminiTools.length > 0) {
+      config.tools = geminiTools;
+      if (effectiveTools?.length) {
+        // Gemini rejects requests that mix built-in tools (googleSearch) with
+        // functionDeclarations unless includeServerSideToolInvocations is set.
+        const toolConfig: Record<string, unknown> = { functionCallingConfig: { mode: 'AUTO' } };
+        if (options?.nativeWebSearch) {
+          toolConfig.includeServerSideToolInvocations = true;
+        }
+        config.toolConfig = toolConfig;
+      }
+    }
+    if (options?.systemInstruction) {
+      config.systemInstruction = options.systemInstruction;
+    }
+    // Gemini rejects responseMimeType together with a tools array, so structured
+    // output is only requestable on tool-free calls.
+    if (options?.jsonMode && geminiTools.length === 0) {
+      config.responseMimeType = 'application/json';
+    }
+    if (options?.disableThinking) {
+      // Gemini thinking models require thought_signature on every functionCall part echoed from
+      // prior turns. When history contains tool_calls from another provider (no signature), the
+      // request would fail with 400 INVALID_ARGUMENT. Disable thinking to avoid the requirement.
+      // Takes precedence over reasoningEffort: the API rejects the request otherwise.
+      config.thinkingConfig = { thinkingBudget: 0 };
+    } else {
+      // includeThoughts asks the API to return thought-summary parts (part.thought === true) so
+      // they can be normalized into reasoningContent; it does not change how much the model thinks.
+      config.thinkingConfig = {
+        ...GeminiProvider.mapReasoningEffortToThinking(options?.reasoningEffort, model),
+        includeThoughts: true,
+      };
+    }
+    // Per-call HTTP timeout. The @google/genai SDK accepts httpOptions.timeout (ms);
+    // we also wrap with Promise.race + setTimeout because the SDK has been observed
+    // to silently hang under network anomalies (no first byte, no abort) far beyond
+    // its nominal default. Belt-and-suspenders: SDK timeout for the happy path,
+    // race-based hard timeout as the always-fires backstop.
+    const timeoutMs = options?.timeoutMs ?? GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS;
+    config.httpOptions = { timeout: timeoutMs };
+
+    const response = await this.callWithHardTimeout(
+      () =>
+        this.getClient().models.generateContent({
+          model,
+          // The SDK accepts both Part[] and Content[] for contents; cast through unknown to satisfy the union.
+          contents: contentsOrParts as Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'],
+          config,
+        }),
+      timeoutMs,
+      'generateContent',
+    );
+
+    const noCandidatesError = handleNoCandidates(response, '');
+    if (noCandidatesError) {
+      throw new Error(noCandidatesError.text || 'No candidates in response');
+    }
+
+    const candidate = response.candidates?.[0];
+    if (!candidate?.content?.parts) {
+      // No content parts. Attribute it to the real cause instead of a generic structure error:
+      // a non-STOP finishReason means the model legitimately stopped before emitting text —
+      // most often MAX_TOKENS (thinking budget consumed the whole output budget), or SAFETY /
+      // RECITATION. Surfacing the reason is what makes this diagnosable downstream.
+      const finishReason = candidate?.finishReason ? String(candidate.finishReason) : undefined;
+      if (finishReason && finishReason !== 'STOP') {
+        throw new Error(`Gemini returned no content (finishReason=${finishReason})`);
+      }
+      throw new Error('Invalid response structure');
+    }
+
+    // Extract text from the parts rather than the SDK's `response.text` getter: on a
+    // tool-calling round that getter logs "there are non-text parts toolCall,toolResponse
+    // in the response…" on every single call. Thought parts must stay out of the visible
+    // reply — the getter drops them, so anything replacing it has to drop them too;
+    // they are surfaced separately as reasoningContent.
+    const text = candidate.content.parts
+      .filter((p) => !p.thought)
+      .map((p) => p.text ?? '')
+      .join('');
+    const reasoningText = candidate.content.parts
+      .filter((p) => p.thought)
+      .map((p) => p.text ?? '')
+      .join('')
+      .trim();
+    const meta = (
+      response as {
+        usageMetadata?: {
+          promptTokenCount?: number;
+          cachedContentTokenCount?: number;
+          candidatesTokenCount?: number;
+          totalTokenCount?: number;
+        };
+      }
+    ).usageMetadata;
+    const out: {
+      text: string;
+      usage?: AIGenerateResponse['usage'];
+      functionCalls?: AIGenerateResponse['functionCalls'];
+      reasoningContent?: string;
+    } = {
+      text: text ?? '',
+      reasoningContent: reasoningText || undefined,
+      usage: meta
+        ? {
+            promptTokens: meta.promptTokenCount ?? 0,
+            cachedPromptTokens: meta.cachedContentTokenCount,
+            completionTokens: meta.candidatesTokenCount ?? 0,
+            totalTokens: meta.totalTokenCount ?? 0,
+          }
+        : undefined,
+    };
+
+    // Extract ALL function calls from the response.
+    // Check response.functionCalls first (SDK shortcut), then fall back to checking parts directly.
+    const sdkFunctionCalls = (
+      response as { functionCalls?: Array<{ id?: string; name?: string; args?: Record<string, unknown> }> }
+    ).functionCalls;
+
+    // Also collect all functionCall parts from candidate (fallback + thoughtSignature source).
+    const partFunctionCalls = candidate.content.parts.filter(
+      (p) => (p as { functionCall?: unknown }).functionCall != null,
+    ) as Array<{
+      functionCall?: { id?: string; name?: string; args?: Record<string, unknown> };
+      thoughtSignature?: string;
+    }>;
+
+    // Build a map of name→thoughtSignature from parts for lookup.
+    const thoughtSignatureByIndex = new Map<number, string>();
+    for (let i = 0; i < partFunctionCalls.length; i++) {
+      const sig = partFunctionCalls[i].thoughtSignature;
+      if (sig) {
+        thoughtSignatureByIndex.set(i, sig);
+      }
+    }
+
+    // Prefer SDK shortcut array; fall back to parts-based extraction.
+    const rawCalls =
+      Array.isArray(sdkFunctionCalls) && sdkFunctionCalls.length > 0
+        ? sdkFunctionCalls
+        : partFunctionCalls
+            .map((p) => p.functionCall)
+            .filter((fc): fc is { id?: string; name?: string; args?: Record<string, unknown> } => fc != null);
+
+    if (rawCalls.length > 0) {
+      out.functionCalls = [];
+      for (let i = 0; i < rawCalls.length; i++) {
+        const fc = rawCalls[i];
+        if (!fc?.name) continue;
+        let argsStr: string;
+        if (typeof fc.args === 'object' && fc.args !== null) {
+          argsStr = JSON.stringify(fc.args);
+        } else if (typeof fc.args === 'string') {
+          argsStr = fc.args as string;
+        } else {
+          argsStr = '{}';
+        }
+        out.functionCalls.push({
+          name: fc.name,
+          arguments: argsStr,
+          toolCallId: fc.id,
+          thoughtSignature: thoughtSignatureByIndex.get(i),
+        });
+      }
+      // When returning functionCalls, clear text so caller can detect tool-use cleanly.
+      out.text = out.text || '';
+    }
+
+    return out;
+  }
+
+  /**
+   * Convert VisionImage[] to inlineData parts for vision requests
+   */
+  private async visionImagesToInlineParts(
+    images: VisionImage[],
+  ): Promise<Array<{ inlineData: { mimeType: string; data: string } }>> {
+    const result: Array<{ inlineData: { mimeType: string; data: string } }> = [];
+    for (const img of images) {
+      let resource: string;
+      if (img.base64) {
+        resource = `data:${img.mimeType || 'image/jpeg'};base64,${img.base64}`;
+      } else if (img.file) {
+        resource = img.file.startsWith('file://') ? img.file : img.file;
+      } else if (img.url) {
+        resource = img.url;
+      } else {
+        continue;
+      }
+      const { data, mimeType } = await ResourceDownloader.downloadImageToBase64WithMimeType(resource, {
+        timeout: 30000,
+        maxSize: 10 * 1024 * 1024,
+        filename: `gemini_image_${Date.now()}.png`,
+      });
+      result.push({ inlineData: { mimeType, data } });
+    }
+    return result;
+  }
+
+  // ---------- LLMCapability ----------
+
+  async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
+    if (!this.config.llm) {
+      throw new Error('GeminiProvider: llm not configured');
+    }
+    const model = options?.model ?? this.config.llm.model;
+    // [STATS] tag: daily stats counts this line as a provider call — do not remove.
+    logger.info(`[STATS] [GeminiProvider] Generating with model: ${model}`);
+    const temperature = options?.temperature ?? this.config.llm.temperature ?? 0.7;
+    const maxTokens = options?.maxTokens ?? this.config.llm.maxTokens;
+    const nativeWebSearch = options?.nativeWebSearch ?? this.config.llm.nativeWebSearch ?? false;
+
+    if (options?.messages?.length) {
+      // Multi-turn path: map ChatMessage[] to Gemini Content[] format.
+      // This correctly handles tool use messages (functionCall / functionResponse parts).
+      const { systemInstruction, contents, hasUnsignedToolCall } = GeminiProvider.mapChatMessagesToGeminiContents(
+        options.messages,
+      );
+
+      // Gemini requires at least one non-empty content entry.
+      if (contents.length === 0) {
+        contents.push({ role: 'user', parts: [{ text: prompt }] });
+      }
+
+      if (hasUnsignedToolCall) {
+        logger.warn(
+          '[GeminiProvider] History contains tool_calls without thought_signature (from another provider); disabling thinking for this request.',
+        );
+      }
+
+      const result = await this.generateContentText(model, contents, {
+        temperature,
+        maxTokens,
+        tools: options.tools,
+        systemInstruction: systemInstruction ?? options.systemPrompt,
+        disableThinking: hasUnsignedToolCall,
+        reasoningEffort: options.reasoningEffort,
+        timeoutMs: options?.timeout,
+        nativeWebSearch,
+        jsonMode: options?.jsonMode,
+      });
+      return {
+        text: result.text,
+        usage: result.usage,
+        functionCalls: result.functionCalls,
+        reasoningContent: result.reasoningContent,
+        resolvedModel: model,
+      };
+    }
+
+    // Single-turn path: a bare prompt, with the system prompt flattened in front.
+    const parts: Array<{ text: string }> = [];
+    if (options?.systemPrompt) {
+      parts.push({ text: `system: ${options.systemPrompt}\n\n` });
+    }
+    parts.push({ text: prompt });
+    const fullPrompt = parts.map((p) => p.text).join('');
+
+    const result = await this.generateContentText(model, [{ text: fullPrompt }], {
+      temperature,
+      maxTokens,
+      tools: options?.tools,
+      reasoningEffort: options?.reasoningEffort,
+      timeoutMs: options?.timeout,
+      nativeWebSearch,
+      jsonMode: options?.jsonMode,
+    });
+    return {
+      text: result.text,
+      usage: result.usage,
+      functionCalls: result.functionCalls,
+      reasoningContent: result.reasoningContent,
+      resolvedModel: model,
+    };
+  }
+
+  async generateStream(
+    prompt: string,
+    handler: StreamingHandler,
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    const result = await this.generate(prompt, options);
+    handler(result.text);
+    return result;
+  }
+
+  // ---------- VisionCapability ----------
+
+  async generateWithVision(
+    prompt: string,
+    images: VisionImage[],
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    const model = this.config.vision?.model ?? this.config.llm?.model;
+    if (!model) {
+      throw new Error('GeminiProvider: vision not configured (set vision or llm with model)');
+    }
+    // [STATS] tag: daily stats counts this line as a provider call — do not remove.
+    logger.info(`[STATS] [GeminiProvider] Generating with vision, model: ${model}`);
+    const imageParts = await this.visionImagesToInlineParts(images);
+    const contentsParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
+    if (options?.systemPrompt) {
+      contentsParts.push({ text: `system: ${options.systemPrompt}\n\n` });
+    }
+    contentsParts.push({ text: prompt });
+    contentsParts.push(...imageParts);
+
+    const result = await this.generateContentText(model, contentsParts, {
+      temperature: options?.temperature ?? 0.7,
+      maxTokens: options?.maxTokens,
+      reasoningEffort: options?.reasoningEffort,
+      timeoutMs: options?.timeout,
+    });
+    return { ...result, resolvedModel: model };
+  }
+
+  async generateStreamWithVision(
+    prompt: string,
+    images: VisionImage[],
+    handler: StreamingHandler,
+    options?: AIGenerateOptions,
+  ): Promise<AIGenerateResponse> {
+    const result = await this.generateWithVision(prompt, images, options);
+    handler(result.text);
+    return result;
+  }
+
+  async explainImages(images: VisionImage[], prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
+    return this.generateWithVision(prompt, images, options);
+  }
+
+  // ---------- Text2ImageCapability ----------
+
+  async generateImage(prompt: string, options?: Text2ImageOptions): Promise<ProviderImageGenerationResponse> {
+    if (!this.isAvailable()) {
+      throw new Error('GeminiProvider is not available: apiKey not configured');
+    }
+    if (!this.config.text2img) {
+      throw new Error('GeminiProvider: text2img not configured');
+    }
+
+    try {
+      logger.info(`[GeminiProvider] Starting image generation for prompt: ${prompt}`);
+
+      const model = options?.model ?? this.getText2ImgModel();
+      const width = options?.width ?? this.getDefaultWidth();
+      const height = options?.height ?? this.getDefaultHeight();
+
+      logger.info(`[GeminiProvider] Parameters: model=${model}, size=${width}x${height}`);
+
+      const response = await this.callWithHardTimeout(
+        () =>
+          this.getClient().models.generateContent({
+            model,
+            contents: prompt,
+          }),
+        GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS,
+        'text2img',
+      );
+
+      logger.debug(`[GeminiProvider] Response received`, response);
+
+      const noCandidatesError = handleNoCandidates(response, prompt);
+      if (noCandidatesError) {
+        return noCandidatesError;
+      }
+
+      const candidate = response.candidates?.[0];
+      if (!candidate) {
+        return {
+          images: [],
+          text: '',
+          metadata: { prompt, numImages: 0 },
+          error: { code: 'no_candidates', message: 'No candidates in response' },
+        };
+      }
+      const finishReasonError = handleFinishReason(candidate, prompt);
+      if (finishReasonError) {
+        return finishReasonError;
+      }
+
+      const invalidContentError = handleInvalidContent(candidate, prompt);
+      if (invalidContentError) {
+        return invalidContentError;
+      }
+
+      const parts = candidate.content?.parts ?? [];
+      let imageData: string | null = null;
+      let text = '';
+      let mimeType = 'image/png';
+
+      for (const part of parts) {
+        if (part.text) {
+          text = part.text;
+        } else if (part.inlineData) {
+          const data = part.inlineData.data;
+          if (data) {
+            imageData = data;
+            mimeType = part.inlineData.mimeType || 'image/png';
+            break;
+          }
+        }
+      }
+
+      if (!imageData) {
+        return handleNoImageData(text, prompt);
+      }
+
+      logger.info(`[GeminiProvider] Extracted image data (${imageData.length} chars, mimeType: ${mimeType})`);
+
+      const extension = mimeType === 'image/jpeg' || mimeType === 'image/jpg' ? '.jpg' : '.png';
+      const originalFilename = `gemini_image${extension}`;
+      const relativePath = await this.saveImageToFile(imageData, originalFilename);
+
+      const imageDataResponse: { relativePath?: string; base64?: string } = {};
+      if (relativePath) {
+        imageDataResponse.relativePath = relativePath;
+      } else {
+        imageDataResponse.base64 = imageData;
+        logger.warn('[GeminiProvider] File save failed, using base64 fallback');
+      }
+
+      return {
+        images: [imageDataResponse],
+        text,
+        metadata: {
+          prompt,
+          numImages: 1,
+          width,
+          height,
+          model,
+          mimeType,
+        },
+      };
+    } catch (error) {
+      return handleGeneralError(error, prompt);
+    }
+  }
+
+  // ---------- Image2ImageCapability ----------
+
+  async generateImageFromImage(
+    sourceImages: string[],
+    prompt: string,
+    options?: Image2ImageOptions,
+  ): Promise<ProviderImageGenerationResponse> {
+    if (!this.isAvailable()) {
+      throw new Error('GeminiProvider is not available: apiKey not configured');
+    }
+    if (!this.config.text2img) {
+      throw new Error('GeminiProvider: text2img not configured (required for img2img)');
+    }
+    if (!sourceImages.length) {
+      throw new Error('GeminiProvider.generateImageFromImage requires at least one source image');
+    }
+
+    try {
+      logger.info(
+        `[GeminiProvider] Starting image-to-image transformation for prompt: ${prompt} | images=${sourceImages.length}`,
+      );
+
+      const model = options?.model ?? this.getText2ImgModel();
+      const width = options?.width ?? this.getDefaultWidth();
+      const height = options?.height ?? this.getDefaultHeight();
+
+      assertGeminiReferenceCount(sourceImages.length);
+      const downloaded = await Promise.all(
+        sourceImages.map((img) =>
+          ResourceDownloader.downloadImageToBase64WithMimeType(img, {
+            timeout: 30000,
+            maxSize: 10 * 1024 * 1024,
+            filename: `gemini_image_${Date.now()}.png`,
+          }),
+        ),
+      );
+      const imageParts = downloaded.map(({ data, mimeType }) => ({
+        inlineData: { mimeType, data },
+      }));
+      // Same generateContent edit as Laozhang: text, then one inline image per
+      // reference. Without responseModalities the model may caption the
+      // references instead of returning an image. imageConfig carries aspect
+      // ratio and size; width/height are not fields on this API.
+      // https://ai.google.dev/gemini-api/docs/image-generation
+      const imageConfig = geminiImageConfig(options);
+      const response = await this.callWithHardTimeout(
+        () =>
+          this.getClient().models.generateContent({
+            model,
+            contents: [{ text: prompt }, ...imageParts],
+            config: {
+              responseModalities: ['IMAGE'],
+              ...(imageConfig ? { imageConfig } : {}),
+            },
+          }),
+        GeminiProvider.DEFAULT_REQUEST_TIMEOUT_MS,
+        'img2img',
+      );
+
+      const noCandidatesError = handleNoCandidates(response, prompt);
+      if (noCandidatesError) {
+        return noCandidatesError;
+      }
+
+      const candidate = response.candidates?.[0];
+      if (!candidate) {
+        return {
+          images: [],
+          text: '',
+          metadata: { prompt, numImages: 0 },
+          error: { code: 'no_candidates', message: 'No candidates in response' },
+        };
+      }
+
+      const finishReasonError = handleFinishReason(candidate, prompt);
+      if (finishReasonError) {
+        return finishReasonError;
+      }
+
+      const invalidContentError = handleInvalidContent(candidate, prompt);
+      if (invalidContentError) {
+        return invalidContentError;
+      }
+
+      const parts = candidate.content?.parts ?? [];
+      let imageData: string | null = null;
+      let text = '';
+      let mimeType = 'image/png';
+
+      for (const part of parts) {
+        if (part.text) {
+          text = part.text;
+        } else if (part.inlineData) {
+          const data = part.inlineData.data;
+          if (data) {
+            imageData = data;
+            mimeType = part.inlineData.mimeType || 'image/png';
+            break;
+          }
+        }
+      }
+
+      if (!imageData) {
+        return handleNoImageData(text, prompt);
+      }
+
+      logger.info(`[GeminiProvider] Extracted image data (${imageData.length} chars, mimeType: ${mimeType})`);
+
+      const extension = mimeType === 'image/jpeg' || mimeType === 'image/jpg' ? '.jpg' : '.png';
+      const originalFilename = `gemini_img2img${extension}`;
+      const relativePath = await this.saveImageToFile(imageData, originalFilename);
+
+      const imageDataResponse: { relativePath?: string; base64?: string } = {};
+      if (relativePath) {
+        imageDataResponse.relativePath = relativePath;
+      } else {
+        imageDataResponse.base64 = imageData;
+        logger.warn('[GeminiProvider] File save failed, using base64 fallback');
+      }
+
+      return {
+        images: [imageDataResponse],
+        text,
+        metadata: {
+          prompt,
+          numImages: 1,
+          width,
+          height,
+          model,
+          mimeType,
+          inputImage: sourceImages[0]?.substring(0, 100),
+          inputImageCount: sourceImages.length,
+        },
+      };
+    } catch (error) {
+      return handleGeneralError(error, prompt);
+    }
+  }
+
+  // ---------- Video File API ----------
+
+  /**
+   * Upload a video buffer to Gemini File API.
+   * @param videoBuffer Raw video bytes
+   * @param mimeType MIME type of the video (auto-detected from extension if omitted)
+   * @returns Uploaded File object (may still be PROCESSING)
+   */
+  async uploadVideoFile(videoBuffer: Buffer, mimeType = 'video/mp4'): Promise<VideoAnalysisUploadedFile> {
+    return this.getClient().files.upload({
+      file: new Blob([new Uint8Array(videoBuffer)], { type: mimeType }),
+      config: { mimeType },
+    }) as Promise<VideoAnalysisUploadedFile>;
+  }
+
+  /**
+   * Poll Gemini File API until the file is ACTIVE or FAILED.
+   * @param fileName The "files/..." resource name returned by uploadVideoFile
+   * @param timeoutMs Max wait time (default 5 minutes)
+   * @param pollIntervalMs Polling interval (default 10 seconds)
+   * @throws Error if file stays PROCESSING beyond timeout or enters FAILED state
+   */
+  async waitForFileProcessing(
+    fileName: string,
+    timeoutMs = 300_000,
+    pollIntervalMs = 10_000,
+  ): Promise<VideoAnalysisUploadedFile> {
+    const client = this.getClient();
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const file = (await client.files.get({ name: fileName })) as VideoAnalysisUploadedFile;
+      if (file.state === FileState.ACTIVE) {
+        return file;
+      }
+      if (file.state === FileState.FAILED) {
+        throw new Error(`Gemini file processing failed: ${file.error?.message ?? 'unknown error'}`);
+      }
+      // Still PROCESSING — wait before next poll
+      await Bun.sleep(Math.min(pollIntervalMs, deadline - Date.now()));
+    }
+    throw new Error(`Gemini file processing timed out after ${timeoutMs / 1000}s: ${fileName}`);
+  }
+
+  /**
+   * Generate a text response from a video using Gemini.
+   * Combines upload → wait → generate into one call.
+   *
+   * @param prompt Question or instruction for the video
+   * @param videoBuffer Raw video bytes
+   * @param options Generation options
+   * @returns Text response from the model
+   */
+  async generateWithVideo(
+    prompt: string,
+    videoBuffer: Buffer,
+    options: VideoAnalysisOptions,
+  ): Promise<VideoAnalysisResult> {
+    const client = this.getClient();
+
+    // 1. Upload video
+    logger.info('[GeminiProvider] Uploading video to Gemini File API...');
+    const file = await this.uploadVideoFile(videoBuffer);
+
+    // 2. Wait for processing
+    logger.info(`[GeminiProvider] Waiting for video processing: ${file.name}`);
+    const processedFile = await this.waitForFileProcessing(file.name ?? '');
+
+    // 3. Generate with video
+    logger.info('[GeminiProvider] Generating analysis with video...');
+    const model = this.config.videoAnalysisModel ?? 'gemini-2.5-flash';
+    const response = await client.models.generateContent({
+      model,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: prompt },
+            { fileData: { mimeType: processedFile.mimeType ?? 'video/mp4', fileUri: processedFile.uri ?? '' } },
+          ],
+        },
+      ],
+      config: GeminiProvider.videoGenerationConfig(model, options),
+    });
+
+    const text = (response as { text?: string }).text ?? '';
+    return { text };
+  }
+
+  /**
+   * Generate a text response using an already-uploaded Gemini File URI.
+   * Unlike generateWithVideo(), this method skips the upload and wait steps,
+   * so callers that have already called uploadVideoFile + waitForFileProcessing
+   * can pass the resulting fileUri directly and avoid a double-upload.
+   *
+   * @param prompt User question or instruction
+   * @param fileUri The "fileUri" field from the ACTIVE File object returned by waitForFileProcessing
+   * @param mimeType MIME type of the video (e.g. "video/mp4")
+   * @param options Optional generation parameters
+   */
+  async generateWithFileUri(
+    prompt: string,
+    fileUri: string,
+    mimeType: string,
+    options: VideoAnalysisOptions,
+  ): Promise<VideoAnalysisResult> {
+    logger.info('[GeminiProvider] Generating analysis from file URI...');
+
+    const model = this.config.videoAnalysisModel ?? 'gemini-2.5-flash';
+    const response = await this.getClient().models.generateContent({
+      model,
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: prompt }, { fileData: { mimeType, fileUri } }],
+        },
+      ],
+      config: GeminiProvider.videoGenerationConfig(model, options),
+    });
+
+    const text = (response as { text?: string }).text ?? '';
+    return { text };
+  }
+
+  private static videoGenerationConfig(model: string, options: VideoAnalysisOptions): Record<string, unknown> {
+    return {
+      temperature: options.temperature ?? 0.7,
+      maxOutputTokens: clampMaxTokens(options.maxTokens),
+      systemInstruction: options.systemPrompt,
+      thinkingConfig: GeminiProvider.mapReasoningEffortToThinking(options.reasoningEffort, model),
+    };
+  }
+
+  /**
+   * Delete an uploaded file from Gemini File API.
+   * @param fileName The "files/..." resource name
+   */
+  async deleteUploadedFile(fileName: string): Promise<void> {
+    await this.getClient().files.delete({ name: fileName });
+    logger.debug(`[GeminiProvider] Deleted uploaded file: ${fileName}`);
+  }
+}
+
+export type { VideoAnalysisOptions, VideoAnalysisResult } from '../capabilities/types';

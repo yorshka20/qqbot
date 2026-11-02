@@ -4,10 +4,10 @@
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
+import { describeLLMTarget, type LLMTarget } from '@qqbot/llm';
 import { ConfigError, getRepoRoot, logger, resolveFromRepoRoot } from '@qqbot/shared';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
-import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';

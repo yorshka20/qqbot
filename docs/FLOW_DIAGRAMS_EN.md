@@ -337,7 +337,7 @@ Lifecycle.execute(ctx)
     │  ├─────────────────────────────────────────────────────────────┤
     │  │ Stage 4: PREPARE                                            │
     │  │   ReplyPrepareSystem:                                       │
-    │  │     - Strip DSML artifacts                                   │
+    │  │     - Strip leaked <tool_call> blocks                        │
     │  │     - Resolve sendAsForward (long messages → forward msg)   │
     │  ├─────────────────────────────────────────────────────────────┤
     │  │ Stage 5: SEND                                               │
@@ -582,7 +582,7 @@ Input: messages[], tools[], options { maxToolRounds=3 }
 │                   │ Append user message:            │                   │
 │                   │ "Please provide final answer"   │                   │
 │                   │ generateMessages() without tools│                   │
-│                   │ Strip residual DSML tags         │                   │
+│                   │ Strip residual <tool_call> text  │                   │
 │                   │ return (stopReason: max_rounds) │                   │
 │                   └────────────────────────────────┘                    │
 │                                                                         │
@@ -619,25 +619,22 @@ AIManager (Registry)
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### DSML Fallback Mechanism
+### DSML Tool Calls (DeepSeek)
 
 ```
-When provider does not support native tool use:
+DeepSeek writes a tool call into `content` as DSML text instead of `tool_calls`:
+  <｜DSML｜function_calls>
+  <｜DSML｜invoke name="search">
+  <｜DSML｜parameter name="query" string="true">...</｜DSML｜parameter>
+  ...
 
-LLM output text contains:
-  <dsml_function_call>
-  {"name": "search", "arguments": {"query": "..."}}
-  </dsml_function_call>
-
-    │
+    │  (inside DeepSeekProvider.generate, @qqbot/llm)
     ▼
-parseDSMLFunctionCall(text)
-    │
+request offered tools? ── yes → parseDSMLFunctionCall → functionCalls[]
+    │                                                   (normal tool loop)
+    no
     ▼
-Convert to structured functionCalls[]
-    │
-    ▼
-Enter normal tool execution loop
+markup stripped from the text — DSML never reaches LLMService or the chat
 ```
 
 ### Episode Cache & History Management

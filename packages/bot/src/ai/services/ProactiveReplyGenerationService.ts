@@ -1,5 +1,7 @@
 // Proactive reply generation service — generates proactive replies for group participation.
 
+import type { AIGenerateResponse, AIProvider, ChatMessage, ContentPart, LLMTarget, VisionImage } from '@qqbot/llm';
+import { contentToPlainString } from '@qqbot/llm';
 import { inject, singleton } from 'tsyringe';
 import { LLMService } from '@/ai/services/LLMService';
 import { VisionService } from '@/ai/services/VisionService';
@@ -7,7 +9,7 @@ import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { getQueuedCard, type RenderedCard } from '@/context/HookContextHelpers';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { Config } from '@/core/config';
-import type { ChatReasoningEfforts, LLMTarget } from '@/core/config/types/ai';
+import type { ChatReasoningEfforts } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
@@ -15,12 +17,8 @@ import { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
 import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
 import type { ToolManager } from '@/tools/ToolManager';
-import type { AIProvider } from '../base/AIProvider';
-import type { VisionImage } from '../capabilities/types';
 import type { PromptManager } from '../prompt/PromptManager';
 import { buildSkillUsageInstructions, executeSkillCall, getReplySkillDefinitions } from '../tools/replyTools';
-import type { AIGenerateResponse, ChatMessage, ContentPart } from '../types';
-import { contentToPlainString } from '../utils/contentUtils';
 import { normalizeVisionImages } from '../utils/imageUtils';
 
 /**

@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import type { FunctionCall } from '@/ai/types';
+import type { FunctionCall } from '@qqbot/llm';
 import type { Config } from '@/core/config';
 import type { PermissionChecker } from '@/permission';
 import type { ToolManager } from '@/tools/ToolManager';

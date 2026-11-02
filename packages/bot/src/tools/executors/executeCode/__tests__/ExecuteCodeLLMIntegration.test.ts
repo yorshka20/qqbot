@@ -25,7 +25,7 @@ import {
   type IntegrationProviderName,
 } from '@/ai/services/__tests__/integrationTestHelpers';
 import { LLMService, type LLMServiceConfig } from '@/ai/services/LLMService';
-import type { ChatMessage, FunctionCall, ToolDefinition } from '@/ai/types';
+import type { ChatMessage, FunctionCall, ToolDefinition } from '@qqbot/llm';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { ToolManager } from '@/tools/ToolManager';

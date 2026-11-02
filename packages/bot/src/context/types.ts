@@ -1,7 +1,6 @@
 // Context type definitions
 
-import type { VisionImage } from '@/ai/capabilities/types';
-import type { ConversationHistoryRole } from '@/ai/types';
+import type { ConversationHistoryRole, VisionImage } from '@qqbot/llm';
 import type { ConversationMessageEntry } from '@/conversation/history';
 
 /**

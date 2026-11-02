@@ -1,9 +1,9 @@
+import type { ChatMessage } from '@qqbot/llm';
+import { contentToPlainString } from '@qqbot/llm';
 import { formatTimeSpanCompact } from '@qqbot/shared';
-import type { ChatMessage } from '@/ai/types';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { collectViewableImageSegments } from '@/message/imageSegments';
 import type { MessageSegment } from '@/message/types';
-import { contentToPlainString } from '../utils/contentUtils';
 import { buildHistoryEntryPrefix } from './speakerTag';
 
 /** Tag wrapping the turn's actual question. Closes every assembled envelope. */

@@ -1,10 +1,10 @@
 import 'reflect-metadata';
 
 import { describe, expect, it } from 'bun:test';
-import type { AIManager } from '@/ai/AIManager';
-import type { AIProvider } from '@/ai/base/AIProvider';
-import type { CapabilityType } from '@/ai/capabilities/types';
-import type { LLMCapability } from '@/ai/capabilities/LLMCapability';
+import type { AIManager } from '@qqbot/llm';
+import type { AIProvider } from '@qqbot/llm';
+import type { CapabilityType } from '@qqbot/llm';
+import type { LLMCapability } from '@qqbot/llm';
 import type { ProviderSelector } from '@/ai/ProviderSelector';
 import { VisionService } from '../VisionService';
 

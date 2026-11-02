@@ -1,5 +1,5 @@
+import type { AIManager } from '@qqbot/llm';
 import { inject, singleton } from 'tsyringe';
-import type { AIManager } from '@/ai/AIManager';
 import { DITokens } from '@/core/DITokens';
 
 export type ProviderRouteConfidence = 'high' | 'low';

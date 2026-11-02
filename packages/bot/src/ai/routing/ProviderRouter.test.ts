@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { AIManager } from '@/ai/AIManager';
+import type { AIManager } from '@qqbot/llm';
 import { ProviderRouter } from './ProviderRouter';
 
 function createMockAIManager(availableProviders: string[]): AIManager {

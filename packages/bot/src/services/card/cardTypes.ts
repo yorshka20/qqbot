@@ -1,6 +1,6 @@
 // Card data types for LLM response rendering
 
-import type { JsonSchemaNode } from '@/ai/types';
+import type { JsonSchemaNode } from '@qqbot/llm';
 
 /** Single source of truth for the card discriminator; the LLM tool schema's `type` enum derives from this. */
 export const CARD_TYPES = [

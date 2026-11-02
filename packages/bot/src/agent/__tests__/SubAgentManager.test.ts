@@ -8,7 +8,7 @@ import type { SubAgentSession } from '@/agent/types';
 import type { Config } from '@/core/config';
 import { createAIManagerWithProvider, getIntegrationProvider } from '@/ai/services/__tests__/integrationTestHelpers';
 import { LLMService } from '@/ai/services/LLMService';
-import type { FunctionCall, ToolDefinition } from '@/ai/types';
+import type { FunctionCall, ToolDefinition } from '@qqbot/llm';
 import { SubAgentManager } from '../SubAgentManager';
 import { SubAgentType } from '../types';
 import { createLLMService } from '@/ai/services/__tests__/createLLMService';

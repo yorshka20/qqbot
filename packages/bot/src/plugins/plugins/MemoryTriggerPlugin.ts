@@ -2,6 +2,7 @@
 
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import type { LLMTarget } from '@qqbot/llm';
 import { logger, resolveFromRepoRoot } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { isNoReplyPath } from '@/context/HookContextHelpers';
@@ -12,7 +13,6 @@ import {
   groupEntriesIntoWindows,
 } from '@/conversation/rag/buildConversationWindowDocument';
 import type { Config } from '@/core/config';
-import type { LLMTarget } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';

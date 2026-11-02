@@ -38,9 +38,9 @@ import type {
   ExecuteCommandResult,
   TaskNotification,
 } from '@qqbot/agent-cluster';
+import type { ToolDefinition } from '@qqbot/llm';
 import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
 import { z } from 'zod';
-import type { ToolDefinition } from '@/ai/types';
 import { CARD_DECK_DESCRIPTION } from '@/services/card/cardTypes';
 
 type TaskNotificationHandler = (notification: TaskNotification) => void;

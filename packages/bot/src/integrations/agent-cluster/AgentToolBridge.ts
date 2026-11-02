@@ -7,8 +7,8 @@
  */
 
 import type { AgentTask } from '@qqbot/agent-cluster';
+import type { ToolDefinition } from '@qqbot/llm';
 import { inject, singleton } from 'tsyringe';
-import type { ToolDefinition } from '@/ai/types';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
 import type { ProtocolName } from '@/core/config';
 import { DITokens } from '@/core/DITokens';

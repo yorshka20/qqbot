@@ -11,6 +11,7 @@
     { "path": "./packages/api-types" },
     { "path": "./packages/avatar" },
     { "path": "./packages/bot" },
+    { "path": "./packages/llm" },
     { "path": "./packages/shared" },
     { "path": "./packages/webui" },
     { "path": "./scripts" }

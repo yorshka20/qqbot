@@ -8,8 +8,8 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import type { LLMTarget } from '@qqbot/llm';
 import { getRepoRoot, logger } from '@qqbot/shared';
-import type { LLMTarget } from '@/core/config/types/ai';
 import type { SubAgentConfig } from './types';
 import { SubAgentType } from './types';
 

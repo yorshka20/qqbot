@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
 import { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import type { ChatMessage } from '@/ai/types';
+import type { ChatMessage } from '@qqbot/llm';
 import type {
   ConversationHistoryService,
   ConversationMessageEntry,

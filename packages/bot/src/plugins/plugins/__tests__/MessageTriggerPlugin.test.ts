@@ -21,7 +21,7 @@ import { AIService } from '@/ai/AIService';
 function createMockProviderRouter(): ProviderRouter {
   const mockAIManager = {
     getProviderForCapability: () => ({ isAvailable: () => true }),
-  } as unknown as import('@/ai/AIManager').AIManager;
+  } as unknown as import('@qqbot/llm').AIManager;
   return new ProviderRouter(mockAIManager);
 }
 

@@ -1,14 +1,12 @@
 // Ollama Preliminary Analysis Service - decides whether to proactively join (no RAG)
 
+import type { AIManager, LLMCapability, LLMTarget } from '@qqbot/llm';
+import { isLLMCapability } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
-import type { AIManager } from '@/ai/AIManager';
-import type { LLMCapability } from '@/ai/capabilities/LLMCapability';
-import { isLLMCapability } from '@/ai/capabilities/LLMCapability';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { type PreliminaryAnalysisResult, PreliminaryAnalysisSchema } from '@/ai/schemas';
 import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
-import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 
 /** analysis.ollama / analysis.ollama_multi expect JSON object; code block or raw. */

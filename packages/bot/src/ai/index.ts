@@ -1,37 +1,9 @@
 // AI module exports
 
-export { AIManager } from './AIManager';
 export { AIService } from './AIService';
-export { AIProvider } from './base/AIProvider';
-export type {
-  Image2ImageCapability,
-  Image2VideoCapability,
-  LLMCapability,
-  Text2ImageCapability,
-  VisionCapability,
-} from './capabilities';
-export type {
-  CapabilityType,
-  Image2ImageOptions,
-  Image2VideoOptions,
-  ImageGenerationResponse,
-  Text2ImageOptions,
-  VisionImage,
-} from './capabilities/types';
-export { ProviderFactory } from './ProviderFactory';
-export { ProviderRegistry } from './ProviderRegistry';
 export { ProviderSelector } from './ProviderSelector';
 export { PromptManager } from './prompt/PromptManager';
-export { AnthropicProvider } from './providers/AnthropicProvider';
-export { DeepSeekProvider } from './providers/DeepSeekProvider';
-export { GoogleCloudRunProvider } from './providers/GoogleCloudRunProvider';
-export { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
-export { MinimaxProvider } from './providers/MinimaxProvider';
-export { OllamaProvider } from './providers/OllamaProvider';
-export { OpenAIProvider } from './providers/OpenAIProvider';
-export { RunPodProvider } from './providers/RunPodProvider';
 export { ImageGenerationService } from './services/ImageGenerationService';
 export { ImageRequestAssembler, ImageRequestAssemblyError } from './services/ImageRequestAssembler';
 export { type LLMFallbackConfig, LLMService, type LLMServiceConfig } from './services/LLMService';
 export { VisionService } from './services/VisionService';
-export type { AIGenerateOptions, AIGenerateResponse, PromptTemplate, StreamingHandler, SystemPrompt } from './types';

@@ -1,20 +1,19 @@
 // Image Generation Service - provides image generation capabilities
 
+import type {
+  AIManager,
+  Image2ImageCapability,
+  Image2ImageOptions,
+  ImageGenerationResponse,
+  ProviderImageGenerationResponse,
+  Text2ImageCapability,
+  Text2ImageOptions,
+} from '@qqbot/llm';
+import { isImage2ImageCapability, isText2ImageCapability } from '@qqbot/llm';
 import { inject, singleton } from 'tsyringe';
 import { ProviderSelector } from '@/ai/ProviderSelector';
 import { DITokens } from '@/core/DITokens';
 import { getStaticServer, outputPublicFileUrl, type StaticServer } from '@/services/staticServer';
-import type { AIManager } from '../AIManager';
-import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
-import { isImage2ImageCapability } from '../capabilities/Image2ImageCapability';
-import type { Text2ImageCapability } from '../capabilities/Text2ImageCapability';
-import { isText2ImageCapability } from '../capabilities/Text2ImageCapability';
-import type {
-  Image2ImageOptions,
-  ImageGenerationResponse,
-  ProviderImageGenerationResponse,
-  Text2ImageOptions,
-} from '../capabilities/types';
 
 /**
  * Image Generation Service

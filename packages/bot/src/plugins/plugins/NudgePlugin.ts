@@ -1,8 +1,8 @@
 // Nudge Plugin - automatically replies when bot is nudged (戳一戳)
 
+import type { AIManager } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { HealthCheckManager } from '@qqbot/shared/health';
-import type { AIManager } from '@/ai/AIManager';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';

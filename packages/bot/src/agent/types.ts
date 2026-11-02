@@ -1,7 +1,6 @@
 // SubAgent system type definitions
 
-import type { AIGenerateOptions } from '@/ai/types';
-import type { LLMTarget } from '@/core/config/types/ai';
+import type { AIGenerateOptions, LLMTarget } from '@qqbot/llm';
 
 /**
  * SubAgent types

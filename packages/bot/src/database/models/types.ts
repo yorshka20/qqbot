@@ -1,6 +1,6 @@
 // Database model types and interfaces
 
-import type { LLMTarget } from '@/core/config/types/ai';
+import type { LLMTarget } from '@qqbot/llm';
 
 /**
  * Base model interface

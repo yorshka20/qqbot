@@ -1,5 +1,6 @@
 // Summarize Service - single implementation for llm.summarize (thread compression, context memory, etc.)
 
+import type { LLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
@@ -7,7 +8,6 @@ import { KeepIndicesSchema } from '@/ai/schemas';
 import { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, parseLlmJson } from '@/ai/utils/llmJsonExtract';
 import type { Config } from '@/core/config';
-import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 
 /** cleanThreadTopic prompt expects JSON (keepIndices); usually in code block or raw. */

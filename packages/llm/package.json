@@ -1,0 +1,24 @@
+{
+  "name": "@qqbot/llm",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -b --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@google/genai": "^1.52.0",
+    "@qqbot/shared": "workspace:*",
+    "adm-zip": "^0.5.16",
+    "openai": "^6.27.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/bun": "latest"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

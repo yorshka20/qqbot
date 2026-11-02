@@ -3,6 +3,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { CodingAgentConfig, ProjectRegistryConfig, TicketsConfig } from '@qqbot/agent-cluster';
+import type { LLMTarget } from '@qqbot/llm';
 import { ConfigError, getRepoRoot, logger } from '@qqbot/shared';
 import { loadConfigAuto } from './loadConfigDir';
 // Import all config types
@@ -12,7 +13,6 @@ import {
   type ChatReasoningEfforts,
   type ContextMemoryConfig,
   DEFAULT_CHAT_REASONING_EFFORTS,
-  type LLMTarget,
   type SessionProviderConfig,
 } from './types/ai';
 import type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';
@@ -42,19 +42,10 @@ export { getSessionId, getSessionType } from './SessionUtils';
 export type { AgendaConfig, AgendaLlmLimits } from './types/agenda';
 export type {
   AIConfig,
-  AIProviderConfig,
-  AIProviderType,
-  AnthropicProviderConfig,
   AutoSwitchConfig,
   ContextMemoryConfig,
-  DeepSeekProviderConfig,
   DefaultProvidersConfig,
-  LocalText2ImageProviderConfig,
   ModelPricingEntry,
-  NovelAIProviderConfig,
-  OllamaProviderConfig,
-  OpenAIProviderConfig,
-  OpenRouterProviderConfig,
   SessionProviderConfig,
 } from './types/ai';
 export type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';

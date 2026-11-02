@@ -3,8 +3,8 @@
  * Used by ImagePromptService.
  */
 
+import type { Text2ImageOptions } from '@qqbot/llm';
 import { z } from 'zod';
-import type { Text2ImageOptions } from '../capabilities/types';
 
 export interface I2VPromptResult {
   prompt: string;

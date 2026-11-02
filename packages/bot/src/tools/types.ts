@@ -1,6 +1,6 @@
 // Tool type definitions
 
-import type { ContentPart, JsonSchemaNode } from '@/ai/types';
+import type { ContentPart, JsonSchemaNode } from '@qqbot/llm';
 import type { MessageSource } from '@/conversation/sources';
 import type { HookContext } from '@/hooks/types';
 

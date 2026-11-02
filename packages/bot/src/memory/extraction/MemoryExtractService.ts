@@ -1,13 +1,13 @@
 // Memory Extract Service - extract candidate facts from chat, hand them to consolidation.
 // Also stages `memory_note` notes and drains them into the next consolidation.
 
+import type { LLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
 import { type ExtractStrategy, extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import type { Config } from '@/core/config';
-import type { LLMTarget } from '@/core/config/types/ai';
 import { GROUP_CORE_SCOPES, USER_CORE_SCOPES } from '@/core/config/types/memory';
 import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';

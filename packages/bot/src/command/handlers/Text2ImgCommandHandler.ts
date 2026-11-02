@@ -1,7 +1,6 @@
+import type { AIManager, ImageGenerationResponse, Text2ImageOptions } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
-import type { ImageGenerationResponse, Text2ImageOptions } from '@/ai';
-import type { AIManager } from '@/ai/AIManager';
 import { AIService } from '@/ai/AIService';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';

@@ -14,15 +14,14 @@
 // Fire-and-forget safety: runReflection() swallows all errors so callers on
 // the reply path are never blocked.
 
+import type { FunctionCall, LLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { z } from 'zod';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import type { FunctionCall } from '@/ai/types';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
-import type { LLMTarget } from '@/core/config/types/ai';
 import type { HookManager } from '@/hooks/HookManager';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { PersonaService } from '../PersonaService';

@@ -1,0 +1,220 @@
+// Provider Factory - creates AI providers from configuration
+
+import { logger } from '@qqbot/shared';
+import type { AIProvider } from './base/AIProvider';
+import type { AIProviderConfig } from './config';
+import { AnthropicProvider } from './providers/AnthropicProvider';
+import { DeepSeekProvider } from './providers/DeepSeekProvider';
+import { DoubaoProvider } from './providers/DoubaoProvider';
+import { GeminiProvider } from './providers/GeminiProvider';
+import { GoogleCloudRunProvider } from './providers/GoogleCloudRunProvider';
+import { GroqProvider } from './providers/GroqProvider';
+import { LaozhangProvider } from './providers/LaozhangProvider';
+import { LocalText2ImageProvider } from './providers/LocalText2ImageProvider';
+import { MinimaxProvider } from './providers/MinimaxProvider';
+import { NovelAIProvider } from './providers/NovelAIProvider';
+import { OllamaProvider } from './providers/OllamaProvider';
+import { OpenAIProvider } from './providers/OpenAIProvider';
+import { OpenRouterProvider } from './providers/OpenRouterProvider';
+import { RunPodProvider } from './providers/RunPodProvider';
+import { SiliconFlowProvider } from './providers/SiliconFlowProvider';
+
+/**
+ * Provider Factory
+ * Creates AI provider instances from configuration (all providers read only from their own config block).
+ */
+export class ProviderFactory {
+  /**
+   * Create a provider instance from configuration
+   */
+  static createProvider(name: string, config: AIProviderConfig): AIProvider | null {
+    try {
+      switch (config.type) {
+        case 'openai': {
+          return new OpenAIProvider({
+            apiKey: config.apiKey,
+            model: config.model,
+            baseURL: config.baseURL,
+            defaultMaxTokens: config.maxTokens,
+            image: config.image,
+          });
+        }
+        case 'ollama': {
+          return new OllamaProvider({
+            baseUrl: config.baseUrl,
+            model: config.model,
+            defaultTemperature: config.temperature,
+            defaultMaxTokens: config.maxTokens,
+          });
+        }
+        case 'anthropic': {
+          return new AnthropicProvider({
+            apiKey: config.apiKey,
+            model: config.model,
+            defaultTemperature: config.temperature,
+            defaultMaxTokens: config.maxTokens,
+          });
+        }
+        case 'deepseek': {
+          return new DeepSeekProvider({
+            apiKey: config.apiKey,
+            model: config.model,
+            baseURL: config.baseURL,
+            defaultTemperature: config.temperature,
+            defaultMaxTokens: config.maxTokens,
+          });
+        }
+        case 'local-text2img': {
+          const localConfig = config as Extract<AIProviderConfig, { type: 'local-text2img' }>;
+          return new LocalText2ImageProvider({
+            baseUrl: localConfig.baseUrl,
+            endpoint: localConfig.endpoint,
+            timeout: localConfig.timeout,
+            censorEnabled: localConfig.censorEnabled,
+            // Default values
+            defaultSteps: localConfig.defaultSteps,
+            defaultWidth: localConfig.defaultWidth,
+            defaultHeight: localConfig.defaultHeight,
+            defaultGuidanceScale: localConfig.defaultGuidanceScale,
+            defaultNumImages: localConfig.defaultNumImages,
+          });
+        }
+        case 'openrouter': {
+          const openRouterConfig = config as Extract<AIProviderConfig, { type: 'openrouter' }>;
+          return new OpenRouterProvider({
+            type: 'openrouter',
+            apiKey: openRouterConfig.apiKey,
+            model: openRouterConfig.model,
+            baseURL: openRouterConfig.baseURL,
+            temperature: openRouterConfig.temperature,
+            maxTokens: openRouterConfig.maxTokens,
+            httpReferer: openRouterConfig.httpReferer,
+            siteName: openRouterConfig.siteName,
+          });
+        }
+        case 'novelai': {
+          const novelAIConfig = config as Extract<AIProviderConfig, { type: 'novelai' }>;
+          return new NovelAIProvider({
+            type: 'novelai',
+            accessToken: novelAIConfig.accessToken,
+            baseURL: novelAIConfig.baseURL,
+            model: novelAIConfig.model, // Pass model configuration
+            defaultSteps: novelAIConfig.defaultSteps,
+            defaultWidth: novelAIConfig.defaultWidth,
+            defaultHeight: novelAIConfig.defaultHeight,
+            defaultGuidanceScale: novelAIConfig.defaultGuidanceScale,
+            defaultStrength: novelAIConfig.defaultStrength,
+            defaultNoise: novelAIConfig.defaultNoise,
+            resourceSavePath: novelAIConfig.resourceSavePath,
+          });
+        }
+        case 'gemini': {
+          const geminiConfig = config as Extract<AIProviderConfig, { type: 'gemini' }>;
+          return new GeminiProvider({
+            type: 'gemini',
+            apiKey: geminiConfig.apiKey,
+            resourceSavePath: geminiConfig.resourceSavePath,
+            llm: geminiConfig.llm,
+            vision: geminiConfig.vision,
+            text2img: geminiConfig.text2img,
+          });
+        }
+        case 'doubao': {
+          const doubaoConfig = config as Extract<AIProviderConfig, { type: 'doubao' }>;
+          return new DoubaoProvider({
+            apiKey: doubaoConfig.apiKey,
+            model: doubaoConfig.model,
+            baseURL: doubaoConfig.baseURL,
+            reasoningEffort: doubaoConfig.reasoningEffort,
+            defaultTemperature: doubaoConfig.temperature,
+            defaultMaxTokens: doubaoConfig.maxTokens,
+          });
+        }
+        case 'laozhang': {
+          const laozhangConfig = config as Extract<AIProviderConfig, { type: 'laozhang' }>;
+          return new LaozhangProvider({
+            type: 'laozhang',
+            apiKey: laozhangConfig.apiKey,
+            baseURL: laozhangConfig.baseURL,
+            resourceSavePath: laozhangConfig.resourceSavePath,
+            llm: laozhangConfig.llm,
+            vision: laozhangConfig.vision,
+            text2img: laozhangConfig.text2img,
+          });
+        }
+        case 'runpod': {
+          const c = config as Extract<AIProviderConfig, { type: 'runpod' }>;
+          return new RunPodProvider({
+            endpointId: c.endpointId,
+            apiKey: c.apiKey,
+            t2iEndpointId: c.t2iEndpointId,
+            timeoutMs: c.timeoutMs,
+            pollIntervalMs: c.pollIntervalMs,
+          });
+        }
+        case 'google-cloud-run': {
+          const c = config as Extract<AIProviderConfig, { type: 'google-cloud-run' }>;
+          return new GoogleCloudRunProvider({
+            baseUrl: c.baseUrl,
+            apiKey: c.apiKey,
+            timeoutMs: c.timeoutMs,
+          });
+        }
+        case 'groq': {
+          return new GroqProvider({
+            apiKey: config.apiKey,
+            model: config.model,
+            baseURL: config.baseURL,
+            defaultTemperature: config.temperature,
+            defaultMaxTokens: config.maxTokens,
+          });
+        }
+        case 'minimax': {
+          const minimaxConfig = config as Extract<AIProviderConfig, { type: 'minimax' }>;
+          return new MinimaxProvider({
+            apiKey: minimaxConfig.apiKey,
+            model: minimaxConfig.model,
+            baseURL: minimaxConfig.baseURL,
+            defaultTemperature: minimaxConfig.temperature,
+            defaultMaxTokens: minimaxConfig.maxTokens,
+            reasoningSplit: minimaxConfig.reasoningSplit,
+          });
+        }
+        case 'siliconflow': {
+          return new SiliconFlowProvider({
+            apiKey: config.apiKey,
+            model: config.model,
+            baseURL: config.baseURL,
+            defaultTemperature: config.temperature,
+            defaultMaxTokens: config.maxTokens,
+          });
+        }
+        default: {
+          logger.warn(`[ProviderFactory] Unknown provider type: ${(config as any).type}`);
+          return null;
+        }
+      }
+    } catch (error) {
+      logger.error(`[ProviderFactory] Failed to create provider ${name}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Create multiple providers from configuration
+   */
+  static createProviders(
+    providersConfig: Record<string, AIProviderConfig>,
+  ): Array<{ name: string; provider: AIProvider }> {
+    const providers: Array<{ name: string; provider: AIProvider }> = [];
+
+    for (const [name, config] of Object.entries(providersConfig)) {
+      const provider = ProviderFactory.createProvider(name, config);
+      if (provider) {
+        providers.push({ name, provider });
+      }
+    }
+
+    return providers;
+  }
+}

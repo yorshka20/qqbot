@@ -8,9 +8,9 @@
 // concerns: this tool needs a raw fetch + vision-block return, while
 // GroupReport pre-batches a Map of data URIs for HTML embedding.
 
+import type { ContentPart } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
-import type { ContentPart } from '@/ai/types';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';

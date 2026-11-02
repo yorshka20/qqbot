@@ -15,9 +15,9 @@
 // (the same egress SendSystem uses); the tool then returns a short confirmation so the model can
 // add a one-line caption instead of re-describing the picture.
 
+import type { Image2ImageOptions, Text2ImageOptions } from '@qqbot/llm';
 import { logger, SendDeliveryUnknownError } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
-import type { Image2ImageOptions, Text2ImageOptions } from '@/ai';
 import { AIService } from '@/ai/AIService';
 import { ImageRequestAssembler } from '@/ai/services/ImageRequestAssembler';
 import { extractImagesFromMessageAndReply, visionImageToString } from '@/ai/utils/imageUtils';

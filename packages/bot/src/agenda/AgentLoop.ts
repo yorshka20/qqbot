@@ -2,16 +2,15 @@
 // Bot uses the schedule's intent as the "question" to the LLM; the loop runs multi-round (plan → tool calls → message) until the task is done, then sends the final reply.
 // Also supports direct subagent execution (actionType === 'subagent') which bypasses the LLM interpretation loop.
 
+import type { AIProvider, ChatMessage, ToolDefinition } from '@qqbot/llm';
 import { getCurrentDateTimeForPrompt, logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { getRolePreset } from '@/agent/SubAgentRolePresets';
 import type { PromptManager } from '@/ai';
 import { AIService } from '@/ai/AIService';
-import type { AIProvider } from '@/ai/base/AIProvider';
 import { LLMService } from '@/ai/services/LLMService';
 import { executeToolCall, formatToolCatalog } from '@/ai/tools/replyTools';
-import type { ChatMessage, ToolDefinition } from '@/ai/types';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getQueuedCard, withTrailingText } from '@/context/HookContextHelpers';
 import { ConversationHistoryService, normalizeGroupId } from '@/conversation/history/ConversationHistoryService';

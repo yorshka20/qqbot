@@ -1,36 +1,37 @@
 // LLM Service - provides LLM text generation capability
 
-import { formatLogSections, HttpClientError, type LogSection, logger, randomUUID } from '@qqbot/shared';
-import { HealthCheckManager } from '@qqbot/shared/health';
-import { inject, singleton } from 'tsyringe';
-import { ProviderSelector } from '@/ai/ProviderSelector';
-import { getCurrentMessageContext } from '@/context/MessageContextStorage';
-import type { Config } from '@/core/config';
-import type { LLMTarget } from '@/core/config/types/ai';
-import { DITokens } from '@/core/DITokens';
-import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
-import type { AIManager } from '../AIManager';
-import type { LLMCapability } from '../capabilities/LLMCapability';
-import { isLLMCapability } from '../capabilities/LLMCapability';
-import { foldReasoningIntoContent } from '../prompt/PromptMessageAssembler';
-import { TokenRateLimiter, type TokenRateLimiterConfig } from '../rateLimit';
 import type {
   AIGenerateOptions,
   AIGenerateResponse,
+  AIManager,
   ChatMessage,
   ChatMessageToolCall,
   ContentPart,
   FunctionCall,
-  LLMCallOptions,
-  LLMTraceObserver,
+  LLMCapability,
+  LLMTarget,
   StreamingHandler,
   ToolDefinition,
+} from '@qqbot/llm';
+import { contentToPlainString, isLLMCapability } from '@qqbot/llm';
+import { formatLogSections, HttpClientError, type LogSection, logger, randomUUID } from '@qqbot/shared';
+import { HealthCheckManager } from '@qqbot/shared/health';
+import { inject, singleton } from 'tsyringe';
+import { ProviderSelector } from '@/ai/ProviderSelector';
+import type {
+  LLMCallOptions,
+  LLMTraceObserver,
   ToolResult,
   ToolUseCallOptions,
   ToolUseGenerateOptions,
   ToolUseGenerateResponse,
-} from '../types';
-import { contentToPlainString } from '../utils/contentUtils';
+} from '@/ai/types';
+import { getCurrentMessageContext } from '@/context/MessageContextStorage';
+import type { Config } from '@/core/config';
+import { DITokens } from '@/core/DITokens';
+import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
+import { foldReasoningIntoContent } from '../prompt/PromptMessageAssembler';
+import { TokenRateLimiter, type TokenRateLimiterConfig } from '../rateLimit';
 import { containsTextToolCalls, stripTextToolCalls } from '../utils/textToolCalls';
 
 type TokenUsage = NonNullable<AIGenerateResponse['usage']>;

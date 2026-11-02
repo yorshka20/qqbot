@@ -11,9 +11,9 @@
  * Design reference: `docs/local/mind-system-design.md`.
  */
 
+import type { LLMTarget } from '@qqbot/llm';
 import { resolveFromRepoRoot } from '@qqbot/shared';
 import { type MessageSource, SOURCE_VALUES } from '@/conversation/sources';
-import type { LLMTarget } from '@/core/config/types/ai';
 
 /**
  * Persona identifier. Phase 1 only has a single hardcoded `default`

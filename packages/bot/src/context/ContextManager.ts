@@ -1,7 +1,7 @@
 // Context Manager - builds and manages conversation contexts
 
+import type { ConversationHistoryRole } from '@qqbot/llm';
 import { inject, singleton } from 'tsyringe';
-import type { ConversationHistoryRole } from '@/ai/types';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { SessionHistoryStore } from '@/conversation/history/SessionHistoryStore';
 import type { Config } from '@/core/config';

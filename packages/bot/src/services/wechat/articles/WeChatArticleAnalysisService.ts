@@ -1,10 +1,10 @@
 // WeChatArticleAnalysisService — fetches unanalyzed articles, runs LLM analysis via configurable provider
 // (default: doubao, no fallback, retry on timeout), and stores extracted insights into wechat_article_insights table.
 
+import { describeLLMTarget, type LLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { LLMService } from '@/ai/services/LLMService';
-import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
 import type { WeChatDatabase, WeChatOAArticleRow } from '../WeChatDatabase';
 import { fetchArticleText } from './fetchArticleText';
 

@@ -14,12 +14,13 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { ChatMessage, ChatMessageContent } from '@qqbot/llm';
 import { getRepoRoot, logger, resolveFromRepoRoot } from '@qqbot/shared';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
 import { isAssembledEnvelope } from '@/ai/prompt/PromptMessageAssembler';
 import { LLMService } from '@/ai/services/LLMService';
-import type { ChatMessage, ChatMessageContent, LLMTraceEntry } from '@/ai/types';
+import type { LLMTraceEntry } from '@/ai/types';
 import { getContainer } from '@/core/DIContainer';
 import { archiveDateDirs } from '@/utils/dateDirArchive';
 import { RegisterPlugin } from '../decorators';

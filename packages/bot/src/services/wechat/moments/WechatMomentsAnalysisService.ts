@@ -9,9 +9,9 @@
  * Uses the same prompt templates and normalization as the batch scripts.
  */
 
+import { describeLLMTarget, type LLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import type { LLMService } from '@/ai/services/LLMService';
-import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
 import type { RetrievalService } from '@/services/retrieval';
 import { toQdrantPointId } from '@/services/retrieval/rag/QdrantClient';
 import type { WeChatDatabase } from '../WeChatDatabase';

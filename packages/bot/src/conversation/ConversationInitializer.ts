@@ -1,9 +1,10 @@
 // Conversation Initializer - initializes all conversation-related components
 
+import type { AIManager } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { HealthCheckManager } from '@qqbot/shared/health';
 import { AgendaInitializer } from '@/agenda';
-import type { AIManager, PromptManager } from '@/ai';
+import type { PromptManager } from '@/ai';
 import { AIService } from '@/ai/AIService';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { CommandManager } from '@/command';

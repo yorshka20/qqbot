@@ -1,14 +1,19 @@
 // Vision Service - provides vision/multimodal capability
 
+import type {
+  AIGenerateResponse,
+  AIManager,
+  ChatMessage,
+  LLMCapability,
+  StreamingHandler,
+  VisionCapability,
+  VisionImage,
+} from '@qqbot/llm';
+import { isVisionCapability } from '@qqbot/llm';
 import { inject, singleton } from 'tsyringe';
 import { ProviderSelector } from '@/ai/ProviderSelector';
+import type { LLMCallOptions } from '@/ai/types';
 import { DITokens } from '@/core/DITokens';
-import type { AIManager } from '../AIManager';
-import type { LLMCapability } from '../capabilities/LLMCapability';
-import type { VisionImage } from '../capabilities/types';
-import type { VisionCapability } from '../capabilities/VisionCapability';
-import { isVisionCapability } from '../capabilities/VisionCapability';
-import type { AIGenerateResponse, ChatMessage, LLMCallOptions, StreamingHandler } from '../types';
 import { normalizeVisionImages } from '../utils/imageUtils';
 
 /**

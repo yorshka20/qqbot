@@ -1,7 +1,8 @@
 import 'reflect-metadata';
 import { describe, expect, it } from 'bun:test';
 import type { LLMService } from '@/ai/services/LLMService';
-import type { FunctionCall, ToolUseGenerateOptions, ToolUseGenerateResponse } from '@/ai/types';
+import type { FunctionCall } from '@qqbot/llm';
+import type { ToolUseGenerateOptions, ToolUseGenerateResponse } from '@/ai/types';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { ConversationMessageSender } from '@/conversation/ConversationMessageSender';

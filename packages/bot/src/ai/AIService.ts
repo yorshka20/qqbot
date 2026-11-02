@@ -1,15 +1,14 @@
 // AI Service — pure facade delegating to specialized sub-services.
 
+import type { Image2ImageOptions, ImageGenerationResponse, LLMTarget, Text2ImageOptions } from '@qqbot/llm';
 import { inject, singleton } from 'tsyringe';
 import type { ProactiveReplyInjectContext } from '@/context/types';
-import type { LLMTarget } from '@/core/config/types/ai';
 import type { HookContext } from '@/hooks/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { MessageSegment } from '@/message/types';
 import type { CardData } from '@/services/card';
 import { CardRenderingService } from '@/services/card/CardRenderingService';
 import type { ToolResult } from '@/tools/types';
-import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from './capabilities/types';
 import { ReplyPipelineOrchestrator } from './pipeline/ReplyPipelineOrchestrator';
 import type { I2VPromptResult } from './schemas';
 import { ImageFacadeService } from './services/ImageFacadeService';

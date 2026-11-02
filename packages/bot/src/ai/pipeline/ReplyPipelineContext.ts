@@ -1,13 +1,11 @@
 // Mutable context passed through all reply pipeline stages.
 // Each stage reads upstream fields and writes its own outputs.
 
+import type { ChatMessage, LLMTarget, ReasoningEffort, ToolDefinition, VisionImage } from '@qqbot/llm';
 import type { ConversationMessageEntry } from '@/conversation/history';
-import type { LLMTarget, ReasoningEffort } from '@/core/config/types/ai';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
 import type { ToolResult } from '@/tools/types';
-import type { VisionImage } from '../capabilities/types';
-import type { ChatMessage, ToolDefinition } from '../types';
 
 /**
  * Mutable context object passed through all reply pipeline stages.

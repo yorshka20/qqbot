@@ -18,7 +18,7 @@ import 'reflect-metadata';
 import '@/tools/executors';
 
 import { describe, expect, test } from 'bun:test';
-import type { JsonSchemaNode } from '@/ai/types';
+import type { JsonSchemaNode } from '@qqbot/llm';
 import { CARD_TYPES, isCardData } from '@/services/card/cardTypes';
 import { ToolManager } from '@/tools/ToolManager';
 

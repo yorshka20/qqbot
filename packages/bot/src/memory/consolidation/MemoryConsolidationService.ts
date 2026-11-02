@@ -5,11 +5,11 @@
 // (replace one or more facts with a corrected or merged one) or delete. Nothing is ever
 // rewritten wholesale, so a fact keeps its id and its history until an operation names it.
 
+import type { LLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
-import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryFact } from '@/database/models/types';
 import { generateMemoryJson } from '../llm/memoryLLM';

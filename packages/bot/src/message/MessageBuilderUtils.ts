@@ -3,8 +3,8 @@
  * Helper functions for building messages from various response types
  */
 
+import type { ImageGenerationResponse } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
-import type { ImageGenerationResponse } from '@/ai';
 import { MessageBuilder } from './MessageBuilder';
 
 /**

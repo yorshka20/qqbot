@@ -1,10 +1,10 @@
 // Memory command handlers: deep extract and memory edit
 
+import type { LLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { Config } from '@/core/config';
-import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import { MemoryConsolidationService } from '@/memory/consolidation/MemoryConsolidationService';
 import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';

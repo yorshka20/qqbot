@@ -32,6 +32,9 @@
       "path": "../avatar"
     },
     {
+      "path": "../llm"
+    },
+    {
       "path": "../shared"
     }
   ],

@@ -1,5 +1,6 @@
 // Provider selection stage — routing, vision/tool capability detection, tool definition assembly.
 
+import type { AIProvider } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { ProviderRouter } from '@/ai/routing/ProviderRouter';
@@ -8,7 +9,6 @@ import { VisionService } from '@/ai/services/VisionService';
 import { DITokens } from '@/core/DITokens';
 import type { PermissionChecker } from '@/permission';
 import type { ToolManager } from '@/tools/ToolManager';
-import type { AIProvider } from '../../base/AIProvider';
 import type { PromptManager } from '../../prompt/PromptManager';
 import { buildSkillUsageInstructions, getReplySkillDefinitions } from '../../tools/replyTools';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';

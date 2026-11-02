@@ -1,8 +1,9 @@
+import type { AIManager, CapabilityType } from '@qqbot/llm';
+import { describeLLMTarget, type LLMTarget } from '@qqbot/llm';
 import { inject, injectable } from 'tsyringe';
-import type { AIManager, CapabilityType } from '@/ai';
 import { ProviderSelector, type SelectableCapability } from '@/ai/ProviderSelector';
 import type { Config } from '@/core/config';
-import { type DefaultProvidersConfig, describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
+import type { DefaultProvidersConfig } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { Command } from '../decorators';

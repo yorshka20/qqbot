@@ -2,6 +2,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { describeLLMTarget, type LLMTarget } from '@qqbot/llm';
 import { ConfigError, getRepoRoot, logger } from '@qqbot/shared';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { CommandManager } from '@/command/CommandManager';
@@ -10,7 +11,6 @@ import { hasWhitelistCapability } from '@/context/HookContextHelpers';
 import { ProactiveConversationService } from '@/conversation/proactive';
 import { ThreadService } from '@/conversation/thread';
 import type { Config } from '@/core/config';
-import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { HookContext, HookResult } from '@/hooks/types';

@@ -1,6 +1,6 @@
+import type { Image2ImageOptions, Text2ImageOptions } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
-import type { Image2ImageOptions, Text2ImageOptions } from '@/ai';
 import { AIService } from '@/ai/AIService';
 import { extractImagesFromMessageAndReply, visionImageToString } from '@/ai/utils/imageUtils';
 import type { APIClient } from '@/api/APIClient';

@@ -1,5 +1,6 @@
 // Image facade service — wraps image generation with hook lifecycle and prompt preprocessing.
 
+import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { ImageGenerationService } from '@/ai/services/ImageGenerationService';
@@ -7,7 +8,6 @@ import { ImagePromptService } from '@/ai/services/ImagePromptService';
 import { HookManager } from '@/hooks/HookManager';
 import type { AIUsageMetadata } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
-import type { Image2ImageOptions, ImageGenerationResponse, Text2ImageOptions } from '../capabilities/types';
 import type { I2VPromptResult } from '../schemas';
 import { ImageRequestAssembler } from './ImageRequestAssembler';
 

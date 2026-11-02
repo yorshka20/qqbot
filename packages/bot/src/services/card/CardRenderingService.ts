@@ -1,8 +1,8 @@
 // Card Rendering Service - provides card rendering capability for LLM responses
 
+import type { AIManager } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
-import type { AIManager } from '@/ai/AIManager';
 import { extractExpectedJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import { DITokens } from '@/core/DITokens';
 import { CardAppearanceService } from './CardAppearanceService';

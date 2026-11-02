@@ -1,13 +1,13 @@
 // SubAgent Executor - executes sub-agents with isolated context
 
+import type { ChatMessage, FunctionCall, LLMTarget, ToolDefinition } from '@qqbot/llm';
 import { getCurrentDateHourForPrompt, logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
-import type { ChatMessage, FunctionCall, ToolDefinition, ToolUseGenerateResponse } from '@/ai/types';
+import type { ToolUseGenerateResponse } from '@/ai/types';
 import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 import type { Config } from '@/core/config';
-import type { LLMTarget } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import type { PermissionChecker } from '@/permission';
 import type { ToolManager } from '@/tools/ToolManager';

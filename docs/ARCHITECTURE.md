@@ -783,6 +783,15 @@ notices cover reply generation and image generation only.
 
 ### AI Providers
 
+The provider layer is the `@qqbot/llm` package (`packages/llm/`): the `AIProvider` contract and
+capabilities, every vendor's implementation, `AIManager` / `ProviderRegistry` / `ProviderFactory`,
+batch submission, and the provider config types with `LLMTarget`. A provider sends exactly the
+`messages` (or `systemPrompt` + `prompt`) it is given and normalizes its vendor's wire format —
+DeepSeek's DSML tool-call markup, for one, never leaves `DeepSeekProvider`. Choosing a provider
+(`ProviderRouter`, `ProviderSelector`, `LLMService` fallback), assembling the prompt and handling the
+reply stay in the bot. The bot builds `AIManager` in `ai/createAIManager.ts` and registers it in
+`core/wiring.ts`.
+
 Multi-provider support is handled by `AIManager` + `ProviderRouter`:
 
 - OpenAI / OpenAI-compatible

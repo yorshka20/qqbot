@@ -8,10 +8,8 @@
  *   - Use describe.skipIf(!getIntegrationProvider('doubao')) to skip the suite when not configured
  */
 
-import { AIManager } from '@/ai/AIManager';
-import type { AIProvider } from '@/ai/base/AIProvider';
-import { ProviderFactory } from '@/ai/ProviderFactory';
-import type { ToolDefinition } from '@/ai/types';
+import type { AIProvider, ToolDefinition } from '@qqbot/llm';
+import { AIManager, ProviderFactory } from '@qqbot/llm';
 import { Config } from '@/core/config';
 
 /** All provider names supported by integration tests. */

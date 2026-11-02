@@ -1,32 +1,6 @@
 // AI configuration
 
-import type { AIProviderConfig, AIProviderType } from './providers';
-
-export type AIProviderCapability =
-  | 'llm'
-  | 'function_calling'
-  | 'native_web_search'
-  | 'vision'
-  | 'video_analysis'
-  | 'text2img'
-  | 'img2img'
-  | 'i2v';
-
-/**
- * An LLM to call: a provider and the model it runs there. The two only work as a pair —
- * a model name means nothing to another provider — so every route to an LLM (defaults,
- * task providers, session overrides, user routing, fallback) names both together. An
- * omitted model is the provider's own configured model.
- */
-export interface LLMTarget {
-  provider: string;
-  model?: string;
-}
-
-/** `provider / model` for logs and replies; a target without a model shows the provider alone. */
-export function describeLLMTarget(target: LLMTarget): string {
-  return target.model ? `${target.provider} / ${target.model}` : target.provider;
-}
+import type { AIProviderConfig, AIProviderType, LLMTarget, ReasoningEffort } from '@qqbot/llm';
 
 /**
  * Default providers configuration (by capability)
@@ -103,15 +77,6 @@ export interface TaskProvidersConfig {
    */
   subagent?: LLMTarget[];
 }
-
-/**
- * Provider-neutral reasoning effort scale. `'none'` asks for no thinking and
- * `'minimal'` for the least a model can do. Each provider maps it onto the
- * values its own API and the target model accept — the sets differ per vendor
- * and sometimes per model, and an unsupported value is a 400 — so a provider
- * never forwards it verbatim.
- */
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
 /**
  * Chat-pipeline reasoning configuration. Split by whether the turn involves
@@ -292,30 +257,3 @@ export interface ContextMemoryConfig {
   // Maximum number of history messages to include in AI prompt
   maxHistoryMessages?: number;
 }
-
-// Re-export provider types
-export type {
-  AIProviderConfig,
-  AIProviderType,
-  AnthropicProviderConfig,
-  DeepSeekProviderConfig,
-  DoubaoProviderConfig,
-  GeminiLLmConfig,
-  GeminiProviderConfig,
-  GeminiText2ImgConfig,
-  GeminiVisionConfig,
-  GoogleCloudRunProviderConfig,
-  GroqProviderConfig,
-  LaozhangLLmConfig,
-  LaozhangProviderConfig,
-  LaozhangText2ImgConfig,
-  LaozhangVisionConfig,
-  LocalText2ImageProviderConfig,
-  MinimaxProviderConfig,
-  NovelAIProviderConfig,
-  OllamaProviderConfig,
-  OpenAIImageConfig,
-  OpenAIProviderConfig,
-  OpenRouterProviderConfig,
-  RunPodProviderConfig,
-} from './providers';

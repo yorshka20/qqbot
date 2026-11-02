@@ -32,7 +32,7 @@ import 'reflect-metadata';
 
 import { describe, expect, test } from 'bun:test';
 import { LLMService } from '@/ai/services/LLMService';
-import type { ChatMessage, FunctionCall } from '@/ai/types';
+import type { ChatMessage, FunctionCall } from '@qqbot/llm';
 import {
   createAIManagerWithProvider,
   getIntegrationProvider,

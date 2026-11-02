@@ -1,8 +1,8 @@
 // ToolRunner - executes tool calls for SubAgent through ToolManager.execute
 
+import type { FunctionCall } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
-import type { FunctionCall } from '@/ai/types';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
 import { DITokens } from '@/core/DITokens';
 import type { NormalizedMessageEvent } from '@/events/types';

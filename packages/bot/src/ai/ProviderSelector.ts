@@ -1,12 +1,11 @@
 // Provider Selector - manages session-level provider selection
 
+import type { AIManager, CapabilityType } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { DITokens } from '@/core/DITokens';
 import type { ProviderSelection } from '@/database/models/types';
-import type { AIManager } from './AIManager';
-import type { CapabilityType } from './capabilities/types';
 
 /**
  * Provider selection for a session (alias for ProviderSelection)

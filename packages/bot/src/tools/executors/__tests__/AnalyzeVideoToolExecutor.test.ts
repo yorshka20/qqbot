@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { afterEach, describe, expect, it, vi } from 'bun:test';
-import type { AIManager } from '@/ai/AIManager';
-import type { GeminiProvider } from '@/ai/providers/GeminiProvider';
+import type { AIManager } from '@qqbot/llm';
+import type { GeminiProvider } from '@qqbot/llm';
 import type { ResourceCleanupService, VideoDownloadResult, VideoDownloadService } from '@/services/video';
 import type { ToolCall, ToolExecutionContext } from '@/tools/types';
 import { AnalyzeVideoToolExecutor } from '../AnalyzeVideoToolExecutor';

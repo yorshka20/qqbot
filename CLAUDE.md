@@ -234,7 +234,9 @@ Config types travel with their package — the package exports its own slice and
 them, so the dependency only ever runs bot → package.
 
 - **`@qqbot/shared`** (`packages/shared/`) — the base layer everything sits on: `logger`, `logFiles`,
-  `repoRoot`, `randomUUID`, `dateTime`, `duration`, the error hierarchy and `HttpClient`. The logger
+  `repoRoot`, `randomUUID`, `dateTime`, `duration`, the error hierarchy, `HttpClient`,
+  `ResourceDownloader` and `writeFileUnderDirectory`. Image resizing (sharp) is the separate
+  `@qqbot/shared/image` entry so the root barrel never loads a native binding. The logger
   knows nothing about messages: it reads per-entry context through `setLogContextSource`, which the
   bot installs in `bootstrap.ts` from `packages/bot/src/context/logContextSource.ts` (where the
   per-group/user filter rules live). The health-check framework is the separate
@@ -258,6 +260,15 @@ them, so the dependency only ever runs bot → package.
   `core/wiring.ts` registers. The chat side — `CodingAgentService` with its MCP server, delivery and
   tool bridge, the `/claude` `/codex` `/dsh` plugin, owner escalation for `hub_ask`, and the cluster,
   ticket and task WebUI backends — is glue in `packages/bot/src/integrations/agent-cluster/`.
+- **`@qqbot/llm`** (`packages/llm/`) — calling a model: the `AIProvider` contract and capabilities,
+  every vendor's implementation, `AIManager` / `ProviderRegistry` / `ProviderFactory`, batch
+  submission, the RunPod / Cloud Run ComfyUI clients, and the provider config types with `LLMTarget`,
+  `describeLLMTarget` and `ReasoningEffort` (`src/config.ts`). No DI inside: the bot builds `AIManager`
+  in `ai/createAIManager.ts` and registers it in `core/wiring.ts`. A provider sends exactly the
+  `messages` (or `systemPrompt` + `prompt`) it is given and keeps its vendor's wire quirks to itself
+  (DeepSeek's DSML is parsed in `DeepSeekProvider`). Which provider a message goes to (`ProviderRouter`,
+  `ProviderSelector`, `LLMService` fallback), the prompt it gets and what happens to the reply stay in
+  the bot — so do `LLMService`'s own types (tool-loop options, trace entries) in `packages/bot/src/ai/types.ts`.
 - **`@qqbot/webui`** (`packages/webui/`) — Vite + React admin console; talks to the bot only over HTTP.
 
 Remaining splits are planned in the knowledge base (`_kb/tasks/09-monorepo-and-package-split/`).
@@ -269,6 +280,7 @@ Remaining splits are planned in the knowledge base (`_kb/tasks/09-monorepo-and-p
 - **Core Bot**: `packages/bot/src/core/Bot.ts`
 - **Message Pipeline**: `packages/bot/src/conversation/MessagePipeline.ts`
 - **AI Service**: `packages/bot/src/ai/AIService.ts`
+- **LLM providers**: `packages/llm/src/providers/` (registry: `packages/llm/src/AIManager.ts`)
 - **TTS (bot core)**: `packages/bot/src/services/tts/` — `TTSManager`, providers (`FishAudioProvider`, `SovitsProvider`), health adapters under `packages/bot/src/core/health/TtsProviderHealthAdapter.ts`; `/tts` command: `packages/bot/src/command/handlers/TTSCommandHandler.ts`
 - **HTTP backends (WebUI/REST)**: `packages/bot/src/services/staticServer/backend.ts` — the `Backend` extension point and its registry. Each module registers its own routes at import time (`ClusterAPIBackend` in `cluster/`, `MemoryStatusBackend` in `memory/`, …); `packages/bot/src/core/staticBackends.ts` is the list the composition root pulls in. `staticServer` must not import a feature module.
 - **Cluster tickets**: `packages/agent-cluster/src/cluster/tickets/` — `storage.ts` (on-disk bucket layout), `markdown.ts` (frontmatter format); `/api/tickets` is `packages/bot/src/integrations/agent-cluster/TicketBackend.ts`. The cluster hub, the agenda dispatcher and the WebUI all read tickets through these.

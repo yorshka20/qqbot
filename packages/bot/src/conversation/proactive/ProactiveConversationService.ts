@@ -1,9 +1,9 @@
 // Proactive Conversation Service - orchestrates debounced analysis, Ollama, thread, and proactive reply (Phase 1 + Phase 2 RAG)
 
+import type { LLMTarget, VisionImage } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { AIService } from '@/ai/AIService';
-import type { VisionImage } from '@/ai/capabilities/types';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { PreliminaryAnalysisResult } from '@/ai/services/PreliminaryAnalysisService';
 import { DEFAULT_ANALYSIS_RESULT, PreliminaryAnalysisService } from '@/ai/services/PreliminaryAnalysisService';
@@ -16,7 +16,6 @@ import { ConversationHistoryService } from '@/conversation/history/ConversationH
 import { SearXNGPreferenceKnowledgeService } from '@/conversation/proactive/PreferenceKnowledgeService';
 import { DefaultProactiveThreadPersistenceService } from '@/conversation/proactive/ProactiveThreadPersistenceService';
 import type { Config } from '@/core/config';
-import type { LLMTarget } from '@/core/config/types/ai';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';

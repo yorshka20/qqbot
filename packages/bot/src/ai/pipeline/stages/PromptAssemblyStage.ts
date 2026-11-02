@@ -1,5 +1,6 @@
 // Prompt assembly stage — builds ChatMessage[] from accumulated context.
 
+import type { ChatMessage, ContentPart, ReasoningEffort, VisionImage } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
@@ -7,14 +8,11 @@ import type { ConversationMessageEntry } from '@/conversation/history';
 import { NormalEpisodeService } from '@/conversation/history';
 import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
 import type { Config } from '@/core/config';
-import type { ReasoningEffort } from '@/core/config/types/ai';
 import { DITokens } from '@/core/DITokens';
 import { collectViewableImageSegments } from '@/message/imageSegments';
 import type { MessageSegment } from '@/message/types';
-import type { VisionImage } from '../../capabilities/types';
 import type { PromptManager } from '../../prompt/PromptManager';
 import { buildHistoryEntryPrefix, buildSpeakerTag } from '../../prompt/speakerTag';
-import type { ChatMessage, ContentPart } from '../../types';
 import { extractImagesFromSegmentsAsync, normalizeVisionImages } from '../../utils/imageUtils';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
 import type { ReplyStage } from '../types';

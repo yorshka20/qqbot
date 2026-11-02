@@ -3,6 +3,7 @@
  * Stateless helpers used by ReplyGenerationService and AIService.
  */
 
+import type { FunctionCall, ToolDefinition } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { ToolExecutionContextBuilder } from '@/context/ToolExecutionContextBuilder';
@@ -11,7 +12,6 @@ import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { ReplyVisibility, ToolCall, ToolResult, ToolSpec } from '@/tools/types';
-import type { FunctionCall, ToolDefinition } from '../types';
 
 export interface ReplyToolOptions {
   nativeWebSearchEnabled?: boolean;

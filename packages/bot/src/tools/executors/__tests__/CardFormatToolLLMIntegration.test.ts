@@ -26,7 +26,7 @@ import {
   INTEGRATION_TOOL_USE_TIMEOUT_MS,
 } from '@/ai/services/__tests__/integrationTestHelpers';
 import { LLMService } from '@/ai/services/LLMService';
-import type { ChatMessage, ToolDefinition } from '@/ai/types';
+import type { ChatMessage, ToolDefinition } from '@qqbot/llm';
 import { parseCardDeck } from '@/services/card/cardTypes';
 import { ToolManager } from '@/tools/ToolManager';
 import { createLLMService } from '@/ai/services/__tests__/createLLMService';

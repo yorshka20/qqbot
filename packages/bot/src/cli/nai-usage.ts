@@ -10,9 +10,9 @@
 
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { NovelAIProviderConfig } from '@qqbot/llm';
 import { getRepoRoot } from '@qqbot/shared';
 import { loadConfigAuto } from '@/core/config/loadConfigDir';
-import type { NovelAIProviderConfig } from '@/core/config/types/ai/providers';
 
 /** NovelAI's own estimate: one percent of the bar is worth this many images. */
 const IMAGES_PER_PERCENT = 17.3;
