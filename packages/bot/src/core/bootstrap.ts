@@ -16,7 +16,7 @@ import { createProviderPatchProducer } from '@/ai/prompt/producers/ProviderPatch
 import { createSceneProducer } from '@/ai/prompt/producers/SceneProducer';
 import { createToolInstructProducer } from '@/ai/prompt/producers/ToolInstructProducer';
 import { APIClient } from '@/api/APIClient';
-import { ClusterManager, parseClusterConfig, wireClusterEscalation, wireClusterTicketWriteback } from '@/cluster';
+import { ClusterManager, parseClusterConfig, wireClusterTicketWriteback } from '@/cluster';
 import { installLogContextSource, setMessageLogFilter } from '@/context/logContextSource';
 import type { ConversationComponents } from '@/conversation/ConversationInitializer';
 import { ConversationInitializer } from '@/conversation/ConversationInitializer';
@@ -34,6 +34,7 @@ import { DITokens } from '@/core/DITokens';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
+import { wireClusterEscalation } from '@/integrations/agent-cluster/ClusterEscalation';
 import { LivemodeInterceptor } from '@/integrations/avatar/livemode/LivemodeInterceptor';
 import { type PersonaModulationAdapter, type PersonaService, startPersonaSubsystem } from '@/persona';
 import { PluginInitializer } from '@/plugins/PluginInitializer';

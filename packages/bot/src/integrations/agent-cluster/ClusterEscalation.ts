@@ -1,10 +1,10 @@
 import { logger } from '@qqbot/shared';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
+import type { ClusterManager } from '@/cluster/ClusterManager';
 import type { Bot } from '@/core/Bot';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { PermissionChecker } from '@/permission';
-import type { ClusterManager } from './ClusterManager';
 
 /**
  * Wire the cluster's human-escalation mechanism to QQ private messages.

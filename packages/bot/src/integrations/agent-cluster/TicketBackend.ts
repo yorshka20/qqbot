@@ -56,8 +56,7 @@ import type {
   TicketUpdateBody,
 } from '@qqbot/api-types';
 import { getRepoRoot, logger } from '@qqbot/shared';
-import { errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
-import { ALLOWED_STATUSES, parseMarkdownTicket, parsePlanVersion, serializeTicket } from './markdown';
+import { ALLOWED_STATUSES, parseMarkdownTicket, parsePlanVersion, serializeTicket } from '@/cluster/tickets/markdown';
 import {
   bucketForProject,
   findTicketDir,
@@ -65,7 +64,8 @@ import {
   isValidTicketId,
   iterateAllTickets,
   ticketDirForCreate,
-} from './storage';
+} from '@/cluster/tickets/storage';
+import { errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 
 const API_PREFIX = '/api/tickets';
 

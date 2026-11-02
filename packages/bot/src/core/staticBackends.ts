@@ -8,8 +8,8 @@
  * Ids are the values `lanRelay.*.disabledStaticBackends` may name.
  */
 
-import '@/cluster/ClusterAPIBackend';
-import '@/cluster/tickets/TicketBackend';
+import '@/integrations/agent-cluster/ClusterAPIBackend';
+import '@/integrations/agent-cluster/TicketBackend';
 import '@/lan/host/LanAPIBackend';
 import '@/memory/MemoryStatusBackend';
 import '@/persona/PersonaBackend';
