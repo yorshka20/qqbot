@@ -31,13 +31,7 @@ import type {
   ToolUseGenerateResponse,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
-import {
-  containsDSML,
-  containsTextToolCalls,
-  parseDSMLFunctionCall,
-  stripDSML,
-  stripTextToolCalls,
-} from '../utils/dsmlParser';
+import { containsTextToolCalls, stripTextToolCalls } from '../utils/textToolCalls';
 
 type TokenUsage = NonNullable<AIGenerateResponse['usage']>;
 
@@ -1192,10 +1186,6 @@ export class LLMService {
     await this.emitReasoning(finalResponse, options, accReasoning, seenReasoning, currentTarget.provider);
 
     // Strip text-based tool calls from final text — model may still attempt tool calls via text when tools are absent
-    if (finalResponse.text && containsDSML(finalResponse.text)) {
-      logger.warn('[LLMService] Stripping DSML text tool call from final response (max rounds exceeded)');
-      finalResponse.text = stripDSML(finalResponse.text);
-    }
     if (finalResponse.text && containsTextToolCalls(finalResponse.text)) {
       logger.warn('[LLMService] Stripping text-based tool call blocks from final response (max rounds exceeded)');
       finalResponse.text = stripTextToolCalls(finalResponse.text);
@@ -1543,27 +1533,6 @@ export class LLMService {
   ): Promise<ToolUseGenerateResponse> {
     const lastContent = messages[messages.length - 1]?.content;
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
-    const response = await this.generateInRound(
-      prompt,
-      { ...options, messages, tools },
-      target,
-      round,
-      allowEmptyEndTurn,
-    );
-
-    // Fallback: if no structured functionCalls but text contains DSML, parse it
-    if (!response.functionCalls?.length && response.text && containsDSML(response.text)) {
-      const dsmlCall = parseDSMLFunctionCall(response.text);
-      if (dsmlCall) {
-        logger.debug(`[LLMService] Parsed DSML text function call: ${dsmlCall.name}`);
-        response.functionCalls = [{ name: dsmlCall.name, arguments: JSON.stringify(dsmlCall.arguments) }];
-        response.text = stripDSML(response.text);
-      }
-    }
-
-    return {
-      ...response,
-      functionCalls: response.functionCalls,
-    };
+    return this.generateInRound(prompt, { ...options, messages, tools }, target, round, allowEmptyEndTurn);
   }
 }

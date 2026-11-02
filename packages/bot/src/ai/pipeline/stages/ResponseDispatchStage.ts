@@ -7,8 +7,8 @@ import { replaceReply, setReplyWithSegments } from '@/context/HookContextHelpers
 import { HookManager } from '@/hooks/HookManager';
 import { MessageUtils } from '@/message/MessageUtils';
 import { parseDeliveryMarkers } from '@/utils/contentMarkers';
-import { containsTextToolCalls, stripTextToolCalls } from '../../utils/dsmlParser';
 import { extractExpectedJsonFromLlmText } from '../../utils/llmJsonExtract';
+import { containsTextToolCalls, stripTextToolCalls } from '../../utils/textToolCalls';
 import type { ReplyPipelineContext } from '../ReplyPipelineContext';
 import type { ReplyStage } from '../types';
 

@@ -13,7 +13,11 @@ import { clampMaxTokens } from '../maxTokens';
 
 interface Choice {
   finish_reason?: string;
-  message: { content?: string; reasoning_content?: string };
+  message: {
+    content?: string;
+    reasoning_content?: string;
+    tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>;
+  };
 }
 
 /** Stub the HTTP layer so no network is hit; the provider sees one canned choice. */
@@ -156,5 +160,53 @@ describe('DeepSeekProvider max_tokens', () => {
     await provider.generate('hi', { reasoningEffort: 'low' });
 
     expect(bodies[0].max_tokens).toBe(clampMaxTokens(undefined));
+  });
+});
+
+// DeepSeek can write a tool call as DSML text in `content` instead of `tool_calls`; the
+// provider turns it into a call when tools were offered and never lets the markup out.
+describe('DeepSeekProvider DSML tool calls', () => {
+  const tool: ToolDefinition = { name: 'search', description: 'search', parameters: { type: 'object', properties: {} } };
+  const dsml = [
+    '好的，我查一下。',
+    '<｜DSML｜function_calls>',
+    '<｜DSML｜invoke name="search">',
+    '<｜DSML｜parameter name="query" string="true">甲</｜DSML｜parameter>',
+    '<｜DSML｜parameter name="limit" string="false">3</｜DSML｜parameter>',
+    '</｜DSML｜invoke>',
+    '</｜DSML｜function_calls>',
+  ].join('\n');
+
+  it('parses DSML into a function call when tools were offered', async () => {
+    const provider = providerReturning({ finish_reason: 'stop', message: { content: dsml } });
+
+    const res = await provider.generate('', { tools: [tool], messages: [{ role: 'user', content: '甲是谁？' }] });
+
+    expect(res.functionCalls).toEqual([{ name: 'search', arguments: JSON.stringify({ query: '甲', limit: 3 }) }]);
+    expect(res.text).toBe('好的，我查一下。');
+  });
+
+  it('only strips the markup when the request carried no tools', async () => {
+    const provider = providerReturning({ finish_reason: 'stop', message: { content: dsml } });
+
+    const res = await provider.generate('', { messages: [{ role: 'user', content: '甲是谁？' }] });
+
+    expect(res.functionCalls).toBeUndefined();
+    expect(res.text).toBe('好的，我查一下。');
+  });
+
+  it('prefers structured tool_calls over DSML in the text', async () => {
+    const provider = providerReturning({
+      finish_reason: 'tool_calls',
+      message: {
+        content: dsml,
+        tool_calls: [{ id: 'd1', function: { name: 'search', arguments: '{"query":"乙"}' } }],
+      },
+    });
+
+    const res = await provider.generate('', { tools: [tool], messages: [{ role: 'user', content: '乙是谁？' }] });
+
+    expect(res.functionCalls).toEqual([{ name: 'search', arguments: '{"query":"乙"}', toolCallId: 'd1' }]);
+    expect(res.text).toBe('好的，我查一下。');
   });
 });

@@ -15,6 +15,7 @@ import type {
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
 import { visionImageToDataUrl } from '../utils/imageUtils';
+import { containsDSML, type DSMLFunctionCall, parseDSMLFunctionCall, stripDSML } from './deepseekDsml';
 import { clampMaxTokens } from './maxTokens';
 
 interface DeepSeekUsage {
@@ -337,19 +338,20 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
 
       const choice = data.choices[0];
       const msg = choice?.message;
-      const text = msg?.content ?? '';
+      const rawText = msg?.content ?? '';
       const reasoningContent = msg?.reasoning_content || undefined;
 
       // A thinking model charges its hidden CoT against max_tokens, so the cap can be
       // spent entirely on reasoning and leave no content. Without this the caller sees
       // an empty string and cannot tell a truncated generation from "nothing to say".
-      if (!text && !msg?.tool_calls?.length && choice?.finish_reason && choice.finish_reason !== 'stop') {
+      if (!rawText && !msg?.tool_calls?.length && choice?.finish_reason && choice.finish_reason !== 'stop') {
         throw new Error(`DeepSeek returned no content (finish_reason=${choice.finish_reason})`);
       }
       const usage = data.usage ? toUsage(data.usage) : undefined;
+      const dsmlCall = !msg?.tool_calls?.length ? this.takeDsmlToolCall(rawText, options) : null;
 
       const result: AIGenerateResponse = {
-        text,
+        text: stripDSML(rawText),
         usage,
         reasoningContent,
         metadata: { model: data.model, reasoningContent },
@@ -368,6 +370,8 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
             });
           }
         }
+      } else if (dsmlCall) {
+        result.functionCalls = [{ name: dsmlCall.name, arguments: JSON.stringify(dsmlCall.arguments) }];
       }
 
       return result;
@@ -376,6 +380,23 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
       logger.error('[DeepSeekProvider] Generation failed:', err);
       throw err;
     }
+  }
+
+  /**
+   * A tool call DeepSeek wrote as DSML text instead of `tool_calls`. It counts as a call only
+   * when the request offered tools; otherwise the markup is just stripped from the text.
+   */
+  private takeDsmlToolCall(text: string, options?: AIGenerateOptions): DSMLFunctionCall | null {
+    if (!containsDSML(text)) {
+      return null;
+    }
+    const call = options?.tools?.length ? parseDSMLFunctionCall(text) : null;
+    if (call) {
+      logger.debug(`[DeepSeekProvider] Parsed DSML text function call: ${call.name}`);
+    } else {
+      logger.warn('[DeepSeekProvider] Stripping DSML tool-call markup from the response text');
+    }
+    return call;
   }
 
   async generateStream(
@@ -473,7 +494,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
       }
 
       return {
-        text: fullText,
+        text: stripDSML(fullText),
         usage,
       };
     } catch (error) {

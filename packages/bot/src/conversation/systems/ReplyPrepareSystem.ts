@@ -2,8 +2,8 @@
 // Handles text cleanup and sendAsForward computation for ALL reply sources.
 
 import { logger } from '@qqbot/shared';
-import { stripLeakedToolCalls } from '@/ai/utils/dsmlParser';
 import { extractTextFromSegments } from '@/ai/utils/imageUtils';
+import { stripLeakedToolCalls } from '@/ai/utils/textToolCalls';
 import { hasReply } from '@/context/HookContextHelpers';
 import type { System } from '@/core/system';
 import { SystemPriority, SystemStage } from '@/core/system';
@@ -18,7 +18,7 @@ import { getProtocolAdapter, isProtocolRegistered } from '@/protocol/ProtocolReg
  * Runs in the PREPARE stage after PROCESS. Applies uniform post-processing to all replies
  * regardless of source (command, AI, plugin):
  *
- * 1. Text cleanup: strip leaked tool call artifacts (DSML, <tool_call> blocks) and expand
+ * 1. Text cleanup: strip leaked tool call artifacts (<tool_call> / <tool_result> blocks) and expand
  *    `[表情:名字]` markers into face segments
  * 2. sendAsForward resolution: compute once based on final reply segments and group config
  */

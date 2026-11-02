@@ -1,7 +1,7 @@
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
-import { stripLeakedToolCalls } from '@/ai/utils/dsmlParser';
 import { extractTextFromSegments } from '@/ai/utils/imageUtils';
+import { stripLeakedToolCalls } from '@/ai/utils/textToolCalls';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { HookContext } from '@/hooks/types';
