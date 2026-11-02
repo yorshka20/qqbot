@@ -11,8 +11,7 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { PersonaService } from '@/persona/PersonaService';
 import type { EpigeneticsStore } from '@/persona/reflection/epigenetics/EpigeneticsStore';
-import type { Backend } from './types';
-import { errorResponse, jsonResponse } from './types';
+import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 
 const API_PREFIX = '/api/persona';
 
@@ -116,3 +115,5 @@ export class PersonaBackend implements Backend {
     }
   }
 }
+
+registerStaticBackend({ id: 'persona', create: () => new PersonaBackend() });

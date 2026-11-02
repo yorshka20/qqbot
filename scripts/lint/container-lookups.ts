@@ -2,8 +2,9 @@
 // constructor. The rule and its exceptions are documented in docs/ARCHITECTURE.md
 // ("Constructor injection vs. getContainer().resolve() at run time").
 //
-// Paths where lookups are the norm (plugins, the composition root and startup steps, tests,
-// static-server backends) are allowed wholesale. Anywhere else, a lookup must carry a marker
+// Paths where lookups are the norm (plugins, the composition root and startup steps, tests)
+// are allowed wholesale, as are modules that register a static-server backend — the server
+// builds those from a factory, so DI never does. Anywhere else, a lookup must carry a marker
 // on the same line or the line above naming which documented exception it is:
 //
 //   // container-lookup: <registry|not-di-built|plugin-state|optional-service|startup> <why>
@@ -28,8 +29,6 @@ const ALLOWED_PATHS: RegExp[] = [
   /^packages\/bot\/src\/core\/(bootstrap|app|wiring|DIContainer)\.ts$/,
   /Initializer\.ts$/,
   /^packages\/bot\/src\/cli\//,
-  // 4. Static-server backends: built by the server's backend registry, not by DI.
-  /^packages\/bot\/src\/services\/staticServer\/backends\//,
   // Tests build their own graphs.
   /\/__tests__\//,
   /\.test\.ts$/,
@@ -39,6 +38,14 @@ const LOOKUP = /\bgetContainer\(\)/;
 // tsyringe's global container is reached only through getContainer() (core/DIContainer.ts).
 const RAW_CONTAINER_IMPORT = /^\s*import\s*\{[^}]*\bcontainer\b[^}]*\}\s*from\s*'tsyringe'/;
 const MARKER = /\/\/\s*container-lookup:\s*([a-z-]+)\s+\S/;
+
+/**
+ * Exception 4 by evidence rather than by path: a module that registers a static-server
+ * backend hands the registry a factory, so the server builds that object and DI never
+ * does. The backends live with the modules whose data they expose, so no path can
+ * locate them.
+ */
+const REGISTERS_STATIC_BACKEND = /\bregisterStaticBackend\(/;
 
 /** The line with comments and string literals blanked, so only real code is matched. */
 function codeOnly(line: string): string {
@@ -60,7 +67,11 @@ for await (const file of new Glob(SRC_GLOB).scan({ cwd: ROOT })) {
   if (ALLOWED_PATHS.some((re) => re.test(path))) {
     continue;
   }
-  const lines = (await Bun.file(`${ROOT}${file}`).text()).split('\n');
+  const text = await Bun.file(`${ROOT}${file}`).text();
+  if (REGISTERS_STATIC_BACKEND.test(text)) {
+    continue;
+  }
+  const lines = text.split('\n');
   lines.forEach((line, i) => {
     if (RAW_CONTAINER_IMPORT.test(line)) {
       problems.push(`${path}:${i + 1}: imports tsyringe's container directly; use getContainer()\n    ${line.trim()}`);

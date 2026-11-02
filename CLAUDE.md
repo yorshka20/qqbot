@@ -242,7 +242,7 @@ them, so the dependency only ever runs bot → package.
   tsyringe throws on import without `reflect-metadata`, which the barrel's 370 importers should not
   have to load for a logger.
 - **`@qqbot/api-types`** (`packages/api-types/`) — the HTTP contract between
-  `packages/bot/src/services/staticServer/backends/*` and the WebUI. Types only, no runtime code, no
+  `packages/bot/src/services/staticServer/` backends and the WebUI. Types only, no runtime code, no
   dependencies. Both sides import it, so a response shape that changes on one side alone fails to
   compile. A backend never re-declares a wire shape: either it imports the contract type, or it pins
   the domain object it sends with an explicit `jsonResponse<T>(...)` at the response site.
@@ -260,6 +260,8 @@ Remaining splits are planned in the knowledge base (`_kb/tasks/09-monorepo-and-p
 - **Message Pipeline**: `packages/bot/src/conversation/MessagePipeline.ts`
 - **AI Service**: `packages/bot/src/ai/AIService.ts`
 - **TTS (bot core)**: `packages/bot/src/services/tts/` — `TTSManager`, providers (`FishAudioProvider`, `SovitsProvider`), health adapters under `packages/bot/src/core/health/TtsProviderHealthAdapter.ts`; `/tts` command: `packages/bot/src/command/handlers/TTSCommandHandler.ts`
+- **HTTP backends (WebUI/REST)**: `packages/bot/src/services/staticServer/backend.ts` — the `Backend` extension point and its registry. Each module registers its own routes at import time (`ClusterAPIBackend` in `cluster/`, `MemoryStatusBackend` in `memory/`, …); `packages/bot/src/core/staticBackends.ts` is the list the composition root pulls in. `staticServer` must not import a feature module.
+- **Cluster tickets**: `packages/bot/src/cluster/tickets/` — `storage.ts` (on-disk bucket layout), `markdown.ts` (frontmatter format), `TicketBackend.ts` (`/api/tickets`). The cluster hub, the agenda dispatcher and the WebUI all read tickets through these.
 - **Tool System**: `packages/bot/src/tools/ToolManager.ts`
 - **Plugin Manager**: `packages/bot/src/plugins/PluginManager.ts`
 - **Session Memo Store**: `packages/bot/src/conversation/memo/SessionMemoStore.ts` — LLM-writable per-session memo/blackboard with TTL + pin. Complements AuditEventStore (bot-written) and MemoryService (long-term).

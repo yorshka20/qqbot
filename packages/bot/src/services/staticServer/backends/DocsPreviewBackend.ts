@@ -25,9 +25,8 @@ import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import type { DocsListResponse, DocsRootInfo, DocsRootsResponse, FileItem } from '@qqbot/api-types';
 import { getRepoRoot, logger } from '@qqbot/shared';
 import type { DocsPreviewConfig } from '@/core/config/types/docsPreview';
+import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '../backend';
 import { resolveSafe } from './pathSafety';
-import type { Backend } from './types';
-import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/docs';
 const MAX_RAW_BYTES = 15 * 1024 * 1024;
@@ -290,3 +289,5 @@ export class DocsPreviewBackend implements Backend {
     }
   }
 }
+
+registerStaticBackend({ id: 'docs', create: (ctx) => new DocsPreviewBackend(ctx.config?.getDocsPreviewConfig()) });

@@ -64,6 +64,8 @@ import '@/tools/executors';
 // Avatar integration registers its own plugins via this barrel side-effect
 // import — PluginManager stays unaware of integrations.
 import '@/integrations/avatar/plugins';
+// Static-server backends register themselves the same way; the list is in that module.
+import '@/core/staticBackends';
 
 export interface BootstrapResult {
   bot: Bot;
@@ -131,7 +133,7 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   }
 
   // ── StaticServer (local HTTP + backends; must precede ConversationInitializer — ImageGenerationService needs it) ──
-  // Optional: `lanRelay.*.disabledStaticBackends` omits specific backend modules (see createBackends registry).
+  // Optional: `lanRelay.*.disabledStaticBackends` omits specific backends by registry id.
   // `ticketsDir` is resolved once here and shared with the Agent Cluster below
   // so `ContextHub` (plan artifacts) and `ClusterTicketWriteback` point at
   // the same filesystem root as `TicketBackend` (which pulls via `config`).

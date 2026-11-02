@@ -30,7 +30,7 @@ export type LanRelayInstanceRole = 'host' | 'client';
  * disabledServices: other bootstrap toggles (not used for StaticServer — use
  *                  `disabledStaticBackends` for HTTP backend modules).
  * disabledStaticBackends: StaticServer backend module ids to exclude on this role
- *                  (strings like `"files"`, `"output"` — see `createBackends` registry).
+ *                  (strings like `"files"`, `"output"` — the registry's ids, listed in `core/staticBackends.ts`).
  */
 export interface LanRelayRoleConfig {
   disabledPlugins?: string[];

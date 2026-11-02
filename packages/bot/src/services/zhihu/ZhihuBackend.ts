@@ -17,11 +17,10 @@ import type {
 } from '@qqbot/api-types';
 import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
+import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 import { ZhihuDITokens } from '@/services/zhihu/tokens';
 import type { ZhihuFeedItemRow } from '@/services/zhihu/types';
 import type { ZhihuDatabase } from '@/services/zhihu/ZhihuDatabase';
-import type { Backend } from './types';
-import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/zhihu';
 
@@ -212,3 +211,5 @@ export class ZhihuBackend implements Backend {
     }
   }
 }
+
+registerStaticBackend({ id: 'zhihu', create: () => new ZhihuBackend() });

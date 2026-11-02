@@ -9,9 +9,8 @@
  *
  * The bucket layer was added in 2026-04-16 batch4 to keep the per-project
  * ticket count tractable at the filesystem level. Before that, all tickets
- * lived flat under `<ticketsDir>/<id>/`; a one-shot migration in
- * `TicketBackend` constructor moves any leftover flat-layout entries into
- * their project bucket on startup.
+ * lived flat under `<ticketsDir>/<id>/`; a one-shot migration on startup moves
+ * any leftover flat-layout entries into their project bucket.
  *
  * `id` is globally unique across all buckets — POST allocates a fresh id
  * by checking every bucket for a collision. Looking a ticket up by id

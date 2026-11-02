@@ -403,7 +403,7 @@ export class Config {
 
   /**
    * Backend module ids StaticServer should omit — **only** from `lanRelay.host` /
-   * `lanRelay.client` → `disabledStaticBackends` in config (see `createBackends` registry comment for valid ids).
+   * `lanRelay.client` → `disabledStaticBackends` in config (valid ids are the registry's, listed in `core/staticBackends.ts`).
    */
   getDisabledStaticBackendIds(): string[] {
     const lr = this.config.lanRelay;

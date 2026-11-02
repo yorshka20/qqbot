@@ -8,11 +8,11 @@ import { logger } from '@qqbot/shared';
 import { injectable } from 'tsyringe';
 import type { ClusterManager } from '@/cluster/ClusterManager';
 import type { ClusterConfig } from '@/cluster/config';
+import { parseMarkdownTicket, serializeTicket } from '@/cluster/tickets/markdown';
+import { findTicketDir, iterateAllTickets } from '@/cluster/tickets/storage';
 import type { JobRecord } from '@/cluster/types';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { parseMarkdownTicket, serializeTicket } from '@/services/staticServer/backends/TicketBackend';
-import { findTicketDir, iterateAllTickets } from '@/services/staticServer/backends/ticketStorage';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
 const TAG = '[RepeatingTicketDispatchHandler]';

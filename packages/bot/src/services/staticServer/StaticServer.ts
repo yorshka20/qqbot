@@ -6,6 +6,9 @@
  * This is **not** the same as narrow “static file” routes only: serving bytes
  * from disk is the `files` and `output` backend modules (`FileManagerBackend`,
  * `OutputStaticHost`). Omit them per-role via `lanRelay.*.disabledStaticBackends` in config.
+ *
+ * It mounts whatever is in the registry (`./backend`); the routes themselves belong to
+ * the modules that register them, listed in `core/staticBackends.ts`.
  */
 
 import { resolve } from 'node:path';
@@ -13,15 +16,15 @@ import { logger } from '@qqbot/shared';
 import { serve } from 'bun';
 import type { Config } from '@/core/config';
 import type { StaticServerConfig } from '@/core/config/types/bot';
-import { type Backend, createBackends } from './backends';
+import { type Backend, createRegisteredBackends } from './backend';
 
 export interface StaticServerInitOptions {
-  /** Backend module ids to exclude — must match `lanRelay.*.disabledStaticBackends` / `createBackends` registry. */
+  /** Backend ids to exclude — the registry's ids, as `lanRelay.*.disabledStaticBackends` names them. */
   disabledBackendIds?: string[];
   /**
-   * Bot config — forwarded to `createBackends` so each backend can pull its
-   * own slice (`getTicketsDir()`, `getDocsPreviewConfig()`, …). When omitted,
-   * backends fall back to safe defaults.
+   * Bot config — forwarded to each backend's factory so it can pull its own slice
+   * (`getTicketsDir()`, `getDocsPreviewConfig()`, …). When omitted, backends fall
+   * back to safe defaults.
    */
   config?: Config;
 }
@@ -63,10 +66,10 @@ export class StaticServer implements StaticServerInstance {
     this.baseDir = resolve(config.root);
     this.hostIP = config.host;
     const disabled = new Set(options?.disabledBackendIds ?? []);
-    this.backends = createBackends(this.baseDir, {
-      disabledIds: disabled,
-      config: options?.config,
-    });
+    this.backends = createRegisteredBackends(
+      { baseDir: this.baseDir, config: options?.config },
+      { disabledIds: disabled },
+    );
     if (disabled.size > 0) {
       logger.info(`[StaticServer] Excluded backend module(s): ${[...disabled].sort().join(', ')}`);
     }

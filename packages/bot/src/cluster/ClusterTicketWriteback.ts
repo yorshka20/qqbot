@@ -24,8 +24,8 @@ import { readdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { TicketJobSnapshot } from '@qqbot/api-types';
 import { logger } from '@qqbot/shared';
-import { findTicketDir } from '@/services/staticServer/backends/ticketStorage';
 import type { ClusterManager } from './ClusterManager';
+import { findTicketDir } from './tickets/storage';
 import type { JobRecord, TaskRecord, WorkerRegistration } from './types';
 
 /**

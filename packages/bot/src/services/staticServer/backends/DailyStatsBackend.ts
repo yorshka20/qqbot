@@ -25,8 +25,7 @@ import type {
   StatsDateListResponse,
 } from '@qqbot/api-types';
 import { getRepoRoot, logger } from '@qqbot/shared';
-import type { Backend } from './types';
-import { errorResponse, jsonResponse } from './types';
+import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '../backend';
 
 const API_PREFIX = '/api/stats';
 
@@ -330,3 +329,5 @@ export class DailyStatsBackend implements Backend {
     }
   }
 }
+
+registerStaticBackend({ id: 'stats', create: () => new DailyStatsBackend() });

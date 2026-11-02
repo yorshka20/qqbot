@@ -31,8 +31,7 @@ import { DITokens } from '@/core/DITokens';
 import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
 import type { TaskRecordListing } from '@/services/codingAgent/CodingAgentTaskStore';
 import { AGENT_EXECUTOR_NAMES } from '@/services/codingAgent/types';
-import type { Backend } from './types';
-import { errorResponse, jsonResponse } from './types';
+import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 
 const API_PREFIX = '/api/agents';
 
@@ -192,3 +191,5 @@ function capForList(task: TaskRecordListing): TaskRecordListing {
 function tail(text: string, max: number): string {
   return text.length <= max ? text : text.slice(-max);
 }
+
+registerStaticBackend({ id: 'agents', create: () => new CodingAgentAPIBackend() });

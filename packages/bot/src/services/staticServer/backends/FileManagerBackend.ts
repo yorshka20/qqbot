@@ -13,9 +13,8 @@ import { readdir, rename, rmdir, stat, unlink } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import type { FileItem, ListResponse, MoveBody, RenameBody } from '@qqbot/api-types';
 import { logger } from '@qqbot/shared';
+import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '../backend';
 import { resolveSafe } from './pathSafety';
-import type { Backend } from './types';
-import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/files';
 
@@ -280,3 +279,5 @@ export class FileManagerBackend implements Backend {
     }
   }
 }
+
+registerStaticBackend({ id: 'files', create: (ctx) => new FileManagerBackend(ctx.baseDir) });

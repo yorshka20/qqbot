@@ -37,9 +37,8 @@ import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';
 import { isAllowedScope } from '@/memory/model/scopes';
 import { ManualMemoryStore } from '@/memory/storage/ManualMemoryStore';
 import { MemoryFactStore } from '@/memory/storage/MemoryFactStore';
+import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 import { MemoryDisplayNames, memorySubjectKey } from './memoryDisplayNames';
-import type { Backend } from './types';
-import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/memory';
 
@@ -278,3 +277,5 @@ export class MemoryStatusBackend implements Backend {
     return deleted ? jsonResponse<MemoryFactDeletedResponse>({ deleted: true }) : errorResponse('Fact not found', 404);
   }
 }
+
+registerStaticBackend({ id: 'memory', create: () => new MemoryStatusBackend() });

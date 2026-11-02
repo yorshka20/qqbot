@@ -17,8 +17,7 @@ import type {
 import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
-import type { Backend } from './types';
-import { errorResponse, jsonResponse } from './types';
+import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 
 const API_PREFIX = '/api/qdrant';
 
@@ -155,3 +154,5 @@ export class QdrantExplorerBackend implements Backend {
     }
   }
 }
+
+registerStaticBackend({ id: 'qdrant', create: () => new QdrantExplorerBackend() });

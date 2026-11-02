@@ -5,6 +5,8 @@
 import type { StaticServerConfig } from '@/core/config/types/bot';
 import { StaticServer, type StaticServerInitOptions } from './StaticServer';
 
+export type { Backend, BackendContext } from './backend';
+export { errorResponse, jsonResponse, registerStaticBackend } from './backend';
 export { outputPublicFileUrl } from './backends/OutputStaticHost';
 export type { StaticServerInitOptions, StaticServerInstance } from './StaticServer';
 export { StaticServer } from './StaticServer';

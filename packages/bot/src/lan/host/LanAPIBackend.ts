@@ -37,7 +37,7 @@ import { DITokens } from '@/core/DITokens';
 import type { LanHostSubscriber, LanRelayHost } from '@/lan/host/LanRelayHost';
 import { getLanRelayRuntime } from '@/lan/types/runtime';
 import type { PermissionChecker } from '@/permission';
-import { errorResponse, jsonResponse } from './types';
+import { errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 
 const API_PREFIX = '/api/lan';
 
@@ -260,3 +260,5 @@ export class LanAPIBackend {
     });
   }
 }
+
+registerStaticBackend({ id: 'lan', create: () => new LanAPIBackend() });

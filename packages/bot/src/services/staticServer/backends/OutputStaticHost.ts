@@ -12,8 +12,8 @@
 import { stat } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import { logger } from '@qqbot/shared';
+import { type Backend, registerStaticBackend } from '../backend';
 import { resolveSafe } from './pathSafety';
-import type { Backend } from './types';
 
 const OUTPUT_PREFIX = '/output/';
 
@@ -111,3 +111,5 @@ export function outputPublicFileUrl(staticServerBaseURL: string, relativePath: s
   const normalized = relativePath.replace(/\\/g, '/');
   return `${base}/output/${normalized}`;
 }
+
+registerStaticBackend({ id: 'output', create: (ctx) => new OutputStaticHost(ctx.baseDir) });

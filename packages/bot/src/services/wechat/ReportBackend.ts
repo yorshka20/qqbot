@@ -10,9 +10,8 @@
 import type { ReportDetailResponse, ReportListItem, ReportListResponse } from '@qqbot/api-types';
 import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
+import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 import { WechatDITokens, type WechatReportService } from '@/services/wechat';
-import type { Backend } from './types';
-import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/reports';
 
@@ -151,3 +150,5 @@ export class ReportBackend implements Backend {
     }
   }
 }
+
+registerStaticBackend({ id: 'reports', create: () => new ReportBackend() });

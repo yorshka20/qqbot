@@ -65,7 +65,7 @@ import type { ClusterEventType, TaskRecord, WorkerRegistration } from '@/cluster
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import type { CodingAgentService } from '@/services/codingAgent/CodingAgentService';
-import { errorResponse, jsonResponse } from './types';
+import { errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 
 const API_PREFIX = '/api/cluster';
 
@@ -514,3 +514,5 @@ export class ClusterAPIBackend {
     });
   }
 }
+
+registerStaticBackend({ id: 'cluster', create: () => new ClusterAPIBackend() });

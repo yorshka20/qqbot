@@ -7,7 +7,7 @@
  */
 
 import { botLogsDir, followLatestLog } from '@qqbot/shared';
-import { errorResponse } from './types';
+import { errorResponse, registerStaticBackend } from '../backend';
 
 const API_PREFIX = '/api/logs';
 
@@ -64,3 +64,5 @@ export class LogsBackend {
     });
   }
 }
+
+registerStaticBackend({ id: 'logs', create: () => new LogsBackend() });

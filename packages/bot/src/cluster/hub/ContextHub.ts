@@ -31,8 +31,8 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
-import { bucketForProject, findTicketDir, ticketDirForCreate } from '@/services/staticServer/backends/ticketStorage';
 import type { ClusterConfig } from '../config';
+import { bucketForProject, findTicketDir, ticketDirForCreate } from '../tickets/storage';
 import type {
   ClusterEventType,
   HelpRequest,

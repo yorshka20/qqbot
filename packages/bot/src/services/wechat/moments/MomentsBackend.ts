@@ -36,10 +36,9 @@ import { logger } from '@qqbot/shared';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
+import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '@/services/staticServer/backend';
 import { WechatDITokens } from '@/services/wechat/tokens';
 import type { WeChatDatabase } from '@/services/wechat/WeChatDatabase';
-import type { Backend } from './types';
-import { errorResponse, jsonResponse } from './types';
 
 const API_PREFIX = '/api/moments';
 const COLLECTION = 'wechat_moments';
@@ -493,3 +492,5 @@ export class MomentsBackend implements Backend {
     return all;
   }
 }
+
+registerStaticBackend({ id: 'moments', create: () => new MomentsBackend() });
