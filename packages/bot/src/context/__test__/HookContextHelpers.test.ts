@@ -1,7 +1,15 @@
+import 'reflect-metadata';
+
 import { describe, expect, it } from 'bun:test';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
-import { hasWhitelistCapability, isNoReplyPath } from '../HookContextHelpers';
+import {
+  getQueuedCard,
+  hasWhitelistCapability,
+  isNoReplyPath,
+  replaceReplyWithSegments,
+  withTrailingText,
+} from '../HookContextHelpers';
 
 function makeContext(metadataOverrides: {
   postProcessOnly?: boolean;
@@ -69,5 +77,37 @@ describe('hasWhitelistCapability', () => {
 
   it('returns false when capability is not in whitelistGroupCapabilities', () => {
     expect(hasWhitelistCapability(makeContext({ whitelistGroupCapabilities: ['command'] }), 'reply')).toBe(false);
+  });
+});
+
+describe('getQueuedCard', () => {
+  const segments = [{ type: 'image' as const, data: { uri: 'base64://card' } }];
+
+  it('returns the card a tool queued on the context', () => {
+    const context = makeContext({});
+    replaceReplyWithSegments(context, segments, 'ai', { isCardImage: true, cardTextForHistory: '卡片文字' });
+    context.metadata.set('cardSent', true);
+    expect(getQueuedCard(context)).toEqual({ segments, textForHistory: '卡片文字' });
+  });
+
+  it('returns null when no card was sent', () => {
+    const context = makeContext({});
+    replaceReplyWithSegments(context, segments, 'ai');
+    expect(getQueuedCard(context)).toBeNull();
+  });
+});
+
+describe('withTrailingText', () => {
+  const card = { segments: [{ type: 'image' as const, data: { uri: 'base64://card' } }], textForHistory: '卡片文字' };
+
+  it('leaves the card as is without text', () => {
+    expect(withTrailingText(card, '')).toBe(card);
+  });
+
+  it('appends the text as a segment and to the history text', () => {
+    expect(withTrailingText(card, '补充')).toEqual({
+      segments: [...card.segments, { type: 'text', data: { text: '补充' } }],
+      textForHistory: '卡片文字\n\n补充',
+    });
   });
 });

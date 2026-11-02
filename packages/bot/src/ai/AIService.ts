@@ -14,8 +14,7 @@ import { ReplyPipelineOrchestrator } from './pipeline/ReplyPipelineOrchestrator'
 import type { I2VPromptResult } from './schemas';
 import { ImageFacadeService } from './services/ImageFacadeService';
 import { NsfwReplyService } from './services/NsfwReplyService';
-import { ProactiveReplyGenerationService } from './services/ProactiveReplyGenerationService';
-import type { AIGenerateResponse } from './types';
+import { type ProactiveReply, ProactiveReplyGenerationService } from './services/ProactiveReplyGenerationService';
 
 /**
  * AI Service — pure facade delegating to specialized sub-services.
@@ -79,7 +78,7 @@ export class AIService {
 
   // --- Proactive reply ---
 
-  async generateProactiveReply(context: ProactiveReplyInjectContext, target?: LLMTarget): Promise<AIGenerateResponse> {
+  async generateProactiveReply(context: ProactiveReplyInjectContext, target?: LLMTarget): Promise<ProactiveReply> {
     return this.proactiveReplyService.generateProactiveReply(context, target);
   }
 

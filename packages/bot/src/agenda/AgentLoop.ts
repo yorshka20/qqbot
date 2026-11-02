@@ -13,6 +13,7 @@ import { LLMService } from '@/ai/services/LLMService';
 import { executeToolCall, formatToolCatalog } from '@/ai/tools/replyTools';
 import type { ChatMessage, ToolDefinition } from '@/ai/types';
 import { MessageAPI } from '@/api/methods/MessageAPI';
+import { getQueuedCard, withTrailingText } from '@/context/HookContextHelpers';
 import { ConversationHistoryService, normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
 import type { ProtocolName } from '@/core/config/types/protocol';
 import { DITokens } from '@/core/DITokens';
@@ -266,10 +267,10 @@ export class AgentLoop {
     const { hookContext } = reply;
     const { text: cleanReply, skipCard } = parseDeliveryMarkers(reply.text);
 
-    const queued = hookContext?.reply?.segments;
-    if (hookContext?.metadata.get('cardSent') === true && queued?.length) {
-      const message: MessageSegment[] = cleanReply ? [...queued, { type: 'text', data: { text: cleanReply } }] : queued;
-      return { message, isCard: true, length: message.length };
+    const queuedCard = hookContext ? getQueuedCard(hookContext) : null;
+    if (queuedCard) {
+      const { segments } = withTrailingText(queuedCard, cleanReply);
+      return { message: segments, isCard: true, length: segments.length };
     }
 
     const cardSegments = skipCard ? null : await this.tryRenderCard(cleanReply, contextId);

@@ -186,6 +186,39 @@ export function getReply(context: HookContext): string | undefined {
   return extractTextFromSegments(context.reply.segments);
 }
 
+/** A rendered card: the image segments that are sent and the text history stores in their place. */
+export interface RenderedCard {
+  segments: MessageSegment[];
+  textForHistory: string;
+}
+
+/**
+ * The card a tool (`send_card`) rendered and queued on the context during the LLM loop, or null.
+ * A caller that builds its own HookContext for tool execution must deliver this itself — the
+ * card counts as delivered content, so the model may end the turn without any text after it.
+ */
+export function getQueuedCard(context: HookContext): RenderedCard | null {
+  const segments = context.reply?.segments;
+  if (context.metadata.get('cardSent') !== true || !segments?.length) {
+    return null;
+  }
+  return { segments, textForHistory: context.reply?.metadata?.cardTextForHistory ?? '' };
+}
+
+/**
+ * Append the model's final text after a card. The delivery contract promises that final text is
+ * always sent, so it goes out as a trailing segment and history keeps both card text and follow-up.
+ */
+export function withTrailingText(card: RenderedCard, text: string): RenderedCard {
+  if (!text) {
+    return card;
+  }
+  return {
+    segments: [...card.segments, { type: 'text', data: { text } }],
+    textForHistory: card.textForHistory ? `${card.textForHistory}\n\n${text}` : text,
+  };
+}
+
 /**
  * Get full reply content from HookContext
  *

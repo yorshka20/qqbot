@@ -4,6 +4,7 @@ import { inject, singleton } from 'tsyringe';
 import { LLMService } from '@/ai/services/LLMService';
 import { VisionService } from '@/ai/services/VisionService';
 import { HookContextBuilder } from '@/context/HookContextBuilder';
+import { getQueuedCard, type RenderedCard } from '@/context/HookContextHelpers';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { Config } from '@/core/config';
 import type { ChatReasoningEfforts, LLMTarget } from '@/core/config/types/ai';
@@ -36,6 +37,16 @@ const PROACTIVE_GEN_OPTIONS = {
 } as const;
 
 /**
+ * A generated proactive reply. `card` is what `send_card` rendered during the tool loop; the
+ * caller must send it, since the loop treats it as delivered and may end with no text at all.
+ */
+export interface ProactiveReply {
+  text: string;
+  reasoningContent?: string;
+  card: RenderedCard | null;
+}
+
+/**
  * Proactive reply generation service for group participation.
  * Builds prompts from a {@link ProactiveReplyInjectContext} (preference, thread,
  * RAG, memory, history) and calls the LLM with vision/tool support.
@@ -66,7 +77,7 @@ export class ProactiveReplyGenerationService {
    * Generate a single proactive reply for group participation.
    * All injectable text (preference, thread, RAG, memory) is provided via context from the context layer.
    */
-  async generateProactiveReply(context: ProactiveReplyInjectContext, target?: LLMTarget): Promise<AIGenerateResponse> {
+  async generateProactiveReply(context: ProactiveReplyInjectContext, target?: LLMTarget): Promise<ProactiveReply> {
     const useVision = Boolean(context.messageImages?.length);
     const capabilities = await this.resolveProviderAndCapabilities(context, target, useVision);
     const { tools, toolUsageInstructions } = this.getToolsAndInstructions(
@@ -222,46 +233,18 @@ export class ProactiveReplyGenerationService {
     },
     tools: ReturnType<typeof getReplySkillDefinitions>,
     useVision: boolean,
-  ): Promise<AIGenerateResponse> {
+  ): Promise<ProactiveReply> {
     const { effectiveTarget, canUseToolUse, nativeWebSearchEnabled } = capabilities;
     const genOptions = {
       ...PROACTIVE_GEN_OPTIONS,
       sessionId: context.sessionId,
     };
-    const lastUserMessage = context.lastUserMessage?.trim() ?? '（无）';
-    const hookContext = this.buildToolHookContext(context, lastUserMessage);
-    const toolExecutor = (call: { name: string; arguments: string }) =>
-      executeSkillCall(call, hookContext, this.toolManager, this.hookManager);
-    const useTools = canUseToolUse && effectiveTarget && tools.length > 0;
 
-    if (useVision) {
-      if (useTools) {
-        const toolUseResponse = await this.llmService.generateWithTools(
-          messages,
-          tools,
-          {
-            temperature: genOptions.temperature,
-            maxToolRounds: genOptions.maxToolRounds,
-            sessionId: genOptions.sessionId,
-            nativeWebSearch: nativeWebSearchEnabled,
-            toolExecutor,
-            reasoningEffort: this.reasoningEfforts.toolReasoningEffort,
-          },
-          effectiveTarget,
-        );
-        return { text: toolUseResponse.text, reasoningContent: toolUseResponse.reasoningContent };
-      }
-      return this.visionService.generateWithVisionMessages(
-        messages,
-        {
-          temperature: genOptions.temperature,
-          sessionId: genOptions.sessionId,
-          reasoningEffort: this.reasoningEfforts.reasoningEffort,
-        },
-        effectiveTarget?.provider,
-      );
-    }
-    if (useTools) {
+    if (canUseToolUse && effectiveTarget && tools.length > 0) {
+      const lastUserMessage = context.lastUserMessage?.trim() ?? '（无）';
+      const hookContext = this.buildToolHookContext(context, lastUserMessage);
+      const toolExecutor = (call: { name: string; arguments: string }) =>
+        executeSkillCall(call, hookContext, this.toolManager, this.hookManager);
       const toolUseResponse = await this.llmService.generateWithTools(
         messages,
         tools,
@@ -275,8 +258,32 @@ export class ProactiveReplyGenerationService {
         },
         effectiveTarget,
       );
-      return { text: toolUseResponse.text };
+      return {
+        text: toolUseResponse.text,
+        reasoningContent: toolUseResponse.reasoningContent,
+        card: getQueuedCard(hookContext),
+      };
     }
+
+    const response = useVision
+      ? await this.visionService.generateWithVisionMessages(
+          messages,
+          {
+            temperature: genOptions.temperature,
+            sessionId: genOptions.sessionId,
+            reasoningEffort: this.reasoningEfforts.reasoningEffort,
+          },
+          effectiveTarget?.provider,
+        )
+      : await this.generatePlain(messages, genOptions, effectiveTarget);
+    return { text: response.text, reasoningContent: response.reasoningContent, card: null };
+  }
+
+  private generatePlain(
+    messages: ChatMessage[],
+    genOptions: typeof PROACTIVE_GEN_OPTIONS & { sessionId: string | undefined },
+    effectiveTarget: LLMTarget | undefined,
+  ): Promise<AIGenerateResponse> {
     const lastContent = messages[messages.length - 1]?.content;
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
     return this.llmService.generate(

@@ -10,6 +10,7 @@ import { DEFAULT_ANALYSIS_RESULT, PreliminaryAnalysisService } from '@/ai/servic
 import { extractImagesFromMessageAndReply } from '@/ai/utils/imageUtils';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import type { SendMessageResult } from '@/api/types';
+import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { SearXNGPreferenceKnowledgeService } from '@/conversation/proactive/PreferenceKnowledgeService';
@@ -24,11 +25,9 @@ import type { Message } from '@/database/models/types';
 import type { NormalizedMessageEvent } from '@/events/types';
 import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalService';
 import type { MessageSegment } from '@/message/types';
-import { parseSubtextTags } from '@/persona/prompt/subtextTagParser';
 import { PluginManager } from '@/plugins/PluginManager';
 import type { ReactionPlugin } from '@/plugins/plugins/ReactionPlugin';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
-import { parseDeliveryMarkers } from '@/utils/contentMarkers';
 import { type FetchProgressNotifier, MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { groupHasWhitelistCapability, WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import {
@@ -40,6 +39,7 @@ import {
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import { ProactiveReplyContextBuilder } from './ProactiveReplyContextBuilder';
 import type { ProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
+import { resolveProactiveOutgoing } from './proactiveOutgoing';
 
 export interface ProactiveGroupConfig {
   groupId: string;
@@ -784,33 +784,7 @@ export class ProactiveConversationService {
     if (messageImages.length > 0) {
       injectContext.messageImages = messageImages;
     }
-    const replyResponse = await this.aiService.generateProactiveReply(injectContext, this.analysisTarget ?? undefined);
-    const replyText = replyResponse.text;
-    if (!replyText) {
-      logger.warn('[ProactiveConversationService] Empty proactive reply');
-      return;
-    }
-    const parsed = parseSubtextTags(replyText);
-    const { text: cleanReplyText, skipCard } = parseDeliveryMarkers(parsed.visible);
-    // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
-    const cardResult = skipCard
-      ? null
-      : await this.aiService.processReplyMaybeCard(cleanReplyText, groupId, this.analysisTarget?.provider);
-    const toSend = cardResult ? cardResult.segments : cleanReplyText;
-    const toAppend = cardResult ? cardResult.textForHistory : cleanReplyText;
-    // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).
-    this.threadService.appendMessage(thread.threadId, {
-      userId: 0,
-      content: toAppend,
-      isBotReply: true,
-    });
-    const sendResult = await this.sendGroupMessage(groupIdNum, toSend);
-    await this.conversationHistoryService.appendBotReplyToGroup(groupId, toAppend, this.preferredProtocol, {
-      messageSeq: sendResult?.message_seq,
-      ...(parsed.subtext !== undefined ? { subtext: parsed.subtext } : {}),
-      ...(parsed.replyTags !== undefined ? { replyTags: parsed.replyTags } : {}),
-      ...(replyResponse.reasoningContent !== undefined ? { reasoning: replyResponse.reasoningContent } : {}),
-    });
+    await this.generateAndDeliverReply(thread, groupIdNum, injectContext);
   }
 
   private async replyInThread(
@@ -837,34 +811,44 @@ export class ProactiveConversationService {
         injectContext.messageImages = messageImages;
       }
     }
-    const replyResponse = await this.aiService.generateProactiveReply(injectContext, this.analysisTarget ?? undefined);
-    const replyText = replyResponse.text;
-    if (!replyText) {
-      logger.warn('[ProactiveConversationService] Empty proactive reply (existing thread)');
+    await this.generateAndDeliverReply(thread, groupIdNum, injectContext);
+  }
+
+  /** Generate one proactive reply for `thread`, send it to the group and record it in the thread and history. */
+  private async generateAndDeliverReply(
+    thread: ProactiveThread,
+    groupIdNum: number,
+    injectContext: ProactiveReplyInjectContext,
+  ): Promise<void> {
+    const reply = await this.aiService.generateProactiveReply(injectContext, this.analysisTarget ?? undefined);
+    // Same card rendering as the reply pipeline; history stores the card text, not the image.
+    const outgoing = await resolveProactiveOutgoing(reply, (text) =>
+      this.aiService.processReplyMaybeCard(text, thread.groupId, this.analysisTarget?.provider),
+    );
+    if (!outgoing) {
+      logger.warn(
+        `[ProactiveConversationService] Empty proactive reply | groupId=${thread.groupId} | threadId=${thread.threadId}`,
+      );
       return;
     }
-
-    const parsed = parseSubtextTags(replyText);
-    const { text: cleanReplyText, skipCard } = parseDeliveryMarkers(parsed.visible);
-    // Optionally render as card (same pipeline as ReplyGenerationService); store card text in thread for LLM-readable history
-    const cardResult = skipCard
-      ? null
-      : await this.aiService.processReplyMaybeCard(cleanReplyText, thread.groupId, this.analysisTarget?.provider);
-    const toSend = cardResult ? cardResult.segments : cleanReplyText;
-    const toAppend = cardResult ? cardResult.textForHistory : cleanReplyText;
     // Update thread and DB before/on send so the next message or analysis run already sees this reply (no need to wait for echo).
     this.threadService.appendMessage(thread.threadId, {
       userId: 0,
-      content: toAppend,
+      content: outgoing.historyText,
       isBotReply: true,
     });
-    const sendResult = await this.sendGroupMessage(groupIdNum, toSend);
-    await this.conversationHistoryService.appendBotReplyToGroup(thread.groupId, toAppend, this.preferredProtocol, {
-      messageSeq: sendResult?.message_seq,
-      ...(parsed.subtext !== undefined ? { subtext: parsed.subtext } : {}),
-      ...(parsed.replyTags !== undefined ? { replyTags: parsed.replyTags } : {}),
-      ...(replyResponse.reasoningContent !== undefined ? { reasoning: replyResponse.reasoningContent } : {}),
-    });
+    const sendResult = await this.sendGroupMessage(groupIdNum, outgoing.message);
+    await this.conversationHistoryService.appendBotReplyToGroup(
+      thread.groupId,
+      outgoing.historyText,
+      this.preferredProtocol,
+      {
+        messageSeq: sendResult?.message_seq,
+        ...(outgoing.subtext !== undefined ? { subtext: outgoing.subtext } : {}),
+        ...(outgoing.replyTags !== undefined ? { replyTags: outgoing.replyTags } : {}),
+        ...(reply.reasoningContent !== undefined ? { reasoning: reply.reasoningContent } : {}),
+      },
+    );
   }
 
   private async sendGroupMessage(
