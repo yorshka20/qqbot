@@ -29,7 +29,16 @@ function shellExecutor(): AgentExecutor {
 function createManager(config: Partial<CodingAgentConfig> = {}) {
   const executor = shellExecutor();
   const manager = new CodingAgentTaskManager(
-    { enabled: true, port: 0, idleTimeout: '1s', timeout: '1h', ...config },
+    {
+      enabled: true,
+      port: 0,
+      idleTimeout: '1s',
+      timeout: '1h',
+      // Never the default <tmpdir>/qqbot-agent-workspaces: that is the real bot's root, and task
+      // directories are named after the prompt, so repeated runs exhaust a name's suffixes.
+      workspaceRoot: mkdtempSync(join(tmpdir(), 'coding-agent-ws-')),
+      ...config,
+    },
     { claude: executor, codex: executor, dsh: executor },
     'http://127.0.0.1:0/mcp',
   );
