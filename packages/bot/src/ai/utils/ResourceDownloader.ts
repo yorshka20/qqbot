@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
 import { writeFileUnderDirectory } from '@qqbot/avatar';
-import { HttpClient, logger } from '@qqbot/shared';
+import { HttpClient, logger, resolveFromRepoRoot } from '@qqbot/shared';
 
 export interface ResourceDownloadOptions {
   /**
@@ -307,7 +307,7 @@ export class ResourceDownloader {
         filename = `${filename}${extension}`;
       }
 
-      const filePath = writeFileUnderDirectory(savePath, filename, buffer);
+      const filePath = writeFileUnderDirectory(resolveFromRepoRoot(savePath), filename, buffer);
       logger.debug(`[ResourceDownloader] Saved file: ${filePath} (${buffer.length} bytes)`);
       return filePath;
     } catch (error) {

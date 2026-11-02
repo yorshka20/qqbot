@@ -2,8 +2,8 @@
 
 import { Database } from 'bun:sqlite';
 import { mkdir, stat } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { logger, randomUUID } from '@qqbot/shared';
+import { dirname } from 'node:path';
+import { logger, randomUUID, resolveFromRepoRoot } from '@qqbot/shared';
 import type { DatabaseAdapter } from '../base/DatabaseAdapter';
 import type {
   AgendaItem,
@@ -278,7 +278,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
 
     try {
       // Resolve the database path (handle both relative and absolute paths)
-      const resolvedPath = resolve(this.dbPath);
+      const resolvedPath = resolveFromRepoRoot(this.dbPath);
       const dbDir = dirname(resolvedPath);
 
       // Ensure the directory exists

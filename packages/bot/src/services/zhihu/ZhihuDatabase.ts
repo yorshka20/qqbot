@@ -3,8 +3,8 @@
 
 import { Database } from 'bun:sqlite';
 import { mkdir, stat } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { logger } from '@qqbot/shared';
+import { dirname } from 'node:path';
+import { logger, resolveFromRepoRoot } from '@qqbot/shared';
 import type { ZhihuContentItem, ZhihuFeedItemRow } from './types';
 
 export class ZhihuDatabase {
@@ -12,7 +12,7 @@ export class ZhihuDatabase {
 
   async init(dbPath = 'data/zhihu.db'): Promise<void> {
     const isMemory = dbPath === ':memory:';
-    const resolved = isMemory ? ':memory:' : resolve(dbPath);
+    const resolved = isMemory ? ':memory:' : resolveFromRepoRoot(dbPath);
 
     if (!isMemory) {
       const dir = dirname(resolved);

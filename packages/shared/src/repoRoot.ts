@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 let cached: string | null = null;
@@ -31,6 +31,16 @@ export function getRepoRoot(): string {
     dir = parent;
   }
   throw new Error('[repoRoot] could not locate workspaces root from ' + fileURLToPath(import.meta.url));
+}
+
+/**
+ * Resolve a path taken from configuration. Absolute paths are kept; relative ones are
+ * relative to the repo root, never to process.cwd() — a launch from another directory
+ * (`bun run --filter` runs in the package folder) must not silently open a fresh
+ * database or an empty data directory beside the real one.
+ */
+export function resolveFromRepoRoot(path: string): string {
+  return isAbsolute(path) ? path : resolve(getRepoRoot(), path);
 }
 
 /** Convenience: resolve a path relative to repo root. */

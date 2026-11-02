@@ -1,8 +1,8 @@
 // Memory Trigger Plugin - on trigger phrase (e.g. bot name), update user memory then send standalone "记忆已更新" after update completes
 
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { getRepoRoot, logger } from '@qqbot/shared';
+import { dirname } from 'node:path';
+import { logger, resolveFromRepoRoot } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { isNoReplyPath } from '@/context/HookContextHelpers';
 import { normalizeGroupId } from '@/conversation/history';
@@ -112,7 +112,7 @@ export class MemoryTriggerPlugin extends PluginBase {
   }
 
   private getColdStartProgressPath(): string {
-    return join(getRepoRoot(), this.coldStartProgressFile);
+    return resolveFromRepoRoot(this.coldStartProgressFile);
   }
 
   /** Load set of groupIds that have already completed RAG cold start (persisted to file). */
@@ -147,7 +147,7 @@ export class MemoryTriggerPlugin extends PluginBase {
   /** Load checkpoint: groupId -> number of window docs already upserted. Version 2 = windowed; old format ignored. */
   private async loadColdStartCheckpoint(): Promise<Record<string, number>> {
     try {
-      const path = join(getRepoRoot(), this.coldStartCheckpointFile);
+      const path = resolveFromRepoRoot(this.coldStartCheckpointFile);
       const content = await readFile(path, 'utf-8');
       const data = JSON.parse(content) as Record<string, unknown>;
       if (typeof data !== 'object' || data === null) {
@@ -172,7 +172,7 @@ export class MemoryTriggerPlugin extends PluginBase {
   /** Write checkpoint so we can resume after restart (version 2 = windowed). */
   private async saveColdStartCheckpoint(checkpoint: Record<string, number>): Promise<void> {
     try {
-      const path = join(getRepoRoot(), this.coldStartCheckpointFile);
+      const path = resolveFromRepoRoot(this.coldStartCheckpointFile);
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, JSON.stringify(checkpoint, null, 0), 'utf-8');
     } catch (err) {

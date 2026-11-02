@@ -2,7 +2,7 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { logger } from '@qqbot/shared';
+import { logger, resolveFromRepoRoot } from '@qqbot/shared';
 import { ResourceDownloader } from '@/ai/utils/ResourceDownloader';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getContainer } from '@/core/DIContainer';
@@ -95,7 +95,7 @@ export class GroupDownloadPlugin extends PluginBase {
       return;
     }
 
-    const dirs = [...this.groupIdSet].map((id) => join(DOWNLOAD_ROOT, id));
+    const dirs = [...this.groupIdSet].map((id) => resolveFromRepoRoot(join(DOWNLOAD_ROOT, id)));
 
     try {
       await runDeduplication(dirs, this.fileService, false);
@@ -136,7 +136,7 @@ export class GroupDownloadPlugin extends PluginBase {
       return;
     }
 
-    const saveDir = join(DOWNLOAD_ROOT, groupIdStr);
+    const saveDir = resolveFromRepoRoot(join(DOWNLOAD_ROOT, groupIdStr));
 
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];

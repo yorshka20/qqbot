@@ -4,7 +4,7 @@
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import { ConfigError, getRepoRoot, logger } from '@qqbot/shared';
+import { ConfigError, getRepoRoot, logger, resolveFromRepoRoot } from '@qqbot/shared';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
 import { describeLLMTarget, type LLMTarget } from '@/core/config/types/ai';
@@ -171,7 +171,7 @@ export class MemoryPlugin extends PluginBase {
 
   /** Resolve full-history progress file path relative to repo root. */
   private getFullHistoryProgressPath(): string {
-    return join(getRepoRoot(), this.fullHistoryProgressFile);
+    return resolveFromRepoRoot(this.fullHistoryProgressFile);
   }
 
   /** Load set of "groupId:userId" from full-history progress file. */
@@ -461,7 +461,7 @@ export class MemoryPlugin extends PluginBase {
    */
   private async backupMemoryFiles(): Promise<void> {
     const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const destDir = join(getRepoRoot(), this.backupDir);
+    const destDir = resolveFromRepoRoot(this.backupDir);
     try {
       await mkdir(destDir, { recursive: true });
       await this.archiveManualFiles(join(destDir, `memory-${date}.tar.gz`));

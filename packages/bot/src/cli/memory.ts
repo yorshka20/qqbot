@@ -34,6 +34,7 @@ import type { Database } from 'bun:sqlite';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { resolveFromRepoRoot } from '@qqbot/shared';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
@@ -60,8 +61,8 @@ import { MemoryIndex } from '@/memory/storage/MemoryIndex';
 import { MemoryIndexSync } from '@/memory/storage/MemoryIndexSync';
 import { RetrievalService } from '@/services/retrieval/RetrievalService';
 
-const MEMORY_DIR = 'data/memory';
-const MIGRATE_DIR = 'data/backup/memory/migrate';
+const MEMORY_DIR = resolveFromRepoRoot('data/memory');
+const MIGRATE_DIR = resolveFromRepoRoot('data/backup/memory/migrate');
 const LEGACY_FILE = 'auto.txt';
 const MIGRATED_FILE = 'auto.migrated.txt';
 const BACKFILL_CHUNK_CHARS = 15_000;

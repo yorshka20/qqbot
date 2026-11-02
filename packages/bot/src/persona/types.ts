@@ -11,6 +11,7 @@
  * Design reference: `docs/local/mind-system-design.md`.
  */
 
+import { resolveFromRepoRoot } from '@qqbot/shared';
 import { type MessageSource, SOURCE_VALUES } from '@/conversation/sources';
 import type { LLMTarget } from '@/core/config/types/ai';
 
@@ -398,7 +399,9 @@ export function mergePersonaConfig(raw: Record<string, unknown> | undefined): Pe
   return {
     enabled: typeof src.enabled === 'boolean' ? src.enabled : DEFAULT_PERSONA_CONFIG.enabled,
     personaId: typeof src.personaId === 'string' && src.personaId ? src.personaId : DEFAULT_PERSONA_CONFIG.personaId,
-    dataDir: typeof src.dataDir === 'string' && src.dataDir ? src.dataDir : DEFAULT_PERSONA_CONFIG.dataDir,
+    dataDir: resolveFromRepoRoot(
+      typeof src.dataDir === 'string' && src.dataDir ? src.dataDir : DEFAULT_PERSONA_CONFIG.dataDir,
+    ),
     tickMs: numberOr(src.tickMs, DEFAULT_PERSONA_CONFIG.tickMs),
     applicableSources: Array.isArray(src.applicableSources)
       ? (src.applicableSources as readonly import('../conversation/sources').MessageSource[])

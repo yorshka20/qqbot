@@ -125,7 +125,7 @@ const SHELL_SYNTAX_ERROR =
 export class ReadOnlyShellService {
   constructor(
     private readonly fileReadService: FileReadService,
-    private readonly projectRoot: string = process.cwd(),
+    private readonly projectRoot: string = fileReadService.root,
   ) {}
 
   run(command: string): ShellRunResult {

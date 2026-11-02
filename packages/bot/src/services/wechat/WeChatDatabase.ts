@@ -3,8 +3,8 @@
 
 import { Database } from 'bun:sqlite';
 import { mkdir, stat } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { logger } from '@qqbot/shared';
+import { dirname } from 'node:path';
+import { logger, resolveFromRepoRoot } from '@qqbot/shared';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Row types
@@ -93,7 +93,7 @@ export class WeChatDatabase {
   async init(dbPath = 'data/wechat.db'): Promise<void> {
     // ':memory:' is the SQLite in-memory identifier — skip path resolution
     const isMemory = dbPath === ':memory:';
-    const resolved = isMemory ? ':memory:' : resolve(dbPath);
+    const resolved = isMemory ? ':memory:' : resolveFromRepoRoot(dbPath);
 
     if (!isMemory) {
       const dir = dirname(resolved);

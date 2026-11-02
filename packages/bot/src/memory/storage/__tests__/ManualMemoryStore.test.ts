@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { getRepoRoot } from '@qqbot/shared';
 import type { Config } from '@/core/config';
 import { GROUP_MEMORY_USER_ID } from '../../model/constants';
 import { ManualMemoryStore } from '../ManualMemoryStore';
@@ -51,5 +52,16 @@ describe('ManualMemoryStore', () => {
     expect(store.slotAt(`${GROUP}/_global_/manual.txt`)).toEqual({ groupId: GROUP, userId: GROUP_MEMORY_USER_ID });
     expect(store.slotAt(`${GROUP}/${USER}/auto.migrated.txt`)).toBeNull();
     expect(store.slotAt(`${GROUP}/${USER}`)).toBeNull();
+  });
+
+  it('reads a relative memory dir from the repo root, whatever the launch directory', () => {
+    const originalCwd = process.cwd();
+    try {
+      process.chdir(dir);
+      const relative = new ManualMemoryStore({ getMemoryConfig: () => ({ dir: 'data/memory' }) } as unknown as Config);
+      expect(relative.directory).toBe(join(getRepoRoot(), 'data', 'memory'));
+    } finally {
+      process.chdir(originalCwd);
+    }
   });
 });

@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { logger } from '@qqbot/shared';
+import { logger, resolveFromRepoRoot } from '@qqbot/shared';
 import type { ArticleSummary, GroupSummary, WechatDigestService, WechatStats } from './WechatDigestService';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ export class WechatReportService {
     private digestService: WechatDigestService,
     reportDir = 'data/reports/wechat',
   ) {
-    this.reportDir = resolve(reportDir);
+    this.reportDir = resolveFromRepoRoot(reportDir);
     this.ensureDir(this.reportDir);
     logger.info(`[WechatReportService] Initialized | reportDir=${this.reportDir}`);
   }

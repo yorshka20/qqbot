@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { logger } from '@qqbot/shared';
+import { logger, resolveFromRepoRoot } from '@qqbot/shared';
 import { translateChannelsToVTS } from '../channels';
 import { DriverAdapter } from './DriverAdapter';
 import { DEFAULT_VTS_CONFIG, type VTSConfig, type VTSParameterValue, type VTSRequest, type VTSResponse } from './types';
@@ -29,7 +29,8 @@ export class VTSDriver extends DriverAdapter {
 
   constructor(config: Partial<VTSConfig> = {}) {
     super();
-    this.config = { ...DEFAULT_VTS_CONFIG, ...config };
+    const merged = { ...DEFAULT_VTS_CONFIG, ...config };
+    this.config = { ...merged, tokenFilePath: resolveFromRepoRoot(merged.tokenFilePath) };
   }
 
   async connect(): Promise<void> {

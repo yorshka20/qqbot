@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
-import { logger } from '@qqbot/shared';
+import { getRepoRoot, logger, resolveFromRepoRoot } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { Config } from '@/core/config';
 import type { FileReadServiceConfig } from '@/core/config/types/bot';
@@ -130,7 +130,7 @@ export class FileReadService {
 
   constructor(@inject(DITokens.CONFIG) botConfig: Config) {
     const config: FileReadServiceConfig | undefined = botConfig.getFileReadServiceConfig();
-    this.projectRoot = resolve(config?.root ?? process.cwd());
+    this.projectRoot = config?.root ? resolveFromRepoRoot(config.root) : getRepoRoot();
     this.filterPaths = config?.filterPaths ?? [];
     this.filterExtensions = (config?.filterExtensions ?? []).map(normalizeExtension).filter((ext) => ext.length > 0);
   }
@@ -139,6 +139,10 @@ export class FileReadService {
    * Check if resolved path is within project root (no path traversal).
    * When noCheck is true, only traversal is checked; filterPaths are skipped (caller must restrict who uses noCheck).
    */
+  get root(): string {
+    return this.projectRoot;
+  }
+
   isPathSafe(resolvedPath: string, rootPath: string = this.projectRoot, noCheck = false): boolean {
     if (FileReadService.isAlwaysDenied(resolvedPath)) {
       return false;

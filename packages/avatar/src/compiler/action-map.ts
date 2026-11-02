@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { logger } from '@qqbot/shared';
+import { logger, resolveFromRepoRoot } from '@qqbot/shared';
 import type { IdleClip } from './layers/clips/types';
 import type {
   ActionMapEntry,
@@ -181,7 +181,7 @@ export class ActionMap {
     let assetsDir: string;
 
     if (filePath) {
-      const resolved = filePath;
+      const resolved = resolveFromRepoRoot(filePath);
       const raw = readFileSync(resolved, 'utf8');
       parsed = JSON.parse(raw) as Record<string, ActionMapEntry | ActionMapEntry[]>;
       assetsDir = dirname(resolved);

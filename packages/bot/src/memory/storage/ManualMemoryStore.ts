@@ -6,8 +6,8 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { logger } from '@qqbot/shared';
+import { dirname, join } from 'node:path';
+import { logger, resolveFromRepoRoot } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { v5 as uuidv5 } from 'uuid';
 import type { Config } from '@/core/config';
@@ -40,7 +40,7 @@ export class ManualMemoryStore {
   private readonly basePath: string;
 
   constructor(@inject(DITokens.CONFIG) config: Config) {
-    this.basePath = resolve(process.cwd(), config.getMemoryConfig().dir ?? DEFAULT_MEMORY_DIR);
+    this.basePath = resolveFromRepoRoot(config.getMemoryConfig().dir ?? DEFAULT_MEMORY_DIR);
   }
 
   get directory(): string {

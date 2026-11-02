@@ -1,5 +1,7 @@
 // WeChat Ingest Plugin - Type definitions
 
+import { readFileSync } from 'node:fs';
+import { resolveFromRepoRoot } from '@qqbot/shared';
 import type { LLMTarget } from '@/core/config/types/ai';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -148,9 +150,7 @@ function loadIgnoredOAAccounts(value: string[] | string | undefined): Set<string
   if (Array.isArray(value)) return new Set(value.map((s) => s.trim()).filter(Boolean));
   // Treat as file path
   try {
-    const { readFileSync } = require('node:fs');
-    const { resolve } = require('node:path');
-    const content = readFileSync(resolve(value), 'utf-8') as string;
+    const content = readFileSync(resolveFromRepoRoot(value), 'utf-8');
     const names = content
       .split('\n')
       .map((line: string) => line.replace(/#.*$/, '').trim())

@@ -3,7 +3,7 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { HttpClient, logger } from '@qqbot/shared';
+import { HttpClient, logger, resolveFromRepoRoot } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { Config, VideoKnowledgeConfig } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
@@ -33,7 +33,7 @@ export class VideoKnowledgeClient {
       baseURL: 'http://localhost:8080',
     };
     this.enabled = config.enabled;
-    this.dataDir = config.dataDir;
+    this.dataDir = config.dataDir ? resolveFromRepoRoot(config.dataDir) : undefined;
     this.pollIntervalMs = config.pollIntervalMs ?? 5000;
     this.pollTimeoutMs = config.pollTimeoutMs ?? 300_000;
 

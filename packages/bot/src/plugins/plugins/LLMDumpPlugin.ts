@@ -14,7 +14,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { getRepoRoot, logger } from '@qqbot/shared';
+import { getRepoRoot, logger, resolveFromRepoRoot } from '@qqbot/shared';
 import type { ScheduledTask } from 'node-cron';
 import { schedule } from 'node-cron';
 import { isAssembledEnvelope } from '@/ai/prompt/PromptMessageAssembler';
@@ -75,7 +75,7 @@ export class LLMDumpPlugin extends PluginBase {
   async onInit(): Promise<void> {
     const config = (this.pluginConfig?.config ?? {}) as LLMDumpPluginConfig;
     if (config.outputDir) {
-      this.outputDir = join(getRepoRoot(), config.outputDir);
+      this.outputDir = resolveFromRepoRoot(config.outputDir);
     }
     this.retainDays = config.retainDays ?? 7;
     this.archiveCron = config.archiveCron ?? '0 4 * * 1';

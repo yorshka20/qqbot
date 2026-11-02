@@ -21,9 +21,9 @@
  */
 
 import { access, readdir, readFile, stat } from 'node:fs/promises';
-import { basename, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 import type { DocsListResponse, DocsRootInfo, DocsRootsResponse, FileItem } from '@qqbot/api-types';
-import { getRepoRoot, logger } from '@qqbot/shared';
+import { getRepoRoot, logger, resolveFromRepoRoot } from '@qqbot/shared';
 import type { DocsPreviewConfig } from '@/core/config/types/docsPreview';
 import { type Backend, errorResponse, jsonResponse, registerStaticBackend } from '../backend';
 import { resolveSafe } from './pathSafety';
@@ -63,10 +63,6 @@ function buildBuiltinRoots(): Array<[string, { label: string; absPath: string }]
   ];
 }
 
-function resolveExtraRootPath(rawPath: string): string {
-  return isAbsolute(rawPath) ? resolve(rawPath) : resolve(getRepoRoot(), rawPath);
-}
-
 function buildRootMap(config?: DocsPreviewConfig): Map<string, { label: string; absPath: string }> {
   const roots = new Map<string, { label: string; absPath: string }>(buildBuiltinRoots());
   for (const extra of config?.roots ?? []) {
@@ -85,7 +81,7 @@ function buildRootMap(config?: DocsPreviewConfig): Map<string, { label: string; 
     }
     roots.set(id, {
       label: extra.label?.trim() || `${id}/`,
-      absPath: resolveExtraRootPath(extra.path),
+      absPath: resolveFromRepoRoot(extra.path),
     });
   }
   return roots;

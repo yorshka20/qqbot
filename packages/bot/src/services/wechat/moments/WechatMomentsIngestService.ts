@@ -8,8 +8,7 @@
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { logger } from '@qqbot/shared';
+import { logger, resolveFromRepoRoot } from '@qqbot/shared';
 import type { RAGDocument, RetrievalService } from '@/services/retrieval';
 import type { WeChatPadProClient, WXMoment } from '../WeChatPadProClient';
 import type { ParsedMomentMedia } from './momentsParser';
@@ -281,14 +280,14 @@ export class WechatMomentsIngestService {
     }
 
     try {
-      const dir = resolve(IMAGE_DIR);
+      const dir = resolveFromRepoRoot(IMAGE_DIR);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
       // Use media id or moment id + index as filename
       const ext = this.guessExtension(url);
       const filename = `${media.id || moment.id || Date.now()}${ext}`;
       const filePath = `${IMAGE_DIR}/${filename}`;
-      const absPath = resolve(filePath);
+      const absPath = resolveFromRepoRoot(filePath);
 
       // Skip if already downloaded
       if (existsSync(absPath)) {

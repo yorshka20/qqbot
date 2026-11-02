@@ -26,7 +26,7 @@
     "build:all": "bun run --filter @qqbot/bot build:all",
     "build:watch": "bun run --filter @qqbot/bot build:watch",
     "build:admin": "bun run --filter @qqbot/webui build",
-    "debug": "bun run --filter @qqbot/bot debug",
+    "debug": "bun run packages/bot/src/cli/debug.ts LOG_LEVEL=debug --mock",
     "typecheck": "tsc -b",
     "type-check": "tsc -b",
     "lint": "biome check packages/*/src scripts/supervisor scripts/deploy.ts scripts/ui.ts && bun run lint:di",
