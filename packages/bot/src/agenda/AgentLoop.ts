@@ -20,6 +20,7 @@ import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { MessageSegment } from '@/message/types';
+import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
 import type { ToolManager } from '@/tools/ToolManager';
 import { parseDeliveryMarkers } from '@/utils/contentMarkers';
 import type { ActionHandlerRegistry } from './ActionHandlerRegistry';
@@ -370,7 +371,7 @@ export class AgentLoop {
     // so the LLM can access specialized tools (e.g. wechat_stats, wechat_report)
     const tools = this.getAgendaToolDefinitions();
     const toolInstruct = await this.buildAgendaToolInstructions(tools);
-    const messages = this.buildPrompt(item, conversationContext, eventContext, toolInstruct);
+    const messages = this.buildPrompt(item, conversationContext, eventContext, toolInstruct, tools);
 
     try {
       const agendaContext = buildAgendaHookContext(item, groupId, eventContext, this.preferredProtocol);
@@ -453,8 +454,12 @@ export class AgentLoop {
     conversationContext: string,
     eventContext: AgendaEventContext | undefined,
     toolInstruct: string,
+    tools: ToolDefinition[],
   ): ChatMessage[] {
-    const systemPrompt = this.promptManager.render('agenda.agent_loop_system', { toolInstruct });
+    const systemPrompt = this.promptManager.render('agenda.agent_loop_system', {
+      toolInstruct,
+      endTurn: tools.some((tool) => tool.name === END_TURN_TOOL_NAME) ? 'true' : '',
+    });
     const lines: string[] = [`当前时间: ${getCurrentDateTimeForPrompt()}`, `任务意图: ${item.intent}`];
 
     if (eventContext) {

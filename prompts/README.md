@@ -51,6 +51,23 @@ User: {{userMessage}}
 Please respond.
 ```
 
+### Partials
+
+`{{> name key="value" ...}}` inlines another template, rendered with **only** the
+`key="value"` parameters written in the tag — never the including template's variables.
+A fragment shared by several prompts therefore lives in one file and each includer states
+its own facts as parameters. A tag inside a false `{{#if}}` branch is dropped without
+rendering; a cycle or a missing partial throws.
+
+`llm/partials/delivery_contract.txt` is the reply loop's delivery contract (final text,
+`send_message`, tool-round text, `send_card`, `end_turn`). It is included by
+`scenes/qq-{group,private}/zh/scene.txt`, `llm/proactive.system.txt` and
+`agenda/agent_loop_system.txt`. Its flags record where a path really differs:
+`toolRoundTextSent` (the caller delivers text written beside tool calls — only the reply
+pipeline does) and `longTextForwarded` (long plain text goes out as a merged forward —
+reply pipeline only). The bot-initiated paths include it only when `end_turn` is among
+the tools they offer (`{{#if endTurn}}`).
+
 ## Supported File Extensions
 
 - `.txt` - Plain text templates

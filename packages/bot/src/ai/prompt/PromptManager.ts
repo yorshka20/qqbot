@@ -18,6 +18,15 @@ export interface PromptTemplate {
 const BASE_TEMPLATE_NAME = 'base';
 const BASE_SYSTEM_TEMPLATE_NAME = 'base.system';
 
+const PARTIAL_RE = /\{\{>\s*([\w.-]+)((?:\s+\w+="[^"]*")*)\s*\}\}/g;
+const PARTIAL_PARAM_RE = /(\w+)="([^"]*)"/g;
+const PARTIAL_SLOT_RE = /\uE000(\d+)\uE001/g;
+
+interface PartialInclude {
+  name: string;
+  params: Record<string, string>;
+}
+
 /**
  * Prompt Manager - manages and loads prompt templates
  * Supports batch loading from directories, namespaces, and versioning.
@@ -191,12 +200,28 @@ export class PromptManager {
    * Render template with variables (single template only, no base injection).
    */
   render(name: string, variables?: Record<string, string>): string {
+    return this.renderByName(name, variables, []);
+  }
+
+  private renderByName(name: string, variables: Record<string, string> | undefined, includeChain: string[]): string {
     const template = this.getTemplate(name);
     if (!template) {
       throw new Error(`Template "${name}" not found`);
     }
 
-    return this.renderTemplateContent(template, name, variables);
+    return this.renderTemplateContent(template, name, variables, includeChain);
+  }
+
+  /**
+   * Render a `{{> name key="value" ...}}` partial. A partial sees its own `key="value"`
+   * parameters only — never the includer's variables — so one shared fragment says
+   * exactly what its parameters say at every place that includes it.
+   */
+  private renderPartial(include: PartialInclude, includeChain: string[]): string {
+    if (includeChain.includes(include.name)) {
+      throw new Error(`Prompt partial cycle: ${[...includeChain, include.name].join(' → ')}`);
+    }
+    return this.renderByName(include.name, include.params, includeChain);
   }
 
   /**
@@ -206,8 +231,21 @@ export class PromptManager {
     template: PromptTemplate,
     templateName: string,
     variables?: Record<string, string>,
+    includeChain: string[] = [],
   ): string {
-    let rendered = template.content;
+    // Include tags become opaque slots while the includer renders, and are filled last:
+    // the includer's conditionals decide whether a slot survives, but neither its
+    // variables reach into a partial's output nor can a substituted value (user text)
+    // smuggle in an include tag of its own.
+    const includes: PartialInclude[] = [];
+    let rendered = template.content.replace(PARTIAL_RE, (_match, name: string, rawParams: string) => {
+      const params: Record<string, string> = {};
+      for (const [, key, value] of rawParams.matchAll(PARTIAL_PARAM_RE)) {
+        params[key] = value;
+      }
+      includes.push({ name, params });
+      return `\uE000${includes.length - 1}\uE001`;
+    });
 
     // Process {{#if var}}...{{else}}...{{/if}} blocks (supports nesting)
     if (variables) {
@@ -226,6 +264,13 @@ export class PromptManager {
     const unresolved = rendered.match(/\{\{(?!#|\/|else)(\w+)\}\}/g);
     if (unresolved) {
       logger.warn(`[PromptManager] Unresolved variables in template ${templateName}: ${unresolved.join(', ')}`);
+    }
+
+    if (includes.length > 0) {
+      const chain = [...includeChain, templateName];
+      rendered = rendered.replace(PARTIAL_SLOT_RE, (_match, index: string) =>
+        this.renderPartial(includes[Number(index)], chain),
+      );
     }
 
     return rendered.trim();

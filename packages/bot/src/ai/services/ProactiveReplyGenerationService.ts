@@ -13,6 +13,7 @@ import { DITokens } from '@/core/DITokens';
 import { HookManager } from '@/hooks/HookManager';
 import { PluginManager } from '@/plugins/PluginManager';
 import type { WhitelistPlugin } from '@/plugins/plugins/WhitelistPlugin';
+import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
 import type { ToolManager } from '@/tools/ToolManager';
 import type { AIProvider } from '../base/AIProvider';
 import type { VisionImage } from '../capabilities/types';
@@ -88,6 +89,7 @@ export class ProactiveReplyGenerationService {
     const { baseSystemPrompt, proactiveSystemPrompt, finalUserQuery } = this.buildPrompts(
       context,
       toolUsageInstructions,
+      tools.some((tool) => tool.name === END_TURN_TOOL_NAME),
     );
     const { historyEntries, finalUserBlocks } = this.getHistoryAndUserBlocks(context, finalUserQuery);
 
@@ -169,6 +171,7 @@ export class ProactiveReplyGenerationService {
   private buildPrompts(
     context: ProactiveReplyInjectContext,
     toolUsageInstructions: string,
+    endTurnOffered: boolean,
   ): { baseSystemPrompt: string; proactiveSystemPrompt: string; finalUserQuery: string } {
     let whitelistFragment = '';
     if (context.sessionId) {
@@ -188,6 +191,7 @@ export class ProactiveReplyGenerationService {
     const proactiveSystemPrompt = this.promptManager.render('llm.proactive.system', {
       preferenceText: context.preferenceText,
       toolInstruct,
+      endTurn: endTurnOffered ? 'true' : '',
     });
     const lastUserMessage = context.lastUserMessage?.trim() ?? '（无）';
     const finalUserQuery = this.promptManager.render('llm.proactive.user_frame', { lastUserMessage }) ?? '';

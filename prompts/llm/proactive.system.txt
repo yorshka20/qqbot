@@ -6,4 +6,7 @@
 
 {{toolInstruct}}
 
-直接输出回复，语言与对话保持一致。
+{{#if endTurn}}## 输出投递
+{{> llm.partials.delivery_contract audience="群友" closingActions="send_card"}}
+
+{{/if}}直接输出回复，语言与对话保持一致。
