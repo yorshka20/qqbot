@@ -21,14 +21,6 @@ export type ChatMessageRole = ChatMessageRoleBase | 'tool';
  */
 export type ConversationHistoryRole = 'user' | 'assistant';
 
-/**
- * Message in conversation history (plain text only; used by context/history loading).
- */
-export interface ConversationMessage {
-  role: ChatMessageRoleBase;
-  content: string;
-}
-
 // Re-use OpenAI Chat Completions content part types for full compatibility.
 /** Text content part (OpenAI ChatCompletionContentPartText). */
 export type ContentPartText = OpenAI.Chat.ChatCompletionContentPartText;
@@ -146,8 +138,9 @@ export interface AIGenerateOptions {
    */
   jsonMode?: boolean;
   /**
-   * Session ID for automatic context loading
-   * If provided and provider has context enabled, will automatically load history from ContextManager
+   * Session the call belongs to. LLMService routes by it (session provider override) and
+   * tags traces with it; providers ignore it — a provider sends exactly `messages`, or
+   * `systemPrompt` + `prompt`, and never adds conversation history of its own.
    */
   sessionId?: string;
   /**

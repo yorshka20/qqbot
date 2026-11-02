@@ -231,8 +231,6 @@ export interface OpenAIProviderConfig {
   model?: string;
   baseURL?: string;
   defaultMaxTokens?: number;
-  enableContext?: boolean;
-  contextMessageCount?: number;
   image?: OpenAIImageConfig;
 }
 
@@ -268,9 +266,6 @@ export class OpenAIProvider
     if (config.image?.enabled) {
       this._capabilities.push('text2img', 'img2img');
     }
-
-    // Set context configuration
-    this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
 
     if (this.isAvailable()) {
       this.client = new OpenAI({
@@ -317,7 +312,7 @@ export class OpenAIProvider
 
   /**
    * Assemble the Responses API input for a request, from either an explicit
-   * `options.messages` array or the legacy history + prompt path.
+   * `options.messages` array or `systemPrompt` + `prompt`.
    */
   private async buildResponsesInput(
     prompt: string,
@@ -326,12 +321,10 @@ export class OpenAIProvider
     if (options?.messages?.length) {
       return mapMessagesToResponsesInput(OpenAIProvider.withSystemPrompt(options.messages, options.systemPrompt));
     }
-    const history = await this.loadHistory(options);
     const messages: ChatMessage[] = [];
     if (options?.systemPrompt) {
       messages.push({ role: 'system', content: options.systemPrompt });
     }
-    messages.push(...history);
     messages.push({ role: 'user', content: prompt });
     return mapMessagesToResponsesInput(messages);
   }

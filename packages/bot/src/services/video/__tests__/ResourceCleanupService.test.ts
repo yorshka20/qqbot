@@ -30,9 +30,8 @@ describe('ResourceCleanupService', () => {
     const localFile = await createTempFile('qqbot-resource-cleanup-', 'local.txt');
     const remoteDelete = vi.fn().mockResolvedValue(undefined);
 
-    service.registerFileCleanup('gemini', remoteDelete);
     service.registerLocalFile('session-1', localFile);
-    service.registerRemoteFile('session-1', 'files/test-video-id', 'gemini');
+    service.registerRemoteFile('session-1', 'files/test-video-id', remoteDelete);
 
     await service.cleanup('session-1');
 
@@ -46,12 +45,11 @@ describe('ResourceCleanupService', () => {
     const localFileB = await createTempFile('qqbot-resource-cleanup-b-', 'local-b.txt');
     const remoteDelete = vi.fn().mockResolvedValue(undefined);
 
-    service.registerFileCleanup('gemini', remoteDelete);
 
     service.registerLocalFile('session-a', localFileA);
-    service.registerRemoteFile('session-a', 'files/test-video-a', 'gemini');
+    service.registerRemoteFile('session-a', 'files/test-video-a', remoteDelete);
     service.registerLocalFile('session-b', localFileB);
-    service.registerRemoteFile('session-b', 'files/test-video-b', 'gemini');
+    service.registerRemoteFile('session-b', 'files/test-video-b', remoteDelete);
 
     await service.cleanupAll();
 
@@ -72,12 +70,11 @@ describe('ResourceCleanupService', () => {
         throw new Error('delete failed');
       }
     });
-    service.registerFileCleanup('gemini', remoteDelete);
 
     service.registerLocalFile('session-c', localFileA);
-    service.registerRemoteFile('session-c', 'files/test-video-c', 'gemini');
+    service.registerRemoteFile('session-c', 'files/test-video-c', remoteDelete);
     service.registerLocalFile('session-d', localFileB);
-    service.registerRemoteFile('session-d', 'files/test-video-d', 'gemini');
+    service.registerRemoteFile('session-d', 'files/test-video-d', remoteDelete);
 
     await service.cleanupAll();
 

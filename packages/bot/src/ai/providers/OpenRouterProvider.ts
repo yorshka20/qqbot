@@ -28,9 +28,6 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
     // Explicitly declare supported capabilities
     this._capabilities = ['llm', 'function_calling'];
 
-    // Set context configuration
-    this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
-
     // Configure HttpClient
     const baseURL = config.baseURL || 'https://openrouter.ai/api/v1';
     const defaultHeaders: Record<string, string> = {
@@ -117,16 +114,9 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
           content: contentToPlainString(m.content),
         }));
       } else {
-        const history = await this.loadHistory(options);
         messages = [];
         if (options?.systemPrompt) {
           messages.push({ role: 'system', content: options.systemPrompt });
-        }
-        for (const msg of history) {
-          messages.push({
-            role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: contentToPlainString(msg.content),
-          });
         }
         messages.push({
           role: 'user',
@@ -196,16 +186,9 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
           content: contentToPlainString(m.content),
         }));
       } else {
-        const history = await this.loadHistory(options);
         messages = [];
         if (options?.systemPrompt) {
           messages.push({ role: 'system', content: options.systemPrompt });
-        }
-        for (const msg of history) {
-          messages.push({
-            role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: contentToPlainString(msg.content),
-          });
         }
         messages.push({
           role: 'user',

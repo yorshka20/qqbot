@@ -237,8 +237,6 @@ export interface DoubaoProviderConfig {
   reasoningEffort?: 'low' | 'medium' | 'high';
   defaultTemperature?: number;
   defaultMaxTokens?: number;
-  enableContext?: boolean;
-  contextMessageCount?: number;
 }
 
 /**
@@ -261,9 +259,6 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     // Explicitly declare supported capabilities
     // Doubao supports both LLM and Vision
     this._capabilities = ['llm', 'function_calling', 'vision'];
-
-    // Set context configuration
-    this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
 
     this.httpClient = new HttpClient({
       baseURL,
@@ -542,16 +537,9 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       return filtered.map((m) => this.chatMessageToArkInputItem(m));
     }
 
-    const history = await this.loadHistory(options);
     const input: ArkInputItem[] = [];
     if (options?.systemPrompt) {
       input.push({ role: 'system', content: options.systemPrompt });
-    }
-    for (const msg of history) {
-      input.push({
-        role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-        content: msg.content,
-      });
     }
     input.push({ role: 'user', content: prompt });
     return input;

@@ -40,8 +40,6 @@ export interface OpenAIProviderConfig {
   baseURL?: string;
   temperature?: number;
   maxTokens?: number;
-  enableContext?: boolean; // Enable automatic context loading from conversation history
-  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
   image?: OpenAIImageConfig; // Optional: enable gpt-image-2 text2img + img2img
 }
 
@@ -51,8 +49,6 @@ export interface AnthropicProviderConfig {
   model?: string; // claude-3-opus, claude-3-sonnet, claude-3-haiku, etc.
   temperature?: number;
   maxTokens?: number;
-  enableContext?: boolean; // Enable automatic context loading from conversation history
-  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
   resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/anthropic')
   /**
    * Enable Anthropic server-side web_search_20250305 tool. Default: false.
@@ -68,8 +64,6 @@ export interface OllamaProviderConfig {
   model: string;
   temperature?: number;
   maxTokens?: number;
-  enableContext?: boolean; // Enable automatic context loading from conversation history
-  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
 }
 
 export interface DeepSeekProviderConfig {
@@ -79,8 +73,6 @@ export interface DeepSeekProviderConfig {
   baseURL?: string;
   temperature?: number;
   maxTokens?: number;
-  enableContext?: boolean; // Enable automatic context loading from conversation history
-  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
 }
 
 export interface LocalText2ImageProviderConfig {
@@ -104,8 +96,6 @@ export interface OpenRouterProviderConfig {
   baseURL?: string; // Default: "https://openrouter.ai/api/v1"
   temperature?: number;
   maxTokens?: number;
-  enableContext?: boolean; // Enable automatic context loading from conversation history
-  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
   httpReferer?: string; // Optional: Site URL for rankings
   siteName?: string; // Optional: Site name for rankings
   resourceSavePath?: string; // Directory path to save downloaded resources (e.g., './data/downloads/openrouter')
@@ -130,8 +120,6 @@ export interface GeminiLLmConfig {
   model: string;
   temperature?: number;
   maxTokens?: number;
-  enableContext?: boolean;
-  contextMessageCount?: number; // default: 10
   /**
    * Enable Gemini googleSearch grounding tool. Default: false.
    * When true, generateContent requests include `{ googleSearch: {} }` alongside
@@ -175,8 +163,6 @@ export interface DoubaoProviderConfig {
   reasoningEffort?: 'low' | 'medium' | 'high'; // Default: 'medium'
   temperature?: number;
   maxTokens?: number;
-  enableContext?: boolean; // Enable automatic context loading from conversation history
-  contextMessageCount?: number; // Number of recent messages to load as context (default: 10)
 }
 
 /** Laozhang config per capability: model and optional LLM options */
@@ -184,8 +170,6 @@ export interface LaozhangLLmConfig {
   model: string;
   temperature?: number;
   maxTokens?: number;
-  enableContext?: boolean;
-  contextMessageCount?: number; // default: 10
 }
 
 /** Laozhang config for vision (image understanding) */
@@ -239,8 +223,6 @@ export interface GroqProviderConfig {
   baseURL?: string; // Default: 'https://api.groq.com/openai/v1'
   temperature?: number;
   maxTokens?: number;
-  enableContext?: boolean;
-  contextMessageCount?: number;
 }
 
 export interface MinimaxProviderConfig {
@@ -252,8 +234,6 @@ export interface MinimaxProviderConfig {
   baseURL?: string;
   temperature?: number; // Range: (0, 1] — MiniMax does not accept 0
   maxTokens?: number;
-  enableContext?: boolean;
-  contextMessageCount?: number; // default: 10
   /** Split reasoning content into a separate field (default: true for reasoning models). */
   reasoningSplit?: boolean;
 }
@@ -265,8 +245,6 @@ export interface SiliconFlowProviderConfig {
   baseURL?: string; // Default: 'https://api.siliconflow.com/v1'
   temperature?: number;
   maxTokens?: number;
-  enableContext?: boolean;
-  contextMessageCount?: number;
 }
 
 export type AIProviderConfig =

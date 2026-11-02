@@ -22,8 +22,6 @@ export interface SiliconFlowProviderConfig {
   baseURL?: string;
   defaultTemperature?: number;
   defaultMaxTokens?: number;
-  enableContext?: boolean;
-  contextMessageCount?: number;
 }
 
 /**
@@ -45,8 +43,6 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
     this.baseUrl = config.baseURL || 'https://api.siliconflow.com/v1';
 
     this._capabilities = ['llm', 'function_calling'];
-
-    this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
 
     this.httpClient = new HttpClient({
       baseURL: this.baseUrl,
@@ -143,16 +139,9 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
       if (options?.messages?.length) {
         messages = this.mapMessagesToApi(SiliconFlowProvider.withSystemPrompt(options.messages, options.systemPrompt));
       } else {
-        const history = await this.loadHistory(options);
         messages = [];
         if (options?.systemPrompt) {
           messages.push({ role: 'system', content: options.systemPrompt });
-        }
-        for (const msg of history) {
-          messages.push({
-            role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: contentToPlainString(msg.content),
-          });
         }
         messages.push({
           role: 'user',
@@ -264,16 +253,9 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
           content: contentToPlainString(m.content),
         }));
       } else {
-        const history = await this.loadHistory(options);
         messages = [];
         if (options?.systemPrompt) {
           messages.push({ role: 'system', content: options.systemPrompt });
-        }
-        for (const msg of history) {
-          messages.push({
-            role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: contentToPlainString(msg.content),
-          });
         }
         messages.push({
           role: 'user',

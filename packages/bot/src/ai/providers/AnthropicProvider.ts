@@ -25,8 +25,6 @@ export interface AnthropicProviderConfig {
   model?: string; // claude-3-opus, claude-3-sonnet, claude-3-haiku, etc.
   defaultTemperature?: number;
   defaultMaxTokens?: number;
-  enableContext?: boolean;
-  contextMessageCount?: number;
   resourceSavePath?: string; // Directory path to save downloaded resources
   /** Enable Anthropic server-side web_search_20250305 tool. Default: false. */
   nativeWebSearch?: boolean;
@@ -278,9 +276,6 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     if (config.nativeWebSearch) {
       this._capabilities.push('native_web_search');
     }
-
-    // Set context configuration
-    this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
 
     // Configure HttpClient
     this.httpClient = new HttpClient({
@@ -667,19 +662,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       return this.mapChatMessagesToAnthropic(options.messages);
     }
 
-    const history = await this.loadHistory(options);
-    const messages: AnthropicMessage[] = [];
-    for (const msg of history) {
-      messages.push({
-        role: msg.role === 'assistant' ? 'assistant' : 'user',
-        content: toAnthropicContent(msg.content),
-      });
-    }
-    messages.push({
-      role: 'user',
-      content: prompt,
-    });
-    return messages;
+    return [{ role: 'user', content: prompt }];
   }
 
   private mapChatMessagesToAnthropic(messages: ChatMessage[]): AnthropicMessage[] {

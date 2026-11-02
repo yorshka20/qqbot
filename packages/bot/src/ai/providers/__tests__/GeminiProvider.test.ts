@@ -4,13 +4,11 @@
 // model and the thinkingConfig it ran with.
 
 import 'reflect-metadata';
-import { beforeEach, describe, expect, it } from 'bun:test';
-import { container } from 'tsyringe';
+import { describe, expect, it } from 'bun:test';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
 import type { AIGenerateOptions } from '../../types';
 import { GeminiProvider } from '../GeminiProvider';
 import { clampMaxTokens } from '../maxTokens';
-import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
 
 function baseConfig(): GeminiProviderConfig {
   return {
@@ -63,12 +61,6 @@ function installFakeClient(
 const promptOpts = { messages: [{ role: 'user' as const, content: 'hi' }] };
 
 describe('GeminiProvider model resolution', () => {
-  beforeEach(() => {
-    container.register(ResourceCleanupService, {
-      useValue: { registerFileCleanup: () => {} } as unknown as ResourceCleanupService,
-    });
-  });
-
   it('uses the configured llm model and reports it as resolvedModel', async () => {
     const provider = new GeminiProvider(baseConfig());
     const calls = installFakeClient(provider);
@@ -91,12 +83,6 @@ describe('GeminiProvider model resolution', () => {
 });
 
 describe('GeminiProvider reasoning effort → thinkingConfig', () => {
-  beforeEach(() => {
-    container.register(ResourceCleanupService, {
-      useValue: { registerFileCleanup: () => {} } as unknown as ResourceCleanupService,
-    });
-  });
-
   const cases: Array<[NonNullable<AIGenerateOptions['reasoningEffort']>, RecordedCall['thinkingConfig']]> = [
     ['none', { thinkingLevel: 'MINIMAL', includeThoughts: true }],
     ['minimal', { thinkingLevel: 'MINIMAL', includeThoughts: true }],
@@ -191,12 +177,6 @@ describe('GeminiProvider reasoning effort → thinkingConfig', () => {
 });
 
 describe('GeminiProvider thought parts → reasoningContent', () => {
-  beforeEach(() => {
-    container.register(ResourceCleanupService, {
-      useValue: { registerFileCleanup: () => {} } as unknown as ResourceCleanupService,
-    });
-  });
-
   it('splits thought parts into reasoningContent and keeps them out of text', async () => {
     const provider = new GeminiProvider(baseConfig());
     installFakeClient(provider, [
@@ -221,12 +201,6 @@ describe('GeminiProvider thought parts → reasoningContent', () => {
 });
 
 describe('GeminiProvider output budget', () => {
-  beforeEach(() => {
-    container.register(ResourceCleanupService, {
-      useValue: { registerFileCleanup: () => {} } as unknown as ResourceCleanupService,
-    });
-  });
-
   it('sends the ceiling when neither the call nor the config sets a budget', async () => {
     const config = baseConfig();
     config.llm = { ...config.llm, maxTokens: undefined } as GeminiProviderConfig['llm'];
@@ -240,12 +214,6 @@ describe('GeminiProvider output budget', () => {
 });
 
 describe('GeminiProvider usage', () => {
-  beforeEach(() => {
-    container.register(ResourceCleanupService, {
-      useValue: { registerFileCleanup: () => {} } as unknown as ResourceCleanupService,
-    });
-  });
-
   it('reports implicitly cached prompt tokens as the cached part of the prompt', async () => {
     const provider = new GeminiProvider(baseConfig());
     installFakeClient(provider, [{ text: 'hi' }], {

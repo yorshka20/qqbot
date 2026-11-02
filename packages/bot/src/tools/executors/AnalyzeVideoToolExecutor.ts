@@ -192,7 +192,9 @@ export class AnalyzeVideoToolExecutor extends BaseToolExecutor {
         uploadedFileName = remoteFileName;
         logger.info(`[AnalyzeVideoToolExecutor] Uploaded file: ${remoteFileName}`);
         this.resourceCleanupService.registerLocalFile(cleanupSessionId, downloadResult.tempPath);
-        this.resourceCleanupService.registerRemoteFile(cleanupSessionId, remoteFileName, 'gemini');
+        this.resourceCleanupService.registerRemoteFile(cleanupSessionId, remoteFileName, (name) =>
+          gemini.deleteUploadedFile(name),
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error(`[AnalyzeVideoToolExecutor] Gemini upload failed: ${msg}`);

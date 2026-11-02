@@ -19,8 +19,6 @@ export interface OllamaProviderConfig {
   model: string;
   defaultTemperature?: number;
   defaultMaxTokens?: number;
-  enableContext?: boolean;
-  contextMessageCount?: number;
 }
 
 interface OllamaGenerateResponse {
@@ -54,9 +52,6 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
 
     // Explicitly declare supported capabilities
     this._capabilities = ['llm', 'function_calling'];
-
-    // Set context configuration
-    this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
 
     // Configure HttpClient
     this.httpClient = new HttpClient({
@@ -111,8 +106,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   }
 
   /**
-   * Build messages array from history and current prompt
-   * Always builds messages array (even if context is disabled, we still use chat API for consistency)
+   * Build the chat API messages: the caller's `messages`, or `systemPrompt` + `prompt`.
    */
   private async buildMessages(
     prompt: string,
@@ -126,18 +120,6 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
 
     if (options?.systemPrompt) {
       messages.push({ role: 'system', content: options.systemPrompt });
-    }
-
-    // Load conversation history if context is enabled
-    if (this.enableContext) {
-      const history = await this.loadHistory(options);
-      // Add history messages
-      for (const msg of history) {
-        messages.push({
-          role: msg.role === 'assistant' ? 'assistant' : 'user',
-          content: msg.content,
-        });
-      }
     }
 
     // Add current user message

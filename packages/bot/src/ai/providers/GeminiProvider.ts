@@ -5,8 +5,6 @@ import { join } from 'node:path';
 import { FileState, GoogleGenAI } from '@google/genai';
 import { getRepoRoot, logger } from '@qqbot/shared';
 import type { GeminiProviderConfig } from '@/core/config/types/ai';
-import { getContainer } from '@/core/DIContainer';
-import { ResourceCleanupService } from '@/services/video/ResourceCleanupService';
 import { AIProvider } from '../base/AIProvider';
 import type { Image2ImageCapability } from '../capabilities/Image2ImageCapability';
 import type { LLMCapability } from '../capabilities/LLMCapability';
@@ -104,7 +102,6 @@ export class GeminiProvider
       if (config.llm.nativeWebSearch) {
         this._capabilities.push('native_web_search');
       }
-      this.setContextConfig(config.llm.enableContext ?? false, config.llm.contextMessageCount ?? 10);
     }
     // Vision uses the same generateContent path as LLM; when llm is set, multimodal input is supported
     // without a separate vision block (model falls back to llm.model in generateWithVision).
@@ -116,9 +113,6 @@ export class GeminiProvider
       this._capabilities.push('text2img', 'img2img');
     }
 
-    // register cleanup function for uploaded temp files.
-    this.registryResourceCleanup();
-
     logger.info('[GeminiProvider] Initialized');
   }
 
@@ -127,15 +121,6 @@ export class GeminiProvider
       this.client = new GoogleGenAI({ apiKey: this.config.apiKey });
     }
     return this.client;
-  }
-
-  /**
-   * Register the cleanup function for the Gemini provider.
-   */
-  private registryResourceCleanup(): void {
-    // container-lookup: not-di-built ProviderFactory creates providers from config
-    const resourceCleanupService = getContainer().resolve(ResourceCleanupService);
-    resourceCleanupService.registerFileCleanup(this.name, this.deleteUploadedFile);
   }
 
   /**
@@ -782,14 +767,10 @@ export class GeminiProvider
       };
     }
 
-    // Legacy single-turn path: build flat text prompt from history.
-    const history = await this.loadHistory(options);
+    // Single-turn path: a bare prompt, with the system prompt flattened in front.
     const parts: Array<{ text: string }> = [];
     if (options?.systemPrompt) {
       parts.push({ text: `system: ${options.systemPrompt}\n\n` });
-    }
-    for (const msg of history) {
-      parts.push({ text: `${msg.role}: ${msg.content}\n\n` });
     }
     parts.push({ text: prompt });
     const fullPrompt = parts.map((p) => p.text).join('');

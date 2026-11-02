@@ -109,19 +109,4 @@ export class ContextManager {
       metadata: new Map(),
     };
   }
-
-  /**
-   * Get conversation history for a session (role + content for AI context), from raw entries.
-   */
-  getHistory(sessionId: string, maxMessages?: number): Array<{ role: ConversationHistoryRole; content: string }> {
-    const entries = this.sessionHistoryStore.getEntries(sessionId);
-    const history = entries.map((e) => ({
-      role: (e.isBotReply ? 'assistant' : 'user') as ConversationHistoryRole,
-      content: e.content,
-    }));
-    if (maxMessages != null && maxMessages > 0) {
-      return history.slice(-maxMessages);
-    }
-    return history;
-  }
 }

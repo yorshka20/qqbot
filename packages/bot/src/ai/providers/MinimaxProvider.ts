@@ -21,8 +21,6 @@ export interface MinimaxProviderConfig {
   baseURL?: string; // Default: https://api.minimax.io/v1
   defaultTemperature?: number;
   defaultMaxTokens?: number;
-  enableContext?: boolean;
-  contextMessageCount?: number;
   /** Split reasoning content into a separate field (default: true for reasoning models). */
   reasoningSplit?: boolean;
 }
@@ -144,9 +142,6 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
     // Explicitly declare supported capabilities
     // Minimax supports both LLM and Vision (image_url in content array)
     this._capabilities = ['llm', 'function_calling', 'vision'];
-
-    // Set context configuration
-    this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
 
     this.httpClient = new HttpClient({
       baseURL: this.baseUrl,
@@ -465,18 +460,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
       return this.mapChatMessagesToMinimax(options.messages);
     }
 
-    const history = await this.loadHistory(options);
-    const messages: MinimaxMessage[] = [];
-
-    for (const msg of history) {
-      messages.push({
-        role: msg.role === 'assistant' ? 'assistant' : 'user',
-        content: msg.content,
-      });
-    }
-
-    messages.push({ role: 'user', content: prompt });
-    return messages;
+    return [{ role: 'user', content: prompt }];
   }
 
   private mapChatMessagesToMinimax(messages: ChatMessage[]): MinimaxMessage[] {

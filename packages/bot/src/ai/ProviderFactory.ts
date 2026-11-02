@@ -36,8 +36,6 @@ export class ProviderFactory {
             model: config.model,
             baseURL: config.baseURL,
             defaultMaxTokens: config.maxTokens,
-            enableContext: config.enableContext,
-            contextMessageCount: config.contextMessageCount,
             image: config.image,
           });
         }
@@ -47,8 +45,6 @@ export class ProviderFactory {
             model: config.model,
             defaultTemperature: config.temperature,
             defaultMaxTokens: config.maxTokens,
-            enableContext: config.enableContext,
-            contextMessageCount: config.contextMessageCount,
           });
         }
         case 'anthropic': {
@@ -57,8 +53,6 @@ export class ProviderFactory {
             model: config.model,
             defaultTemperature: config.temperature,
             defaultMaxTokens: config.maxTokens,
-            enableContext: config.enableContext,
-            contextMessageCount: config.contextMessageCount,
           });
         }
         case 'deepseek': {
@@ -68,8 +62,6 @@ export class ProviderFactory {
             baseURL: config.baseURL,
             defaultTemperature: config.temperature,
             defaultMaxTokens: config.maxTokens,
-            enableContext: config.enableContext,
-            contextMessageCount: config.contextMessageCount,
           });
         }
         case 'local-text2img': {
@@ -96,8 +88,6 @@ export class ProviderFactory {
             baseURL: openRouterConfig.baseURL,
             temperature: openRouterConfig.temperature,
             maxTokens: openRouterConfig.maxTokens,
-            enableContext: openRouterConfig.enableContext,
-            contextMessageCount: openRouterConfig.contextMessageCount,
             httpReferer: openRouterConfig.httpReferer,
             siteName: openRouterConfig.siteName,
           });
@@ -138,8 +128,6 @@ export class ProviderFactory {
             reasoningEffort: doubaoConfig.reasoningEffort,
             defaultTemperature: doubaoConfig.temperature,
             defaultMaxTokens: doubaoConfig.maxTokens,
-            enableContext: doubaoConfig.enableContext,
-            contextMessageCount: doubaoConfig.contextMessageCount,
           });
         }
         case 'laozhang': {
@@ -179,8 +167,6 @@ export class ProviderFactory {
             baseURL: config.baseURL,
             defaultTemperature: config.temperature,
             defaultMaxTokens: config.maxTokens,
-            enableContext: config.enableContext,
-            contextMessageCount: config.contextMessageCount,
           });
         }
         case 'minimax': {
@@ -191,8 +177,6 @@ export class ProviderFactory {
             baseURL: minimaxConfig.baseURL,
             defaultTemperature: minimaxConfig.temperature,
             defaultMaxTokens: minimaxConfig.maxTokens,
-            enableContext: minimaxConfig.enableContext,
-            contextMessageCount: minimaxConfig.contextMessageCount,
             reasoningSplit: minimaxConfig.reasoningSplit,
           });
         }
@@ -203,8 +187,6 @@ export class ProviderFactory {
             baseURL: config.baseURL,
             defaultTemperature: config.temperature,
             defaultMaxTokens: config.maxTokens,
-            enableContext: config.enableContext,
-            contextMessageCount: config.contextMessageCount,
           });
         }
         default: {

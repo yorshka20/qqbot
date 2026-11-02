@@ -2,7 +2,7 @@
 //
 // Usage:
 //   1. register(sessionId, filePath)      - associate a local file with a session
-//   2. registerRemoteFile(sessionId, name) - associate a Gemini file with a session
+//   2. registerRemoteFile(sessionId, name, deleteFile) - associate a remote (e.g. Gemini File API) file with a session
 //   3. cleanup(sessionId, deleteRemoteFile?) - delete all tracked resources for that session
 //
 // Both success and error paths in the caller must call cleanup() so no temp files are leaked.
@@ -11,22 +11,20 @@ import { unlink } from 'node:fs/promises';
 import { logger } from '@qqbot/shared';
 import { singleton } from 'tsyringe';
 
-interface FileResource {
+interface RemoteFileResource {
   fileName: string;
-  providerName: string;
+  deleteFile: (fileName: string) => Promise<void>;
 }
 
 interface SessionResources {
-  localFiles: FileResource[];
-  remoteFiles: FileResource[];
+  localFiles: string[];
+  remoteFiles: RemoteFileResource[];
 }
 
 @singleton()
 export class ResourceCleanupService {
   /** Maps sessionId → files to delete on cleanup. */
   private readonly sessions = new Map<string, SessionResources>();
-  /** Maps providerName → cleanup function. */
-  private readonly cleanupFunctions = new Map<string, (fileName: string) => Promise<void>>();
 
   /**
    * Register a local file under the given session.
@@ -34,29 +32,20 @@ export class ResourceCleanupService {
    */
   registerLocalFile(sessionId: string, filePath: string): void {
     const resources = this.sessions.get(sessionId) ?? { localFiles: [], remoteFiles: [] };
-    resources.localFiles.push({ fileName: filePath, providerName: 'local' });
+    resources.localFiles.push(filePath);
     this.sessions.set(sessionId, resources);
     logger.debug(`[ResourceCleanupService] Registered local file | session=${sessionId} | file=${filePath}`);
   }
 
   /**
-   * Register a Gemini file under the given session.
+   * Register a remote file under the given session, with the call that deletes it.
    * Calling this multiple times with the same session accumulates file names.
    */
-  registerRemoteFile(sessionId: string, fileName: string, providerName: string): void {
+  registerRemoteFile(sessionId: string, fileName: string, deleteFile: (fileName: string) => Promise<void>): void {
     const resources = this.sessions.get(sessionId) ?? { localFiles: [], remoteFiles: [] };
-    resources.remoteFiles.push({ fileName, providerName });
+    resources.remoteFiles.push({ fileName, deleteFile });
     this.sessions.set(sessionId, resources);
     logger.debug(`[ResourceCleanupService] Registered remote file | session=${sessionId} | file=${fileName}`);
-  }
-
-  /**
-   * Register a cleanup function for a provider.
-   * Calling this multiple times with the same provider accumulates cleanup functions.
-   */
-  registerFileCleanup(providerName: string, cleanupFunction: (fileName: string) => Promise<void>): void {
-    this.cleanupFunctions.set(providerName, cleanupFunction);
-    logger.debug(`[ResourceCleanupService] Registered file cleanup | provider=${providerName}`);
   }
 
   /**
@@ -73,7 +62,7 @@ export class ResourceCleanupService {
 
     for (const filePath of resources.localFiles) {
       try {
-        await unlink(filePath.fileName);
+        await unlink(filePath);
         logger.debug(`[ResourceCleanupService] Deleted | session=${sessionId} | path=${filePath}`);
       } catch {
         logger.warn(`[ResourceCleanupService] Failed to delete | session=${sessionId} | path=${filePath}`);
@@ -81,15 +70,8 @@ export class ResourceCleanupService {
     }
 
     for (const fileResource of resources.remoteFiles) {
-      const cleanupFunction = this.cleanupFunctions.get(fileResource.providerName);
-      if (!cleanupFunction) {
-        logger.warn(
-          `[ResourceCleanupService] No cleanup function found for provider | session=${sessionId} | provider=${fileResource.providerName}`,
-        );
-        continue;
-      }
       try {
-        await cleanupFunction(fileResource.fileName);
+        await fileResource.deleteFile(fileResource.fileName);
         logger.debug(
           `[ResourceCleanupService] Deleted remote file | session=${sessionId} | file=${fileResource.fileName}`,
         );

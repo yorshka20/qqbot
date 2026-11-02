@@ -39,16 +39,6 @@ export interface DeepSeekProviderConfig {
   baseURL?: string;
   defaultTemperature?: number;
   defaultMaxTokens?: number;
-  /**
-   * Enable conversation context (history messages)
-   * If true, will use messages from AIGenerateOptions.messages
-   */
-  enableContext?: boolean;
-  /**
-   * Number of recent history messages to load automatically
-   * Only used when enableContext is true
-   */
-  contextMessageCount?: number;
 }
 
 /**
@@ -90,9 +80,6 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
 
     // Explicitly declare supported capabilities
     this._capabilities = ['llm', 'function_calling', 'vision'];
-
-    // Set context configuration
-    this.setContextConfig(config.enableContext ?? false, config.contextMessageCount ?? 10);
 
     // Configure HttpClient
     this.httpClient = new HttpClient({
@@ -293,16 +280,9 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
       if (options?.messages?.length) {
         messages = this.mapMessagesToApi(DeepSeekProvider.withSystemPrompt(options.messages, options.systemPrompt));
       } else {
-        const history = await this.loadHistory(options);
         messages = [];
         if (options?.systemPrompt) {
           messages.push({ role: 'system', content: options.systemPrompt });
-        }
-        for (const msg of history) {
-          messages.push({
-            role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: contentToPlainString(msg.content),
-          });
         }
         messages.push({
           role: 'user',
@@ -414,16 +394,9 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
       if (options?.messages?.length) {
         messages = this.mapMessagesToApi(DeepSeekProvider.withSystemPrompt(options.messages, options.systemPrompt));
       } else {
-        const history = await this.loadHistory(options);
         messages = [];
         if (options?.systemPrompt) {
           messages.push({ role: 'system', content: options.systemPrompt });
-        }
-        for (const msg of history) {
-          messages.push({
-            role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
-            content: contentToPlainString(msg.content),
-          });
         }
         messages.push({
           role: 'user',

@@ -102,7 +102,6 @@ export class LaozhangProvider
     this._capabilities = [];
     if (config.llm) {
       this._capabilities.push('llm', 'function_calling');
-      this.setContextConfig(config.llm.enableContext ?? false, config.llm.contextMessageCount ?? 10);
     }
     if (config.vision || config.llm) {
       this._capabilities.push('vision');
@@ -398,12 +397,8 @@ export class LaozhangProvider
         }
       }
     } else {
-      const history = await this.loadHistory(options);
       if (options?.systemPrompt) {
         contentsParts.push({ text: `system: ${options.systemPrompt}\n\n` });
-      }
-      for (const msg of history) {
-        contentsParts.push({ text: `${msg.role}: ${msg.content}\n\n` });
       }
       contentsParts.push({ text: prompt });
     }

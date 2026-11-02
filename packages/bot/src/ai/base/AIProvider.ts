@@ -1,10 +1,7 @@
 // AI Provider abstract base class
 
-import { logger } from '@qqbot/shared';
-import { ContextManager } from '@/context/ContextManager';
-import { getContainer } from '@/core/DIContainer';
 import type { CapabilityType } from '../capabilities/types';
-import type { AIGenerateOptions, ChatMessage, ConversationMessage } from '../types';
+import type { ChatMessage } from '../types';
 
 /**
  * Abstract AI Provider interface
@@ -58,33 +55,6 @@ export abstract class AIProvider {
   readonly skipHealthCheck: boolean = false;
 
   /**
-   * Whether context is enabled for this provider
-   */
-  protected enableContext: boolean = false;
-
-  /**
-   * Number of recent messages to load as context
-   */
-  protected contextMessageCount: number = 10;
-
-  /**
-   * Get context manager from DI container. CONTEXT_MANAGER is a required
-   * token (DITokens.ts); this just sugars the resolve call.
-   */
-  protected getContextManager(): ContextManager {
-    // container-lookup: not-di-built ProviderFactory creates providers from config
-    return getContainer().resolve(ContextManager);
-  }
-
-  /**
-   * Set context configuration
-   */
-  setContextConfig(enableContext: boolean, contextMessageCount: number = 10): void {
-    this.enableContext = enableContext;
-    this.contextMessageCount = contextMessageCount;
-  }
-
-  /**
    * Prepend `systemPrompt` to a caller-supplied `messages` array as a leading
    * system-role message. Callers may pass both a `systemPrompt` and an explicit
    * `messages` list (e.g. LLMService.generateFromMessages / generateWithTools,
@@ -97,31 +67,6 @@ export abstract class AIProvider {
     if (!systemPrompt) return messages;
     if (messages[0]?.role === 'system') return messages;
     return [{ role: 'system', content: systemPrompt }, ...messages];
-  }
-
-  /**
-   * Load conversation history automatically if context is enabled
-   */
-  protected async loadHistory(options?: AIGenerateOptions): Promise<ConversationMessage[]> {
-    if (!this.enableContext || !options?.sessionId) {
-      return [];
-    }
-
-    const contextManager = this.getContextManager();
-
-    try {
-      const history = contextManager.getHistory(options.sessionId, this.contextMessageCount);
-
-      // Convert to ConversationMessage format
-      return history.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      }));
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown error');
-      logger.error('[AIProvider] Failed to load conversation history:', err);
-      return [];
-    }
   }
 
   /**
