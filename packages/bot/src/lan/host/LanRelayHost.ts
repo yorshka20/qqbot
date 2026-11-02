@@ -16,11 +16,7 @@
 // Independent of Agent Cluster (ContextHub) — runs its own Bun.serve.
 
 import type { Database } from 'bun:sqlite';
-import type {
-  LanStreamClientConnectedData,
-  LanStreamClientDisconnectedData,
-  LanStreamInternalReportData,
-} from '@qqbot/api-types';
+import type { LanStreamEventMap } from '@qqbot/api-types';
 import { logger, randomUUID } from '@qqbot/shared';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { SendMessageResult } from '@/api/types';
@@ -53,9 +49,12 @@ import type { ClientData, ClientEntry } from './registry';
  * Subscribers must NOT throw; the host will silently drop on error.
  */
 export interface LanHostSubscriber {
-  send(event: string, data: unknown): void;
+  send<E extends keyof LanStreamEventMap>(event: E, data: LanStreamEventMap[E]): void;
   close(): void;
 }
+
+/** The stream events the host broadcasts; `init` is per subscriber and comes from whoever subscribes. */
+export type LanHostEvent = Exclude<keyof LanStreamEventMap, 'init'>;
 
 /** JSON-safe view of a connected client (drops the live `ws` field). */
 export interface ClientSnapshot {
@@ -187,7 +186,7 @@ export class LanRelayHost implements ILanRelayRuntime {
    * message handler. Best-effort: a subscriber that throws on `send` is
    * removed silently so a stuck SSE consumer can't take down the host.
    */
-  emit(event: string, data: unknown): void {
+  emit<E extends LanHostEvent>(event: E, data: LanStreamEventMap[E]): void {
     for (const sub of this.subscribers) {
       try {
         sub.send(event, data);
@@ -280,7 +279,7 @@ export class LanRelayHost implements ILanRelayRuntime {
     // but it short-circuits on `entry && entry.ws === ws` because we
     // already deleted the entry above. Fire it ourselves so subscribers
     // see kicks reflected without waiting for the WS round-trip.
-    this.emit('client_disconnected', { clientId } satisfies LanStreamClientDisconnectedData);
+    this.emit('client_disconnected', { clientId });
     return true;
   }
 
@@ -331,9 +330,7 @@ export class LanRelayHost implements ILanRelayRuntime {
             if (entry && entry.ws === ws) {
               clientsById.delete(ws.data.clientId);
               logger.info(`[LanRelayHost] Client disconnected: ${ws.data.clientId}`);
-              host.emit('client_disconnected', {
-                clientId: ws.data.clientId,
-              } satisfies LanStreamClientDisconnectedData);
+              host.emit('client_disconnected', { clientId: ws.data.clientId });
             }
           } else {
             logger.info('[LanRelayHost] Unauthenticated client disconnected');
@@ -472,10 +469,7 @@ async function handleHostClientMessage(
     clientsById.set(p.clientId, entry);
     if (ws.data) ws.data.clientId = p.clientId;
     logger.info(`[LanRelayHost] Client registered: ${p.clientId} (${p.lanAddress})`);
-    host.emit(
-      'client_connected',
-      host.getClientSnapshot(p.clientId) satisfies LanStreamClientConnectedData | undefined,
-    );
+    host.emit('client_connected', snapshot(entry));
     return;
   }
 
@@ -496,7 +490,7 @@ async function handleHostClientMessage(
       level: p.level,
       text: p.text,
       ts: p.ts,
-    } satisfies LanStreamInternalReportData);
+    });
     return;
   }
 

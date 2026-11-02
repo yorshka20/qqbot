@@ -28,7 +28,7 @@ import type {
   LanKickResponse,
   LanReportsResponse,
   LanStatusResponse,
-  LanStreamInitData,
+  LanStreamEventMap,
 } from '@qqbot/api-types';
 import { logger } from '@qqbot/shared';
 import type { Config } from '@/core/config';
@@ -217,7 +217,7 @@ export class LanAPIBackend {
         const encoder = new TextEncoder();
         let closed = false;
 
-        const send = (event: string, data: unknown) => {
+        const send = <E extends keyof LanStreamEventMap>(event: E, data: LanStreamEventMap[E]) => {
           if (closed) return;
           try {
             const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -246,7 +246,7 @@ export class LanAPIBackend {
 
         // Initial snapshot so the consumer doesn't have to GET /clients
         // separately on connect.
-        send('init', { clients: host.listClientSnapshots() } satisfies LanStreamInitData);
+        send('init', { clients: host.listClientSnapshots() });
       },
     });
 

@@ -69,3 +69,11 @@ export interface LanStreamInternalReportData {
   text: string;
   ts: number;
 }
+
+/** SSE `event:` name → its `data` payload. */
+export interface LanStreamEventMap {
+  init: LanStreamInitData;
+  client_connected: LanStreamClientConnectedData;
+  client_disconnected: LanStreamClientDisconnectedData;
+  internal_report: LanStreamInternalReportData;
+}
