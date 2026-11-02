@@ -1,7 +1,6 @@
 // Proactive Conversation Service - orchestrates debounced analysis, Ollama, thread, and proactive reply (Phase 1 + Phase 2 RAG)
 
 import type { LLMTarget, VisionImage } from '@qqbot/llm';
-import type { FetchProgressNotifier } from '@qqbot/retrieval';
 import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
@@ -28,7 +27,6 @@ import { MemoryRetrievalService } from '@/memory/retrieval/MemoryRetrievalServic
 import type { MessageSegment } from '@/message/types';
 import { PluginManager } from '@/plugins/PluginManager';
 import type { ReactionPlugin } from '@/plugins/plugins/ReactionPlugin';
-import { MessageSendFetchProgressNotifier } from '@/utils/MessageSendFetchProgressNotifier';
 import { groupHasWhitelistCapability, WHITELIST_CAPABILITY } from '@/utils/whitelistCapabilities';
 import {
   isReadableTextForThread,
@@ -36,6 +34,7 @@ import {
   ThreadContextCompressionService,
   ThreadService,
 } from '../thread';
+import { fetchProgressHint } from './fetchProgressHint';
 import type { PreferenceKnowledgeService } from './PreferenceKnowledgeService';
 import { ProactiveReplyContextBuilder } from './ProactiveReplyContextBuilder';
 import type { ProactiveThreadPersistenceService } from './ProactiveThreadPersistenceService';
@@ -100,8 +99,6 @@ export class ProactiveConversationService {
   /** Builds inject context (thread, preference, RAG, memory) for proactive reply at the context layer. */
   private replyContextBuilder: ProactiveReplyContextBuilder;
 
-  private fetchProgressNotifier: FetchProgressNotifier;
-
   constructor(
     @inject(ConversationHistoryService) private conversationHistoryService: ConversationHistoryService,
     @inject(ThreadService) private threadService: ThreadService,
@@ -126,8 +123,6 @@ export class ProactiveConversationService {
       retrievalService,
       searchLimit: this.searchLimit,
     });
-    // singleton instance. replyGenerationService will init it.
-    this.fetchProgressNotifier = new MessageSendFetchProgressNotifier(messageAPI);
   }
 
   /**
@@ -778,7 +773,7 @@ export class ProactiveConversationService {
       filteredEntries,
       searchQueries,
       triggerUserId,
-      this.fetchProgressNotifier,
+      fetchProgressHint((text) => this.sendGroupMessage(groupIdNum, text)),
     );
     const messageImages = await this.getImagesFromLastUserMessage(filteredEntries, groupId);
     if (messageImages.length > 0) {
@@ -803,7 +798,7 @@ export class ProactiveConversationService {
       topic,
       searchQueries,
       triggerUserId,
-      this.fetchProgressNotifier,
+      fetchProgressHint((text) => this.sendGroupMessage(groupIdNum, text)),
     );
     if (filteredEntries?.length) {
       const messageImages = await this.getImagesFromLastUserMessage(filteredEntries, thread.groupId);
