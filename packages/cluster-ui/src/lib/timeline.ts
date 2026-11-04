@@ -210,32 +210,37 @@ export function rulerMinutesLabel(ticks: number): string {
   return `${ticks} 分钟`;
 }
 
-export type TimelineItem = { fold: false; node: TimelineNode } | { fold: true; id: string; count: number };
+export type TimelineItem = { fold: false; node: TimelineNode } | { fold: true; id: string; nodes: TimelineNode[] };
 
 const HEAD_NODES = 2;
-const TAIL_NODES = 8;
+const TAIL_NODES = 20;
 
 /**
  * A run that reports often would push the log and the session off the page. The start and the
- * recent end stay, the middle folds; a question still waiting is never folded away.
+ * recent end stay, the middle folds; a worker's progress report and a question still waiting
+ * are never folded away.
  */
 export function foldTimeline(nodes: TimelineNode[]): TimelineItem[] {
   const tailStart = nodes.length - TAIL_NODES;
   const items: TimelineItem[] = [];
-  let hidden = 0;
-  const flush = (beforeId: string) => {
-    if (hidden > 0) {
-      items.push({ fold: true, id: `fold:${beforeId}`, count: hidden });
-      hidden = 0;
+  let hidden: TimelineNode[] = [];
+  const flush = () => {
+    if (hidden.length > 0) {
+      items.push({ fold: true, id: `fold:${hidden[0].id}`, nodes: hidden });
+      hidden = [];
     }
   };
   nodes.forEach((node, index) => {
-    const kept = index < HEAD_NODES || index >= tailStart || (node.kind === 'question' && node.pending);
+    const kept =
+      index < HEAD_NODES ||
+      index >= tailStart ||
+      node.kind === 'progress' ||
+      (node.kind === 'question' && node.pending);
     if (kept) {
-      flush(node.id);
+      flush();
       items.push({ fold: false, node });
     } else {
-      hidden += 1;
+      hidden.push(node);
     }
   });
   return items;

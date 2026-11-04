@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterHelpRequest, ClusterTask } from '@qqbot/api-types';
 import { buildInbox } from './inbox';
-import { buildRuns, composerDefaults, orderRunsAsTree, parseFiles, runTitle, sortRuns } from './runs';
+import { buildRuns, composerDefaults, orderRunsAsTree, parseFiles, runBody, runTitle, sortRuns } from './runs';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z');
 
@@ -42,6 +42,42 @@ describe('runTitle', () => {
   test('skips a frontmatter block with no title, even an empty one', () => {
     expect(runTitle('---\nmaxChildren: 3\n---\n\n正文')).toBe('正文');
     expect(runTitle('---\n---\n\n正文')).toBe('正文');
+  });
+
+  test('drops a leading task label after the heading mark', () => {
+    expect(runTitle('# 任务：修复登录超时')).toBe('修复登录超时');
+    expect(runTitle('Task: fix the retry loop')).toBe('fix the retry loop');
+  });
+
+  test('keeps the words of inline markdown and drops its marks', () => {
+    expect(runTitle('**重构** `Shell.tsx`')).toBe('重构 Shell.tsx');
+    expect(runTitle('- 读 [设计稿](https://example.com/a) 再动手')).toBe('读 设计稿 再动手');
+    expect(runTitle('> 1. *先* 跑测试')).toBe('先 跑测试');
+  });
+
+  test('skips rules and blank lines down to the first line with words', () => {
+    expect(runTitle('\n---\n===\n\n  \n整理文档\n其余')).toBe('整理文档');
+  });
+
+  test('a description of only marks has no title', () => {
+    expect(runTitle('---\n***')).toBe('（无描述）');
+  });
+});
+
+describe('runBody', () => {
+  test('strips the frontmatter and keeps the body line breaks and marks', () => {
+    expect(runBody('---\ntitle: 清理日志\n---\n\n## 目标\n- **删** 旧文件\n    缩进\n\n')).toBe(
+      '## 目标\n- **删** 旧文件\n    缩进',
+    );
+  });
+
+  test('without frontmatter it is the description with its tail trimmed', () => {
+    const description = '  第一行\n\n第二行  \n\n';
+    expect(runBody(description)).toBe(description.trimEnd());
+  });
+
+  test('a rule in the middle of the text is not frontmatter', () => {
+    expect(runBody('说明\n---\n更多')).toBe('说明\n---\n更多');
   });
 });
 

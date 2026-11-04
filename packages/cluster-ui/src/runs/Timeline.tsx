@@ -217,7 +217,7 @@ function Fold({ count, onOpen }: { count: number; onOpen: () => void }) {
       </span>
       <div className="pb-3">
         <Button variant="quiet" className="text-13" onClick={onOpen}>
-          展开中间 {count} 个节点
+          收起了 {count} 条
         </Button>
       </div>
     </li>
@@ -225,8 +225,10 @@ function Fold({ count, onOpen }: { count: number; onOpen: () => void }) {
 }
 
 export function Timeline({ nodes, live, now }: { nodes: TimelineNode[]; live: boolean; now: number }) {
-  const [unfolded, setUnfolded] = useState(false);
-  const items: TimelineItem[] = unfolded ? nodes.map((node) => ({ fold: false, node })) : foldTimeline(nodes);
+  const [opened, setOpened] = useState<Set<string>>(() => new Set());
+  const items: TimelineItem[] = foldTimeline(nodes).flatMap((item) =>
+    item.fold && opened.has(item.id) ? item.nodes.map((node) => ({ fold: false as const, node })) : [item],
+  );
   const lastAt = nodes.at(-1)?.at;
   let previous: TimelineNode | undefined;
 
@@ -235,7 +237,13 @@ export function Timeline({ nodes, live, now }: { nodes: TimelineNode[]; live: bo
       {items.map((item, index) => {
         if (item.fold) {
           previous = undefined;
-          return <Fold key={item.id} count={item.count} onOpen={() => setUnfolded(true)} />;
+          return (
+            <Fold
+              key={item.id}
+              count={item.nodes.length}
+              onOpen={() => setOpened((prev) => new Set(prev).add(item.id))}
+            />
+          );
         }
         const { node } = item;
         const before = previous;

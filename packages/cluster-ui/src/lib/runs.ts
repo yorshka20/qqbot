@@ -21,13 +21,35 @@ export interface TaskRow {
 
 const TITLE_MAX = 120;
 
+const FRONTMATTER = /^---\n(?:([\s\S]*?)\n)?---\n?/;
+const TASK_PREFIX = /^(?:任务|Task|目标)\s*[:：]\s*/i;
+const SYMBOLS_ONLY = /^[-=_*~>\s]+$/;
+
+function plainLine(raw: string): string {
+  const line = raw.trim();
+  if (SYMBOLS_ONLY.test(line)) {
+    return '';
+  }
+  return line
+    .replace(/^#+\s*/, '')
+    .replace(/^>\s*/, '')
+    .replace(/^(?:[-*]|\d+\.)\s+/, '')
+    .replace(TASK_PREFIX, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
 /**
  * The first line a person would call the title. A ticket-dispatched description starts with
  * its frontmatter block, whose `title:` is the better name.
  */
 export function runTitle(description: string): string {
   let text = description.trim();
-  const frontmatter = text.match(/^---\n(?:([\s\S]*?)\n)?---\n?/);
+  const frontmatter = text.match(FRONTMATTER);
   if (frontmatter) {
     const named = frontmatter[1]?.match(/^title:\s*(.+)$/m);
     if (named) {
@@ -37,12 +59,20 @@ export function runTitle(description: string): string {
   }
   const line = text
     .split('\n')
-    .map((l) => l.replace(/^#+\s*/, '').trim())
+    .map(plainLine)
     .find((l) => l.length > 0);
   if (!line) {
     return '（无描述）';
   }
   return line.length > TITLE_MAX ? `${line.slice(0, TITLE_MAX)}…` : line;
+}
+
+/** The description without its dispatch frontmatter: what a person actually asked for. */
+export function runBody(description: string): string {
+  const lead = description.trimStart();
+  const frontmatter = lead.match(FRONTMATTER);
+  const body = frontmatter ? lead.slice(frontmatter[0].length).replace(/^\n+/, '') : description;
+  return body.trimEnd();
 }
 
 function stageSince(task: ClusterTask, stage: Stage, asks: ClusterHelpRequest[]): number {

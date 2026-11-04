@@ -14,6 +14,7 @@ import { Button, ConfirmButton } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { Section } from '../ui/Section';
 import { STAGE_ICON, StatePill } from '../ui/StatePill';
+import { DescriptionSection } from './DescriptionSection';
 import { LogPane } from './LogPane';
 import { ResultSection } from './ResultSection';
 import { SessionSection } from './SessionSection';
@@ -252,6 +253,8 @@ export function RunDetail({ runId, route, pinned = false }: { runId: string; rou
           </div>
           {!pinned && <Facts task={task} now={now} />}
         </header>
+
+        <DescriptionSection description={task.description} />
 
         <Section title="时间线">
           <Timeline nodes={nodes} live={live} now={now} />

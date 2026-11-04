@@ -175,16 +175,39 @@ describe('foldTimeline', () => {
   });
 
   test('the middle of a long stream folds into one row', () => {
-    const items = foldTimeline(Array.from({ length: 30 }, (_, i) => note(i)));
-    expect(items.filter((item) => item.fold)).toMatchObject([{ count: 20 }]);
-    expect(items).toHaveLength(11);
+    const items = foldTimeline(Array.from({ length: 40 }, (_, i) => note(i)));
+    const folds = items.filter((item) => item.fold);
+    expect(folds).toHaveLength(1);
+    expect(folds[0].fold && folds[0].nodes).toHaveLength(18);
+    expect(items).toHaveLength(23);
   });
 
   test('a waiting question survives the fold', () => {
-    const nodes = Array.from({ length: 30 }, (_, i) => note(i));
+    const nodes = Array.from({ length: 40 }, (_, i) => note(i));
     nodes[10] = { kind: 'question', id: 'q', at: T0 + 10, askId: 'a', question: '？', pending: true };
     const items = foldTimeline(nodes);
     expect(items.some((item) => !item.fold && item.node.id === 'q')).toBe(true);
     expect(items.filter((item) => item.fold)).toHaveLength(2);
+  });
+
+  test('progress reports are never folded away', () => {
+    const nodes: TimelineNode[] = Array.from({ length: 30 }, (_, i) => ({
+      kind: 'progress',
+      id: `p${i}`,
+      at: T0 + i,
+      summary: String(i),
+      files: [],
+      lockedFiles: 0,
+    }));
+    const items = foldTimeline(nodes);
+    expect(items).toHaveLength(30);
+    expect(items.every((item) => !item.fold)).toBe(true);
+  });
+
+  test('a fold carries exactly the nodes it hides', () => {
+    const nodes = Array.from({ length: 30 }, (_, i) => note(i));
+    const folds = foldTimeline(nodes).filter((item) => item.fold);
+    expect(folds).toHaveLength(1);
+    expect(folds[0].fold && folds[0].nodes.map((n) => n.id)).toEqual(nodes.slice(2, 10).map((n) => n.id));
   });
 });

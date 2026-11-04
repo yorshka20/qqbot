@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Run } from '../lib/runs';
+import { type Run, runBody } from '../lib/runs';
 import { STAGE_LABEL, STAGE_TONE, stageRank } from '../lib/stage';
 import { formatAgo, formatSpan } from '../lib/time';
 import { STAGE_ICON, StatePill } from '../ui/StatePill';
@@ -74,7 +74,9 @@ export function RunRow({
         </span>
         <span className="shrink-0 text-13 text-ink-muted">{runSpanLabel(run, now)}</span>
       </div>
-      <div className={`truncate text-16 ${selected ? 'font-medium' : ''}`}>{run.title}</div>
+      <div className={`truncate text-16 ${selected ? 'font-medium' : ''}`} title={runBody(run.task.description)}>
+        {run.title}
+      </div>
       <div className="flex min-w-0 items-baseline gap-2 text-14 text-ink-muted">
         <span className="truncate">{[run.task.project, run.task.workerTemplate].filter(Boolean).join(' · ')}</span>
         {run.task.model && <span className="ml-auto shrink-0 truncate font-mono text-13">{run.task.model}</span>}
