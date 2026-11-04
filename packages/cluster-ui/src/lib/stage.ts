@@ -96,3 +96,22 @@ const STAGE_RANK: Record<Stage, number> = {
 export function stageRank(stage: Stage): number {
   return STAGE_RANK[stage];
 }
+
+/** The stage of a run that is not among the loaded ones: its task status alone, with no help or seen state. */
+export function stageOfStatus(status: ClusterTask['status']): Stage {
+  switch (status) {
+    case 'pending':
+    case 'claimed':
+      return 'queued';
+    case 'running':
+      return 'running';
+    case 'completed':
+      return 'done';
+    case 'failed':
+      return 'failed';
+    case 'blocked':
+      return 'blocked';
+    case 'cancelled':
+      return 'cancelled';
+  }
+}

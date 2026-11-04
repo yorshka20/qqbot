@@ -2,11 +2,11 @@
 
 Agent cluster 的控制台：daemon 把它当静态文件挂在 `/`，一个人在局域网里监工一群常驻 coding agent。
 
-它是**收件箱 + 运行**，不是管理后台。打开先回答"现在有没有需要我的"（收件箱），再回答"大家在干什么"
-（总览的任务拓扑、运行列表、一条运行的时间线），最后才是派活和控制。常见用法：手机上看一眼有没有卡住的、回答一个问题；
-第二块屏幕盯一条运行的日志；想到一件事，一句话派出去。
+它是**收件箱 + 对话**，不是管理后台。主对象是 task：一个 task 就是一条对话，planner 派生的子运行挂在它下面。打开先回答"现在有没有需要我的"（收件箱），
+再回答"大家在干什么"（侧栏的对话列表；一条对话的对话 / 拓扑 / 结果三个 tab），最后才是派活和控制。常见用法：手机上看一眼有没有卡住的、回答一个问题；
+第二块屏幕盯一条对话的日志；想到一件事，一句话派出去。
 
-界面上没有 job 这个概念，也没有 ticket 页：ticket 是新运行的一个来源，以及结果区的一个链接。
+界面上没有 job 这个概念，也没有 ticket 页：ticket 是新任务的一个来源，以及结果区的一个链接。
 
 ## 怎么跑
 
@@ -26,26 +26,38 @@ bun test packages/cluster-ui
 
 | 目录 | 内容 |
 |---|---|
-| `src/app/` | 外壳（Rail、三栏、底部 tab）、hash 路由、快捷键、主题；`ClusterData.tsx` 是唯一的数据源 |
-| `src/inbox/` | 收件箱：提问、失败或受阻、待查看 |
-| `src/overview/` | 总览：一行总计 + 项目 → 运行 → worker 的拓扑，手机上退化为分组列表 |
-| `src/runs/` | 运行列表、详情（时间线、日志、结果、会话）、composer、ticket 抽屉 |
-| `src/workers/` `src/projects/` `src/settings/` | 其余三页 |
-| `src/lib/` | 纯逻辑，都有单测：`stage`（状态映射）、`timeline`（节点、时间尺、折叠）、`topology`（分层布局）、`inbox`、`runs`、`resume` |
+| `src/app/` | 外壳（侧栏 + 主区，手机上侧栏是抽屉）、快捷键、主题、钉住；`ClusterData.tsx` 是唯一的数据源；`TaskListPanel.tsx` 是对话列表，桌面在侧栏里，手机上就是首页 |
+| `src/task/` | 一条对话：对话卡片流（`cards/`）、输入框、详情面板、日志、结果 tab |
+| `src/topology/` | 拓扑 tab：React Flow 画一棵 task 树，布局由 `lib/taskGraph.ts` 交给 dagre |
+| `src/inbox/` | 收件箱：提问、失败或受阻、待查看，以及已处理归档 |
+| `src/composer/` | 新任务 composer、ticket 抽屉、`submitRun` |
+| `src/settings/` | 设置的六个分组：workers、templates、projects、concurrency、daemon、console |
+| `src/components/` | 业务组件；`components/ui/` 是 shadcn 生成的基础组件 |
+| `src/lib/` | 纯逻辑，都有单测：`routes`（路由契约）、`taskList`（对话列表分组与钉住）、`taskGraph`（拓扑图）、`home`、`stage`（状态映射）、`inbox`、`runs`（运行聚合、`resolveTemplate`、planner ticket 草稿）、`conversation` / `transcript`（对话视图）、`logs`、`usage` / `model`、`window`、`timeline`、`resume`、`workers`、`daemon`、`slots` |
 | `src/api.ts` `src/stream/` `src/auth/` | HTTP、SSE（fetch + ReadableStream，因为 `EventSource` 带不了 Authorization）、token |
 
 全页一条 SSE，事件触发 `ClusterData` 刷新；轮询只在流断开时兜底，切回隐藏的页签时补一次。
 
-路由：`#/inbox[/:id]`、`#/overview`、`#/runs[/:id]`、`#/projects`、`#/workers`、`#/settings`。
-查询参数：`pin`（钉住第二条运行）、`new`（打开 composer）、`project` 和 `stage`（筛选运行）、`ticket` 和 `file`（打开 ticket 抽屉）。
+路由（`react-router`，浏览器 history，daemon 对未知路径回退到 `index.html`）：
 
-快捷键：`j` `k` 上下、`Enter` 打开、`n` 新运行、`a` 聚焦回答框、`/` 搜索。
+| 路径 | 页面 |
+|---|---|
+| `/` | 首页（手机上是对话列表） |
+| `/inbox` | 收件箱 |
+| `/t/:taskId` | 一条对话（根运行） |
+| `/t/:taskId/w/:workerId` | 对话下的一条子运行；`:workerId` 是子运行的 task id，不是 worker id |
+| `/settings/:group` | 设置分组 |
+
+查询参数：`tab`（`chat` / `topology` / `result`）、`new`（打开 composer）、`ticket` 和 `file`（打开 ticket 抽屉）、`log`（全屏日志）、`created`（composer 为 planner 新建的 ticket id，对话头部显示）。
+
+快捷键：`j` `k` 上下、`Enter` 打开、`n` 新任务、`a` 聚焦回答框、`/` 搜索、`Esc` 返回上一级（浮层打开时只关浮层）。
+钉住的对话记在这台设备的 `localStorage`，显示在对话列表顶部。
 
 ## 设计 token
 
 全部在 `src/index.css`：`:root` 是深色，`:root[data-theme="light"]` 是浅色，`@theme inline` 把它们映射给 Tailwind。
-`@theme` 里清空了 Tailwind 的默认色板、字号、圆角和阴影，所以 `bg-red-500`、`text-sm`、`rounded-lg` 不生成任何样式：
-只有 `bg-surface`、`text-13`、`rounded-ui` 这类 token 可用。圆角只有 `rounded-ui`（6px），没有阴影。
+`@theme` 里清空了 Tailwind 的默认色板，所以 `bg-red-500` 不生成任何样式：颜色只用 `bg-surface`、`text-ink`、`text-failed` 这类 token，
+以及 shadcn 的语义名（`bg-background`、`text-muted-foreground`……，它们指向同一批变量，深浅主题只翻一处）。字号和圆角沿用 Tailwind 的名字，值在 `@theme` 里重定义。
 
 字体是 IBM Plex Sans / Plex Mono 的 latin 子集，打进产物，离线可用。Plex 没有中文字形，中文走系统字体。
 
@@ -62,11 +74,4 @@ bun test packages/cluster-ui
 | `text-12` | 12px | 状态胶囊文字、时间尺注记 |
 
 终端（日志面板）在浅色模式下仍然是深底：`bg-log-bg` / `text-log-ink`。
-`w-list`（23rem）是 List 列宽，`max-w-measure`（44rem）是详情阅读宽度。
-
-四个共享状态 primitive（`src/ui/`），后面的收件箱 / 时间线 / 拓扑都消费它们：
-
-- `StatePill` — 带图标或呼吸点的状态胶囊（淡底 + tone 文字色）
-- `StatusBar` — 列表行左侧 3px 的竖条，标出这一行的 tone
-- `EmptyState` — 空列表占位：纯 CSS 的三条横线 + 标题 + 可选提示与操作
-- `SkeletonRows` — 加载态的静态占位条（无动效）
+`max-w-measure`（44rem）是阅读宽度。

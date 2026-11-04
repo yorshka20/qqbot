@@ -1,5 +1,16 @@
-/** What only this browser knows: the composer's last choice. */
+import type { TaskTab } from './routes';
+import { TASK_TABS } from './routes';
+import { parseRunView, type RunView } from './runs';
+import type { RunWindow } from './window';
+
+/** What only this browser knows: the composer's last choice, the run tab, the overview controls. */
 const COMPOSER_KEY = 'cluster-ui.composer';
+const RUN_VIEW_KEY = 'cluster-ui.run-view';
+const OVERVIEW_KEY = 'cluster-ui.overview';
+const SIDEBAR_KEY = 'cluster-ui.sidebar-open';
+const TASK_TAB_KEY = 'cluster-ui.task-tab';
+const DETAIL_OPEN_KEY = 'cluster-ui.task-detail-open';
+const PINNED_KEY = 'cluster-ui.pinned-tasks';
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -30,4 +41,63 @@ export function readComposerChoice(): ComposerChoice {
 
 export function rememberComposerChoice(choice: ComposerChoice): void {
   write(COMPOSER_KEY, choice);
+}
+
+export function readRunView(): RunView {
+  return parseRunView(read<string | null>(RUN_VIEW_KEY, null)) ?? 'chat';
+}
+
+export function rememberRunView(view: RunView): void {
+  write(RUN_VIEW_KEY, view);
+}
+
+export interface OverviewChoice {
+  window: RunWindow;
+  liveOnly: boolean;
+}
+
+const DEFAULT_OVERVIEW: OverviewChoice = { window: '24h', liveOnly: false };
+
+export function readOverviewChoice(): OverviewChoice {
+  const saved = read<Partial<OverviewChoice>>(OVERVIEW_KEY, {});
+  const window = saved.window === '24h' || saved.window === '7d' || saved.window === 'all' ? saved.window : null;
+  return { window: window ?? DEFAULT_OVERVIEW.window, liveOnly: saved.liveOnly === true };
+}
+
+export function rememberOverviewChoice(choice: OverviewChoice): void {
+  write(OVERVIEW_KEY, choice);
+}
+
+export function readSidebarOpen(): boolean {
+  return read<boolean>(SIDEBAR_KEY, true);
+}
+
+export function rememberSidebarOpen(open: boolean): void {
+  write(SIDEBAR_KEY, open);
+}
+
+export function readTaskTab(): TaskTab {
+  const saved = read<string | null>(TASK_TAB_KEY, null);
+  return TASK_TABS.find((tab) => tab === saved) ?? 'chat';
+}
+
+export function rememberTaskTab(tab: TaskTab): void {
+  write(TASK_TAB_KEY, tab);
+}
+
+export function readDetailOpen(): boolean {
+  return read<boolean>(DETAIL_OPEN_KEY, true);
+}
+
+export function rememberDetailOpen(open: boolean): void {
+  write(DETAIL_OPEN_KEY, open);
+}
+
+export function readPinnedTasks(): string[] {
+  const saved = read<unknown>(PINNED_KEY, []);
+  return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string') : [];
+}
+
+export function rememberPinnedTasks(ids: string[]): void {
+  write(PINNED_KEY, ids);
 }

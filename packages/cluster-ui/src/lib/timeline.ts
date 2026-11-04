@@ -70,7 +70,7 @@ const END_STATE: Partial<Record<ClusterEventEntry['type'], EndState>> = {
   task_blocked: 'blocked',
 };
 
-function lockedFileCount(event: ClusterEventEntry): number {
+export function lockedFileCount(event: ClusterEventEntry): number {
   const files = event.data.files;
   return Array.isArray(files) ? files.length : 1;
 }
@@ -120,9 +120,9 @@ function eventNode(event: ClusterEventEntry, input: TimelineInput): TimelineNode
       };
     }
     case 'directive':
-      return { kind: 'note', id, at, text: `指令 · ${String(event.data.content ?? '')}` };
+      return { kind: 'note', id, at, text: `指令 · ${String(event.data.text ?? '')}` };
     case 'answer':
-      return { kind: 'note', id, at, text: `回答 · ${String(event.data.content ?? '')}` };
+      return { kind: 'note', id, at, text: `回答 · ${String(event.data.answer ?? '')}` };
     case 'message':
       return event.data.kind === 'plan_written'
         ? { kind: 'note', id, at, text: `写了计划 · ${String(event.data.path ?? '')}` }
