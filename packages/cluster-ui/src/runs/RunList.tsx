@@ -93,7 +93,7 @@ export function RunList({ route }: { route: Route }) {
           {route.stage && <FilterChip label={STAGE_LABEL[route.stage]} clearHref={withRoute(route, { stage: null })} />}
         </div>
       )}
-      {route.composing && <Composer closeHref={withRoute(route, { composing: false })} />}
+      {route.composing && <Composer closeHref={withRoute(route, { composing: false })} route={route} />}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!loaded && <SkeletonRows rows={5} />}
         {loaded && visible.length === 0 && runs.length === 0 && (

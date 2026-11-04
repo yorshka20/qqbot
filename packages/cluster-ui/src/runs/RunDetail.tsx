@@ -3,6 +3,7 @@ import { ArrowLeft, CornerLeftUp, Pin, PinOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { acknowledgeClusterTask, killClusterTask } from '../api';
 import { useCluster } from '../app/ClusterData';
+import { useKey } from '../app/keys';
 import { navigate, type Route, routeHref, withRoute } from '../app/route';
 import { readRunView, rememberRunView } from '../lib/memory';
 import { RUN_VIEW_LABEL, RUN_VIEWS, type Run, type RunView, runTimes, runTitle } from '../lib/runs';
@@ -50,9 +51,9 @@ function Actions({
 
   const retry = () =>
     act(async () => {
-      const next = await retryRun(run, templates);
+      const { task: next, createdTicketId } = await retryRun(run, templates);
       await refresh();
-      navigate(routeHref({ section: 'runs', runId: next.id }));
+      navigate(routeHref({ section: 'runs', runId: next.id, createdTicket: createdTicketId }));
     });
 
   const kill = () =>
@@ -182,6 +183,17 @@ export function RunDetail({ runId, route, pinned = false }: { runId: string; rou
     rememberRunView(next);
   };
 
+  const requestAnswer = () => {
+    chooseView('chat');
+    setAnswerRequests((n) => n + 1);
+  };
+  useKey('a', (event) => {
+    if (!pinned) {
+      event.preventDefault();
+      requestAnswer();
+    }
+  });
+
   const run = runs.find((r) => r.task.id === runId);
   const task = detail ?? run?.task ?? null;
 
@@ -212,11 +224,6 @@ export function RunDetail({ runId, route, pinned = false }: { runId: string; rou
   const pin = pinned
     ? { href: withRoute(route, { pin: null }), pinned: true }
     : { href: withRoute(route, { pin: runId, runId: null }), pinned: false };
-
-  const requestAnswer = () => {
-    chooseView('chat');
-    setAnswerRequests((n) => n + 1);
-  };
 
   return (
     <article ref={article} className={shell}>
@@ -262,6 +269,17 @@ export function RunDetail({ runId, route, pinned = false }: { runId: string; rou
               </a>
             )}
           </div>
+          {route.createdTicket && (
+            <p className="mt-1 text-14 text-ink-muted">
+              已建 ticket{' '}
+              <a
+                href={withRoute(route, { ticket: route.createdTicket })}
+                className="font-mono text-13 text-ink underline"
+              >
+                {route.createdTicket}
+              </a>
+            </p>
+          )}
           <RunFactsLine task={task} exitedAt={exitedAt} now={now} className="mt-1" />
           <ChildRuns spawned={children} runs={runs} route={route} />
           <div className="mt-4">

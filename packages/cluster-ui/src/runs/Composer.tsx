@@ -1,18 +1,18 @@
 import type { Ticket, TicketFrontmatter } from '@qqbot/api-types';
 import { FileText, X } from 'lucide-react';
-import { type FormEvent, type KeyboardEvent, useEffect, useState } from 'react';
+import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { getTicket, listTickets } from '../api';
 import { useCluster } from '../app/ClusterData';
-import { navigate, routeHref } from '../app/route';
+import { navigate, type Route, routeHref, withRoute } from '../app/route';
 import { readComposerChoice, rememberComposerChoice } from '../lib/memory';
-import { composerDefaults } from '../lib/runs';
+import { composerDefaults, needsPlannerTicket, resolveTemplate } from '../lib/runs';
 import { Button } from '../ui/Button';
 import { INPUT_CLASS, Select } from '../ui/Field';
 import { submitRun, ticketDescription } from './submitRun';
 
 const PLACEHOLDER = '修 proactive 卡片在长回复时丢失的问题：先定位 ReplyGenerationService 里截断的那一段，再补测试';
 
-export function Composer({ closeHref }: { closeHref: string }) {
+export function Composer({ closeHref, route }: { closeHref: string; route: Route }) {
   const { projects, templates, refresh } = useCluster();
   const [saved] = useState(() => readComposerChoice());
   const [text, setText] = useState('');
@@ -29,6 +29,26 @@ export function Composer({ closeHref }: { closeHref: string }) {
   const chosenProject = project ?? remembered.project;
   const chosenTemplate =
     template ?? (project === null ? remembered.template : (templates?.projectDefaults[chosenProject] ?? ''));
+
+  const resolvedTemplate = resolveTemplate({ project: chosenProject, template: chosenTemplate }, templates);
+  const resolvedRole = templates?.templates.find((t) => t.name === resolvedTemplate)?.role;
+  const willCreateTicket = needsPlannerTicket(resolvedRole, ticket?.id);
+
+  const editingTicket = route.ticket;
+  const wasEditing = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = wasEditing.current;
+    wasEditing.current = editingTicket;
+    if (previous !== null && editingTicket === null && previous === ticket?.id) {
+      getTicket(previous).then(
+        (saved) => {
+          setTicket(saved);
+          setText(saved.body);
+        },
+        (err) => setError(err instanceof Error ? err.message : String(err)),
+      );
+    }
+  }, [editingTicket, ticket?.id]);
 
   useEffect(() => {
     listTickets().then(
@@ -62,7 +82,7 @@ export function Composer({ closeHref }: { closeHref: string }) {
     setSubmitting(true);
     setError(null);
     try {
-      const task = await submitRun(
+      const { task, createdTicketId } = await submitRun(
         {
           project: chosenProject,
           description: ticket ? ticketDescription(ticket, text) : text.trim(),
@@ -73,7 +93,7 @@ export function Composer({ closeHref }: { closeHref: string }) {
       );
       rememberComposerChoice({ project: chosenProject, template: chosenTemplate });
       await refresh();
-      navigate(routeHref({ section: 'runs', runId: task.id }));
+      navigate(routeHref({ section: 'runs', runId: task.id, createdTicket: createdTicketId }));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setSubmitting(false);
@@ -93,6 +113,12 @@ export function Composer({ closeHref }: { closeHref: string }) {
       {ticket && (
         <div className="flex items-center justify-between gap-2 rounded-ui bg-surface-2 px-2.5 py-1.5 text-14">
           <span className="truncate">{ticket.frontmatter.title}</span>
+          <a
+            href={withRoute(route, { ticket: ticket.id })}
+            className="ml-auto shrink-0 text-13 text-ink-muted underline hover:text-ink"
+          >
+            编辑正文
+          </a>
           <button
             type="button"
             onClick={() => pickTicket('')}
@@ -161,6 +187,7 @@ export function Composer({ closeHref }: { closeHref: string }) {
           </div>
         )}
       </div>
+      {willCreateTicket && <p className="text-13 text-ink-muted">规划器要先有 ticket，提交时会自动新建。</p>}
       {error && <p className="text-13 text-failed">{error}</p>}
       <div className="flex items-center gap-2">
         <Button type="submit" variant="solid" disabled={submitting || !text.trim() || !chosenProject}>

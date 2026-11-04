@@ -3,7 +3,7 @@
 Agent cluster 的控制台：daemon 把它当静态文件挂在 `/`，一个人在局域网里监工一群常驻 coding agent。
 
 它是**收件箱 + 运行**，不是管理后台。打开先回答"现在有没有需要我的"（收件箱），再回答"大家在干什么"
-（总览的任务拓扑、运行列表、一条运行的时间线），最后才是派活和控制。常见用法：手机上看一眼有没有卡住的、回答一个问题；
+（总览的任务拓扑、运行列表、一条运行的对话 / 日志 / 结果三视图），最后才是派活和控制。常见用法：手机上看一眼有没有卡住的、回答一个问题；
 第二块屏幕盯一条运行的日志；想到一件事，一句话派出去。
 
 界面上没有 job 这个概念，也没有 ticket 页：ticket 是新运行的一个来源，以及结果区的一个链接。
@@ -29,15 +29,15 @@ bun test packages/cluster-ui
 | `src/app/` | 外壳（Rail、三栏、底部 tab）、hash 路由、快捷键、主题；`ClusterData.tsx` 是唯一的数据源 |
 | `src/inbox/` | 收件箱：提问、失败或受阻、待查看 |
 | `src/overview/` | 总览：一行总计 + 项目 → 运行 → worker 的拓扑，手机上退化为分组列表 |
-| `src/runs/` | 运行列表、详情（时间线、日志、结果、会话）、composer、ticket 抽屉 |
+| `src/runs/` | 运行列表、详情（对话、日志、结果三视图，另有会话）、composer、ticket 抽屉 |
 | `src/workers/` `src/projects/` `src/settings/` | 其余三页 |
-| `src/lib/` | 纯逻辑，都有单测：`stage`（状态映射）、`timeline`（节点、时间尺、折叠）、`topology`（分层布局）、`inbox`、`runs`、`resume` |
+| `src/lib/` | 纯逻辑，都有单测：`stage`（状态映射）、`topology`（分层布局）、`inbox`（待处理与已处理归档）、`runs`（运行聚合、`resolveTemplate`、planner ticket 草稿）、`workers`（worker 历史、结果、运行事实）、`conversation` / `transcript`（对话视图）、`logs`（可读日志）、`usage` / `model`（用量与模型名）、`window`（时间窗）、`timeline`、`resume` |
 | `src/api.ts` `src/stream/` `src/auth/` | HTTP、SSE（fetch + ReadableStream，因为 `EventSource` 带不了 Authorization）、token |
 
 全页一条 SSE，事件触发 `ClusterData` 刷新；轮询只在流断开时兜底，切回隐藏的页签时补一次。
 
 路由：`#/inbox[/:id]`、`#/overview`、`#/runs[/:id]`、`#/projects`、`#/workers`、`#/settings`。
-查询参数：`pin`（钉住第二条运行）、`new`（打开 composer）、`project` 和 `stage`（筛选运行）、`ticket` 和 `file`（打开 ticket 抽屉）。
+查询参数：`pin`（钉住第二条运行）、`new`（打开 composer）、`project` 和 `stage`（筛选运行）、`ticket` 和 `file`（打开 ticket 抽屉）、`view`（运行详情的 `chat` / `log` / `result`）、`created`（composer 为 planner 运行新建的 ticket id，详情头部显示）。
 
 快捷键：`j` `k` 上下、`Enter` 打开、`n` 新运行、`a` 聚焦回答框、`/` 搜索。
 

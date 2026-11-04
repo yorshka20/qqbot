@@ -22,10 +22,6 @@ function useGlobalKeys(route: Route): void {
     event.preventDefault();
     navigate(routeHref({ section: 'runs', composing: true }));
   });
-  useKey('a', (event) => {
-    event.preventDefault();
-    focusWhenRendered('[data-answer-box]');
-  });
   useKey('/', (event) => {
     event.preventDefault();
     if (route.section === 'runs') {

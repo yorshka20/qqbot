@@ -44,6 +44,7 @@ export function isEndedRun(run: Run): boolean {
 }
 
 export function RunCardBody({ run, childRuns, now }: { run: Run; childRuns: number; now: number }) {
+  const { workerExits } = useCluster();
   const tone = STAGE_TONE[run.stage];
   return (
     <>
@@ -66,6 +67,13 @@ export function RunCardBody({ run, childRuns, now }: { run: Run; childRuns: numb
       <p className="truncate text-13 text-ink-muted">
         <ModelName id={run.task.model} />
       </p>
+      {!run.worker && (
+        <RunFactsLine
+          task={run.task}
+          exitedAt={run.task.workerId ? workerExits.get(run.task.workerId) : undefined}
+          now={now}
+        />
+      )}
     </>
   );
 }

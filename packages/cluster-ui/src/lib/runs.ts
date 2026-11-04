@@ -1,4 +1,10 @@
-import type { ClusterHelpRequest, ClusterTask, ClusterWorkerRegistration, TicketCreateBody } from '@qqbot/api-types';
+import type {
+  ClusterHelpRequest,
+  ClusterTask,
+  ClusterTemplatesResponse,
+  ClusterWorkerRegistration,
+  TicketCreateBody,
+} from '@qqbot/api-types';
 import { isLive, type Stage, stageOf, stageRank } from './stage';
 import { toMs } from './time';
 import { inWindow, type RunWindow } from './window';
@@ -284,6 +290,14 @@ export function runTimes(task: ClusterTask, exitedAt: number | undefined, now: n
   const endedAt = toMs(task.completedAt) ?? exitedAt ?? null;
   const durationMs = startedAt === null ? null : (endedAt ?? now) - startedAt;
   return { startedAt, endedAt, durationMs };
+}
+
+/** The template a run will use: the one chosen, else the project's default (the empty choice means "auto"). */
+export function resolveTemplate(
+  input: { project: string; template?: string },
+  templates: Pick<ClusterTemplatesResponse, 'projectDefaults'> | null,
+): string | undefined {
+  return input.template || templates?.projectDefaults[input.project] || undefined;
 }
 
 /** A planner that was dispatched without a ticket has nowhere to write its plan and result back. */

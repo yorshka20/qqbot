@@ -1,4 +1,5 @@
 import type { ClusterWorkerHistoryEntry, ClusterWorkerRegistration } from '@qqbot/api-types';
+import type { Run } from './runs';
 import type { Tone } from './stage';
 
 export interface WorkerResult {
@@ -48,4 +49,20 @@ export function mergeWorkers(...lists: ClusterWorkerRegistration[][]): ClusterWo
     }
   }
   return [...byId.values()];
+}
+
+export interface WorkerRunFacts {
+  run?: Run;
+  startedAt: number;
+  endedAt?: number;
+}
+
+/** The run a worker served, if it is loaded; otherwise the worker's own spawn and exit times. */
+export function workerRunFacts(entry: ClusterWorkerRegistration, runs: Run[]): WorkerRunFacts {
+  const taskId = workerTaskId(entry);
+  return {
+    run: taskId === undefined ? undefined : runs.find((r) => r.task.id === taskId),
+    startedAt: entry.spawnedAt ?? entry.stats.registeredAt,
+    endedAt: entry.exitedAt,
+  };
 }

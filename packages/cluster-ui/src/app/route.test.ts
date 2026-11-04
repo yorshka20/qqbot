@@ -16,6 +16,7 @@ describe('route', () => {
       project: 'demo',
       stage: 'running' as const,
       view: 'log' as const,
+      createdTicket: 't-1',
     };
     expect(parseRoute(routeHref(route))).toEqual(route);
   });
@@ -28,5 +29,11 @@ describe('route', () => {
     expect(parseRoute('#/runs/a?view=nope').view).toBeNull();
     expect(parseRoute('#/runs/a').view).toBeNull();
     expect(parseRoute('#/runs/a?view=chat').view).toBe('chat');
+  });
+
+  test('a created ticket rides the query as `created`', () => {
+    expect(routeHref({ section: 'runs', runId: 'a', createdTicket: 'T-9' })).toBe('#/runs/a?created=T-9');
+    expect(parseRoute('#/runs/a?created=T-9').createdTicket).toBe('T-9');
+    expect(parseRoute('#/runs/a').createdTicket).toBeNull();
   });
 });

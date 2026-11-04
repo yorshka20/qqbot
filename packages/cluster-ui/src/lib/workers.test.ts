@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterWorkerHistoryEntry } from '@qqbot/api-types';
-import { exitedWorkers, mergeWorkers, workerResult, workerTaskId } from './workers';
+import type { Run } from './runs';
+import { exitedWorkers, mergeWorkers, workerResult, workerRunFacts, workerTaskId } from './workers';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z');
 const DAY = 24 * 60 * 60 * 1000;
@@ -72,5 +73,22 @@ describe('mergeWorkers', () => {
 
   test('no lists is an empty list', () => {
     expect(mergeWorkers()).toEqual([]);
+  });
+});
+
+describe('workerRunFacts', () => {
+  const run = { task: { id: 't1' } } as Run;
+
+  test('finds the loaded run the worker served', () => {
+    expect(workerRunFacts(entry({ lastBoundTaskId: 't1' }), [run]).run).toBe(run);
+  });
+
+  test('a run outside the loaded window leaves the worker times', () => {
+    const facts = workerRunFacts(entry({ lastBoundTaskId: 'gone', spawnedAt: 100, exitedAt: 200 }), [run]);
+    expect(facts).toEqual({ run: undefined, startedAt: 100, endedAt: 200 });
+  });
+
+  test('spawn time falls back to the registration time', () => {
+    expect(workerRunFacts(entry({}), []).startedAt).toBe(NOW);
   });
 });

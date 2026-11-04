@@ -4,6 +4,7 @@ import { useCluster } from '../app/ClusterData';
 import { routeHref } from '../app/route';
 import { setTheme, type ThemeChoice, useThemeChoice } from '../app/theme';
 import { signOut } from '../auth/session';
+import { ModelName } from '../runs/RunFacts';
 import { Button, ConfirmButton } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { Section } from '../ui/Section';
@@ -104,7 +105,7 @@ export function SettingsPage() {
                   {template.type} · {template.role === 'planner' ? '规划' : '执行'} · 并发 {template.maxConcurrent} ·
                   成本 {template.costTier}
                 </span>
-                {template.model && <span className="block font-mono text-13 text-ink-muted">{template.model}</span>}
+                {template.model && <ModelName id={template.model} className="block text-13 text-ink-muted" />}
               </Fact>
             ))
           )}

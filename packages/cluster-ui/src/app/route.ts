@@ -16,6 +16,8 @@ export interface Route {
   ticket: string | null;
   ticketFile: string | null;
   view: RunView | null;
+  /** A ticket the composer made for a planner run, shown on the run it started. */
+  createdTicket: string | null;
 }
 
 export const NO_FILTERS = {
@@ -27,6 +29,7 @@ export const NO_FILTERS = {
   ticket: null,
   ticketFile: null,
   view: null,
+  createdTicket: null,
 } satisfies Omit<Route, 'section'>;
 
 function parseStage(value: string | null): Stage | null {
@@ -47,11 +50,15 @@ export function parseRoute(hash: string): Route {
     ticket: params.get('ticket'),
     ticketFile: params.get('file'),
     view: parseRunView(params.get('view')),
+    createdTicket: params.get('created'),
   };
 }
 
 export function routeHref(route: Partial<Route> & Pick<Route, 'section'>): string {
-  const { section, runId, pin, composing, project, stage, ticket, ticketFile, view } = { ...NO_FILTERS, ...route };
+  const { section, runId, pin, composing, project, stage, ticket, ticketFile, view, createdTicket } = {
+    ...NO_FILTERS,
+    ...route,
+  };
   const params = new URLSearchParams();
   if (pin) {
     params.set('pin', pin);
@@ -73,6 +80,9 @@ export function routeHref(route: Partial<Route> & Pick<Route, 'section'>): strin
   }
   if (view) {
     params.set('view', view);
+  }
+  if (createdTicket) {
+    params.set('created', createdTicket);
   }
   const path = runId ? `${section}/${encodeURIComponent(runId)}` : section;
   return params.size > 0 ? `#/${path}?${params}` : `#/${path}`;

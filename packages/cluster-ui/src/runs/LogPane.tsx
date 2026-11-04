@@ -180,7 +180,7 @@ export function LogPane({ taskId, live, logPath }: { taskId: string; live: boole
           <button
             type="button"
             onClick={() => setRawView(!rawView)}
-            className="shrink-0 rounded-ui px-1.5 py-0.5 text-13 opacity-70 hover:bg-white/10 hover:opacity-100"
+            className="shrink-0 rounded-ui px-1.5 py-0.5 text-13 opacity-70 hover:bg-log-ink/10 hover:opacity-100"
           >
             {rawView ? '可读' : '原始'}
           </button>
@@ -189,7 +189,7 @@ export function LogPane({ taskId, live, logPath }: { taskId: string; live: boole
           type="button"
           onClick={toggleFull}
           title={full ? '退出全屏' : '全屏'}
-          className="shrink-0 rounded-ui p-1 opacity-70 hover:bg-white/10 hover:opacity-100"
+          className="shrink-0 rounded-ui p-1 opacity-70 hover:bg-log-ink/10 hover:opacity-100"
         >
           {full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
         </button>

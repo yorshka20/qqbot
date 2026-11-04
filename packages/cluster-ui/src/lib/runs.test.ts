@@ -10,6 +10,7 @@ import {
   needsPlannerTicket,
   orderRunsAsTree,
   parseFiles,
+  resolveTemplate,
   parseRunView,
   plannerTicketDraft,
   runBody,
@@ -434,5 +435,23 @@ describe('parseRunView', () => {
     expect(parseRunView('result')).toBe('result');
     expect(parseRunView('x')).toBeNull();
     expect(parseRunView(null)).toBeNull();
+  });
+});
+
+describe('resolveTemplate', () => {
+  const templates = { projectDefaults: { demo: 'tpl-planner' } };
+
+  test('a chosen template wins over the project default', () => {
+    expect(resolveTemplate({ project: 'demo', template: 'tpl-coder' }, templates)).toBe('tpl-coder');
+  });
+
+  test('auto selection falls back to the project default', () => {
+    expect(resolveTemplate({ project: 'demo', template: '' }, templates)).toBe('tpl-planner');
+    expect(resolveTemplate({ project: 'demo' }, templates)).toBe('tpl-planner');
+  });
+
+  test('no choice and no default is no template', () => {
+    expect(resolveTemplate({ project: 'other' }, templates)).toBeUndefined();
+    expect(resolveTemplate({ project: 'demo' }, null)).toBeUndefined();
   });
 });
