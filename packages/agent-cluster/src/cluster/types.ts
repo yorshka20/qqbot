@@ -152,6 +152,33 @@ export interface TaskRecord {
   acknowledgedAt?: string;
   /** The model the worker actually ran on, as its CLI reported it; the template's `--model` until then. */
   model?: string;
+  /** Token usage the worker's CLI reported so far; totals once the run ended. */
+  usage?: TaskUsage;
+}
+
+export interface TaskUsage {
+  /** Size of the context the model last saw: input + cache read + cache creation tokens of the latest request. */
+  contextTokens: number;
+  /** Cumulative over the run. */
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  turns?: number;
+  costUsd?: number;
+  /** True once the CLI reported its final totals. */
+  final?: boolean;
+}
+
+/** What one stdout line says about usage; `final` carries the run's totals and replaces the sums. */
+export interface UsageSample {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreation: number;
+  turns?: number;
+  costUsd?: number;
+  final?: boolean;
 }
 
 export interface TaskCandidate {
@@ -471,6 +498,8 @@ export interface WorkerBackend {
   sessionIdFrom?(line: string): string | undefined;
   /** Optional: recognise the model id the CLI reports in one line of its stdout stream. */
   modelFrom?(line: string): string | undefined;
+  /** Optional: read the token usage one stdout line reports (per request, or the run's final totals). */
+  usageFrom?(line: string): UsageSample | undefined;
   /**
    * Confirm the credential this backend's CLI would authenticate with.
    * Runs on every cluster start, so implementations must stay free: a provider

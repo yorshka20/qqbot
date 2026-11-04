@@ -323,3 +323,30 @@ describe('WorkerPool detached workers and adoption', () => {
     expect(task.error).toBe('Process exited with code 3: boom');
   });
 });
+
+describe('applyUsage', () => {
+  test('sums per-request samples and tracks the latest context size', async () => {
+    const { applyUsage } = await import('../WorkerPool');
+    const a = applyUsage(undefined, { input: 2, output: 10, cacheRead: 100, cacheCreation: 5 });
+    const b = applyUsage(a, { input: 3, output: 20, cacheRead: 200, cacheCreation: 0 });
+    expect(b).toEqual({
+      contextTokens: 203,
+      inputTokens: 5,
+      outputTokens: 30,
+      cacheReadTokens: 300,
+      cacheCreationTokens: 5,
+      turns: 2,
+    });
+  });
+
+  test('a final sample replaces the sums with the CLI totals and sticks', async () => {
+    const { applyUsage } = await import('../WorkerPool');
+    const running = applyUsage(undefined, { input: 1, output: 1, cacheRead: 1, cacheCreation: 1 });
+    const done = applyUsage(running, { input: 44, output: 17298, cacheRead: 1340147, cacheCreation: 118797, turns: 46, costUsd: 1.85, final: true });
+    expect(done.final).toBe(true);
+    expect(done.outputTokens).toBe(17298);
+    expect(done.turns).toBe(46);
+    expect(done.contextTokens).toBe(3);
+    expect(applyUsage(done, { input: 9, output: 9, cacheRead: 9, cacheCreation: 9 })).toBe(done);
+  });
+});

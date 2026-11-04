@@ -629,6 +629,7 @@ export class ClusterManager {
         ['sessionId', 'TEXT'],
         ['acknowledgedAt', 'TEXT'],
         ['model', 'TEXT'],
+        ['usage', 'TEXT'],
       ];
       for (const [name, type] of wanted) {
         if (have.has(name)) continue;

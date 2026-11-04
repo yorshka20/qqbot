@@ -149,10 +149,25 @@ export interface ClusterTask {
   acknowledgedAt?: string;
   /** The model the worker runs on: what its CLI reported, else the template's `--model`. */
   model?: string;
+  /** Token usage the worker's CLI reported; cumulative while running, the CLI's totals once ended. */
+  usage?: ClusterTaskUsage;
   /** Length of the whole stdout buffer; set only by the job-detail route. */
   outputBytes?: number;
   /** True when `output` is a tail slice rather than the whole buffer. */
   outputTruncated?: boolean;
+}
+
+export interface ClusterTaskUsage {
+  /** Tokens in the context the model last saw (input + cache read + cache creation of the latest request). */
+  contextTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  turns?: number;
+  costUsd?: number;
+  /** True once the CLI reported its final totals. */
+  final?: boolean;
 }
 
 /** `GET /api/cluster/tasks/:id` — a planner task also carries the tasks it spawned. */

@@ -72,7 +72,8 @@ function openDb(): Database {
     logPath TEXT,
     sessionId TEXT,
     acknowledgedAt TEXT,
-    model TEXT
+    model TEXT,
+    usage TEXT
   )`);
   return db;
 }

@@ -910,8 +910,8 @@ export class ClusterScheduler {
           `INSERT OR REPLACE INTO cluster_tasks
          (id, jobId, project, description, status, workerId, workerTemplate, source,
           createdAt, claimedAt, startedAt, completedAt, output, error, filesModified, diffSummary, metadata, parentTaskId,
-          workerPid, workerStartedAt, logPath, sessionId, acknowledgedAt, model)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          workerPid, workerStartedAt, logPath, sessionId, acknowledgedAt, model, usage)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           task.id,
@@ -938,6 +938,7 @@ export class ClusterScheduler {
           task.sessionId ?? null,
           task.acknowledgedAt ?? null,
           task.model ?? null,
+          task.usage ? JSON.stringify(task.usage) : null,
         );
     } catch (err) {
       logger.error('[ClusterScheduler] Failed to persist task:', err);
@@ -1145,6 +1146,7 @@ export class ClusterScheduler {
       sessionId: (row.sessionId as string | null) ?? undefined,
       acknowledgedAt: (row.acknowledgedAt as string | null) ?? undefined,
       model: (row.model as string | null) ?? undefined,
+      usage: parseUsage(row.usage),
     };
   }
 
@@ -1213,5 +1215,14 @@ export class ClusterScheduler {
 
     await this.tryDispatch(task, projectInfo);
     return task;
+  }
+}
+
+function parseUsage(raw: unknown): TaskRecord['usage'] {
+  if (typeof raw !== 'string' || !raw) return undefined;
+  try {
+    return JSON.parse(raw) as TaskRecord['usage'];
+  } catch {
+    return undefined;
   }
 }

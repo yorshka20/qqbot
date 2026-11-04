@@ -17,6 +17,7 @@ import type {
   CredentialProbeConfig,
   CredentialProbeResult,
   ParsedWorkerOutput,
+  UsageSample,
   WorkerBackend,
   WorkerLaunch,
   WorkerSpawnConfig,
@@ -77,6 +78,38 @@ export class ClaudeCliBackend implements WorkerBackend {
       const evt = JSON.parse(line) as { model?: unknown; message?: { model?: unknown } };
       const model = evt.message?.model ?? evt.model;
       return typeof model === 'string' && model ? model : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * stream-json reports usage per request on every assistant message, and the run's totals
+   * (with turns and cost) on the final `result` event.
+   */
+  usageFrom(line: string): UsageSample | undefined {
+    if (!line.includes('"usage"')) return undefined;
+    try {
+      const evt = JSON.parse(line) as {
+        type?: unknown;
+        usage?: Record<string, unknown>;
+        message?: { usage?: Record<string, unknown> };
+        num_turns?: unknown;
+        total_cost_usd?: unknown;
+      };
+      const final = evt.type === 'result';
+      const usage = final ? evt.usage : evt.type === 'assistant' ? evt.message?.usage : undefined;
+      if (!usage) return undefined;
+      const n = (key: string) => (typeof usage[key] === 'number' ? (usage[key] as number) : 0);
+      return {
+        input: n('input_tokens'),
+        output: n('output_tokens'),
+        cacheRead: n('cache_read_input_tokens'),
+        cacheCreation: n('cache_creation_input_tokens'),
+        ...(final && typeof evt.num_turns === 'number' ? { turns: evt.num_turns } : {}),
+        ...(final && typeof evt.total_cost_usd === 'number' ? { costUsd: evt.total_cost_usd } : {}),
+        ...(final ? { final: true } : {}),
+      };
     } catch {
       return undefined;
     }

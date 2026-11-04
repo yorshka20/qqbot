@@ -17,7 +17,15 @@ import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
 import type { ClusterConfig, WorkerBackendType } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import { LogTail } from './LogTail';
-import type { ClusterStatus, TaskRecord, WorkerBackend, WorkerInstance, WorkerLaunch } from './types';
+import type {
+  ClusterStatus,
+  TaskRecord,
+  TaskUsage,
+  UsageSample,
+  WorkerBackend,
+  WorkerInstance,
+  WorkerLaunch,
+} from './types';
 
 /**
  * Callback invoked when a worker process exits and its task transitions to
@@ -83,6 +91,38 @@ interface Followed {
   liveness: ReturnType<typeof setInterval> | null;
   cleanup?: () => Promise<void>;
   finalized: boolean;
+}
+
+/** How often a running task's usage is written to the database. */
+const USAGE_PERSIST_MS = 10_000;
+
+/**
+ * Fold one usage sample into a task's running totals. A per-request sample adds to the sums
+ * and sets the context size; the final sample replaces the sums with the CLI's own totals.
+ */
+export function applyUsage(current: TaskUsage | undefined, sample: UsageSample): TaskUsage {
+  const context = sample.input + sample.cacheRead + sample.cacheCreation;
+  if (sample.final) {
+    return {
+      contextTokens: current?.contextTokens ?? context,
+      inputTokens: sample.input,
+      outputTokens: sample.output,
+      cacheReadTokens: sample.cacheRead,
+      cacheCreationTokens: sample.cacheCreation,
+      ...(sample.turns !== undefined ? { turns: sample.turns } : {}),
+      ...(sample.costUsd !== undefined ? { costUsd: sample.costUsd } : {}),
+      final: true,
+    };
+  }
+  if (current?.final) return current;
+  return {
+    contextTokens: context,
+    inputTokens: (current?.inputTokens ?? 0) + sample.input,
+    outputTokens: (current?.outputTokens ?? 0) + sample.output,
+    cacheReadTokens: (current?.cacheReadTokens ?? 0) + sample.cacheRead,
+    cacheCreationTokens: (current?.cacheCreationTokens ?? 0) + sample.cacheCreation,
+    turns: (current?.turns ?? 0) + 1,
+  };
 }
 
 /** The model a template pins: its `--model` argument, else the model env var its backend reads. */
@@ -668,6 +708,7 @@ export class WorkerPool {
     const task = worker.currentTask;
     const logPath = worker.logPath ?? this.outPath(task?.id ?? worker.id);
     let lastProgress = 0;
+    let lastUsagePersist = 0;
     let modelConfirmed = false;
     const tail = new LogTail(
       logPath,
@@ -677,6 +718,17 @@ export class WorkerPool {
           if (sessionId) {
             task.sessionId = sessionId;
             this.taskUpdatedCallback?.(task);
+          }
+        }
+        if (task && backend.usageFrom) {
+          const sample = backend.usageFrom(line);
+          if (sample) {
+            task.usage = applyUsage(task.usage, sample);
+            const now = Date.now();
+            if (sample.final || now - lastUsagePersist >= USAGE_PERSIST_MS) {
+              lastUsagePersist = now;
+              this.taskUpdatedCallback?.(task);
+            }
           }
         }
         if (task && backend.modelFrom && !modelConfirmed) {
