@@ -120,6 +120,7 @@ function stubHub(): ContextHub {
     eventLog: { append: () => ({}) },
     messageBox: { send: () => 'message-id' },
     workerExited: () => {},
+    taskSettled: () => {},
   } as unknown as ContextHub;
 }
 

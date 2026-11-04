@@ -726,7 +726,15 @@ export class ContextHub {
     const requested = typeof input.timeoutMs === 'number' && input.timeoutMs > 0 ? input.timeoutMs : WAIT_MAX_MS;
     const timeoutMs = Math.min(requested, WAIT_MAX_MS);
     const tasks = Array.from(new Set((input.tasks ?? []).filter((t) => typeof t === 'string' && t)));
-    const snapshots = () => tasks.map((taskId) => this.handleQueryTask(workerId, { taskId }));
+    // A task the hub cannot see (not this worker's child, or gone) is simply not watched.
+    const snapshots = (): HubQueryTaskOutput[] =>
+      tasks.flatMap((taskId) => {
+        try {
+          return [this.handleQueryTask(workerId, { taskId })];
+        } catch {
+          return [];
+        }
+      });
     const settled = (snapshot: HubQueryTaskOutput) =>
       snapshot.status === 'completed' || snapshot.status === 'failed' || snapshot.status === 'cancelled';
 
