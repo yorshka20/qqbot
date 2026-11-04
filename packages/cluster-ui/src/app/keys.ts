@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { navigate } from './route';
 
 function isTyping(target: EventTarget | null): boolean {
   return (
@@ -24,7 +23,7 @@ export function useKey(key: string, handler: (event: KeyboardEvent) => void): vo
 }
 
 /** `j` / `k` move a cursor down a list of links, `Enter` opens the row under it. */
-export function useListCursor(hrefs: string[]): { cursor: number | null } {
+export function useListCursor(hrefs: string[], open: (href: string) => void): { cursor: number | null } {
   const [cursor, setCursor] = useState<number | null>(null);
   const last = hrefs.length - 1;
   const clamped = cursor === null || last < 0 ? null : Math.min(cursor, last);
@@ -46,9 +45,18 @@ export function useListCursor(hrefs: string[]): { cursor: number | null } {
       !(event.target instanceof HTMLButtonElement) &&
       !(event.target instanceof HTMLAnchorElement)
     ) {
-      navigate(hrefs[clamped]);
+      open(hrefs[clamped]);
     }
   });
 
   return { cursor: clamped };
+}
+
+/** A Radix overlay is open: it owns Esc until it closes. */
+export function overlayIsOpen(): boolean {
+  return (
+    document.querySelector(
+      '[role="dialog"][data-state="open"], [role="menu"][data-state="open"], [data-radix-popper-content-wrapper]',
+    ) !== null
+  );
 }

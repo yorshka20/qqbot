@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useCluster } from '../app/ClusterData';
 import { routeHref } from '../app/route';
 import { type OverviewChoice, readOverviewChoice, rememberOverviewChoice } from '../lib/memory';
+import { spareSlots } from '../lib/slots';
 import type { Stage } from '../lib/stage';
 import { buildBranches, layoutTopology } from '../lib/topology';
 import { useNow } from '../lib/useNow';
 import { needsOlderHistory, RUN_WINDOW_LABEL, type RunWindow } from '../lib/window';
 import { EmptyState } from '../ui/EmptyState';
 import { SkeletonRows } from '../ui/Skeleton';
-import { spareSlots } from '../workers/slots';
 import { BranchList } from './BranchList';
 import { TopologyMap } from './TopologyMap';
 

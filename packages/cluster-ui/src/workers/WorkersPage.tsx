@@ -10,6 +10,7 @@ import {
 import { useCluster } from '../app/ClusterData';
 import { routeHref } from '../app/route';
 import type { Run } from '../lib/runs';
+import { busyWorkers } from '../lib/slots';
 import type { Tone } from '../lib/stage';
 import { formatAgo, formatClock } from '../lib/time';
 import { WORKER_STATE_LABEL, WORKER_STATE_TONE, workerState } from '../lib/topology';
@@ -22,7 +23,6 @@ import { Section } from '../ui/Section';
 import { SkeletonRows } from '../ui/Skeleton';
 import { StatePill } from '../ui/StatePill';
 import { StatusDot } from '../ui/StatusDot';
-import { busyWorkers } from './slots';
 
 const ROLE_LABEL: Record<ClusterWorkerRole, string> = {
   coder: '编码',

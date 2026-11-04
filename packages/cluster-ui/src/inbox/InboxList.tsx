@@ -2,7 +2,7 @@ import { ChevronRight, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useCluster } from '../app/ClusterData';
 import { useListCursor } from '../app/keys';
-import { type Route, routeHref } from '../app/route';
+import { navigate, type Route, routeHref } from '../app/route';
 import { type ArchiveItem, buildInboxArchive, groupInboxByDay, type InboxItem } from '../lib/inbox';
 import { formatClock } from '../lib/time';
 import { useNow } from '../lib/useNow';
@@ -89,7 +89,7 @@ export function InboxList({ route }: { route: Route }) {
   const groups = groupInboxByDay(items, now);
   const flatItems = groups.flatMap((g) => g.items);
   const hrefs = flatItems.map(itemHref);
-  const { cursor } = useListCursor(hrefs);
+  const { cursor } = useListCursor(hrefs, navigate);
 
   let flatIndex = -1;
 

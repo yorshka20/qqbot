@@ -1,3 +1,4 @@
+import { BrowserRouter } from 'react-router';
 import { useSession } from '../auth/session';
 import { TokenGate } from '../auth/TokenGate';
 import { ClusterDataProvider } from './ClusterData';
@@ -10,7 +11,9 @@ export function App() {
   }
   return (
     <ClusterDataProvider>
-      <Shell />
+      <BrowserRouter>
+        <Shell />
+      </BrowserRouter>
     </ClusterDataProvider>
   );
 }

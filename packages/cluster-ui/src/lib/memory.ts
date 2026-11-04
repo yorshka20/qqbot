@@ -5,6 +5,7 @@ import type { RunWindow } from './window';
 const COMPOSER_KEY = 'cluster-ui.composer';
 const RUN_VIEW_KEY = 'cluster-ui.run-view';
 const OVERVIEW_KEY = 'cluster-ui.overview';
+const SIDEBAR_KEY = 'cluster-ui.sidebar-open';
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -60,4 +61,12 @@ export function readOverviewChoice(): OverviewChoice {
 
 export function rememberOverviewChoice(choice: OverviewChoice): void {
   write(OVERVIEW_KEY, choice);
+}
+
+export function readSidebarOpen(): boolean {
+  return read<boolean>(SIDEBAR_KEY, true);
+}
+
+export function rememberSidebarOpen(open: boolean): void {
+  write(SIDEBAR_KEY, open);
 }

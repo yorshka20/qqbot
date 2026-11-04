@@ -134,6 +134,10 @@ export function buildRuns(
   });
 }
 
+export function stageRankOfRun(run: Run): number {
+  return stageRank(run.stage);
+}
+
 /** Stage order; a stage that needs you or runs longest-waiting first, ended ones newest first. */
 export function sortRuns(runs: Run[]): Run[] {
   return [...runs].sort((a, b) => {

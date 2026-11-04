@@ -1,7 +1,7 @@
-import { PauseCircle, WifiOff } from 'lucide-react';
+import { PauseCircle, Play, WifiOff } from 'lucide-react';
 import { useState } from 'react';
 import { resumeCluster, startCluster } from '../api';
-import { Button } from '../ui/Button';
+import { Button } from '../components/ui/button';
 import { useCluster } from './ClusterData';
 
 /** The console's only standing notice. A healthy cluster shows nothing here. */
@@ -29,7 +29,8 @@ export function Banner() {
       <div className="flex items-center gap-3 border-l-[3px] border-attention bg-attention/10 px-4 py-2 text-14 text-attention">
         <PauseCircle className="size-4 shrink-0" strokeWidth={2} />
         <span>调度已停止，运行信息可能是旧的。</span>
-        <Button disabled={busy} onClick={() => act(startCluster)}>
+        <Button variant="outline" size="sm" disabled={busy} onClick={() => act(startCluster)}>
+          <Play />
           启动调度
         </Button>
       </div>
@@ -40,7 +41,8 @@ export function Banner() {
       <div className="flex items-center gap-3 border-l-[3px] border-attention bg-attention/10 px-4 py-2 text-14 text-attention">
         <PauseCircle className="size-4 shrink-0" strokeWidth={2} />
         <span>调度已暂停，排队的运行不会开始。</span>
-        <Button disabled={busy} onClick={() => act(resumeCluster)}>
+        <Button variant="outline" size="sm" disabled={busy} onClick={() => act(resumeCluster)}>
+          <Play />
           恢复调度
         </Button>
       </div>

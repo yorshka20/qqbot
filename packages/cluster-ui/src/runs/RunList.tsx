@@ -2,7 +2,7 @@ import { Plus, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useCluster } from '../app/ClusterData';
 import { useListCursor } from '../app/keys';
-import { type Route, routeHref, withRoute } from '../app/route';
+import { navigate, type Route, routeHref, withRoute } from '../app/route';
 import { groupRunSections, RUN_SECTION_LABEL } from '../lib/runs';
 import { STAGE_LABEL } from '../lib/stage';
 import { useNow } from '../lib/useNow';
@@ -56,7 +56,7 @@ export function RunList({ route }: { route: Route }) {
 
   const hrefOf = (id: string) => withRoute(route, { runId: id, composing: false });
   const hrefs = visible.map(({ run }) => hrefOf(run.task.id));
-  const { cursor } = useListCursor(hrefs);
+  const { cursor } = useListCursor(hrefs, navigate);
   const indexOf = useMemo(() => new Map(visible.map(({ run }, index) => [run.task.id, index])), [visible]);
 
   const loadEarlier = () => {
