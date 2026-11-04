@@ -3,7 +3,7 @@
  */
 
 import { hostname } from 'node:os';
-import { parseDuration } from '@qqbot/shared';
+import { fromRepoRoot, parseDuration, resolveFromRepoRoot } from '@qqbot/shared';
 
 export interface ClusterConfig {
   enabled: boolean;
@@ -13,6 +13,12 @@ export interface ClusterConfig {
    * given result. Defaults to `os.hostname()` when unset in config.
    */
   clusterId: string;
+  /**
+   * Where the cluster keeps what must outlive its process: worker log files
+   * (`assignments/`) and the MCP config files handed to workers (`mcp/`).
+   * Absolute; a relative value resolves against the repo root.
+   */
+  stateDir: string;
   schedulingInterval: number; // ms
   maxConcurrentWorkers: number;
 
@@ -235,6 +241,10 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
   return {
     enabled: true,
     clusterId,
+    stateDir:
+      typeof r.stateDir === 'string' && r.stateDir.trim()
+        ? resolveFromRepoRoot(r.stateDir.trim())
+        : fromRepoRoot('data', 'cluster'),
     schedulingInterval:
       typeof r.schedulingInterval === 'string'
         ? parseDuration(r.schedulingInterval)

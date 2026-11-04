@@ -60,11 +60,11 @@ export class ClusterScheduler {
     // Reset warn-once state so config changes between restarts surface again.
     this.warnedMissingProjects.clear();
 
-    // Restore recent jobs & tasks from DB so the WebUI shows history
-    // after a cluster restart. Only terminal (completed/failed/cancelled)
-    // records are loaded — we never resume in-progress work across
-    // restarts because the worker processes are gone.
+    // Restore recent jobs from DB so the WebUI shows history after a restart, and pick up
+    // the tasks whose workers are still running: workers are detached processes that
+    // outlive the scheduler.
     this.restoreRecentFromDb();
+    this.adoptRunningTasks();
 
     logger.info(`[ClusterScheduler] Started (interval: ${this.config.schedulingInterval}ms)`);
     this.scheduleNextRun();
@@ -333,6 +333,11 @@ export class ClusterScheduler {
     // Intentional no-op: intermediate output is memory-only + SSE.
     // DB persistence happens in markTaskCompleted / persistTask after
     // parseOutput extracts the clean final message.
+  }
+
+  /** A durable field of a running task (pid, log path, session id) changed. */
+  taskUpdated(task: TaskRecord): void {
+    this.persistTask(task);
   }
 
   /**
@@ -895,8 +900,9 @@ export class ClusterScheduler {
         .query(
           `INSERT OR REPLACE INTO cluster_tasks
          (id, jobId, project, description, status, workerId, workerTemplate, source,
-          createdAt, claimedAt, startedAt, completedAt, output, error, filesModified, diffSummary, metadata, parentTaskId)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          createdAt, claimedAt, startedAt, completedAt, output, error, filesModified, diffSummary, metadata, parentTaskId,
+          workerPid, workerStartedAt, logPath, sessionId)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           task.id,
@@ -917,6 +923,10 @@ export class ClusterScheduler {
           diffSummaryForDb,
           null,
           task.parentTaskId ?? null,
+          task.workerPid ?? null,
+          task.workerStartedAt ?? null,
+          task.logPath ?? null,
+          task.sessionId ?? null,
         );
     } catch (err) {
       logger.error('[ClusterScheduler] Failed to persist task:', err);
@@ -1045,6 +1055,42 @@ export class ClusterScheduler {
     }
   }
 
+  /**
+   * Re-attach to the workers an earlier scheduler process started. A task whose worker is
+   * gone ends as failed here, with whatever hub_report left in the DB kept intact.
+   */
+  private adoptRunningTasks(): void {
+    let rows: Array<Record<string, unknown>>;
+    try {
+      rows = this.db
+        .query(`SELECT * FROM cluster_tasks WHERE status IN ('running', 'claimed') AND workerPid IS NOT NULL`)
+        .all() as Array<Record<string, unknown>>;
+    } catch (err) {
+      logger.warn('[ClusterScheduler] adoptRunningTasks query failed (non-fatal):', err);
+      return;
+    }
+    let adopted = 0;
+    for (const row of rows) {
+      const task = this.rowToTask(row);
+      if (!this.jobs.has(task.jobId)) {
+        const job = this.getJob(task.jobId) ?? this.resolveJob(task.jobId);
+        if (job) this.jobs.set(job.id, job);
+      }
+      this.activeTasks.set(task.id, task);
+      if (this.workerPool.adopt(task)) {
+        adopted++;
+        continue;
+      }
+      task.status = 'failed';
+      task.error = 'Worker process not found after scheduler restart';
+      task.completedAt = new Date().toISOString();
+      this.finalizeTask(task);
+    }
+    if (rows.length > 0) {
+      logger.info(`[ClusterScheduler] Adopted ${adopted} running worker(s); ${rows.length - adopted} ended as failed`);
+    }
+  }
+
   private rowToJob(row: Record<string, unknown>): JobRecord {
     return {
       id: row.id as string,
@@ -1082,6 +1128,10 @@ export class ClusterScheduler {
       diffSummary: (row.diffSummary as string | null) ?? undefined,
       metadata: (row.metadata as string | null) ?? undefined,
       parentTaskId: (row.parentTaskId as string | null) ?? undefined,
+      workerPid: (row.workerPid as number | null) ?? undefined,
+      workerStartedAt: (row.workerStartedAt as string | null) ?? undefined,
+      logPath: (row.logPath as string | null) ?? undefined,
+      sessionId: (row.sessionId as string | null) ?? undefined,
     };
   }
 

@@ -74,7 +74,12 @@ export interface WorkerInstance {
   id: string;
   templateName: string;
   project: string;
-  process: import('bun').Subprocess | null;
+  /** OS pid of the worker process; null until spawned. The worker is detached, so it is not a child of this process after a scheduler restart. */
+  pid: number | null;
+  /** The child handle when this scheduler process spawned the worker; null for a worker adopted after a restart. */
+  child: import('node:child_process').ChildProcess | null;
+  /** Where the worker's stdout is written (`<stateDir>/assignments/<taskId>.out.log`). */
+  logPath: string | null;
   status: WorkerStatus;
   currentTask: TaskRecord | null;
   startedAt: number;
@@ -135,6 +140,14 @@ export interface TaskRecord {
    * column is named `parentTaskId`.
    */
   parentTaskId?: string;
+  /** OS pid of the worker process running this task; the scheduler re-adopts it by pid after a restart. */
+  workerPid?: number;
+  /** When the worker process started (ISO); guards `workerPid` against pid reuse on adoption. */
+  workerStartedAt?: string;
+  /** The worker's stdout log file; stderr sits beside it as `.err.log`. */
+  logPath?: string;
+  /** The backend's own session id, once known, so the same session can be resumed later. */
+  sessionId?: string;
 }
 
 export interface TaskCandidate {
@@ -427,9 +440,31 @@ export interface CredentialProbeResult {
   reason?: string;
 }
 
+/**
+ * How to start a worker process. The backend only decides the command line; `WorkerPool`
+ * spawns it detached, with stdout and stderr redirected to log files, so the worker outlives
+ * a scheduler restart.
+ */
+export interface WorkerLaunch {
+  cmd: string[];
+  cwd: string;
+  env: Record<string, string>;
+  /** Text fed to the process on stdin, then closed. Backends whose CLI takes the prompt as an argument leave it unset. */
+  stdin?: string;
+  /** The session id when the backend could choose it up front (claude `--session-id`). */
+  sessionId?: string;
+  /** Undoes a pre-launch side effect once the process has exited. Lost on a scheduler restart, so keep it to backends that have no per-process alternative. */
+  cleanup?: () => Promise<void>;
+}
+
 export interface WorkerBackend {
   name: string;
-  spawn(config: WorkerSpawnConfig): Promise<import('bun').Subprocess>;
+  launch(config: WorkerSpawnConfig): Promise<WorkerLaunch>;
+  /**
+   * Optional: recognise the backend's session id in one line of its stdout stream, for
+   * backends that only reveal it at run time (codex `thread.started`, dsh's first event).
+   */
+  sessionIdFrom?(line: string): string | undefined;
   /**
    * Confirm the credential this backend's CLI would authenticate with.
    * Runs on every cluster start, so implementations must stay free: a provider

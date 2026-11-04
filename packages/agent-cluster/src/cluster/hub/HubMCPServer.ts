@@ -1,27 +1,20 @@
 /**
  * HubMCPServer — exposes ContextHub methods as MCP tools over HTTP.
  *
- * ## Multi-session architecture
+ * ## Stateless transport
  *
- * The MCP SDK's `WebStandardStreamableHTTPServerTransport` is a
- * **single-session** transport — one transport instance supports exactly one
- * client connection. Sending a second `initialize` request to the same
- * transport returns 400 "Server already initialized".
- *
- * Since the Agent Cluster needs multiple concurrent workers (and workers
- * get killed + respawned), we manage a **per-session** transport+server
- * pair. Each incoming `initialize` request creates a fresh `McpServer` +
- * `WebStandardStreamableHTTPServerTransport` pair with all 10 hub tools
- * registered. Subsequent requests are routed to the correct session via
- * the `Mcp-Session-Id` header.
+ * Every request gets a fresh `McpServer` + `WebStandardStreamableHTTPServerTransport`
+ * pair with all hub tools registered, and the transport issues no session id. Workers
+ * outlive the scheduler (they are detached processes), and a client that holds a session
+ * id from before a scheduler restart would otherwise be refused with "Server not
+ * initialized": claude's MCP client does not re-initialize on that error, so the worker's
+ * next tool call would simply fail. With no session state there is nothing to lose.
  *
  * ## Worker identification
  *
  * Every MCP HTTP request from a worker carries the static header
- * `X-Worker-Id: <workerId>`, set in `WorkerPool.generateMCPConfig()`.
- * On session initialization we record the workerId→sessionId mapping so
- * `ContextHub.workerExited()` can clean up the session when the worker
- * process terminates.
+ * `X-Worker-Id: <workerId>`, set in `WorkerPool.generateMCPConfig()`; the tool handlers
+ * read it from `extra.requestInfo.headers`.
  */
 
 import { readFileSync } from 'node:fs';
@@ -29,7 +22,7 @@ import { resolve as resolvePath } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
+import { getRepoRoot, logger } from '@qqbot/shared';
 import { z } from 'zod';
 import type {
   HubAskInput,
@@ -102,18 +95,7 @@ type RegisterToolFn = (
   handler: (args: Record<string, unknown>, extra: ToolExtra) => Promise<CallToolResult>,
 ) => void;
 
-/** State tracked per active MCP session (one per connected worker). */
-interface SessionEntry {
-  transport: WebStandardStreamableHTTPServerTransport;
-  server: McpServer;
-  workerId: string | null;
-}
-
 export class HubMCPServer {
-  /** Active sessions keyed by MCP session ID. */
-  private sessions = new Map<string, SessionEntry>();
-  /** Reverse map: workerId → sessionId, for cleanup on worker exit. */
-  private workerToSession = new Map<string, string>();
   /** Cached MCP server instructions text (loaded once). */
   private readonly instructions: string;
 
@@ -121,107 +103,20 @@ export class HubMCPServer {
     this.instructions = loadHubMcpInstructions();
   }
 
-  /**
-   * Start the MCP server. For the multi-session architecture this is a
-   * no-op — sessions are created on-demand when workers connect. Kept for
-   * API compatibility with ContextHub.start().
-   */
   async start(): Promise<void> {
-    logger.info('[HubMCPServer] Ready — multi-session mode, sessions created on demand at /mcp');
+    logger.info('[HubMCPServer] Ready — stateless mode, one server per request at /mcp');
   }
 
-  /**
-   * Tear down all sessions. Called from `ContextHub.stop()`.
-   */
   async stop(): Promise<void> {
-    for (const [sessionId, entry] of this.sessions) {
-      try {
-        await entry.server.close();
-      } catch (err) {
-        logger.warn(`[HubMCPServer] Error closing session ${sessionId} (non-fatal):`, err);
-      }
-    }
-    this.sessions.clear();
-    this.workerToSession.clear();
-    logger.info('[HubMCPServer] Stopped — all sessions closed');
+    logger.info('[HubMCPServer] Stopped');
   }
 
   /**
-   * Clean up the session associated with a worker. Called when the worker
-   * process exits so the next spawn of that worker slot can initialize a
-   * fresh session without hitting "Server already initialized".
-   */
-  async closeWorkerSession(workerId: string): Promise<void> {
-    const sessionId = this.workerToSession.get(workerId);
-    if (!sessionId) return;
-
-    const entry = this.sessions.get(sessionId);
-    if (entry) {
-      try {
-        await entry.server.close();
-      } catch {
-        // Non-fatal — session might already be half-closed.
-      }
-      this.sessions.delete(sessionId);
-    }
-    this.workerToSession.delete(workerId);
-    logger.debug(`[HubMCPServer] Cleaned up session ${sessionId} for worker ${workerId}`);
-  }
-
-  /**
-   * Delegate an HTTP request to the correct session's transport, or create
-   * a new session if this is an `initialize` request.
-   *
-   * Routing logic:
-   * 1. If the request carries an `Mcp-Session-Id` header and we have a
-   *    matching session → forward to that session's transport.
-   * 2. If no session ID (or unknown) → assume `initialize` request,
-   *    create a new session (transport + server + tools), forward.
-   * 3. The transport itself validates whether the JSON-RPC payload is
-   *    actually an `initialize` — if a non-init request arrives without
-   *    a valid session the transport returns 400, which is correct.
+   * Serve one request with its own server + transport pair. The pair lives as long as the
+   * response does (a GET keeps an SSE stream open) and is collected afterwards.
    */
   async handleRequest(req: Request): Promise<Response> {
-    const sessionId = req.headers.get('mcp-session-id');
-
-    // Existing session — route directly.
-    if (sessionId && this.sessions.has(sessionId)) {
-      // biome-ignore lint/style/noNonNullAssertion: sessionId presence checked in enclosing if
-      return this.sessions.get(sessionId)!.transport.handleRequest(req);
-    }
-
-    // New connection — create a fresh session.
-    return this.createSessionAndHandle(req);
-  }
-
-  // ── Session lifecycle ──
-
-  /**
-   * Create a new McpServer + Transport pair, register all tools, connect
-   * them, and forward the initial request.
-   */
-  private async createSessionAndHandle(req: Request): Promise<Response> {
-    // Extract workerId from the request so we can map session→worker.
-    const workerId = this.extractWorkerIdFromRequest(req);
-
-    // If this worker already has an old session (e.g. reconnecting after
-    // a crash), clean it up first.
-    if (workerId) {
-      await this.closeWorkerSession(workerId);
-    }
-
-    let capturedSessionId: string | null = null;
-
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: () => {
-        capturedSessionId = randomUUID();
-        return capturedSessionId;
-      },
-      onsessioninitialized: (sid: string) => {
-        capturedSessionId = sid;
-      },
-    });
-
+    const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     const server = new McpServer(
       { name: 'cluster-context-hub', version: '1.0.0' },
       {
@@ -229,34 +124,9 @@ export class HubMCPServer {
         instructions: this.instructions,
       },
     );
-
-    // Register all 10 hub tools on this session's server.
     this.registerTools(server);
-
-    // Connect server↔transport (required before handling any request).
     await server.connect(transport);
-
-    // Forward the initialize request to the new transport.
-    const response = await transport.handleRequest(req);
-
-    // After the initialize round-trip, the transport has assigned a
-    // session ID. Record the mapping.
-    if (capturedSessionId) {
-      this.sessions.set(capturedSessionId, {
-        transport,
-        server,
-        workerId: workerId ?? null,
-      });
-      if (workerId) {
-        this.workerToSession.set(workerId, capturedSessionId);
-      }
-      logger.debug(
-        `[HubMCPServer] New session ${capturedSessionId} for worker ${workerId ?? '(unknown)'}` +
-          ` (${this.sessions.size} active sessions)`,
-      );
-    }
-
-    return response;
+    return transport.handleRequest(req);
   }
 
   // ── Tool registration ──
@@ -571,15 +441,6 @@ export class HubMCPServer {
       return raw[0].trim();
     }
     return null;
-  }
-
-  /**
-   * Read workerId from a raw HTTP Request (used during session creation
-   * before the MCP SDK has parsed the request).
-   */
-  private extractWorkerIdFromRequest(req: Request): string | null {
-    const raw = req.headers.get('x-worker-id');
-    return raw?.trim() || null;
   }
 
   private jsonResult(data: unknown): CallToolResult {

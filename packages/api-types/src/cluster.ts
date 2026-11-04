@@ -138,6 +138,13 @@ export interface ClusterTask {
   metadata?: string;
   /** Unset on a root task; set to the planner's task id on a task a planner spawned. */
   parentTaskId?: string;
+  /** OS pid of the worker process, while it runs. */
+  workerPid?: number;
+  workerStartedAt?: string;
+  /** The worker's stdout log file on the cluster host. */
+  logPath?: string;
+  /** The backend's own session id (claude / codex / dsh), once known. */
+  sessionId?: string;
   /** Length of the whole stdout buffer; set only by the job-detail route. */
   outputBytes?: number;
   /** True when `output` is a tail slice rather than the whole buffer. */

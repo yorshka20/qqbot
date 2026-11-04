@@ -13,9 +13,11 @@
  *
  * MCP wiring: Gemini reads MCP server config from `<projectPath>/.gemini/settings.json`
  * (per-project, takes precedence over `~/.gemini/settings.json`). We write
- * a fresh settings.json before spawn (backing up any existing one) and
- * restore the original after the worker exits. This means gemini workers
- * can use the cluster ContextHub via the standard MCP tools/call protocol.
+ * a fresh settings.json before launch (backing up any existing one) and
+ * restore the original after the worker exits. The restore runs only while
+ * the scheduler that launched the worker is alive: after a scheduler restart
+ * the injected entry stays in settings.json until the next gemini launch
+ * rewrites it.
  *
  * Concurrency: gemini-cli template MUST stay at maxConcurrent=1 because
  * the per-project settings.json is single-tenant. Multiple concurrent
@@ -30,8 +32,13 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logger } from '@qqbot/shared';
-import { spawn } from 'bun';
-import type { CredentialProbeConfig, CredentialProbeResult, WorkerBackend, WorkerSpawnConfig } from '../types';
+import type {
+  CredentialProbeConfig,
+  CredentialProbeResult,
+  WorkerBackend,
+  WorkerLaunch,
+  WorkerSpawnConfig,
+} from '../types';
 import { checkGeminiCredential, readModelArg } from './providerCredentialCheck';
 
 const GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
@@ -39,43 +46,17 @@ const GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1bet
 export class GeminiCliBackend implements WorkerBackend {
   name = 'gemini-cli';
 
-  async spawn(config: WorkerSpawnConfig): Promise<import('bun').Subprocess> {
-    // 1. Inject ContextHub MCP into ./.gemini/settings.json. We back up any
-    //    existing settings file so the user's per-project gemini config
-    //    survives the worker run.
-    const settingsRestore = await this.injectMCPSettings(config);
-
-    // 2. Build args and spawn the worker.
-    // Gemini takes the prompt via `-p`/`--prompt` argv. Long prompts work
-    // fine on POSIX (ARG_MAX is hundreds of KB), and stdin support is less
-    // documented than for codex, so argv is the safer default here.
-    const args = [...config.args, '-p', config.taskPrompt];
-
+  async launch(config: WorkerSpawnConfig): Promise<WorkerLaunch> {
+    const cleanup = await this.injectMCPSettings(config);
     logger.info(
-      `[GeminiCliBackend] Spawning worker ${config.workerId}: ${config.command} (cwd: ${config.projectPath})`,
+      `[GeminiCliBackend] Launching worker ${config.workerId}: ${config.command} (cwd: ${config.projectPath})`,
     );
-
-    const proc = spawn({
-      cmd: [config.command, ...args],
+    return {
+      cmd: [config.command, ...config.args, '-p', config.taskPrompt],
       cwd: config.projectPath,
-      env: {
-        ...process.env,
-        ...config.env,
-      },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-
-    // 3. Schedule cleanup when the process exits, regardless of how it
-    //    exited (success / failure / kill). Fire-and-forget — the
-    //    `monitorProcess` in WorkerPool waits on `proc.exited` separately.
-    void proc.exited.finally(() =>
-      settingsRestore().catch((err) => {
-        logger.warn(`[GeminiCliBackend] settings.json restore failed for ${config.workerId}:`, err);
-      }),
-    );
-
-    return proc;
+      env: config.env,
+      cleanup,
+    };
   }
 
   async verifyCredentials(config: CredentialProbeConfig): Promise<CredentialProbeResult> {

@@ -36,6 +36,7 @@ import type {
   CredentialProbeResult,
   ParsedWorkerOutput,
   WorkerBackend,
+  WorkerLaunch,
   WorkerSpawnConfig,
 } from '../types';
 import { ClaudeCliBackend } from './ClaudeCliBackend';
@@ -57,7 +58,7 @@ export class DeepseekBackend implements WorkerBackend {
 
   private readonly inner = new ClaudeCliBackend();
 
-  async spawn(config: WorkerSpawnConfig): Promise<import('bun').Subprocess> {
+  async launch(config: WorkerSpawnConfig): Promise<WorkerLaunch> {
     // Bake in DeepSeek routing + model-alias remapping. Template-provided
     // env still wins so users can pin specific variants per template.
     const env: Record<string, string> = {
@@ -70,7 +71,7 @@ export class DeepseekBackend implements WorkerBackend {
       ...config.env,
     };
 
-    return this.inner.spawn({ ...config, env });
+    return this.inner.launch({ ...config, env });
   }
 
   async verifyCredentials(config: CredentialProbeConfig): Promise<CredentialProbeResult> {

@@ -625,7 +625,7 @@ async function main() {
       logger.error(
         `[ClusterE2E] ✗ submitTask returned null — project alias "${args.project}" probably not registered in the projectRegistry config`,
       );
-      await cluster.stop();
+      await cluster.stop({ killWorkers: true });
       await teardown(app);
       process.exit(1);
     }
@@ -640,7 +640,7 @@ async function main() {
 
     if (!reachedTerminal) {
       logger.error(`[ClusterE2E] ✗ Task ${task.id} did not reach a terminal state within ${args.timeoutSec}s`);
-      await cluster.stop();
+      await cluster.stop({ killWorkers: true });
       await teardown(app);
       process.exit(1);
     }
@@ -827,7 +827,7 @@ async function main() {
         : true;
     const success = task.status === 'completed' && sentinelPass && mcpPass && plannerPass;
 
-    await cluster.stop();
+    await cluster.stop({ killWorkers: true });
     await teardown(app);
 
     if (success) {
@@ -906,7 +906,7 @@ async function main() {
   } catch (err) {
     logger.error('[ClusterE2E] ✗ Unhandled error during e2e:', err);
     try {
-      await cluster.stop();
+      await cluster.stop({ killWorkers: true });
     } catch {
       // best effort
     }

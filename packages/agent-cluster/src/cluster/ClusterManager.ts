@@ -51,6 +51,8 @@ export class ClusterManager {
     projectRegistry: ProjectRegistry,
     private readonly ticketsDir: string,
   ) {
+    // The hub's stores (locks, messages, events, workers) read their tables on construction.
+    this.initDatabase();
     this.hub = new ContextHub(config, db, ticketsDir);
     this.workerPool = new WorkerPool(config, this.hub);
     this.scheduler = new ClusterScheduler(config, this.hub, this.workerPool, db, projectRegistry);
@@ -69,6 +71,10 @@ export class ClusterManager {
     // it from the active map. See docs/local/agent-cluster.md Issue D.
     this.workerPool.setTaskCompletedCallback((task) => {
       this.scheduler.markTaskCompleted(task);
+    });
+
+    this.workerPool.setTaskUpdatedCallback((task) => {
+      this.scheduler.taskUpdated(task);
     });
 
     this.workerPool.setTaskProgressCallback((task) => {
@@ -149,9 +155,6 @@ export class ClusterManager {
 
     logger.info('[ClusterManager] Starting Agent Cluster...');
 
-    // Initialize DB tables
-    this.initDatabase();
-
     // Pre-flight: check worker template availability
     await checkWorkerTemplateHealth(this.config);
 
@@ -161,11 +164,12 @@ export class ClusterManager {
     // Start pool
     await this.workerPool.start();
 
-    // Start scheduler
-    await this.scheduler.start();
-
-    // Hydrate WorkerRegistry from DB so WebUI shows recent workers on restart.
+    // Hydrate WorkerRegistry from DB before the scheduler adopts running workers, so their
+    // registrations are in memory when their hub_report calls arrive.
     this.hub.workerRegistry.hydrateFromDb();
+
+    // Start scheduler (restores jobs, adopts running workers)
+    await this.scheduler.start();
 
     // Up-front project alias validation. Done after scheduler.start() so
     // we have a single error log surfacing misconfigured aliases instead
@@ -196,14 +200,18 @@ export class ClusterManager {
   /**
    * Stop the cluster.
    */
-  async stop(): Promise<void> {
+  /**
+   * Stop the cluster. Workers keep running by default: they are detached processes the next
+   * cluster process adopts by pid. `killWorkers` ends them too.
+   */
+  async stop(options?: { killWorkers?: boolean }): Promise<void> {
     if (!this.started) return;
 
     logger.info('[ClusterManager] Stopping Agent Cluster...');
 
     this.plannerService.stop();
     await this.scheduler.stop();
-    await this.workerPool.stop();
+    await this.workerPool.stop(options);
     await this.hub.stop();
 
     this.started = false;
@@ -550,6 +558,25 @@ export class ClusterManager {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_cluster_workers_jobId ON cluster_workers(jobId)`,
       `CREATE INDEX IF NOT EXISTS idx_cluster_workers_registeredAt ON cluster_workers(registeredAt)`,
+      `CREATE TABLE IF NOT EXISTS cluster_locks (
+        filePath TEXT PRIMARY KEY,
+        workerId TEXT NOT NULL,
+        taskId TEXT,
+        claimedAt INTEGER NOT NULL,
+        lastRenewed INTEGER NOT NULL,
+        ttl INTEGER NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS cluster_messages (
+        id TEXT PRIMARY KEY,
+        targetWorkerId TEXT NOT NULL,
+        type TEXT NOT NULL,
+        sender TEXT NOT NULL,
+        content TEXT NOT NULL,
+        priority TEXT NOT NULL,
+        createdAt INTEGER NOT NULL,
+        read INTEGER NOT NULL DEFAULT 0
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_cluster_messages_target ON cluster_messages(targetWorkerId, read)`,
     ];
 
     for (const stmt of statements) {
@@ -562,6 +589,7 @@ export class ClusterManager {
 
     this.migrateClusterEventsCreatedAtColumn();
     this.migrateClusterJobsTicketIdColumn();
+    this.migrateClusterTasksWorkerColumns();
 
     logger.info('[ClusterManager] Database tables initialized');
   }
@@ -586,6 +614,27 @@ export class ClusterManager {
       logger.info('[ClusterManager] Migrated cluster_events: added createdAt column (backfilled from timestamp)');
     } catch (err) {
       logger.error('[ClusterManager] cluster_events createdAt migration failed:', err);
+    }
+  }
+
+  private migrateClusterTasksWorkerColumns(): void {
+    try {
+      const cols = this.db.query('PRAGMA table_info(cluster_tasks)').all() as Array<{ name: string }>;
+      if (cols.length === 0) return;
+      const have = new Set(cols.map((c) => c.name));
+      const wanted: Array<[string, string]> = [
+        ['workerPid', 'INTEGER'],
+        ['workerStartedAt', 'TEXT'],
+        ['logPath', 'TEXT'],
+        ['sessionId', 'TEXT'],
+      ];
+      for (const [name, type] of wanted) {
+        if (have.has(name)) continue;
+        this.db.run(`ALTER TABLE cluster_tasks ADD COLUMN ${name} ${type}`);
+        logger.info(`[ClusterManager] Migrated cluster_tasks: added ${name} column`);
+      }
+    } catch (err) {
+      logger.error('[ClusterManager] cluster_tasks worker columns migration failed:', err);
     }
   }
 

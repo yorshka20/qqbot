@@ -32,6 +32,7 @@ import type {
   CredentialProbeResult,
   ParsedWorkerOutput,
   WorkerBackend,
+  WorkerLaunch,
   WorkerSpawnConfig,
 } from '../types';
 import { ClaudeCliBackend } from './ClaudeCliBackend';
@@ -44,7 +45,7 @@ export class MinimaxBackend implements WorkerBackend {
 
   private readonly inner = new ClaudeCliBackend();
 
-  async spawn(config: WorkerSpawnConfig): Promise<import('bun').Subprocess> {
+  async launch(config: WorkerSpawnConfig): Promise<WorkerLaunch> {
     // Bake in MiniMax CN routing. Template-provided env still wins so users
     // can pin a specific model variant or swap to a different MiniMax key
     // per template without touching this file.
@@ -54,7 +55,7 @@ export class MinimaxBackend implements WorkerBackend {
       ...config.env,
     };
 
-    return this.inner.spawn({ ...config, env });
+    return this.inner.launch({ ...config, env });
   }
 
   /**
