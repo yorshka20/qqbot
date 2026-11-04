@@ -23,10 +23,14 @@ const ARCHIVE_LABEL: Record<ArchiveItem['kind'], string> = {
   review: '结果已看',
 };
 
+function archiveTaskId(item: ArchiveItem): string | null {
+  return item.taskId ?? item.run?.task.id ?? null;
+}
+
 function ArchiveRow({ item, selected, now }: { item: ArchiveItem; selected: boolean; now: number }) {
   return (
     <a
-      href={routeHref({ section: 'inbox', runId: item.run.task.id })}
+      href={routeHref({ section: 'inbox', runId: archiveTaskId(item) })}
       className="relative block border-b border-line/60 px-4 py-2 pl-5 hover:bg-surface-2/50"
     >
       <StatusBar tone="muted" active={selected} />
@@ -34,7 +38,7 @@ function ArchiveRow({ item, selected, now }: { item: ArchiveItem; selected: bool
         <span className="shrink-0 text-13 text-ink-muted">
           {formatClock(item.at, now)} · {ARCHIVE_LABEL[item.kind]}
         </span>
-        <span className="min-w-0 flex-1 truncate text-15">{item.run.title}</span>
+        <span className="min-w-0 flex-1 truncate text-15">{item.title}</span>
       </div>
       {item.help && (
         <p className="line-clamp-2 text-14 text-ink-muted">
@@ -68,7 +72,7 @@ function Archive({ archive, runId, now }: { archive: ArchiveItem[]; runId: strin
           <div key={group.label}>
             <div className="px-4 py-1.5 text-12 font-medium text-ink-muted">{group.label}</div>
             {group.items.map(({ item }) => (
-              <ArchiveRow key={item.id} item={item} selected={item.run.task.id === runId} now={now} />
+              <ArchiveRow key={item.id} item={item} selected={archiveTaskId(item) === runId} now={now} />
             ))}
           </div>
         ))}

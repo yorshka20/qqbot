@@ -86,17 +86,25 @@ describe('buildInboxArchive', () => {
   const NOW_MS = Date.parse('2026-11-04T12:00:00Z');
   const build = (tasks: ClusterTask[]) => buildRuns(tasks.map((task) => ({ task })), [], [], NOW_MS);
 
-  test('an answered question lands in the archive with its answer', () => {
+  test('an answered question lands in the archive with its answer and who answered', () => {
     const runs = build([runTask('t1', { status: 'running', completedAt: undefined })]);
     const [item] = buildInboxArchive(runs, [answered('q1', 't1', '2026-11-04T09:00:00Z', '选乙')]);
     expect(item.kind).toBe('answered');
     expect(item.help?.answer).toBe('选乙');
+    expect(item.answeredBy).toBe('owner');
+    expect(item.title).toBe('运行 t1');
+    expect(item.taskId).toBe('t1');
     expect(item.at).toBe(Date.parse('2026-11-04T09:00:00Z'));
   });
 
   test('a failure that was acknowledged lands in the archive', () => {
     const runs = build([runTask('f1', { acknowledgedAt: '2026-11-04T10:00:00Z' })]);
-    expect(buildInboxArchive(runs, []).map((i) => [i.kind, i.run.task.id])).toEqual([['failed', 'f1']]);
+    expect(buildInboxArchive(runs, []).map((i) => [i.kind, i.taskId])).toEqual([['failed', 'f1']]);
+  });
+
+  test('a cancelled run that was acknowledged lands in the archive as a seen failure', () => {
+    const runs = build([runTask('x1', { status: 'cancelled', acknowledgedAt: '2026-11-04T10:00:00Z' })]);
+    expect(buildInboxArchive(runs, []).map((i) => [i.kind, i.taskId])).toEqual([['failed', 'x1']]);
   });
 
   test('a finished run that was acknowledged lands in the archive as a seen result', () => {
@@ -114,8 +122,12 @@ describe('buildInboxArchive', () => {
     expect(buildInboxArchive(runs, [pending])).toEqual([]);
   });
 
-  test('a question whose run is unknown is skipped', () => {
-    expect(buildInboxArchive([], [answered('q4', 'gone', '2026-11-04T09:00:00Z')])).toEqual([]);
+  test('a question whose run is not loaded anymore is kept, titled by the question', () => {
+    const [item] = buildInboxArchive([], [answered('q4', 'gone', '2026-11-04T09:00:00Z')]);
+    expect(item.kind).toBe('answered');
+    expect(item.run).toBeUndefined();
+    expect(item.taskId).toBe('gone');
+    expect(item.title).toBe('选哪个？');
   });
 
   test('entries are ordered newest handled first', () => {

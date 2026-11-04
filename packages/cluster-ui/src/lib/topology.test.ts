@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { ClusterTask, ClusterWorkerRegistration } from '@qqbot/api-types';
 import { buildRuns } from './runs';
 import { buildBranches, elapsedFraction, layoutTopology, workerState } from './topology';
+import type { RunWindow } from './window';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z');
 
@@ -32,14 +33,19 @@ function worker(id: string, patch: Partial<ClusterWorkerRegistration> = {}): Clu
   };
 }
 
-function branches(tasks: ClusterTask[], workers: ClusterWorkerRegistration[], seen: string[] = []) {
+function branches(
+  tasks: ClusterTask[],
+  workers: ClusterWorkerRegistration[],
+  seen: string[] = [],
+  opts: { window: RunWindow; liveOnly: boolean; now: number } = { window: '24h', liveOnly: false, now: NOW },
+) {
   const runs = buildRuns(
     tasks.map((t) => ({ task: seen.includes(t.id) ? { ...t, acknowledgedAt: '2026-11-04T11:59:00Z' } : t })),
     [],
     workers,
     NOW,
   );
-  return buildBranches(runs, workers);
+  return buildBranches(runs, workers, opts);
 }
 
 describe('buildBranches', () => {
@@ -56,10 +62,38 @@ describe('buildBranches', () => {
     expect(tree[0].roots[0].children).toHaveLength(1);
   });
 
-  test('what is over and seen leaves the map', () => {
+  test('what ended inside the window stays on the map, seen or not', () => {
     const failed = task('f', { status: 'failed', completedAt: '2026-11-04T11:30:00Z' });
-    expect(branches([failed], [], ['f'])).toHaveLength(0);
-    expect(branches([task('x', { status: 'cancelled' })], [])).toHaveLength(0);
+    expect(branches([failed], [], ['f'])[0].roots.map((r) => r.run.task.id)).toEqual(['f']);
+    expect(branches([task('x', { status: 'cancelled' })], [])[0].roots.map((r) => r.run.task.id)).toEqual(['x']);
+  });
+
+  test('what ended before the window leaves the map', () => {
+    const old = task('o', { status: 'completed', completedAt: '2026-11-01T11:30:00Z' });
+    expect(branches([old], [], ['o'], { window: '24h', liveOnly: false, now: NOW })).toHaveLength(0);
+    expect(branches([old], [], ['o'], { window: 'all', liveOnly: false, now: NOW })).toHaveLength(1);
+  });
+
+  test('liveOnly keeps the live and waiting runs and drops the ended ones', () => {
+    const tree = branches(
+      [
+        task('r'),
+        task('q', { status: 'pending' }),
+        task('d', { status: 'completed', completedAt: '2026-11-04T11:30:00Z' }),
+        task('f', { status: 'failed', completedAt: '2026-11-04T11:30:00Z' }),
+      ],
+      [],
+      [],
+      { window: 'all', liveOnly: true, now: NOW },
+    );
+    expect(tree[0].roots.map((r) => r.run.task.id)).toEqual(['r', 'q']);
+  });
+
+  test('a parent outside the window is kept when a child is on the map', () => {
+    const planner = task('p', { status: 'completed', completedAt: '2026-11-01T11:30:00Z' });
+    const tree = branches([planner, task('c', { parentTaskId: 'p' })], [], []);
+    expect(tree[0].roots.map((r) => r.run.task.id)).toEqual(['p']);
+    expect(tree[0].roots[0].children.map((r) => r.run.task.id)).toEqual(['c']);
   });
 
   test('a worker with no run is listed under its project, an exited one is not', () => {

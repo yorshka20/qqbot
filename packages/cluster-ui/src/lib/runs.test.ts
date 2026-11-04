@@ -1,7 +1,19 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterHelpRequest, ClusterTask } from '@qqbot/api-types';
 import { buildInbox } from './inbox';
-import { buildRuns, composerDefaults, orderRunsAsTree, parseFiles, runBody, runTitle, sortRuns } from './runs';
+import {
+  buildRuns,
+  composerDefaults,
+  groupRunSections,
+  needsPlannerTicket,
+  orderRunsAsTree,
+  parseFiles,
+  plannerTicketDraft,
+  runBody,
+  runTimes,
+  runTitle,
+  sortRuns,
+} from './runs';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z');
 
@@ -252,5 +264,140 @@ describe('composerDefaults', () => {
 
   test('nothing remembered and no default returns empty strings', () => {
     expect(composerDefaults({}, [], undefined, {})).toEqual({ project: '', template: '' });
+  });
+});
+
+describe('groupRunSections', () => {
+  const runsOf = (tasks: ClusterTask[], help: ClusterHelpRequest[] = []) =>
+    buildRuns(tasks.map((t) => ({ task: t })), help, [], NOW);
+  const seen = (t: ClusterTask): ClusterTask => ({ ...t, acknowledgedAt: '2026-11-04T11:59:00Z' });
+
+  test('each stage lands in its section, and empty sections are not returned', () => {
+    const runs = runsOf(
+      [
+        task('asking'),
+        task('f', { status: 'failed', completedAt: '2026-11-04T11:30:00Z' }),
+        task('run'),
+        task('q', { status: 'pending' }),
+        seen(task('done', { status: 'completed', completedAt: '2026-11-04T11:30:00Z' })),
+        task('x', { status: 'cancelled', completedAt: '2026-11-04T11:30:00Z' }),
+      ],
+      [ask('a1', 'asking')],
+    );
+    const sections = groupRunSections(runs, { now: NOW, window: '24h' });
+    expect(sections.map((s) => s.key)).toEqual(['attention', 'running', 'queued', 'ended']);
+    expect(sections.map((s) => s.rows.map((r) => r.run.task.id))).toEqual([
+      ['asking', 'f'],
+      ['run'],
+      ['q'],
+      ['done', 'x'],
+    ]);
+  });
+
+  test('a family stays together in the earliest section any member needs', () => {
+    const parent = seen(task('p', { status: 'completed', completedAt: '2026-11-04T11:20:00Z' }));
+    const [section] = groupRunSections(runsOf([parent, task('c', { parentTaskId: 'p' })]), {
+      now: NOW,
+      window: '24h',
+    });
+    expect(section.key).toBe('running');
+    expect(section.rows.map((r) => [r.run.task.id, r.depth])).toEqual([
+      ['p', 0],
+      ['c', 1],
+    ]);
+  });
+
+  test('a failed child pulls its finished parent into the attention section', () => {
+    const parent = seen(task('p', { status: 'completed', completedAt: '2026-11-04T11:20:00Z' }));
+    const child = task('c', { parentTaskId: 'p', status: 'failed', completedAt: '2026-11-04T11:30:00Z' });
+    const [section] = groupRunSections(runsOf([parent, child]), { now: NOW, window: '24h' });
+    expect(section.key).toBe('attention');
+    expect(section.rows.map((r) => r.run.task.id)).toEqual(['p', 'c']);
+  });
+
+  test('a section that needs the owner is not bounded by the window', () => {
+    const old = task('f', {
+      status: 'failed',
+      createdAt: '2026-10-01T10:00:00Z',
+      completedAt: '2026-10-01T11:00:00Z',
+    });
+    expect(groupRunSections(runsOf([old]), { now: NOW, window: '24h' })).toMatchObject([{ key: 'attention' }]);
+  });
+
+  test('an ended family older than the window is dropped whole', () => {
+    const parent = seen(task('p', { status: 'completed', completedAt: '2026-11-01T11:00:00Z', createdAt: '2026-11-01T10:00:00Z' }));
+    const child = seen(
+      task('c', {
+        parentTaskId: 'p',
+        status: 'completed',
+        createdAt: '2026-11-01T10:05:00Z',
+        completedAt: '2026-11-01T11:10:00Z',
+      }),
+    );
+    expect(groupRunSections(runsOf([parent, child]), { now: NOW, window: '24h' })).toEqual([]);
+    expect(groupRunSections(runsOf([parent, child]), { now: NOW, window: 'all' })).toHaveLength(1);
+  });
+
+  test('an ended family with one member inside the window is kept whole', () => {
+    const parent = seen(task('p', { status: 'completed', completedAt: '2026-11-01T11:00:00Z', createdAt: '2026-11-01T10:00:00Z' }));
+    const child = seen(task('c', { parentTaskId: 'p', status: 'completed', completedAt: '2026-11-04T11:30:00Z' }));
+    const [section] = groupRunSections(runsOf([parent, child]), { now: NOW, window: '24h' });
+    expect(section.key).toBe('ended');
+    expect(section.rows.map((r) => r.run.task.id)).toEqual(['p', 'c']);
+  });
+});
+
+describe('runTimes', () => {
+  test('start is the worker start, end is completion, duration spans them', () => {
+    const started = Date.parse('2026-11-04T11:00:00Z');
+    const ended = Date.parse('2026-11-04T11:30:00Z');
+    const t = task('t', {
+      workerStartedAt: new Date(started).toISOString(),
+      completedAt: new Date(ended).toISOString(),
+    });
+    expect(runTimes(t, undefined, NOW)).toEqual({ startedAt: started, endedAt: ended, durationMs: ended - started });
+  });
+
+  test('falls back to when the task started, then to the worker exit', () => {
+    const started = Date.parse('2026-11-04T11:00:00Z');
+    const exited = Date.parse('2026-11-04T11:20:00Z');
+    expect(runTimes(task('t', { startedAt: new Date(started).toISOString() }), exited, NOW)).toEqual({
+      startedAt: started,
+      endedAt: exited,
+      durationMs: exited - started,
+    });
+  });
+
+  test('a run still going ends at now; one that never started has no duration', () => {
+    const started = Date.parse('2026-11-04T11:00:00Z');
+    expect(runTimes(task('t', { startedAt: new Date(started).toISOString() }), undefined, NOW)).toEqual({
+      startedAt: started,
+      endedAt: null,
+      durationMs: NOW - started,
+    });
+    expect(runTimes(task('idle'), undefined, NOW)).toEqual({ startedAt: null, endedAt: null, durationMs: null });
+  });
+});
+
+describe('needsPlannerTicket', () => {
+  test('a planner with no ticket needs one; anything else does not', () => {
+    expect(needsPlannerTicket('planner', undefined)).toBe(true);
+    expect(needsPlannerTicket('planner', '')).toBe(true);
+    expect(needsPlannerTicket('planner', 't1')).toBe(false);
+    expect(needsPlannerTicket('executor', undefined)).toBe(false);
+    expect(needsPlannerTicket(undefined, undefined)).toBe(false);
+  });
+});
+
+describe('plannerTicketDraft', () => {
+  test('makes a ready ticket titled after the description', () => {
+    const description = '# 任务：修复登录超时\n\n详情';
+    expect(plannerTicketDraft(description, 'demo', 'claude')).toEqual({
+      title: '修复登录超时',
+      status: 'ready',
+      project: 'demo',
+      template: 'claude',
+      body: description,
+    });
   });
 });

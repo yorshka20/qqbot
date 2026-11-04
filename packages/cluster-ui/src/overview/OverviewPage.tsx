@@ -23,7 +23,10 @@ export function OverviewPage() {
   const { runs, workers, locks, templates, loaded } = useCluster();
   const now = useNow();
 
-  const branches = useMemo(() => buildBranches(runs, workers), [runs, workers]);
+  const branches = useMemo(
+    () => buildBranches(runs, workers, { window: '24h', liveOnly: false, now }),
+    [runs, workers, now],
+  );
   const topology = useMemo(() => layoutTopology(branches, locks), [branches, locks]);
 
   const count = (stage: Stage) => runs.filter((r) => r.stage === stage).length;
