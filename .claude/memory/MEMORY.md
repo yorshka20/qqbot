@@ -16,6 +16,10 @@ Accumulated user preferences and project facts for this repo, one file per entry
 
 - [feedback_console_ia_and_dispatch.md](feedback_console_ia_and_dispatch.md) — cluster 控制台：Claude-app 式两级导航（收件箱 + 对话），设置等是二级；反馈先进规格再派一张 ticket，不给 planner 补消息，验收 owner 做
 
+- [feedback_prompts_live_in_prompt_files.md](feedback_prompts_live_in_prompt_files.md) — prompt 文字只能在 prompts/ 模板文件里，代码只加载并填 {{TOKEN}}，一句 prose 都不能写进 .ts
+
+- [feedback_subsessions_use_opus.md](feedback_subsessions_use_opus.md) — 开的子 session / subagent 一律 claude-opus-5-5，不用 fable
+
 ## Code-shape corrections
 
 - [feedback_no_defensive_optionals.md](feedback_no_defensive_optionals.md) — 上游保证有值就别做可选参数 + 条件 fallback

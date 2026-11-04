@@ -95,13 +95,16 @@ export class TaskWorkspaces {
         CLUSTER_INTEGRATION_BRANCH: integrationBranch,
         CLUSTER_WORKTREE: lease.path,
       },
-      promptNote: pooledNote(lease.kind, lease.path, branch, integrationBranch),
+      mode: 'pooled',
+      kind: lease.kind,
+      branch,
+      integrationBranch,
     };
   }
 
   /** The workspace of a task that runs in the project checkout itself: no slot, no branch of its own, no merge. */
   unpooled(entry: ProjectEntry, kind: SlotKind): WorkerWorkspace {
-    return { cwd: entry.path, env: {}, promptNote: unpooledNote(kind, entry.path) };
+    return { cwd: entry.path, env: {}, mode: 'shared', kind };
   }
 
   /** End the publish commands still running; a build is derived state the next merge rebuilds. */
@@ -282,68 +285,4 @@ async function worktreeHolding(repo: string, branch: string): Promise<string | n
     }
   }
   return null;
-}
-
-function pooledNote(kind: SlotKind, path: string, branch: string, integrationBranch: string): string {
-  const shared = [
-    '## 本任务的工作区',
-    '',
-    `- 工作目录：\`${path}\`（你启动时的 cwd，只属于你的 git worktree）`,
-    `- 你的分支：\`${branch}\`，从集成分支当时的最新提交切出`,
-    `- 本 job 的集成分支：\`${integrationBranch}\``,
-    '',
-  ];
-  if (kind === 'planner') {
-    return [
-      ...shared,
-      '每个 executor 跑在自己的 worktree、自己的分支上，互相隔离：不共用 git index，看不到彼此的半成品，不会互相触发 pre-commit。',
-      '所以**互相独立的子任务要并行 spawn**，不要因为"同一个仓库"就串行；只有真实的数据依赖才串行，写进 plan 的 `depends_on`。',
-      '',
-      '- child 成功退出后 daemon 立刻把它的分支合入集成分支，owner 在集成分支上验收，不用等整个 job 结束。',
-      '- 后 spawn 的 child 从集成分支当时的最新提交开始：依赖 A 的 B 等 A 结束后再 spawn，它一启动就能看到 A 的改动。',
-      '- 并行的 child 改同一个文件时，后合入的那个会以 `blocked` 结束；拆分时让并行的 child 不碰同一批文件。',
-      '- `hub_wait` / `hub_query_task` 返回的 `mergedAt` 有值说明已合入；`completed` 却没有 `mergedAt` 说明它没提交任何东西。',
-      '- 槽位满时 `hub_spawn` 返回 `queued`，有槽位归还时自动启动，你照常 `hub_wait`。',
-      '- 你的 worktree 不装依赖，也**不会**随 child 合入而更新。看 child 的成果用 `git log <集成分支>` /',
-      '  `git diff <集成分支>~1 <集成分支>` / `git show <集成分支>:<路径>`，不要切分支。',
-      '',
-      '**交付门**（`hub_report(completed)` 之前）：每个该有改动的 child 都有 `mergedAt`；没有 child 停在 `blocked`；',
-      '结果里没有"未提交改动"的警告（daemon 把它写在 child 的 `diffSummary` 末尾，那些改动已随槽位重置丢失）；',
-      '`git log --oneline <集成分支>` 里能看到这些 commit，把集成分支名和每个 child 的 commit hash 写进最终 summary。',
-    ].join('\n');
-  }
-  return [
-    ...shared,
-    '同一项目的其他 executor 可能正在各自的 worktree 里并行工作，你看不到他们没提交的改动，他们也看不到你的。',
-    '',
-    '- **所有改动都在 cwd 里做，提交到当前分支。** 不切换分支，不碰别的 worktree，不去项目主检出里改东西。',
-    '- **不要 `git push`，不要自己合并到集成分支或主分支。** 你退出后 daemon 会把你的分支合入集成分支；只合入已提交的内容。',
-    '- **没提交的改动会丢。** 你退出后这个 worktree 会被重置交给下一个任务；daemon 在结果里报出没提交的文件，但内容不保留。',
-    '- 依赖已经装好（`node_modules` 在这份 worktree 里复用），不需要自己安装，除非你改了 lockfile。',
-    '- 要看已合入的内容用 `git show <集成分支>:<路径>` / `git log <集成分支>`，不离开当前分支。',
-  ].join('\n');
-}
-
-function unpooledNote(kind: SlotKind, path: string): string {
-  const shared = [
-    '## 本任务的工作区',
-    '',
-    `- 工作目录：\`${path}\`，这是项目的检出本身，**不是**专属 worktree；同项目的其他 worker 可能在同一目录里工作。`,
-    '- 没有集成分支，daemon 不会替你合并。',
-    '',
-  ];
-  if (kind === 'planner') {
-    return [
-      ...shared,
-      'child 共用这份检出：两个 child 同时改文件会互相踩到 git index 和半成品，所以有共同文件的子任务要**串行** spawn，并靠 `hub_claim` 锁文件。',
-      '',
-      '**交付门**（`hub_report(completed)` 之前）：在检出里跑 `git status -s` 必须洁净；每个 child 报告的 commit 在 `git log` 里能看到；',
-      '把每个 child 的 commit hash 写进最终 summary。有 child 没交付就 spawn 一个补刀 executor，不要自己 commit。',
-    ].join('\n');
-  }
-  return [
-    ...shared,
-    '- 改动提交到检出当前所在的分支；不切分支，不要 `git push`，owner 直接在这份检出里验收。',
-    '- 改文件前 `hub_claim`：别的 worker 可能同时在这里工作。',
-  ].join('\n');
 }

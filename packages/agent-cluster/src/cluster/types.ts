@@ -468,8 +468,11 @@ export interface WorkerSpawnConfig {
 export interface WorkerWorkspace {
   cwd: string;
   env: Record<string, string>;
-  /** Placed between the role prompt and the task description. */
-  promptNote: string;
+  /** Which `prompts/cluster/workspace-<mode>-<kind>.md` describes this workspace to the worker. */
+  mode: 'pooled' | 'shared';
+  kind: 'executor' | 'planner';
+  branch?: string;
+  integrationBranch?: string;
 }
 
 /**
