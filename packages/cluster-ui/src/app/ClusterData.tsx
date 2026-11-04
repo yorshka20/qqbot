@@ -170,7 +170,7 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
         const jobWorkers: EnrichedWorkerRegistration[] = [];
         for (const job of jobs) {
           for (const task of job?.tasks ?? []) {
-            rows.set(task.id, { task, ticketId: job?.ticketId });
+            rows.set(task.id, { task, ticketId: job?.ticketId, planning: job?.planning });
             if (task.output && !hasOutput(task.id)) {
               setOutput(task.id, task.output);
             }
@@ -188,7 +188,7 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
           }
         }
         for (const task of active) {
-          rows.set(task.id, { task, ticketId: rows.get(task.id)?.ticketId });
+          rows.set(task.id, { ...rows.get(task.id), task });
           if (task.output) {
             setOutput(task.id, task.output);
           }

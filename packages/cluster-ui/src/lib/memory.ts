@@ -1,5 +1,5 @@
-import type { TaskTab } from './routes';
-import { TASK_TABS } from './routes';
+import type { PlanningMode } from './planning';
+import { TASK_TABS, type TaskTab } from './routes';
 import { parseRunView, type RunView } from './runs';
 import type { RunWindow } from './window';
 
@@ -32,6 +32,7 @@ function write(key: string, value: unknown): void {
 interface ComposerChoice {
   project?: string;
   template?: string;
+  planning?: PlanningMode;
 }
 
 /** The composer's last project/template, read once when it opens. */

@@ -5,6 +5,7 @@ import type {
   ClusterWorkerRegistration,
   TicketCreateBody,
 } from '@qqbot/api-types';
+import type { PlanningMode } from './planning';
 import { isLive, type Stage, stageOf, stageRank } from './stage';
 import { toMs } from './time';
 import { inWindow, type RunWindow } from './window';
@@ -28,6 +29,7 @@ export interface Run {
   stage: Stage;
   title: string;
   ticketId?: string;
+  planning?: PlanningMode;
   worker?: ClusterWorkerRegistration;
   /** Pending questions, oldest first. */
   asks: ClusterHelpRequest[];
@@ -38,6 +40,7 @@ export interface Run {
 export interface TaskRow {
   task: ClusterTask;
   ticketId?: string;
+  planning?: PlanningMode;
 }
 
 const TITLE_MAX = 120;
@@ -117,7 +120,7 @@ export function buildRuns(
   now: number,
 ): Run[] {
   const workerById = new Map(workers.map((w) => [w.workerId, w]));
-  return rows.map(({ task, ticketId }) => {
+  return rows.map(({ task, ticketId, planning }) => {
     const asks = isLive(task)
       ? help.filter((h) => h.taskId === task.id).sort((a, b) => (toMs(a.createdAt) ?? 0) - (toMs(b.createdAt) ?? 0))
       : [];
@@ -127,6 +130,7 @@ export function buildRuns(
       stage,
       title: runTitle(task.description),
       ticketId,
+      planning,
       worker: task.workerId ? workerById.get(task.workerId) : undefined,
       asks,
       since: stageSince(task, stage, asks),

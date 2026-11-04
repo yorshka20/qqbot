@@ -135,6 +135,11 @@ describe('buildRuns', () => {
     expect(unseen.stage).toBe('review');
     expect(acked.stage).toBe('done');
   });
+
+  test('carries the row planning mode onto the run', () => {
+    const [run] = buildRuns([{ task: task('p'), planning: 'auto' }], [], [], NOW);
+    expect(run.planning).toBe('auto');
+  });
 });
 
 describe('orderRunsAsTree', () => {

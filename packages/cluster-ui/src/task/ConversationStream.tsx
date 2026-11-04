@@ -11,6 +11,8 @@ import { QuestionCard } from './cards/QuestionCard';
 import { ReportCard } from './cards/ReportCard';
 import { SpawnCard } from './cards/SpawnCard';
 import { SystemLine } from './cards/SystemLine';
+import { WorkerCard } from './cards/WorkerCard';
+import { useLiveSays } from './useLiveSays';
 
 const AT_BOTTOM_SLACK_PX = 48;
 
@@ -26,6 +28,8 @@ function renderEntry(entry: ConversationEntry, ctx: { rootId: string; ticketId?:
       return <SpawnCard entry={entry} rootId={ctx.rootId} now={ctx.now} />;
     case 'end':
       return <EndCard entry={entry} ticketId={ctx.ticketId} now={ctx.now} />;
+    case 'worker':
+      return <WorkerCard entry={entry} now={ctx.now} />;
     case 'system':
       return <SystemLine entry={entry} now={ctx.now} />;
   }
@@ -47,6 +51,7 @@ export function ConversationStream({
   const { loaded, help, helpHistory, workerExits } = useCluster();
   const live = useOutput(task.id);
   const output = live || task.output;
+  const liveSays = useLiveSays(task.id, events);
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
   const [following, setFollowing] = useState(true);
   const scroller = useRef<HTMLDivElement>(null);
@@ -59,6 +64,7 @@ export function ConversationStream({
             buildConversation({
               task,
               events,
+              liveSays,
               help,
               helpHistory,
               workerExitedAt: task.workerId ? workerExits.get(task.workerId) : undefined,
@@ -67,7 +73,7 @@ export function ConversationStream({
             }),
           )
         : [],
-    [loaded, task, events, help, helpHistory, workerExits, output],
+    [loaded, task, events, liveSays, help, helpHistory, workerExits, output],
   );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new card is what moves the view
