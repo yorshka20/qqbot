@@ -565,7 +565,9 @@ hub_directive:
 
 - 路径 `<worktreeRoot>/<project>/wt-<8 位随机 hex>`，所有项目、所有用途的 worktree 都在这一个根目录下，名字格式也只有这一种，
   槽的用途只记在 `cluster_worktree_slots.kind`。`clusterDaemon.worktreeRoot` 默认 `~/.qqbot/worktrees`：放在任何检出之外，
-  从槽里往上找东西的工具（模块解析、CLI 找项目文件）才不会走进主检出。首次使用时 `git worktree add`，之后一直复用，`node_modules` 留在槽里。
+  从槽里往上找东西的工具（模块解析、CLI 找项目文件）才不会走进主检出。配置值 `~` 会展开，其余必须是绝对路径（相对路径会落进仓库，拒绝）。
+  首次使用时 `git worktree add`，之后一直复用，`node_modules` 留在槽里。启动时的 gc 只删根下**名字是 `wt-<8 位 hex>` 且没有槽记录**的目录：
+  根被配错时，池不会删掉任何不是它建的东西。
   lockfile 与上次安装时不同才跑安装命令（项目的 `install`，默认按 `type` 取 `bun install` / `npm install`）。
 - 大小：项目的 `worktrees`，默认 `min(cluster.maxConcurrentWorkers, projects.<alias>.maxWorkers, 已启用 executor 的 maxConcurrent 之和)`。
   不是 git 仓库或 `worktrees: 0` 的项目没有池，worker 跑在项目目录里。
@@ -596,6 +598,8 @@ worker 还在时只落库，退出时再走一次；这之前 `hub_wait` 不醒�
 3. 冲突时任务转 `blocked`，`error` 写冲突文件和 git 的说明，发 `task_blocked` 事件；任务分支原样保留，planner 可以 spawn
    一个 executor 在自己的分支上 `git merge` 它来解决。
 4. 结算的是 job 的根任务且仍是 `completed` 时，把集成分支合入 `baseBranch`，用同一个合入函数，同名分支的合入串行。
+   这一步排在集成分支的合入队列之后（在飞的 child 合入先落），并且只在 job 的其它任务都已结算（没有在跑、在落、在排队等依赖的）时进行，
+   否则根任务转 `blocked` 并列出它们。被检出的 base 分支用 `--ff-only --no-autostash` 在那个检出里快进；该检出正在 rebase 这条分支时拒绝。
    **这一步才是 job 的终点**：合入成功记 `job.landedAt` 和 `job_landed` 事件；没有改动就不合入；冲突或被检出拒绝时根任务转
    `blocked`，job 记 `failed`，工作留在集成分支上。根任务失败或被取消时不合入。不 push，推送远端是 owner 的事。
 5. 槽位 `checkout -f --detach` + `clean -fd` 后归还。清不干净的槽直接删掉，下次租用时重建。
