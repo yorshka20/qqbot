@@ -58,6 +58,8 @@ import type {
   HubSpawnOutput,
   HubSyncOutput,
   HubUpdate,
+  HubWaitInput,
+  HubWaitOutput,
   HubWaitTaskInput,
   HubWritePlanInput,
   HubWritePlanOutput,
@@ -135,6 +137,13 @@ export interface SchedulerBridge {
   findTask(taskId: string): TaskRecord | undefined;
 }
 
+/**
+ * Longest a hub_wait blocks. Bun's HTTP idle timeout for the hub is 255 s; a response that has
+ * not started by then is cut, so the window stays under it and the worker calls again.
+ */
+const WAIT_MAX_MS = 240_000;
+const WAIT_HEARTBEAT_MS = 60_000;
+
 export class ContextHub {
   readonly eventLog: EventLog;
   readonly lockManager: LockManager;
@@ -155,6 +164,8 @@ export class ContextHub {
   private heartbeatCallback: HeartbeatCallback | null = null;
   private schedulerBridge: SchedulerBridge | null = null;
   private sseSubscribers = new Set<SSESubscriber>();
+  /** Workers blocked in hub_wait, by worker id, with the tasks each one watches. */
+  private waiters = new Map<string, { tasks: Set<string>; resolve: (reason: 'task' | 'message') => void }>();
   private helpRequests = new Map<string, HelpRequest>();
 
   /**
@@ -171,7 +182,7 @@ export class ContextHub {
   ) {
     this.eventLog = new EventLog(db, config.hub.eventLogMaxSize);
     this.lockManager = new LockManager(db, this.eventLog, config.hub.lockTTL);
-    this.messageBox = new MessageBox(db);
+    this.messageBox = new MessageBox(db, (workerId) => this.wake(workerId, 'message'));
     this.workerRegistry = new WorkerRegistry(db);
     this.mcpServer = new HubMCPServer(this);
 
@@ -705,44 +716,76 @@ export class ContextHub {
    * what the planner asks for — keeps a misbehaving planner from leaking
    * Bun.serve fetch handlers indefinitely if it picks Number.MAX_SAFE_INTEGER.
    */
+  /**
+   * Hub side of `hub_wait`: block until a watched child task settles, a message arrives for the
+   * worker, or the window runs out. Event-driven — nothing polls: `taskSettled` and the
+   * MessageBox's send hook wake the waiter. The window stays below the HTTP idle timeout so
+   * the blocked MCP request is never cut; a `timeout` answer just means "call again".
+   */
+  async handleWait(workerId: string, input: HubWaitInput): Promise<HubWaitOutput> {
+    const requested = typeof input.timeoutMs === 'number' && input.timeoutMs > 0 ? input.timeoutMs : WAIT_MAX_MS;
+    const timeoutMs = Math.min(requested, WAIT_MAX_MS);
+    const tasks = Array.from(new Set((input.tasks ?? []).filter((t) => typeof t === 'string' && t)));
+    const snapshots = () => tasks.map((taskId) => this.handleQueryTask(workerId, { taskId }));
+    const settled = (snapshot: HubQueryTaskOutput) =>
+      snapshot.status === 'completed' || snapshot.status === 'failed' || snapshot.status === 'cancelled';
+
+    // Already something to do: answer at once.
+    if (snapshots().some(settled)) {
+      return { reason: 'task', tasks: snapshots(), updates: this.messageBox.consume(workerId) };
+    }
+    if (this.messageBox.getUnreadCount(workerId) > 0) {
+      return { reason: 'message', tasks: snapshots(), updates: this.messageBox.consume(workerId) };
+    }
+
+    const previous = this.waiters.get(workerId);
+    previous?.resolve('message');
+    const heartbeat = setInterval(() => {
+      try {
+        this.heartbeatCallback?.(workerId);
+      } catch {
+        // A heartbeat failure must not end the wait.
+      }
+    }, WAIT_HEARTBEAT_MS);
+    try {
+      const reason = await new Promise<'task' | 'message' | 'timeout'>((resolve) => {
+        const timer = setTimeout(() => resolve('timeout'), timeoutMs);
+        this.waiters.set(workerId, {
+          tasks: new Set(tasks),
+          resolve: (why) => {
+            clearTimeout(timer);
+            resolve(why);
+          },
+        });
+      });
+      return { reason, tasks: snapshots(), updates: this.messageBox.consume(workerId) };
+    } finally {
+      clearInterval(heartbeat);
+      if (this.waiters.get(workerId)?.tasks) this.waiters.delete(workerId);
+    }
+  }
+
+  /** `hub_wait_task`: the one-task form of `hub_wait`, answering the task's snapshot as before. */
   async handleWaitTask(workerId: string, input: HubWaitTaskInput): Promise<HubQueryTaskOutput> {
-    const HARD_MAX_MS = 30 * 60_000;
-    const requestedTimeout = typeof input.timeoutMs === 'number' && input.timeoutMs > 0 ? input.timeoutMs : 600_000;
-    const timeoutMs = Math.min(requestedTimeout, HARD_MAX_MS);
-    const deadline = Date.now() + timeoutMs;
-    const POLL_INTERVAL_MS = 5_000;
+    await this.handleWait(workerId, { tasks: [input.taskId], timeoutMs: input.timeoutMs });
+    return this.handleQueryTask(workerId, { taskId: input.taskId });
+  }
 
-    // Keep the planner's heartbeat alive while we block here. Without this
-    // the planner has no chance to call hub_report (its MCP call is in
-    // flight) and no stdout activity, so healthCheck would kill it.
-    const HEARTBEAT_INTERVAL_MS = 60_000;
-    let lastHeartbeat = Date.now();
-
-    // Use handleQueryTask for consistency: same auth checks, same shape.
-    while (true) {
-      const snapshot = this.handleQueryTask(workerId, { taskId: input.taskId });
-      if (snapshot.status === 'completed' || snapshot.status === 'failed' || snapshot.status === 'cancelled') {
-        return snapshot;
-      }
-      if (Date.now() >= deadline) {
-        // Return the latest non-terminal snapshot — planner can decide
-        // whether to retry, escalate, or give up. Don't throw on timeout
-        // because the task hasn't actually failed; it's just taking long.
-        return snapshot;
-      }
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-
-      // Refresh heartbeat every minute so the planner isn't killed for being "stuck".
-      const now = Date.now();
-      if (this.heartbeatCallback && now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
-        lastHeartbeat = now;
-        try {
-          this.heartbeatCallback(workerId);
-        } catch {
-          // Non-fatal — heartbeat callback shouldn't throw, but don't let it break the wait loop.
-        }
+  /** A task reached a terminal status (the scheduler says so): wake whoever waits on it. */
+  taskSettled(taskId: string): void {
+    for (const [workerId, waiter] of this.waiters) {
+      if (waiter.tasks.has(taskId)) {
+        this.waiters.delete(workerId);
+        waiter.resolve('task');
       }
     }
+  }
+
+  private wake(workerId: string, reason: 'task' | 'message'): void {
+    const waiter = this.waiters.get(workerId);
+    if (!waiter) return;
+    this.waiters.delete(workerId);
+    waiter.resolve(reason);
   }
 
   // ── Plan artifact: planner-only persistence of decomposition plans ──

@@ -27,7 +27,11 @@ export interface PendingMessage {
 export class MessageBox {
   private messages: PendingMessage[] = [];
 
-  constructor(private db: Database) {
+  constructor(
+    private db: Database,
+    /** Called after a message is queued; the hub wakes a worker blocked in hub_wait with it. */
+    private onSend?: (targetWorkerId: string) => void,
+  ) {
     this.load();
   }
 
@@ -64,6 +68,7 @@ export class MessageBox {
       logger.error('[MessageBox] Failed to persist message:', err);
     }
     logger.debug(`[MessageBox] Message ${id} queued for ${targetWorkerId} from ${from}`);
+    this.onSend?.(targetWorkerId);
     return id;
   }
 

@@ -30,7 +30,7 @@ export class ClusterScheduler {
 
   constructor(
     private config: ClusterConfig,
-    _hub: ContextHub,
+    private hub: ContextHub,
     private workerPool: WorkerPool,
     private db: Database,
     private projectRegistry: ProjectRegistry,
@@ -117,6 +117,8 @@ export class ClusterScheduler {
     // Always persist — allows the post-exit code path to refresh error/diffSummary
     // after hub_report fired first. Stdout is never written to SQLite.
     this.persistTask(task);
+    // Whoever blocks in hub_wait on this task (its planner) wakes now, not on a poll.
+    this.hub.taskSettled(task.id);
 
     // Job counter updates must happen exactly once per task. If the task
     // has already been removed from activeTasks, a prior call already

@@ -110,8 +110,8 @@ AI 也能独立完成工作。你在 prompt 里提供上下文、文件路径、
 4. **等结果**（⚠️ 此步骤有强制 hub_report 要求，见硬性约束§心跳）。
    - spawn 完所有 children 后，**立即调一次 `hub_report(working)`**，
      说明 spawn 了几个、各自做什么。
-   - 对于互相**独立**的子任务，全部 spawn 完后逐个 `hub_wait_task`。
-     **每次调 `hub_wait_task` 之前，先调 `hub_report(working)`**。
+   - 对于互相**独立**的子任务，全部 spawn 完后用一次 `hub_wait({ tasks: [...] })` 等它们；谁先结束就先处理谁，再继续 `hub_wait` 剩下的。
+     **每次调 `hub_wait` / `hub_wait_task` 之前，先调 `hub_report(working)`**。
    - 对于**有顺序依赖**的子任务，每次 spawn 之间等前一个完成再 spawn 下一个。
    - 每收到一个 child 结果（无论成功/失败），**立即调 `hub_report(working)`**
      汇报进展。
@@ -217,8 +217,8 @@ hub_report({
 - **不要 spawn 超过 3 个 children**，除非 ticket frontmatter 明确写了
   `maxChildren: <更大的数>`。如果你觉得需要更多，重新考虑能不能合并几个
   子任务（成本和协调开销在 children 数量上是超线性的）。
-- **不要无限轮询**。如果一个 child 跑得比预期久（典型代码工作 10 分钟，
-  大型重构更长），优先用带 `timeoutMs` 的 `hub_wait_task`，而不是紧轮询。
+- **不要轮询，不要 sleep**。等子任务就 `hub_wait`，它在事件发生时叫醒你；一个 child 跑得比预期久（典型代码工作 10 分钟，大型重构更长）时，
+  `hub_wait` 超时返回后 `hub_report` 一句再继续等。
 - **如果一个子任务只需要一个 executor 干 < 5 分钟**，直接 spawn 就行，
   不要纠结要不要拆得更细。
 
@@ -259,4 +259,4 @@ planner 在压力下最常见的借口——**一旦发现自己在这么想，�
 
 owner 可以随时在控制台对你（planner）说话，消息以 `from: "owner"` 的 directive 通过 `hub_sync` / `hub_report` 到达。
 它可以改 ticket 的范围、叫停某个子任务、或要求重新拆分：照做，必要时 `hub_write_plan` 第二次并在 `hub_report` 里说明。
-等待子任务期间也要每隔几分钟 `hub_sync` 一次，而不是只 `hub_wait_task`。
+等待子任务时用 `hub_wait({ tasks: [所有还在跑的子任务 id] })`：它在任一子任务结束、owner 给你发话、或你的提问被回答时**立即返回**（`reason` 说明是哪种），超时（最长 4 分钟）只表示什么都没发生，再调一次即可。**禁止 `sleep`、禁止定时 `git log` / `hub_query_task` 轮询**——hub 会叫醒你。

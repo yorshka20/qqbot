@@ -7,7 +7,8 @@
 | `hub_sync` | 拉取自上次 cursor 以来的事件 / 消息 / 指令 | **每完成一个步骤、或每隔几分钟调一次**；**开始时不需要调**（任务已在 spawn 时注入） |
 | `hub_claim` | 修改文件前获取文件锁 | **写操作前必须先 claim**；`granted: false` 表示冲突 |
 | `hub_report` | 汇报进度 / 终态 | `status=working` 时 **必须带** `nextSteps`；超 8 分钟不 report = 被 kill |
-| `hub_ask` | 升级至人类或 planner 决策 | 立即返回 `askId`，答案通过 `hub_sync` 异步送达；**不要停下等回复** |
+| `hub_wait` | 阻塞到：你关注的子任务结束 / 有消息或答案给你 / 超时（最长 4 分钟） | **要等就用它**，hub 在事件发生时叫醒你；禁止 `sleep` 或定时轮询 |
+| `hub_ask` | 升级至人类或 planner 决策 | 立即返回 `askId`；先做能做的，需要答案时 `hub_wait` 等它 |
 | `hub_message` | 向其他 worker 发送消息 / 广播 | 少用；大多数协调走 `hub_sync` + `hub_claim` |
 
 ## Planner 专属工具（executor 调用会被拒绝）

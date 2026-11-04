@@ -33,6 +33,7 @@ import type {
   HubQueryTaskInput,
   HubReportInput,
   HubSpawnInput,
+  HubWaitInput,
   HubWaitTaskInput,
   HubWritePlanInput,
 } from '../types';
@@ -341,17 +342,38 @@ export class HubMCPServer {
         ),
     );
 
+    // hub_wait — event-driven wait for any worker
+    register(
+      'hub_wait',
+      {
+        description:
+          'Block until something you must react to happens: a child task you watch reaches a terminal status, ' +
+          'a message/directive/answer arrives for you (owner messages included), or the window (max 240 s) ' +
+          'runs out. Nothing polls — the hub wakes you the moment the event occurs. Use this instead of sleep ' +
+          'or periodic hub_sync. reason=timeout means nothing happened: call it again.',
+        inputSchema: {
+          tasks: z
+            .array(z.string())
+            .optional()
+            .describe('Child task ids to watch (planners: every child still running).'),
+          timeoutMs: z.number().optional().describe('Max wait in milliseconds; capped at 240000.'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_wait', extra, (workerId) => this.hub.handleWait(workerId, args as unknown as HubWaitInput)),
+    );
+
     // hub_wait_task
     register(
       'hub_wait_task',
       {
         description:
-          'PLANNER ONLY. Block until a child task you spawned reaches a terminal status (completed/failed) or ' +
-          'the timeout elapses. Internally polls hub_query_task every 500ms. Default timeout 600000ms (10 min); ' +
-          'hub clamps to a 30-min hard cap. Same security check as hub_query_task: child must belong to you.',
+          'PLANNER ONLY. Block until this one child task reaches a terminal status (completed/failed) or the ' +
+          'window (max 240 s) runs out; the hub wakes you on the event, nothing polls. Prefer hub_wait, which ' +
+          'watches several children and also wakes on messages. Same security check as hub_query_task.',
         inputSchema: {
           taskId: z.string().describe('childTaskId returned by hub_spawn.'),
-          timeoutMs: z.number().optional().describe('Max wait in milliseconds. Default 600000. Hard max 1800000.'),
+          timeoutMs: z.number().optional().describe('Max wait in milliseconds; capped at 240000.'),
         },
       },
       async (args, extra) =>

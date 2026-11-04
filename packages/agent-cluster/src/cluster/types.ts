@@ -360,6 +360,23 @@ export interface HubQueryTaskOutput {
   completedAt?: string;
 }
 
+/** `hub_wait`: block until something this worker must react to happens. */
+export interface HubWaitInput {
+  /** Child task ids to watch; the wait ends when any of them reaches a terminal status. */
+  tasks?: string[];
+  /** Max wait; the hub caps it below its HTTP idle timeout, so a `timeout` answer means "call again". */
+  timeoutMs?: number;
+}
+
+export interface HubWaitOutput {
+  /** What ended the wait: a watched task settled, a message arrived for you, or nothing happened in time. */
+  reason: 'task' | 'message' | 'timeout';
+  /** Snapshots of the watched tasks, as hub_query_task would answer. */
+  tasks: HubQueryTaskOutput[];
+  /** Messages, directives and answers that arrived, consumed as hub_sync would. */
+  updates: HubUpdate[];
+}
+
 export interface HubWaitTaskInput {
   taskId: string;
   /** Default 600_000 ms (10 min). Hub also enforces an absolute upper bound. */
