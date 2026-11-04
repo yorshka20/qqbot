@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '../components/ui/sidebar';
 import { readSidebarOpen } from '../lib/memory';
 import { homePath, parentPath, parseAppLocation, settingsPath, withOverlay } from '../lib/routes';
+import { TaskPage } from '../task/TaskPage';
 import { AppSidebar } from './AppSidebar';
 import { Banner } from './Banner';
 import { HomePage } from './HomePage';
@@ -65,8 +66,8 @@ export function Shell() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/inbox" element={<Placeholder />} />
-            <Route path="/t/:taskId" element={<Placeholder />} />
-            <Route path="/t/:taskId/w/:workerId" element={<Placeholder />} />
+            <Route path="/t/:taskId" element={<TaskPage />} />
+            <Route path="/t/:taskId/w/:workerId" element={<TaskPage />} />
             <Route path="/settings" element={<Navigate to={settingsPath()} replace />} />
             <Route path="/settings/:group" element={<Placeholder />} />
             <Route path="*" element={<Navigate to={homePath()} replace />} />

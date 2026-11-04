@@ -27,7 +27,7 @@ function startOfLocalDay(now: number): number {
 
 export function buildHome(runs: Run[], help: ClusterHelpRequest[], spareSlots: number, now: number): Home {
   const inbox = buildInbox(runs, help, null);
-  const { active, history } = buildTaskList(runs, { now, query: '' });
+  const { active, history } = buildTaskList(runs, { now, query: '', historyWindow: '7d' });
   const dayStart = startOfLocalDay(now);
 
   return {

@@ -176,6 +176,7 @@ export function ConversationView({
             help,
             helpHistory,
             workerExitedAt: task.workerId ? workerExits.get(task.workerId) : undefined,
+            children: [],
           })
         : [],
     [loaded, task, events, help, helpHistory, workerExits],

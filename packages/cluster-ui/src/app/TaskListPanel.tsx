@@ -25,6 +25,7 @@ import { buildTaskList, latestSince, type TaskListItem } from '../lib/taskList';
 import { formatAgo, formatSpan } from '../lib/time';
 import { useNow } from '../lib/useNow';
 import { cn } from '../lib/utils';
+import type { RunWindow } from '../lib/window';
 import { useCluster } from './ClusterData';
 import { useListCursor } from './keys';
 
@@ -142,8 +143,12 @@ export function TaskListPanel({ keys = true }: { keys?: boolean }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  const [historyWindow, setHistoryWindow] = useState<RunWindow>('7d');
 
-  const { active, history } = useMemo(() => buildTaskList(runs, { now, query }), [runs, now, query]);
+  const { active, history } = useMemo(
+    () => buildTaskList(runs, { now, query, historyWindow }),
+    [runs, now, query, historyWindow],
+  );
   const current = parseAppLocation(location.pathname, location.search);
   const activeTaskId = current.page === 'task' ? current.taskId : null;
   const activeWorkerId = current.page === 'task' ? current.workerId : null;
@@ -211,7 +216,15 @@ export function TaskListPanel({ keys = true }: { keys?: boolean }) {
         )}
       {loaded && hasMoreHistory && (
         <div className="px-2 pb-2">
-          <Button variant="ghost" size="sm" className="w-full" onClick={loadMoreHistory}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full"
+            onClick={() => {
+              setHistoryWindow('all');
+              loadMoreHistory();
+            }}
+          >
             <ChevronsDown />
             加载更早
           </Button>

@@ -134,7 +134,8 @@ function textDraft(text: string): Draft {
 
 function claudeDrafts(event: Json, type: string): Draft[] {
   if (type === 'result') {
-    return [{ kind: 'result', title: '最终答复', body: asString(event.result) ?? '' }];
+    const failed = event.is_error === true;
+    return [{ kind: 'result', title: failed ? '运行出错' : '最终答复', body: asString(event.result) ?? '', failed }];
   }
   if (type === 'system') {
     return [];

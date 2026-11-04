@@ -1,6 +1,8 @@
 import type { ClusterEventEntry, ClusterHelpRequest, ClusterTask, ReportEventData } from '@qqbot/api-types';
+import { parseFiles } from './runs';
 import { toMs } from './time';
 import { type EndState, lockedFileCount, type ReportStats, reportStats } from './timeline';
+import { parseTranscript } from './transcript';
 
 export type ConversationEntry =
   | { kind: 'owner'; id: string; at: number; from: string; text: string }
@@ -26,7 +28,25 @@ export type ConversationEntry =
       answeredBy?: string;
       answeredAt?: number;
     }
-  | { kind: 'end'; id: string; at: number; state: EndState; summary?: string; stats?: ReportStats }
+  | {
+      kind: 'spawn';
+      id: string;
+      at: number;
+      childTaskId: string;
+      description: string;
+      template?: string;
+      model?: string;
+    }
+  | {
+      kind: 'end';
+      id: string;
+      at: number;
+      state: EndState;
+      summary?: string;
+      reason?: string;
+      files: string[];
+      stats?: ReportStats;
+    }
   | { kind: 'system'; id: string; at: number; seq?: number; text: string };
 
 export interface ConversationInput {
@@ -35,6 +55,24 @@ export interface ConversationInput {
   help: ClusterHelpRequest[];
   helpHistory: ClusterHelpRequest[];
   workerExitedAt?: number;
+  children: ClusterTask[];
+  output?: string;
+}
+
+/** The reason a run ended badly, best source first. The exit code alone says nothing. */
+export function failureReason(input: {
+  reportError?: string;
+  output?: string;
+  taskError?: string;
+}): string | undefined {
+  const reported = input.reportError?.trim();
+  if (reported) {
+    return reported;
+  }
+  const entries = input.output ? parseTranscript(input.output) : null;
+  const failedResult = entries?.filter((entry) => entry.kind === 'result' && entry.failed === true).at(-1);
+  const fromOutput = failedResult?.body?.trim();
+  return fromOutput || input.taskError?.trim() || undefined;
 }
 
 const END_STATE: Partial<Record<ClusterEventEntry['type'], EndState>> = {
@@ -50,7 +88,8 @@ const TERMINAL: ReadonlySet<ClusterTask['status']> = new Set(['completed', 'fail
  * how it ended — one time-ordered stream built from the event log plus the task record.
  */
 export function buildConversation(input: ConversationInput): ConversationEntry[] {
-  const { task, events, help, helpHistory, workerExitedAt } = input;
+  const { task, events, help, helpHistory, workerExitedAt, children, output } = input;
+  const files = parseFiles(task.filesModified);
   const entries: ConversationEntry[] = [];
 
   const submitted = toMs(task.createdAt);
@@ -82,6 +121,15 @@ export function buildConversation(input: ConversationInput): ConversationEntry[]
         at,
         state: end,
         summary: report.summary?.trim() || report.detail?.error,
+        reason:
+          end === 'failed' || end === 'blocked'
+            ? failureReason({
+                reportError: report.detail?.error ?? report.detail?.blockReason,
+                output,
+                taskError: task.error,
+              })
+            : undefined,
+        files,
         stats: reportStats(report.detail),
       });
       continue;
@@ -159,6 +207,24 @@ export function buildConversation(input: ConversationInput): ConversationEntry[]
     }
   }
 
+  const spawned = new Set<string>();
+  for (const child of children) {
+    const at = toMs(child.createdAt);
+    if (at === null || spawned.has(child.id)) {
+      continue;
+    }
+    spawned.add(child.id);
+    entries.push({
+      kind: 'spawn',
+      id: `spawn:${child.id}`,
+      at,
+      childTaskId: child.id,
+      description: child.description,
+      template: child.workerTemplate,
+      model: child.model,
+    });
+  }
+
   if (workerExitedAt !== undefined) {
     entries.push({ kind: 'system', id: 'exited', at: workerExitedAt, text: 'worker 退出' });
   }
@@ -172,6 +238,11 @@ export function buildConversation(input: ConversationInput): ConversationEntry[]
       at: finished,
       state: task.status as EndState,
       summary: task.diffSummary ?? task.error,
+      reason:
+        task.status === 'failed' || task.status === 'blocked'
+          ? failureReason({ output, taskError: task.error })
+          : undefined,
+      files,
     });
   }
 

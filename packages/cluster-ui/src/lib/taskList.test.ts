@@ -74,32 +74,32 @@ describe('buildTaskList', () => {
       run({ id: 'c1', parent: 'root', stage: 'done', at: NOW - 30 * 60_000 }),
       run({ id: 'gc', parent: 'c1', stage: 'done', at: NOW - 20 * 60_000 }),
     ];
-    const { active } = buildTaskList(runs, { now: NOW, query: '' });
+    const { active } = buildTaskList(runs, { now: NOW, query: '', historyWindow: '7d' });
     expect(ids(active)).toEqual(['root']);
     expect(active[0].children.map((c) => c.task.id)).toEqual(['c1', 'gc', 'c2']);
   });
 
   test('a child of another task stays out of this tree', () => {
     const runs = [run({ id: 'a', stage: 'running' }), run({ id: 'b', stage: 'running' }), run({ id: 'b1', parent: 'b', stage: 'running' })];
-    const { active } = buildTaskList(runs, { now: NOW, query: '' });
+    const { active } = buildTaskList(runs, { now: NOW, query: '', historyWindow: '7d' });
     const a = active.find((item) => item.root.task.id === 'a');
     expect(a?.children).toEqual([]);
   });
 
   test('a run whose parent is not loaded becomes a root', () => {
-    const { active } = buildTaskList([run({ id: 'orphan', parent: 'missing', stage: 'running' })], { now: NOW, query: '' });
+    const { active } = buildTaskList([run({ id: 'orphan', parent: 'missing', stage: 'running' })], { now: NOW, query: '', historyWindow: '7d' });
     expect(ids(active)).toEqual(['orphan']);
   });
 
   test('a child question surfaces on the root', () => {
     const runs = [run({ id: 'root', stage: 'running' }), run({ id: 'kid', parent: 'root', stage: 'asking' })];
-    const { active } = buildTaskList(runs, { now: NOW, query: '' });
+    const { active } = buildTaskList(runs, { now: NOW, query: '', historyWindow: '7d' });
     expect(active[0].attention).toBe('asking');
   });
 
   test('an unacknowledged failure needs attention, an acknowledged one is history', () => {
     const runs = [run({ id: 'bad', stage: 'failed' }), run({ id: 'seen', stage: 'failed', acknowledged: true })];
-    const { active, history } = buildTaskList(runs, { now: NOW, query: '' });
+    const { active, history } = buildTaskList(runs, { now: NOW, query: '', historyWindow: '7d' });
     expect(active.map((i) => [i.root.task.id, i.attention])).toEqual([['bad', 'failed']]);
     expect(ids(history)).toEqual(['seen']);
   });
@@ -110,9 +110,15 @@ describe('buildTaskList', () => {
       run({ id: 'older-ok', at: NOW - 3 * DAY }),
       run({ id: 'newer', at: NOW - 1 * DAY }),
     ];
-    const { active, history } = buildTaskList(runs, { now: NOW, query: '' });
+    const { active, history } = buildTaskList(runs, { now: NOW, query: '', historyWindow: '7d' });
     expect(active).toEqual([]);
     expect(ids(history)).toEqual(['newer', 'older-ok']);
+  });
+
+  test('the history window decides how far back ended runs reach', () => {
+    const runs = [run({ id: 'old', at: NOW - 8 * DAY }), run({ id: 'recent', at: NOW - 1 * DAY })];
+    expect(ids(buildTaskList(runs, { now: NOW, query: '', historyWindow: '7d' }).history)).toEqual(['recent']);
+    expect(ids(buildTaskList(runs, { now: NOW, query: '', historyWindow: 'all' }).history)).toEqual(['recent', 'old']);
   });
 
   test('a query matching a child keeps the whole tree', () => {
@@ -121,7 +127,7 @@ describe('buildTaskList', () => {
       run({ id: 'kid', parent: 'root', title: '写迁移脚本', stage: 'running' }),
       run({ id: 'other', title: '无关任务', stage: 'running' }),
     ];
-    const { active } = buildTaskList(runs, { now: NOW, query: '迁移' });
+    const { active } = buildTaskList(runs, { now: NOW, query: '迁移', historyWindow: '7d' });
     expect(ids(active)).toEqual(['root']);
     expect(active[0].children.map((c) => c.task.id)).toEqual(['kid']);
   });
@@ -131,8 +137,8 @@ describe('buildTaskList', () => {
       run({ id: 'x', title: 'Fix Build', stage: 'running' }),
       run({ id: 'y', title: 'other', stage: 'running', model: 'claude-opus-5-5' }),
     ];
-    expect(ids(buildTaskList(runs, { now: NOW, query: 'fix build' }).active)).toEqual(['x']);
-    expect(ids(buildTaskList(runs, { now: NOW, query: 'OPUS' }).active)).toEqual(['y']);
+    expect(ids(buildTaskList(runs, { now: NOW, query: 'fix build', historyWindow: '7d' }).active)).toEqual(['x']);
+    expect(ids(buildTaskList(runs, { now: NOW, query: 'OPUS', historyWindow: '7d' }).active)).toEqual(['y']);
   });
 });
 

@@ -3,7 +3,7 @@ import { taskPath, workerPath } from './routes';
 import { type Run, stageRankOfRun } from './runs';
 import { isLive } from './stage';
 import { toMs } from './time';
-import { inWindow } from './window';
+import { inWindow, type RunWindow } from './window';
 
 export type TaskAttention = 'asking' | 'failed';
 
@@ -83,7 +83,7 @@ function matches(item: TaskListItem, needle: string): boolean {
 const rankOf = (item: TaskListItem): number => Math.min(...familyOf(item).map(stageRankOfRun));
 
 /** One item per conversation: a root run with everything it spawned. */
-export function buildTaskList(runs: Run[], opts: { now: number; query: string }): TaskList {
+export function buildTaskList(runs: Run[], opts: { now: number; query: string; historyWindow: RunWindow }): TaskList {
   const needle = opts.query.trim().toLowerCase();
   const items = buildItems(runs).filter((item) => needle === '' || matches(item, needle));
 
@@ -93,7 +93,7 @@ export function buildTaskList(runs: Run[], opts: { now: number; query: string })
     const family = familyOf(item);
     if (item.attention !== null || family.some((run) => isLive(run.task))) {
       active.push(item);
-    } else if (family.some((run) => inWindow(run, '7d', opts.now))) {
+    } else if (family.some((run) => inWindow(run, opts.historyWindow, opts.now))) {
       history.push(item);
     }
   }
