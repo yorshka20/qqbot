@@ -1,10 +1,15 @@
 /**
  * ContextHub — central communication hub for the Agent Cluster.
  *
- * Runs an HTTP server inside the QQ Bot process. The only HTTP route is
- * `/mcp`, served by `HubMCPServer` over the MCP Streamable HTTP transport.
- * Workers connect via the MCP config file written by
- * `WorkerPool.generateMCPConfig()`.
+ * Runs the cluster's one HTTP server. `/mcp` is served by `HubMCPServer` over the MCP
+ * Streamable HTTP transport and accepts loopback clients only; workers connect via the
+ * MCP config file written by `WorkerPool.generateMCPConfig()`. Every other path is
+ * dispatched to the routes mounted with `registerRoute()` (the daemon's REST API, health
+ * and static console), in registration order.
+ *
+ * The server can be opened by `listen()` ahead of `start()` so that it outlives
+ * `start()` / `stop()` cycles of the cluster: the daemon keeps its port bound while the
+ * cluster is stopped from the API. `stop()` closes the server only when `start()` opened it.
  *
  * MCP tools exposed:
  *   - Common (any role):
@@ -91,6 +96,16 @@ export type ReportCallback = (
 /** Called after every successful hub_report so WorkerPool can refresh lastReport (stuck detection). */
 export type HeartbeatCallback = (workerId: string) => void;
 
+/**
+ * A route mounted on the hub's HTTP server beside `/mcp`: a path prefix and its handler.
+ * The handler returns `null` for a path under its prefix it does not serve, which falls
+ * through to a 404.
+ */
+export interface HubRoute {
+  readonly prefix: string;
+  handle(pathname: string, req: Request): Promise<Response | null> | Response | null;
+}
+
 /** SSE subscriber for real-time event streaming */
 export interface SSESubscriber {
   send(event: string, data: unknown): void;
@@ -133,6 +148,8 @@ export class ContextHub {
   readonly mcpServer: HubMCPServer;
 
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
+  private serverOpenedByStart = false;
+  private readonly routes: HubRoute[] = [];
   private dispatchCallback: DispatchCallback | null = null;
   private reportCallback: ReportCallback | null = null;
   private heartbeatCallback: HeartbeatCallback | null = null;
@@ -197,18 +214,33 @@ export class ContextHub {
   }
 
   /**
-   * Start the HTTP server. The MCP server is connected first so the
-   * `/mcp` route is ready to accept requests the moment Bun.serve is up.
+   * Mount a route on the hub's server. Routes are matched in registration order by
+   * path prefix; a prefix of `/` catches everything left, so it goes last.
    */
-  async start(): Promise<string> {
-    const { port, host } = this.config.hub;
+  registerRoute(route: HubRoute): void {
+    if (this.routes.some((r) => r.prefix === route.prefix)) {
+      throw new Error(`[ContextHub] route prefix "${route.prefix}" is already registered`);
+    }
+    this.routes.push(route);
+  }
 
-    // Start MCP first so /mcp handler is ready before bind.
-    await this.mcpServer.start();
+  /** The URL workers are told to connect to. */
+  get url(): string {
+    return `http://${this.config.hub.host}:${this.config.hub.port}`;
+  }
 
+  /**
+   * Bind the HTTP server. Idempotent: a second call while listening is a no-op, which is
+   * how `start()` leaves a server that the daemon opened earlier alone.
+   */
+  listen(): string {
+    if (this.httpServer) {
+      return this.url;
+    }
+    const { port, bindHost } = this.config.hub;
     this.httpServer = Bun.serve({
       port,
-      hostname: host,
+      hostname: bindHost,
       // MCP clients (claude's streamable HTTP transport in particular) keep
       // HTTP keep-alive connections open across tool calls. The default Bun
       // idleTimeout of 10s prints a "request timed out" warning whenever
@@ -216,12 +248,36 @@ export class ContextHub {
       // connection is fine, just idle. Bump to 255s (Bun's max) to silence it
       // without disabling timeouts entirely.
       idleTimeout: 255,
-      fetch: (req) => this.handleRequest(req),
+      fetch: (req, server) => this.handleRequest(req, server),
     });
+    logger.info(`[ContextHub] Listening on ${bindHost}:${port} (workers connect to ${this.url}/mcp)`);
+    return this.url;
+  }
 
-    const url = `http://${host}:${port}`;
-    logger.info(`[ContextHub] Started on ${url} (REST + /mcp)`);
-    return url;
+  /** Close the HTTP server. Open SSE streams are ended by `stop()`, not here. */
+  close(): void {
+    if (this.httpServer) {
+      this.httpServer.stop();
+      this.httpServer = null;
+    }
+    this.serverOpenedByStart = false;
+  }
+
+  /**
+   * Start the hub. The MCP server is connected first so the `/mcp` route is ready to
+   * accept requests the moment the server is bound.
+   */
+  async start(): Promise<string> {
+    // Start MCP first so /mcp handler is ready before bind.
+    await this.mcpServer.start();
+
+    if (!this.httpServer) {
+      this.listen();
+      this.serverOpenedByStart = true;
+    }
+
+    logger.info(`[ContextHub] Started on ${this.url} (REST + /mcp)`);
+    return this.url;
   }
 
   /**
@@ -230,9 +286,8 @@ export class ContextHub {
    */
   async stop(): Promise<void> {
     this.lockManager.stop();
-    if (this.httpServer) {
-      this.httpServer.stop();
-      this.httpServer = null;
+    if (this.serverOpenedByStart) {
+      this.close();
     }
     await this.mcpServer.stop();
     // Close all SSE connections
@@ -921,19 +976,13 @@ export class ContextHub {
   // ── HTTP handler ──
 
   /**
-   * The hub's Bun.serve fetch handler. After Phase 2 (MCP wiring) the
-   * **only** route this server speaks is `/mcp`. All worker coordination
-   * goes through the MCP transport — the Phase 1 `/hub/*` REST stubs
-   * (sync / claim / report / ask / message / dispatch / directive +
-   * GET status/events/locks/help) were dead code from before MCP shipped
-   * and got removed in batch 15. The WebUI never hit ContextHub directly;
-   * it has always gone through StaticServer's ClusterAPIBackend.
+   * The hub's Bun.serve fetch handler: `/mcp` for workers, then the mounted routes.
    *
-   * Anything that isn't `/mcp` returns 404 — workers shouldn't see it
-   * unless something is misconfigured, in which case the 404 is the
-   * fastest way to surface the problem.
+   * `/mcp` carries no credential (workers identify themselves with `X-Worker-Id`), so it
+   * is restricted to loopback peers: the server may be bound to a LAN-visible address for
+   * the console, but workers always run on this machine.
    */
-  private async handleRequest(req: Request): Promise<Response> {
+  private async handleRequest(req: Request, server: ReturnType<typeof Bun.serve>): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname;
 
@@ -955,7 +1004,20 @@ export class ContextHub {
       // transport handles GET (SSE), POST (tool calls), and DELETE
       // (session termination) on its own.
       if (path === '/mcp' || path.startsWith('/mcp/')) {
+        if (!isLoopbackAddress(server.requestIP(req)?.address)) {
+          return Response.json({ error: '/mcp accepts local workers only' }, { status: 403, headers });
+        }
         return this.mcpServer.handleRequest(req);
+      }
+
+      for (const route of this.routes) {
+        if (!routeMatches(route.prefix, path)) {
+          continue;
+        }
+        const response = await route.handle(path, req);
+        if (response) {
+          return response;
+        }
       }
 
       return Response.json({ error: 'Not found' }, { status: 404, headers });
@@ -1037,4 +1099,19 @@ export class ContextHub {
       logger.error('[ContextHub] Failed to persist help request:', err);
     }
   }
+}
+
+function routeMatches(prefix: string, path: string): boolean {
+  if (prefix === '/') {
+    return true;
+  }
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+export function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) {
+    return false;
+  }
+  const ip = address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address;
+  return ip === '::1' || ip.startsWith('127.');
 }

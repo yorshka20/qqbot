@@ -24,7 +24,13 @@ export interface ClusterConfig {
 
   hub: {
     port: number;
+    /** Address workers are told to reach the hub at (written into their MCP config). */
     host: string;
+    /**
+     * Address the hub's HTTP server listens on. Defaults to `host`; the daemon sets it to a
+     * wildcard so the console is reachable over the LAN while workers keep using loopback.
+     */
+    bindHost: string;
     lockTTL: number; // ms
     eventLogMaxSize: number;
   };
@@ -253,6 +259,7 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
     hub: {
       port: (hubRaw.port as number) || 3200,
       host: (hubRaw.host as string) || '127.0.0.1',
+      bindHost: (hubRaw.bindHost as string) || (hubRaw.host as string) || '127.0.0.1',
       lockTTL:
         typeof hubRaw.lockTTL === 'string' ? parseDuration(hubRaw.lockTTL) : (hubRaw.lockTTL as number) || 600_000,
       eventLogMaxSize: (hubRaw.eventLogMaxSize as number) || 1000,

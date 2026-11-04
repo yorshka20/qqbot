@@ -12,6 +12,7 @@
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@qqbot/api-types": "workspace:*",
     "@qqbot/shared": "workspace:*",
+    "jsonc-parser": "^3.3.1",
     "tsyringe": "^4.10.0",
     "zod": "^3.25.76"
   },

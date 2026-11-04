@@ -1,3 +1,9 @@
+export { withBearerToken } from './api/bearerAuth';
+export { ClusterApi } from './api/clusterApi';
+export { type ClusterDaemonHealthResponse, healthRoute } from './api/healthRoute';
+export { errorResponse, jsonResponse } from './api/http';
+export { staticUiRoute } from './api/staticUiRoute';
+export { TicketApi } from './api/ticketApi';
 export { ClusterManager } from './cluster/ClusterManager';
 export { ClusterScheduler } from './cluster/ClusterScheduler';
 export { wireClusterTicketWriteback } from './cluster/ClusterTicketWriteback';
@@ -8,7 +14,7 @@ export {
 } from './cluster/clusterTicketsGitSync';
 export type { ClusterConfig, ClusterProjectConfig, WorkerTemplateConfig } from './cluster/config';
 export { parseClusterConfig } from './cluster/config';
-export { ContextHub } from './cluster/hub/ContextHub';
+export { ContextHub, type HubRoute } from './cluster/hub/ContextHub';
 export { HubMCPServer } from './cluster/hub/HubMCPServer';
 export { ALLOWED_STATUSES, parseMarkdownTicket, parsePlanVersion, serializeTicket } from './cluster/tickets/markdown';
 export {
@@ -34,4 +40,11 @@ export { AgentRunOptionsError, checkRunOptions, resolveRunOptions } from './codi
 export type * from './codingAgent/types';
 export { AGENT_EXECUTOR_NAMES } from './codingAgent/types';
 export type * from './config';
+export { ClusterDaemon } from './daemon/ClusterDaemon';
+export {
+  type ClusterDaemonConfig,
+  defaultClusterDaemonConfigPath,
+  loadClusterDaemonConfig,
+  parseClusterDaemonConfig,
+} from './daemon/config';
 export { PROJECT_REGISTRY_OPTIONS } from './tokens';
