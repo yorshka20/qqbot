@@ -76,6 +76,7 @@ worker 的行为规则必须满足两个约束：
 | `hub_report` | 执行中上报 + 完成/失败 | 每个有意义的步骤后调用；任务结束时带终态 |
 | `hub_ask` | 请求帮助 | 遇到自己无法决策的问题时调用 |
 | `hub_message` | 自由通信 | 需要通知其他 worker 或 planner 时调用 |
+| `hub_subscribe` / `hub_unsubscribe` | 订阅兄弟任务的事件 | 任务依赖或关联别的 child 时，开始就调（见 §3.7） |
 
 ### 2.3 各 Tool 详细定义
 
@@ -198,7 +199,7 @@ worker 的行为规则必须满足两个约束：
       比如："我发现 X 模块有个 bug，和我的任务无关但你可能需要知道"。
 
 输入:
-  to: string                 // 目标 worker ID，或 "planner"，或 "all"（广播）
+  to: string                 // 目标 worker ID、兄弟的 task ID，或 "planner"，或 "all"（广播）
   content: string            // 消息内容
   priority: "info"           // 仅供参考
            | "warning"       // 需要注意
@@ -339,6 +340,8 @@ hub_claim 创建锁 → hub_report(working) 续期 → hub_report(终态) 释放
 - planner 对 `hub_ask` 的回复（type 为 `answer`）
 - planner 主动发出的 directive
 
+- worker 订阅的事件（type 为 `event`，见 §3.7）
+
 消息通过 `hub_sync` 返回（合并在 `updates` 里），取出后标记已读。
 也会在 `hub_report` 的返回值 `directives` 字段中顺带返回 directive 类型的消息，减少额外的 sync 调用。
 
@@ -368,6 +371,46 @@ interface WorkerRegistration {
 worker 首次调用任何 hub tool 时自动注册（通过 MCP 请求中的 env 传入 workerId 等信息）。
 
 ---
+
+### 3.7 事件订阅
+
+child 之间不经 planner 协调：worker 用 `hub_subscribe` 声明关心什么，事件发生时 hub 直接叫醒它。`SubscriptionStore` 存在
+`cluster_subscriptions`，每次读都走 SQLite，重启不丢。行按订阅方 task 存：`hub_spawn` 订阅时 child 可能还没有 worker，
+而 task 和 worker 一对一。worker 退出或 task 结束时删除。
+
+```
+hub_subscribe / hub_unsubscribe
+输入:
+  tasks?: string[]    // 同 job 的 task id：结束、合入、阻塞、汇报进展。其他 job 的一律拒绝
+  files?: string[]    // 相对仓库根的路径或 glob：重叠的锁被授予或释放，或合入碰到文件
+  branch?: boolean    // 集成分支有新合入
+输出:
+  subscriptions: { tasks, files, branch, dependsOn }
+  caughtUp: number    // 仅 hub_subscribe：已发生的事立即补投的条数
+```
+
+事件经 MessageBox 投递，所以 `hub_sync` 看得到，`hub_wait` 由同一个 `onSend` 钩子叫醒，`reason` 为 `event`：
+
+```
+{ kind, taskId, branch?, summary, files? }
+kind: task_merged | task_blocked | task_completed | task_failed
+    | worker_progress | lock_acquired | lock_released | files_changed
+```
+
+| 事件 | 产生处 |
+|---|---|
+| `task_merged`、`files_changed` | `TaskWorkspaces.land` → `hub.taskMerged`；文件来自集成分支移动前后的 `git diff --name-only` |
+| `task_completed`、`task_failed`、`task_blocked` | `ClusterScheduler.finalizeTask`，每个任务一次；`cancelled` 算 `task_failed` |
+| `worker_progress` | `handleReport`，只有 `summary` 和 `nextSteps` |
+| `lock_acquired`、`lock_released` | `LockManager` 的 `onChange`，一批文件一次；续期和自己的锁不通知 |
+
+一次事件对一个订阅方只投一条。`tasks` 或 `branch` 命中得到 `task_merged` 和全部文件，只有 `files` 命中得到 `files_changed` 和命中的文件。
+`files` 按完整列表匹配，只在输出时截到 50 个，总数在 `summary` 里。事件不带 stdout。
+
+还没有 worker 的 task 收件地址是 `task:<id>`，worker 启动时 `hub.bindWorker` 把未读转给它。这段时间只收结果类事件，进展和锁到那时已过期。
+
+`hub_spawn` 的 `subscribe` 替 child 预订阅。其中 `tasks` 是 plan 的 `depends_on`：child 排队到依赖全部合入才启动（§4.7），从第一次 `hub_sync`
+读到合入了什么。依赖以 `completed` 之外的状态结束时 child 被取消，planner 的 `hub_wait` 被叫醒。`files` 和 `branch` 不挡启动。
 
 ## 4. WorkerPool 和调度器
 
@@ -549,6 +592,9 @@ worker 还在时只落库，退出时再走一次；这之前 `hub_wait` 不醒�
 3. 冲突时任务转 `blocked`，`error` 写冲突文件和 git 的说明，发 `task_blocked` 事件；任务分支原样保留，planner 可以 spawn
    一个 executor 在自己的分支上 `git merge` 它来解决。
 4. 槽位 `checkout -f --detach` + `clean -fd` 后归还。清不干净的槽直接删掉，下次租用时重建。
+
+`hub_spawn` 带 `subscribe.tasks` 的 child 留在 pending，直到依赖都已结算且 `completed`：`tryDispatch` 开头检查，`finalizeTask` 末尾再派发一轮。
+它因此从已含依赖改动的集成分支切出。依赖失败时它被取消，不占槽。
 
 owner 检出集成分支时用 `git switch --detach cluster/<job>`：`update-ref` 不更新工作区，停在这条分支上的检出会在下次合入后
 显示反向的改动。
@@ -825,6 +871,20 @@ CREATE TABLE cluster_locks (
 );
 ```
 
+#### `cluster_subscriptions`
+
+```sql
+CREATE TABLE cluster_subscriptions (
+  taskId TEXT NOT NULL,                    -- 订阅方的 task
+  jobId TEXT NOT NULL,
+  kind TEXT NOT NULL,                      -- task | file | branch
+  target TEXT NOT NULL,                    -- task id / 路径或 glob / 空
+  dependency INTEGER NOT NULL DEFAULT 0,   -- 1 = 该 task 合入前订阅方不启动
+  createdAt INTEGER NOT NULL,
+  PRIMARY KEY (taskId, kind, target)
+);
+```
+
 #### `cluster_help_requests`
 
 ```sql
@@ -858,7 +918,7 @@ GET  /api/cluster/workers          → worker 列表和状态
 GET  /api/cluster/jobs             → job 列表（分页、过滤）
 GET  /api/cluster/jobs/:id         → 单个 job 详情，含 `integrationBranch`
 GET  /api/cluster/tasks            → task 列表（分页、过滤）
-GET  /api/cluster/tasks/:id        → 单个 task 详情 + 完整日志，含 `branch` / `worktreePath` / `mergedAt`
+GET  /api/cluster/tasks/:id        → 单个 task 详情 + 完整日志，含 `branch` / `worktreePath` / `mergedAt`，有活跃订阅时含 `subscriptions`
 GET  /api/cluster/tasks/:id/events → 该 task 的事件流
 GET  /api/cluster/events           → 全局事件流（分页）
 GET  /api/cluster/locks            → 当前活跃的文件锁
@@ -892,7 +952,12 @@ data: {"askId":"ask-001","type":"decision","question":"是否应该修改 public
 
 event: lock_change
 data: {"file":"src/X.ts","action":"locked","by":"worker-b1c3"}
+
+event: task_subscribed
+data: {"taskId":"task-002","jobId":"job-001","subscriptions":{"tasks":["task-001"],"files":[],"branch":false,"dependsOn":["task-001"]}}
 ```
+
+`task_subscribed` 带变更后的完整订阅集合，客户端直接替换。订阅行随 worker 退出删除，同名事件留在 `/tasks/:id/events`，已结束任务的依赖边从那里读。
 
 ---
 

@@ -30,6 +30,8 @@
 
 如果任务描述有歧义，**先 `hub_ask` 再动手**（但不要停下能做的部分）。
 
+**任务描述点名了依赖或相关的兄弟任务时，开始就订阅**（见「和兄弟任务协作」），再动手。
+
 **动手前的快速自检**（60 秒内完成，省后面返工）：
 
 - guide/ticket 涉及的 scope（rendering / wechat / cluster / memory /
@@ -81,6 +83,28 @@ claim 的作用是提前避开合并冲突：改了同一文件的两个分支�
 - 需要修改不在原始 claim 范围内的文件（先 claim，冲突就 ask）
 - 发现代码现状和任务预期不符（planner 给的路径不存在、接口签名变了等）
 - 需要做影响其他模块的架构决策
+
+### 和兄弟任务协作
+
+兄弟任务的进展不用等 planner 转述，你直接订阅：
+
+```
+hub_subscribe({
+  tasks: ["<guide 里写的兄弟 task id>"],   // 它结束 / 合入 / 阻塞 / 汇报进展时叫醒你
+  files: ["src/foo/**"],                   // 这些文件的锁被授予或释放、或有合入碰到它们时叫醒你
+  branch: true                             // 集成分支有任何新合入时叫醒你
+})
+```
+
+- **开始时调一次 `hub_sync`**：planner 用 `hub_spawn` 的 `subscribe` 替你订阅了依赖时，依赖合入了什么、为什么，都在这里。
+  这种依赖在你启动前已经合入，改动就在你的分支上，不用再合并。
+- 事件通过 `hub_wait`（`reason: "event"`）和 `hub_sync` 到达，形如 `{ kind, taskId, branch?, summary, files? }`。
+  能做的先做，要用到兄弟的成果时再 `hub_wait`。
+- **收到依赖的 `task_merged` 后**：先提交手头的改动，再 `git merge <集成分支>` 把它拉进你的任务分支（快进或合并提交，
+  **绝不 rebase**），确认 `files` 里的改动和你的假设一致，再继续。合并冲突就地解决，解决不了 `hub_ask`。
+- **收到依赖的 `task_failed` / `task_blocked`**：你要的东西不会来了。能绕开就继续，绕不开就 `hub_report(blocked)` 写清楚等谁，不要空等。
+- **`hub_message` 只用来告诉兄弟一件具体事实**：事件带不出来、对方不知道就会做错的事（例如"字段定名为 `tag_id`"）。
+  `to` 写对方的 task id，一条消息一件事，**200 字以内**。不发进度（`hub_report` 就是）、不提问题（`hub_ask`）、不发 `to: "all"`、不要求回复。
 
 ### 5. 验收
 
@@ -201,5 +225,5 @@ Agent 在压力下会"合理化"跳过步骤。下面是 executor 最常见的�
 
 ## 需要等的时候
 
-需要等人回答（`hub_ask` 之后）或等别的 worker 时，用 `hub_wait({ timeoutMs })`：答案或消息一到它就返回。**不要 `sleep`，不要定时重试 `hub_sync`。**
+需要等人回答（`hub_ask` 之后）或等别的 worker 时，用 `hub_wait({ timeoutMs })`：答案、消息或你订阅的事件一到它就返回。**不要 `sleep`，不要定时重试 `hub_sync`。**
 能先做的事先做，做完再 `hub_wait`。

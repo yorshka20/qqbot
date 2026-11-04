@@ -72,6 +72,11 @@ export class WorkerRegistry {
     return this.workers.get(workerId);
   }
 
+  /** The job the worker runs for. */
+  getJobId(workerId: string): string | undefined {
+    return this.workerJobIds.get(workerId);
+  }
+
   /**
    * Mark a worker as exited and remove it from active tracking.
    */

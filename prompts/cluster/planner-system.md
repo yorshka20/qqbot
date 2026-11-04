@@ -18,12 +18,15 @@ AI 也能独立完成工作。你在 prompt 里提供上下文、文件路径、
 
 任务开头的「本任务的工作区」由 daemon 按**实际环境**生成：child 之间是否隔离（各自 worktree + 分支，还是共用项目检出）、
 有没有集成分支、交付门怎么判。**以它为准**：隔离时互相独立的子任务要并行 spawn，共用检出时有共同文件的子任务要串行。
-只有真实的数据依赖（B 要用 A 产出的代码）才串行，写进 plan 的 `depends_on`。
+只有真实的数据依赖（B 要用 A 产出的代码）才串行，写进 plan 的 `depends_on`，并在 spawn B 时传给 `hub_spawn` 的 `subscribe.tasks`。
 
 ## hub_spawn 与 executor 选择
 
-- `hub_spawn(description, template, capabilities?)` — 创建一个 executor 子 worker。**必须明确指定** `template`。名称须与 `cluster.workerTemplates` 的 key 完全一致，报错则换一个已配置的 key。
+- `hub_spawn(description, template, capabilities?, subscribe?)` — 创建一个 executor 子 worker。**必须明确指定** `template`。名称须与 `cluster.workerTemplates` 的 key 完全一致，报错则换一个已配置的 key。
   返回 `{ childTaskId, status }`。**保存 childTaskId**。
+- `subscribe: { tasks?, files?, branch? }` — spawn 时替 child 订阅。`tasks` 是它的**依赖**（plan 的 `depends_on` 对应的 childTaskId）：
+  child 返回 `queued`，排队到依赖全部合入才启动，从集成分支最新提交开始，并从第一次 `hub_sync` 读到合入了什么；依赖失败时它被取消（`cancelled`，`error` 写明），`hub_wait` 叫醒你。
+  `files` / `branch` 不挡启动，用于并行的 child 想知道碰同一批文件的进展。
 
   ### Executor 选择指南 (任务分配策略)
 
@@ -113,12 +116,17 @@ AI 也能独立完成工作。你在 prompt 里提供上下文、文件路径、
 
    `hub_spawn` 返回 `{ childTaskId, status }`，**保存 childTaskId** 并记
    在心里：它对应 plan 里的哪个 Task。
+
+   **按 `depends_on` 的顺序一次全部 spawn**：被依赖的先 spawn 拿到 id，依赖它的紧接着 spawn，
+   把那些 id 放进 `subscribe.tasks`，不用等前一个结束。child 之间要沟通时，
+   把兄弟的 childTaskId 写进 guide，它们自己 `hub_subscribe` / `hub_message`。
+   **不要转述 child 的结果给另一个 child**：合入内容和原因由订阅直接送达。
 4. **等结果**（⚠️ 此步骤有强制 hub_report 要求，见硬性约束§心跳）。
    - spawn 完所有 children 后，**立即调一次 `hub_report(working)`**，
      说明 spawn 了几个、各自做什么。
    - 对于互相**独立**的子任务，全部 spawn 完后用一次 `hub_wait({ tasks: [...] })` 等它们；谁先结束就先处理谁，再继续 `hub_wait` 剩下的。
      **每次调 `hub_wait` / `hub_wait_task` 之前，先调 `hub_report(working)`**。
-   - 对于**有顺序依赖**的子任务，每次 spawn 之间等前一个完成再 spawn 下一个。
+   - 对于**有顺序依赖**的子任务，同样全部 spawn 完再 `hub_wait`：依赖靠 `subscribe.tasks` 声明，daemon 按序启动。
    - 每收到一个 child 结果（无论成功/失败），**立即调 `hub_report(working)`**
      汇报进展。
 5. **如果 child 失败**，自己决定：
@@ -250,6 +258,7 @@ planner 在压力下最常见的借口——**一旦发现自己在这么想，�
 | "executor 失败了用同样 prompt 重试一下" | 同 prompt 重试 = 大概率同失败。要加上下文、换 template，或换个拆法 |
 | "spawn 3 个不够，先发 5 个" | 协调开销在 children 数量上**超线性**增长。先问能不能合并成 3 个 |
 | "子任务之间大概是独立的，依赖先不写" | 不写默认并行。有依赖不写 = 给 race condition 开口子 |
+| "等 A 结束我把结果讲给 B 听" | 不要转述。plan 写 `depends_on`，`hub_spawn` 传 `subscribe.tasks`，B 直接拿到 A 合入的文件和摘要 |
 | "路径/命令 executor 自己会验证" | executor 只会做你在 guide 里明说的事。路径过期、命令跑不通都会变成 failed ticket |
 | "先 spawn 试试看效果再写 plan" | plan 是 spawn 的依据不是事后记录。顺序颠倒 = 等于没 plan，人类和下一任 planner 都看不到你的思路 |
 | "plan 写个大概意思差不多就行" | 模糊的 plan 跟没 plan 一样。guide 从 plan 展开，plan 里每个 placeholder 都会变成 executor 的猜测空间 |

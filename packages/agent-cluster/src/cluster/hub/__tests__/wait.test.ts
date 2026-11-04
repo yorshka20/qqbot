@@ -39,7 +39,7 @@ describe('hub_wait', () => {
     hub.messageWorker('planner-1', 'task-x', 'change of plan');
     const result = await waiting;
     expect(result.reason).toBe('message');
-    expect(result.updates.map((u) => [u.type, u.summary])).toEqual([['directive', 'change of plan']]);
+    expect(result.updates).toMatchObject([{ type: 'directive', summary: 'change of plan' }]);
   });
 
   test('answers at once when a message is already queued', async () => {

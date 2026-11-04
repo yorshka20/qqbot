@@ -313,7 +313,13 @@ export class ClusterApi implements HubRoute {
           if (!task) return errorResponse('Task not found', 404);
           // Include child tasks if this is a planner task
           const children = live.getScheduler().getChildTasks(taskMatch[1]);
-          return jsonResponse<ClusterTaskDetail>({ ...task, children: children.length > 0 ? children : undefined });
+          const subscriptions = live.getHub().subscriptions.of(task.id);
+          const subscribed = subscriptions.tasks.length > 0 || subscriptions.files.length > 0 || subscriptions.branch;
+          return jsonResponse<ClusterTaskDetail>({
+            ...task,
+            children: children.length > 0 ? children : undefined,
+            subscriptions: subscribed ? subscriptions : undefined,
+          });
         }
 
         // /tasks/:id/events

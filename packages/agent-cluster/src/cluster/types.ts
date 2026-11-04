@@ -2,6 +2,8 @@
  * Agent Cluster shared type definitions.
  */
 
+import type { ClusterTaskSubscriptions } from '@qqbot/api-types';
+
 // ── Event types ──
 
 export interface EventEntry {
@@ -25,6 +27,7 @@ export type ClusterEventType =
   | 'task_merged'
   | 'task_published'
   | 'task_publish_failed'
+  | 'task_subscribed'
   | 'worker_progress'
   | 'directive'
   | 'answer'
@@ -255,12 +258,34 @@ export interface HubSyncOutput {
   };
 }
 
-export interface HubUpdate {
+export interface HubLogUpdate {
   type: ClusterEventType;
   from: string;
   summary: string;
   data?: Record<string, unknown>;
 }
+
+/** What a subscribed worker is told: an outcome and a short summary, never a worker's stdout. */
+export interface HubSubscriptionEvent {
+  kind:
+    | 'task_merged'
+    | 'task_blocked'
+    | 'task_completed'
+    | 'task_failed'
+    | 'worker_progress'
+    | 'lock_acquired'
+    | 'lock_released'
+    | 'files_changed';
+  /** The task the event is about. */
+  taskId: string;
+  /** The integration branch on a merge; the task's own branch on an outcome. */
+  branch?: string;
+  summary: string;
+  /** Capped; the summary of a merge gives the full count. */
+  files?: string[];
+}
+
+export type HubUpdate = HubLogUpdate | HubSubscriptionEvent;
 
 export interface HubClaimInput {
   taskId: string;
@@ -312,6 +337,7 @@ export interface HubAskOutput {
 }
 
 export interface HubMessageInput {
+  /** A worker id, a sibling's task id, or `all`. */
   to: string;
   content: string;
   priority: 'info' | 'warning';
@@ -319,6 +345,31 @@ export interface HubMessageInput {
 
 export interface HubMessageOutput {
   delivered: true;
+}
+
+/** What a worker wants to be woken for. Tasks must belong to the worker's own job. */
+export interface HubSubscribeInput {
+  /** A sibling settles, merges, blocks or reports progress. */
+  tasks?: string[];
+  /** Repo-relative paths or globs: an overlapping lock is granted or released, or a merge touched the file. */
+  files?: string[];
+  /** Anything lands on the job's integration branch. */
+  branch?: boolean;
+}
+
+export type HubSubscriptions = ClusterTaskSubscriptions;
+
+export interface HubSubscribeOutput {
+  subscriptions: HubSubscriptions;
+  /** Updates queued at once for what the named tasks had already done; read them with hub_sync or hub_wait. */
+  caughtUp: number;
+}
+
+/** Names the interests to drop; naming none drops them all. */
+export type HubUnsubscribeInput = HubSubscribeInput;
+
+export interface HubUnsubscribeOutput {
+  subscriptions: HubSubscriptions;
 }
 
 // ── Planner-only MCP Tool I/O types ──
@@ -351,6 +402,11 @@ export interface HubSpawnInput {
   role?: 'executor';
   /** Optional capability hints (informational; not yet used by scheduler). */
   capabilities?: string[];
+  /**
+   * Subscribe the child before it exists as a worker. `tasks` are its dependencies: it starts
+   * only once they have landed, and it is cancelled if one of them fails.
+   */
+  subscribe?: HubSubscribeInput;
 }
 
 export interface HubSpawnOutput {
@@ -394,11 +450,11 @@ export interface HubWaitInput {
 export type HubTaskSnapshot = Omit<HubQueryTaskOutput, 'output' | 'outputTruncated'>;
 
 export interface HubWaitOutput {
-  /** What ended the wait: a watched task settled, a message arrived for you, or nothing happened in time. */
-  reason: 'task' | 'message' | 'timeout';
+  /** What ended the wait: a watched task settled, a message arrived, a subscribed event fired, or nothing happened in time. */
+  reason: 'task' | 'message' | 'event' | 'timeout';
   /** The watched tasks' state; read a child's stdout tail with hub_query_task. */
   tasks: HubTaskSnapshot[];
-  /** Messages, directives and answers that arrived, consumed as hub_sync would. */
+  /** Messages, directives, answers and subscribed events that arrived, consumed as hub_sync would. */
   updates: HubUpdate[];
 }
 

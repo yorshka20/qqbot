@@ -46,6 +46,7 @@ function stubHub(): { hub: ContextHub; exited: string[]; registered: string[] } 
     workerExited: (workerId: string) => {
       exited.push(workerId);
     },
+    bindWorker: () => {},
   };
   return { hub: hub as unknown as ContextHub, exited, registered };
 }

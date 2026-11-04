@@ -372,7 +372,7 @@ export class WorkerPool {
     });
     // Stamp the taskId onto the registration so hub_report can look it up
     // without requiring a prior hub_claim call.
-    this.hub.workerRegistry.setTask(workerId, task.id);
+    this.hub.bindWorker(workerId, task.id);
     this.hub.eventLog.append('worker_joined', workerId, {
       template: templateName,
       project,

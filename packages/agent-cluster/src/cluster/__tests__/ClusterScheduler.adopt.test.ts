@@ -129,6 +129,9 @@ function stubHub(): ContextHub {
     messageBox: { send: () => 'message-id' },
     workerExited: () => {},
     taskSettled: () => {},
+    publishTaskOutcome: () => {},
+    taskDependencies: () => [],
+    bindWorker: () => {},
   } as unknown as ContextHub;
 }
 

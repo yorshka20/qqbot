@@ -1129,7 +1129,7 @@ Tasks can be fed from:
 
 ### Worker Protocol
 
-Workers communicate with the hub via MCP tool calls (`hub_claim`, `hub_report`, `hub_sync`, `hub_ask`, `hub_message`). The hub is exposed as an MCP server (`HubMCPServer`).
+Workers communicate with the hub via MCP tool calls (`hub_claim`, `hub_report`, `hub_sync`, `hub_ask`, `hub_message`, `hub_subscribe`). The hub is exposed as an MCP server (`HubMCPServer`).
 
 ## MCP Surfaces
 

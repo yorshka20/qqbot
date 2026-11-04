@@ -30,7 +30,7 @@ const MERGE_IDENTITY = {
 const MAX_REPORTED_FILES = 50;
 
 type MergeOutcome =
-  | { kind: 'merged'; head: string }
+  | { kind: 'merged'; before: string; head: string; files: string[] }
   | { kind: 'empty' }
   | { kind: 'conflict'; detail: string }
   | { kind: 'checkedOut'; worktree: string };
@@ -178,7 +178,13 @@ export class TaskWorkspaces {
         return false;
       case 'merged':
         task.mergedAt = new Date().toISOString();
-        this.hub.recordTaskEvent('task_merged', task, { branch, integrationBranch, head: outcome.head });
+        this.hub.taskMerged(task, {
+          branch,
+          integrationBranch,
+          before: outcome.before,
+          head: outcome.head,
+          files: outcome.files,
+        });
         return true;
     }
   }
@@ -269,8 +275,10 @@ async function merge(repo: string, branch: string, target: string): Promise<Merg
   if (worktree) {
     return { kind: 'checkedOut', worktree };
   }
+  // Listed before the branch moves: a failure here must not leave a landed task marked blocked.
+  const diff = await git(repo, ['diff', '--name-only', '--no-renames', '-z', ours, head]);
   await git(repo, ['update-ref', `refs/heads/${target}`, head, ours]);
-  return { kind: 'merged', head };
+  return { kind: 'merged', before: ours, head, files: diff.split('\0').filter(Boolean) };
 }
 
 /** The worktree that has `branch` checked out, if any (`git worktree list --porcelain` blocks). */
@@ -300,7 +308,8 @@ function pooledNote(kind: SlotKind, path: string, branch: string, integrationBra
       '所以**互相独立的子任务要并行 spawn**，不要因为"同一个仓库"就串行；只有真实的数据依赖才串行，写进 plan 的 `depends_on`。',
       '',
       '- child 成功退出后 daemon 立刻把它的分支合入集成分支，owner 在集成分支上验收，不用等整个 job 结束。',
-      '- 后 spawn 的 child 从集成分支当时的最新提交开始：依赖 A 的 B 等 A 结束后再 spawn，它一启动就能看到 A 的改动。',
+      '- child 从集成分支当时的最新提交开始。依赖 A 的 B 不用等：现在就 `hub_spawn({ ..., subscribe: { tasks: [A] } })`，',
+      '  daemon 让它排队到 A 合入后才启动，它一启动就能看到 A 的改动；A 失败时 B 被取消，`hub_wait` 把你叫醒。',
       '- 并行的 child 改同一个文件时，后合入的那个会以 `blocked` 结束；拆分时让并行的 child 不碰同一批文件。',
       '- `hub_wait` / `hub_query_task` 返回的 `mergedAt` 有值说明已合入；`completed` 却没有 `mergedAt` 说明它没提交任何东西。',
       '- 槽位满时 `hub_spawn` 返回 `queued`，有槽位归还时自动启动，你照常 `hub_wait`。',
@@ -321,6 +330,7 @@ function pooledNote(kind: SlotKind, path: string, branch: string, integrationBra
     '- **没提交的改动会丢。** 你退出后这个 worktree 会被重置交给下一个任务；daemon 在结果里报出没提交的文件，但内容不保留。',
     '- 依赖已经装好（`node_modules` 在这份 worktree 里复用），不需要自己安装，除非你改了 lockfile。',
     '- 要看已合入的内容用 `git show <集成分支>:<路径>` / `git log <集成分支>`，不离开当前分支。',
+    '- 依赖的兄弟任务合入后要用它的改动：`git merge <集成分支>`（快进或合并提交，**不要 rebase**），这是你唯一可以合并的方向。',
   ].join('\n');
 }
 

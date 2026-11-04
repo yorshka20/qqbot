@@ -27,6 +27,8 @@ describe('TaskWorkspaces', () => {
     const hub = {
       recordTaskEvent: (type: ClusterEventType, task: TaskRecord, data: Record<string, unknown>) =>
         events.push({ type, taskId: task.id, data }),
+      taskMerged: (task: TaskRecord, data: Record<string, unknown>) =>
+        events.push({ type: 'task_merged', taskId: task.id, data }),
     } as unknown as ContextHub;
     workspaces = new TaskWorkspaces(box.config, hub, new WorktreePool(box.config, db, box.registry), box.registry);
     job = {

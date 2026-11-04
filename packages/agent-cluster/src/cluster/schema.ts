@@ -110,6 +110,16 @@ export const CLUSTER_TABLE_STATEMENTS: readonly string[] = [
   read INTEGER NOT NULL DEFAULT 0
   )`,
   `CREATE INDEX IF NOT EXISTS idx_cluster_messages_target ON cluster_messages(targetWorkerId, read)`,
+  `CREATE TABLE IF NOT EXISTS cluster_subscriptions (
+  taskId TEXT NOT NULL,
+  jobId TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  target TEXT NOT NULL,
+  dependency INTEGER NOT NULL DEFAULT 0,
+  createdAt INTEGER NOT NULL,
+  PRIMARY KEY (taskId, kind, target)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_cluster_subscriptions_job ON cluster_subscriptions(jobId)`,
   `CREATE TABLE IF NOT EXISTS cluster_worktree_slots (
   project TEXT NOT NULL,
   slot TEXT NOT NULL,

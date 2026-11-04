@@ -21,6 +21,7 @@ export type ClusterEventType =
   | 'task_merged'
   | 'task_published'
   | 'task_publish_failed'
+  | 'task_subscribed'
   | 'worker_progress'
   | 'directive'
   | 'answer'
@@ -200,9 +201,30 @@ export interface ClusterTaskUsage {
   final?: boolean;
 }
 
+/** What a task's worker subscribed to. Live only: rows go when the worker exits, `task_subscribed` events stay on the task's timeline. */
+export interface ClusterTaskSubscriptions {
+  /** Sibling task ids. */
+  tasks: string[];
+  /** Repo-relative paths or globs. */
+  files: string[];
+  /** Anything landing on the job's integration branch. */
+  branch: boolean;
+  /** The subset of `tasks` that must land before this task starts: the plan's `depends_on`. */
+  dependsOn: string[];
+}
+
+/** SSE `task_subscribed`, and `data` of the event of that name: the task's whole subscription set after the change. */
+export interface ClusterTaskSubscribedEvent {
+  taskId: string;
+  jobId: string;
+  subscriptions: ClusterTaskSubscriptions;
+}
+
 /** `GET /api/cluster/tasks/:id` — a planner task also carries the tasks it spawned. */
 export interface ClusterTaskDetail extends ClusterTask {
   children?: ClusterTask[];
+  /** Unset when the task has no live subscriptions. */
+  subscriptions?: ClusterTaskSubscriptions;
 }
 
 export interface ClusterEventEntry {

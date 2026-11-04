@@ -1,7 +1,8 @@
 /**
  * MessageBox — per-worker message queues.
  *
- * Sources: hub_message from other workers, planner directives, hub_ask answers.
+ * Sources: hub_message from other workers, planner directives, hub_ask answers, and the events a
+ * worker subscribed to, whose `content` is a serialized `HubSubscriptionEvent`.
  * Messages are consumed via hub_sync (merged into updates).
  *
  * A message waits in `cluster_messages` until the worker's next hub_sync, which may come
@@ -11,12 +12,14 @@
 
 import type { Database } from 'bun:sqlite';
 import { logger, randomUUID } from '@qqbot/shared';
-import type { HubUpdate } from '../types';
+import type { HubSubscriptionEvent, HubUpdate } from '../types';
+
+export type MessageType = 'directive' | 'answer' | 'message' | 'event';
 
 export interface PendingMessage {
   id: string;
   targetWorkerId: string;
-  type: 'directive' | 'answer' | 'message';
+  type: MessageType;
   from: string;
   content: string;
   priority: 'info' | 'warning';
@@ -30,7 +33,7 @@ export class MessageBox {
   constructor(
     private db: Database,
     /** Called after a message is queued; the hub wakes a worker blocked in hub_wait with it. */
-    private onSend?: (targetWorkerId: string) => void,
+    private onSend?: (targetWorkerId: string, type: MessageType) => void,
   ) {
     this.load();
   }
@@ -42,7 +45,7 @@ export class MessageBox {
     targetWorkerId: string,
     from: string,
     content: string,
-    type: 'directive' | 'answer' | 'message' = 'message',
+    type: MessageType = 'message',
     priority: 'info' | 'warning' = 'info',
   ): string {
     const id = randomUUID();
@@ -68,7 +71,7 @@ export class MessageBox {
       logger.error('[MessageBox] Failed to persist message:', err);
     }
     logger.debug(`[MessageBox] Message ${id} queued for ${targetWorkerId} from ${from}`);
-    this.onSend?.(targetWorkerId);
+    this.onSend?.(targetWorkerId, type);
     return id;
   }
 
@@ -81,6 +84,10 @@ export class MessageBox {
     for (const msg of this.messages) {
       if (msg.targetWorkerId === workerId && !msg.read) {
         this.markRead(msg);
+        if (msg.type === 'event') {
+          updates.push(JSON.parse(msg.content) as HubSubscriptionEvent);
+          continue;
+        }
         updates.push({
           type: msg.type === 'directive' ? 'directive' : msg.type === 'answer' ? 'answer' : 'message',
           from: msg.from,
@@ -111,6 +118,36 @@ export class MessageBox {
    */
   getUnreadCount(workerId: string): number {
     return this.messages.filter((m) => m.targetWorkerId === workerId && !m.read).length;
+  }
+
+  /** True when something other than a subscribed event is waiting. */
+  hasUnreadMessage(workerId: string): boolean {
+    return this.messages.some((m) => m.targetWorkerId === workerId && !m.read && m.type !== 'event');
+  }
+
+  /** Hand everything unread at one address to another: a task's inbox to the worker that starts on it. */
+  readdress(from: string, to: string): void {
+    for (const msg of this.messages) {
+      if (msg.targetWorkerId === from && !msg.read) {
+        msg.targetWorkerId = to;
+      }
+    }
+    try {
+      this.db
+        .query('UPDATE cluster_messages SET targetWorkerId = ? WHERE targetWorkerId = ? AND read = 0')
+        .run(to, from);
+    } catch (err) {
+      logger.error('[MessageBox] Failed to readdress messages:', err);
+    }
+  }
+
+  /** Drop what is unread at an address nobody will ever read from. */
+  discard(address: string): void {
+    for (const msg of this.messages) {
+      if (msg.targetWorkerId === address && !msg.read) {
+        this.markRead(msg);
+      }
+    }
   }
 
   /**

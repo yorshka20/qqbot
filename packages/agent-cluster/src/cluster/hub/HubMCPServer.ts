@@ -33,6 +33,8 @@ import type {
   HubQueryTaskInput,
   HubReportInput,
   HubSpawnInput,
+  HubSubscribeInput,
+  HubUnsubscribeInput,
   HubWaitInput,
   HubWaitTaskInput,
   HubWritePlanInput,
@@ -95,6 +97,21 @@ type RegisterToolFn = (
   },
   handler: (args: Record<string, unknown>, extra: ToolExtra) => Promise<CallToolResult>,
 ) => void;
+
+/** The interests `hub_subscribe`, `hub_unsubscribe` and `hub_spawn.subscribe` share. */
+const INTEREST_SCHEMA = {
+  tasks: z
+    .array(z.string())
+    .optional()
+    .describe('Sibling task ids in your job: wake when one settles, merges, blocks or reports progress.'),
+  files: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Repo-relative paths or globs: wake when an overlapping lock is granted or released, or a merge touched one.',
+    ),
+  branch: z.boolean().optional().describe('Wake when anything lands on the job integration branch.'),
+};
 
 export class HubMCPServer {
   /** Cached MCP server instructions text (loaded once). */
@@ -241,10 +258,10 @@ export class HubMCPServer {
       {
         description:
           'Send a free-form message to another worker, or to "all" to broadcast. Use sparingly — most ' +
-          'coordination should go through hub_sync events and hub_claim locks. Reserved for cases where you ' +
-          'need to nudge a peer about something time-sensitive.',
+          'coordination should go through hub_subscribe events and hub_claim locks. Reserved for one concrete ' +
+          'fact a sibling needs and no event carries.',
         inputSchema: {
-          to: z.string().describe('Target workerId, or "all" to broadcast to every active worker.'),
+          to: z.string().describe('Target workerId, a sibling task id, or "all" to broadcast to every active worker.'),
           content: z.string().describe('The message body.'),
           priority: z.enum(['info', 'warning']).describe('Message priority.'),
         },
@@ -252,6 +269,36 @@ export class HubMCPServer {
       async (args, extra) =>
         this.runTool('hub_message', extra, (workerId) =>
           this.hub.handleMessage(workerId, args as unknown as HubMessageInput),
+        ),
+    );
+
+    // hub_subscribe
+    register(
+      'hub_subscribe',
+      {
+        description:
+          'Choose the sibling events that wake you. Each subscribed event ends a hub_wait with reason="event" and ' +
+          'arrives in its updates (and in hub_sync) as { kind, taskId, branch?, summary, files? }. Tasks must be in ' +
+          'your own job. What a named task already did is queued at once (caughtUp), so subscribing late misses ' +
+          'nothing. Subscriptions survive a daemon restart and end when you exit.',
+        inputSchema: INTEREST_SCHEMA,
+      },
+      async (args, extra) =>
+        this.runTool('hub_subscribe', extra, (workerId) =>
+          this.hub.handleSubscribe(workerId, args as unknown as HubSubscribeInput),
+        ),
+    );
+
+    // hub_unsubscribe
+    register(
+      'hub_unsubscribe',
+      {
+        description: 'Drop the named interests, exactly as you subscribed them. Naming none drops them all.',
+        inputSchema: INTEREST_SCHEMA,
+      },
+      async (args, extra) =>
+        this.runTool('hub_unsubscribe', extra, (workerId) =>
+          this.hub.handleUnsubscribe(workerId, args as unknown as HubUnsubscribeInput),
         ),
     );
 
@@ -315,6 +362,14 @@ export class HubMCPServer {
             .optional()
             .describe('Optional; only "executor" is allowed. Nested planners are forbidden.'),
           capabilities: z.array(z.string()).optional().describe('Optional capability hints (informational).'),
+          subscribe: z
+            .object(INTEREST_SCHEMA)
+            .optional()
+            .describe(
+              "Subscribe the child at spawn. tasks are the plan's depends_on: the child stays queued until they have " +
+                'landed, then starts from the integration tip and reads what landed from its first hub_sync. It is ' +
+                'cancelled if one of them fails. files and branch never hold it back.',
+            ),
         },
       },
       async (args, extra) =>
@@ -348,7 +403,8 @@ export class HubMCPServer {
       {
         description:
           'Block until something you must react to happens: a child task you watch reaches a terminal status, ' +
-          'a message/directive/answer arrives for you (owner messages included), or the window (max 240 s) ' +
+          'a message/directive/answer arrives for you (owner messages included), an event you subscribed to with ' +
+          'hub_subscribe fires (reason="event"), or the window (max 240 s) ' +
           'runs out. Nothing polls — the hub wakes you the moment the event occurs. Use this instead of sleep ' +
           'or periodic hub_sync. reason=timeout means nothing happened: call it again.',
         inputSchema: {

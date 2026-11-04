@@ -18,6 +18,7 @@
  *       hub_report — report progress / completion / failure / blocked
  *       hub_ask    — escalate to a human (decision / clarification / ...)
  *       hub_message — message another worker
+ *       hub_subscribe / hub_unsubscribe — choose the sibling events that wake this worker
  *   - Planner-only (Phase 2):
  *       hub_dispatch  — queue a new task (legacy; use hub_spawn for Phase 3)
  *       hub_directive — push an instruction into a worker's message box
@@ -56,8 +57,14 @@ import type {
   HubReportOutput,
   HubSpawnInput,
   HubSpawnOutput,
+  HubSubscribeInput,
+  HubSubscribeOutput,
+  HubSubscriptionEvent,
+  HubSubscriptions,
   HubSyncOutput,
   HubTaskSnapshot,
+  HubUnsubscribeInput,
+  HubUnsubscribeOutput,
   HubUpdate,
   HubWaitInput,
   HubWaitOutput,
@@ -69,8 +76,9 @@ import type {
 } from '../types';
 import { EventLog } from './EventLog';
 import { HubMCPServer } from './HubMCPServer';
-import { LockManager } from './LockManager';
+import { type LockChange, LockManager } from './LockManager';
 import { MessageBox } from './MessageBox';
+import { normalizeInterestPath, SubscriptionStore } from './SubscriptionStore';
 import { WorkerRegistry } from './WorkerRegistry';
 import { WAIT_MAX_MS } from './waitWindow';
 
@@ -134,6 +142,7 @@ export interface SchedulerBridge {
     project: string;
     description: string;
     template: string;
+    subscribe?: HubSubscribeInput;
   }): Promise<TaskRecord | null>;
   findTask(taskId: string): TaskRecord | undefined;
   /** A task has ended and its branch, if any, has landed: its status will not change again. */
@@ -147,12 +156,31 @@ export interface SchedulerBridge {
 // A planner reads the tail to see what a child is doing now; the full log is the owner's, on disk.
 const QUERY_OUTPUT_TAIL_CHARS = 8_000;
 const WAIT_HEARTBEAT_MS = 60_000;
+const MAX_EVENT_FILES = 50;
+const MAX_EVENT_SUMMARY_CHARS = 300;
+/** Stale by the time a worker starts, so a task still waiting for one is not told. */
+const TRANSIENT_EVENTS: ReadonlySet<HubSubscriptionEvent['kind']> = new Set([
+  'worker_progress',
+  'lock_acquired',
+  'lock_released',
+]);
+
+/** Where messages for a task wait until a worker starts on it. */
+function taskInbox(taskId: string): string {
+  return `task:${taskId}`;
+}
+
+function clip(text: string): string {
+  const line = text.replace(/\s+/g, ' ').trim();
+  return line.length > MAX_EVENT_SUMMARY_CHARS ? `${line.slice(0, MAX_EVENT_SUMMARY_CHARS)}…` : line;
+}
 
 export class ContextHub {
   readonly eventLog: EventLog;
   readonly lockManager: LockManager;
   readonly messageBox: MessageBox;
   readonly workerRegistry: WorkerRegistry;
+  readonly subscriptions: SubscriptionStore;
   /**
    * MCP server for worker tool calls. Mounted at `/mcp` on the same Bun.serve
    * instance that hosts the REST API. Workers' MCP clients connect here via
@@ -169,7 +197,7 @@ export class ContextHub {
   private schedulerBridge: SchedulerBridge | null = null;
   private sseSubscribers = new Set<SSESubscriber>();
   /** Workers blocked in hub_wait, by worker id, with the tasks each one watches. */
-  private waiters = new Map<string, { tasks: Set<string>; resolve: (reason: 'task' | 'message') => void }>();
+  private waiters = new Map<string, { tasks: Set<string>; resolve: (reason: 'task' | 'message' | 'event') => void }>();
   private helpRequests = new Map<string, HelpRequest>();
 
   /**
@@ -185,9 +213,12 @@ export class ContextHub {
     private ticketsDir: string,
   ) {
     this.eventLog = new EventLog(db, config.hub.eventLogMaxSize);
-    this.lockManager = new LockManager(db, this.eventLog, config.hub.lockTTL);
-    this.messageBox = new MessageBox(db, (workerId) => this.wake(workerId, 'message'));
+    this.lockManager = new LockManager(db, this.eventLog, config.hub.lockTTL, (change) => this.locksChanged(change));
+    this.messageBox = new MessageBox(db, (workerId, type) =>
+      this.wake(workerId, type === 'event' ? 'event' : 'message'),
+    );
     this.workerRegistry = new WorkerRegistry(db);
+    this.subscriptions = new SubscriptionStore(db);
     this.mcpServer = new HubMCPServer(this);
 
     this.loadHelpRequests();
@@ -318,9 +349,19 @@ export class ContextHub {
    */
   workerExited(workerId: string): void {
     this.lockManager.releaseAll(workerId);
+    const taskId = this.workerRegistry.get(workerId)?.lastBoundTaskId;
+    if (taskId) {
+      this.dropSubscriptions(taskId);
+    }
     this.workerRegistry.markExited(workerId);
     this.eventLog.append('worker_left', workerId, {});
     this.broadcastSSE('worker_status', { workerId, status: 'exited' });
+  }
+
+  /** A worker starts on a task: bind them, and hand it what arrived while the task had no worker. */
+  bindWorker(workerId: string, taskId: string): void {
+    this.workerRegistry.setTask(workerId, taskId);
+    this.messageBox.readdress(taskInbox(taskId), workerId);
   }
 
   // ── MCP Tool implementations ──
@@ -436,6 +477,9 @@ export class ContextHub {
       },
       { taskId: taskIdSnapshot },
     );
+    if (input.status === 'working' && taskIdSnapshot) {
+      this.publishProgress(workerId, taskIdSnapshot, input);
+    }
 
     // Update stats
     if (input.status === 'completed') {
@@ -556,7 +600,9 @@ export class ContextHub {
         }
       }
     } else {
-      this.messageBox.send(input.to, workerId, input.content, 'message', input.priority);
+      const sibling = this.schedulerBridge?.findTask(input.to);
+      const address = sibling ? (sibling.workerId ?? taskInbox(sibling.id)) : input.to;
+      this.messageBox.send(address, workerId, input.content, 'message', input.priority);
     }
 
     this.eventLog.append('message', workerId, {
@@ -566,6 +612,184 @@ export class ContextHub {
     });
 
     return { delivered: true };
+  }
+
+  /** Hub side of `hub_subscribe`: the interests are added to what the worker's task already has. */
+  handleSubscribe(workerId: string, input: HubSubscribeInput): HubSubscribeOutput {
+    this.workerRegistry.touch(workerId);
+    const task = this.currentTaskOf(workerId, 'hub_subscribe');
+    return this.subscribe(task, this.checkInterests('hub_subscribe', task, input), false);
+  }
+
+  handleUnsubscribe(workerId: string, input: HubUnsubscribeInput): HubUnsubscribeOutput {
+    this.workerRegistry.touch(workerId);
+    const task = this.currentTaskOf(workerId, 'hub_unsubscribe');
+    this.subscriptions.remove(task.id, {
+      ...input,
+      files: input.files?.map(normalizeInterestPath),
+    });
+    return { subscriptions: this.announceSubscriptions(task) };
+  }
+
+  /**
+   * Subscribe a child `hub_spawn` just created, before the scheduler may start it. The interests
+   * were checked by `handleSpawn`. Its `tasks` are its dependencies.
+   */
+  preSubscribe(child: TaskRecord, interests: HubSubscribeInput): void {
+    this.subscribe(child, interests, true);
+  }
+
+  /** What must land before this task may start. */
+  taskDependencies(taskId: string): string[] {
+    return this.subscriptions.dependenciesOf(taskId);
+  }
+
+  private currentTaskOf(workerId: string, tool: string): TaskRecord {
+    const taskId = this.workerRegistry.get(workerId)?.currentTaskId;
+    if (!taskId) {
+      throw new Error(`${tool}: worker has no current task`);
+    }
+    if (!this.schedulerBridge) {
+      throw new Error(`${tool}: scheduler bridge not wired (cluster misconfiguration)`);
+    }
+    const task = this.schedulerBridge.findTask(taskId);
+    if (!task) {
+      throw new Error(`${tool}: task ${taskId} not found in scheduler`);
+    }
+    return task;
+  }
+
+  /** Answers the interests with their paths normalized, or throws what the caller got wrong. */
+  private checkInterests(tool: string, owner: TaskRecord, input: HubSubscribeInput): HubSubscribeInput {
+    const tasks = Array.from(new Set(input.tasks ?? []));
+    const files = Array.from(new Set((input.files ?? []).map(normalizeInterestPath)));
+    if (tasks.length === 0 && files.length === 0 && !input.branch) {
+      throw new Error(`${tool}: name at least one of tasks, files or branch`);
+    }
+    for (const taskId of tasks) {
+      if (taskId === owner.id) {
+        throw new Error(`${tool}: a task cannot subscribe to itself`);
+      }
+      // "Not in your job" and "does not exist" look the same, as in hub_query_task.
+      if (this.schedulerBridge?.findTask(taskId)?.jobId !== owner.jobId) {
+        throw new Error(`${tool}: task ${taskId} is not in your job; subscriptions reach siblings only`);
+      }
+    }
+    return { tasks, files, branch: input.branch === true };
+  }
+
+  private subscribe(task: TaskRecord, interests: HubSubscribeInput, dependency: boolean): HubSubscribeOutput {
+    const known = new Set(this.subscriptions.of(task.id).tasks);
+    this.subscriptions.add(task.id, task.jobId, interests, { dependency });
+
+    // A subscription made after the fact must not wait for an event that already happened.
+    const caughtUp = (interests.tasks ?? []).filter((id) => !known.has(id)).flatMap((id) => this.outcomeSoFar(id));
+    for (const event of caughtUp) {
+      this.deliver(task.id, event);
+    }
+    return { subscriptions: this.announceSubscriptions(task), caughtUp: caughtUp.length };
+  }
+
+  private announceSubscriptions(task: TaskRecord): HubSubscriptions {
+    const subscriptions = this.subscriptions.of(task.id);
+    this.eventLog.append(
+      'task_subscribed',
+      task.workerId ?? 'cluster',
+      { subscriptions },
+      { jobId: task.jobId, taskId: task.id },
+    );
+    this.broadcastSSE('task_subscribed', { taskId: task.id, jobId: task.jobId, subscriptions });
+    return subscriptions;
+  }
+
+  private outcomeSoFar(taskId: string): HubSubscriptionEvent[] {
+    const task = this.schedulerBridge?.findTask(taskId);
+    if (!task) {
+      return [];
+    }
+    const events: HubSubscriptionEvent[] = [];
+    const [merged] = task.mergedAt ? this.eventLog.query({ taskId, type: 'task_merged', limit: 1 }) : [];
+    if (merged) {
+      const { integrationBranch, files, filesTotal } = merged.data as {
+        integrationBranch: string;
+        files: string[];
+        filesTotal: number;
+      };
+      events.push(this.mergedEvent(task, integrationBranch, files, filesTotal));
+    }
+    if (this.schedulerBridge?.isTaskSettled(taskId)) {
+      events.push(this.outcomeEvent(task));
+    }
+    return events;
+  }
+
+  private mergedEvent(
+    task: TaskRecord,
+    integrationBranch: string,
+    files: string[],
+    total: number,
+  ): HubSubscriptionEvent {
+    return {
+      kind: 'task_merged',
+      taskId: task.id,
+      branch: integrationBranch,
+      summary: clip(`Landed on ${integrationBranch}, ${total} file(s) changed. ${task.diffSummary ?? ''}`),
+      files: files.slice(0, MAX_EVENT_FILES),
+    };
+  }
+
+  private outcomeEvent(task: TaskRecord): HubSubscriptionEvent {
+    const completed = task.status === 'completed';
+    return {
+      kind: completed ? 'task_completed' : task.status === 'blocked' ? 'task_blocked' : 'task_failed',
+      taskId: task.id,
+      branch: task.branch,
+      summary: clip((completed ? task.diffSummary : (task.error ?? task.diffSummary)) ?? task.status),
+    };
+  }
+
+  /** Queued in the MessageBox, whose send hook is what wakes a worker blocked in hub_wait. */
+  private deliver(subscriberTaskId: string, event: HubSubscriptionEvent): void {
+    const workerId = this.schedulerBridge?.findTask(subscriberTaskId)?.workerId;
+    if (!workerId && TRANSIENT_EVENTS.has(event.kind)) {
+      return;
+    }
+    this.messageBox.send(workerId ?? taskInbox(subscriberTaskId), 'hub', JSON.stringify(event), 'event');
+  }
+
+  private dropSubscriptions(taskId: string): void {
+    this.subscriptions.dropTask(taskId);
+    this.messageBox.discard(taskInbox(taskId));
+  }
+
+  private publishProgress(workerId: string, taskId: string, input: HubReportInput): void {
+    const jobId = this.workerRegistry.getJobId(workerId);
+    if (!jobId) {
+      return;
+    }
+    const summary = clip(input.nextSteps ? `${input.summary} Next: ${input.nextSteps}` : input.summary);
+    for (const match of this.subscriptions.match(jobId, { taskId })) {
+      this.deliver(match.taskId, { kind: 'worker_progress', taskId, summary });
+    }
+  }
+
+  private locksChanged({ kind, workerId, taskId, files }: LockChange): void {
+    const jobId = this.workerRegistry.getJobId(workerId);
+    if (!jobId || !taskId) {
+      return;
+    }
+    const verb = kind === 'lock_acquired' ? 'locked' : 'released';
+    for (const match of this.subscriptions.match(jobId, { files })) {
+      if (match.taskId === taskId) {
+        continue;
+      }
+      this.deliver(match.taskId, {
+        kind,
+        taskId,
+        summary: `${match.files.length} file(s) you follow ${verb} by task ${taskId}`,
+        files: match.files.slice(0, MAX_EVENT_FILES),
+      });
+    }
   }
 
   // ── Planner-only tools ──
@@ -630,12 +854,20 @@ export class ContextHub {
     if (!parent) {
       throw new Error(`hub_spawn: parent task ${parentTaskId} not found in scheduler`);
     }
+    const subscribe = input.subscribe && this.checkInterests('hub_spawn', parent, input.subscribe);
+    for (const dependency of subscribe?.tasks ?? []) {
+      const task = this.schedulerBridge.findTask(dependency);
+      if (task?.status !== 'completed' && this.schedulerBridge.isTaskSettled(dependency)) {
+        throw new Error(`hub_spawn: dependency ${dependency} ended ${task?.status}, so this child could never start`);
+      }
+    }
     const child = await this.schedulerBridge.submitChildTask({
       parentTaskId,
       parentJobId: parent.jobId,
       project: parent.project,
       description: input.description,
       template: input.template,
+      subscribe,
     });
     if (!child) {
       throw new Error(
@@ -710,9 +942,9 @@ export class ContextHub {
   }
 
   /**
-   * Hub side of `hub_wait`: block until a watched child task settles, a message arrives for the
-   * worker, or the window runs out. Event-driven — nothing polls: `taskSettled` and the
-   * MessageBox's send hook wake the waiter. The window stays below the HTTP idle timeout so
+   * Hub side of `hub_wait`: block until a watched child task settles, a message or a subscribed
+   * event arrives for the worker, or the window runs out. Event-driven — nothing polls:
+   * `taskSettled` and the MessageBox's send hook wake the waiter. The window stays below the HTTP idle timeout so
    * the blocked MCP request is never cut; a `timeout` answer just means "call again".
    */
   async handleWait(workerId: string, input: HubWaitInput): Promise<HubWaitOutput> {
@@ -740,7 +972,8 @@ export class ContextHub {
       return { reason: 'task', tasks: snapshots(), updates: this.messageBox.consume(workerId) };
     }
     if (this.messageBox.getUnreadCount(workerId) > 0) {
-      return { reason: 'message', tasks: snapshots(), updates: this.messageBox.consume(workerId) };
+      const reason = this.messageBox.hasUnreadMessage(workerId) ? 'message' : 'event';
+      return { reason, tasks: snapshots(), updates: this.messageBox.consume(workerId) };
     }
 
     const previous = this.waiters.get(workerId);
@@ -753,7 +986,7 @@ export class ContextHub {
       }
     }, WAIT_HEARTBEAT_MS);
     try {
-      const reason = await new Promise<'task' | 'message' | 'timeout'>((resolve) => {
+      const reason = await new Promise<HubWaitOutput['reason']>((resolve) => {
         const timer = setTimeout(() => resolve('timeout'), timeoutMs);
         this.waiters.set(workerId, {
           tasks: new Set(tasks),
@@ -782,8 +1015,48 @@ export class ContextHub {
     this.broadcastSSE('task_event', { type, taskId: task.id, jobId: task.jobId, ...data });
   }
 
-  /** A task reached a terminal status (the scheduler says so): wake whoever waits on it. */
+  /** The task's branch moved the integration branch; `files` is the whole diff, capped only on the way out. */
+  taskMerged(
+    task: TaskRecord,
+    merge: { branch: string; integrationBranch: string; before: string; head: string; files: string[] },
+  ): void {
+    const { files, ...refs } = merge;
+    this.recordTaskEvent('task_merged', task, {
+      ...refs,
+      files: files.slice(0, MAX_EVENT_FILES),
+      filesTotal: files.length,
+    });
+    for (const match of this.subscriptions.match(task.jobId, { taskId: task.id, branch: true, files })) {
+      if (match.taskId === task.id) {
+        continue;
+      }
+      if (match.viaTask || match.viaBranch) {
+        this.deliver(match.taskId, this.mergedEvent(task, merge.integrationBranch, files, files.length));
+      } else {
+        this.deliver(match.taskId, {
+          kind: 'files_changed',
+          taskId: task.id,
+          branch: merge.integrationBranch,
+          summary: `${match.files.length} file(s) you follow changed on ${merge.integrationBranch}`,
+          files: match.files.slice(0, MAX_EVENT_FILES),
+        });
+      }
+    }
+  }
+
+  /** Tell the task's subscribers how it ended. The scheduler calls this once per task. */
+  publishTaskOutcome(task: TaskRecord): void {
+    for (const match of this.subscriptions.match(task.jobId, { taskId: task.id })) {
+      this.deliver(match.taskId, this.outcomeEvent(task));
+    }
+  }
+
+  /**
+   * A task reached a terminal status (the scheduler says so): wake whoever waits on it. Its own
+   * subscriptions end here too, which covers a task that never had a worker to exit.
+   */
   taskSettled(taskId: string): void {
+    this.dropSubscriptions(taskId);
     for (const [workerId, waiter] of this.waiters) {
       if (waiter.tasks.has(taskId)) {
         this.waiters.delete(workerId);
@@ -792,7 +1065,7 @@ export class ContextHub {
     }
   }
 
-  private wake(workerId: string, reason: 'task' | 'message'): void {
+  private wake(workerId: string, reason: 'message' | 'event'): void {
     const waiter = this.waiters.get(workerId);
     if (!waiter) return;
     this.waiters.delete(workerId);
@@ -1136,6 +1409,8 @@ export class ContextHub {
         return `已发布: ${data.command || ''}`;
       case 'task_publish_failed':
         return `发布失败: ${data.error || ''}`;
+      case 'task_subscribed':
+        return '更新了事件订阅';
       case 'lock_acquired':
         return `锁定文件: ${(data.files as string[] | undefined)?.join(', ') || data.file || ''}`;
       case 'lock_released':

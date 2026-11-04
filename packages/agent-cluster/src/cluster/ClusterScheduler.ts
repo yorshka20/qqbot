@@ -11,6 +11,7 @@ import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { TaskSource } from './sources/TaskSource';
 import {
+  type HubSubscribeInput,
   isTerminalTaskStatus,
   type JobRecord,
   type JobStatus,
@@ -155,6 +156,8 @@ export class ClusterScheduler {
       return;
     }
 
+    this.hub.publishTaskOutcome(task);
+
     const job = this.jobs.get(task.jobId);
     // Only the root task (no parentTaskId) advances job-level counters.
     // A planner + its hub_spawn children share one jobId with taskCount=1;
@@ -197,6 +200,9 @@ export class ClusterScheduler {
     void this.cascadeKillChildren(task.id).catch((err) => {
       logger.error(`[ClusterScheduler] cascadeKillChildren failed for ${task.id}:`, err);
     });
+
+    // A child may have been waiting for exactly this task.
+    void this.dispatchPendingTasks();
   }
 
   private settleWorkspace(task: TaskRecord): void {
@@ -340,6 +346,7 @@ export class ClusterScheduler {
       child.completedAt = new Date().toISOString();
       this.persistTask(child);
       this.activeTasks.delete(child.id);
+      this.hub.taskSettled(child.id);
 
       if (child.workerId) {
         try {
@@ -584,6 +591,8 @@ export class ClusterScheduler {
    * retry on the next tick.
    */
   private async tryDispatch(task: TaskRecord, projectInfo: ProjectEntry): Promise<boolean> {
+    if (!this.dependenciesLanded(task)) return false;
+
     // Template selection precedence:
     //   1. task.workerTemplate (pre-stamped by submitTask via the WebUI/API
     //      override or by a previous dispatch attempt)
@@ -630,6 +639,26 @@ export class ClusterScheduler {
     // Preparing a slot can include an install that takes minutes; hub_spawn and POST /jobs
     // answer now, and a failure reaches the task through the spawn-failure path.
     void spawned;
+    return true;
+  }
+
+  /**
+   * A child starts from the integration tip, so it waits until everything it depends on is there.
+   * A dependency that ended any other way will never land: the child ends too, which wakes its
+   * planner to decide what happens next.
+   */
+  private dependenciesLanded(task: TaskRecord): boolean {
+    for (const dependencyId of this.hub.taskDependencies(task.id)) {
+      if (!this.isTaskSettled(dependencyId)) return false;
+      const status = this.findTask(dependencyId)?.status;
+      if (status !== 'completed') {
+        task.status = 'cancelled';
+        task.error = `Not started: dependency ${dependencyId} ended ${status}`;
+        task.completedAt = new Date().toISOString();
+        this.finalizeTask(task);
+        return false;
+      }
+    }
     return true;
   }
 
@@ -1325,7 +1354,8 @@ export class ClusterScheduler {
    * If the worker pool is full, the child stays in `activeTasks` with
    * status `pending` and will be re-tried on the next scheduling tick by
    * `runOnce()`'s pending-task pass — same path as a `submitTask` that
-   * couldn't dispatch immediately.
+   * couldn't dispatch immediately. A child subscribed to tasks that have
+   * not landed waits the same way, see `dependenciesLanded`.
    */
   async submitChildTask(opts: {
     parentTaskId: string;
@@ -1333,6 +1363,7 @@ export class ClusterScheduler {
     project: string;
     description: string;
     template: string;
+    subscribe?: HubSubscribeInput;
   }): Promise<TaskRecord | null> {
     const projectInfo = this.projectRegistry.resolve(opts.project);
     if (!projectInfo) {
@@ -1369,6 +1400,9 @@ export class ClusterScheduler {
     task.workerTemplate = opts.template;
     task.parentTaskId = opts.parentTaskId;
     this.persistTask(task);
+    if (opts.subscribe) {
+      this.hub.preSubscribe(task, opts.subscribe);
+    }
 
     await this.tryDispatch(task, projectInfo);
     return task;

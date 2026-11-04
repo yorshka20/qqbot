@@ -14,6 +14,14 @@ import { logger } from '@qqbot/shared';
 import type { FileLock, LockConflict } from '../types';
 import type { EventLog } from './EventLog';
 
+/** Files that became locked or free together, with the worker that held or took them. */
+export interface LockChange {
+  kind: 'lock_acquired' | 'lock_released';
+  workerId: string;
+  taskId?: string;
+  files: string[];
+}
+
 export class LockManager {
   private locks = new Map<string, FileLock>();
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
@@ -22,6 +30,8 @@ export class LockManager {
     private db: Database,
     private eventLog: EventLog,
     private defaultTTL: number = 600_000, // 10 minutes
+    /** Called once per batch of files; the hub turns it into events for file subscribers. */
+    private onChange?: (change: LockChange) => void,
   ) {
     this.load();
     this.startCleanup();
@@ -41,6 +51,12 @@ export class LockManager {
         // Check if expired
         if (now - existing.lastRenewed >= existing.ttl) {
           this.releaseLock(file, 'expired');
+          this.onChange?.({
+            kind: 'lock_released',
+            workerId: existing.workerId,
+            taskId: existing.taskId,
+            files: [file],
+          });
         } else {
           conflicts.push({
             file,
@@ -56,6 +72,9 @@ export class LockManager {
       return { granted: false, conflicts };
     }
 
+    // A renewal of the worker's own lock is news to nobody.
+    const newlyHeld = files.filter((file) => this.locks.get(file)?.workerId !== workerId);
+
     // Acquire all locks
     for (const file of files) {
       const lock: FileLock = {
@@ -70,6 +89,10 @@ export class LockManager {
       this.persist(lock);
 
       this.eventLog.append('lock_acquired', workerId, { file }, { taskId });
+    }
+
+    if (newlyHeld.length > 0) {
+      this.onChange?.({ kind: 'lock_acquired', workerId, taskId, files: newlyHeld });
     }
 
     return { granted: true, conflicts: [] };
@@ -101,9 +124,11 @@ export class LockManager {
    */
   releaseAll(workerId: string): void {
     const toRelease: string[] = [];
+    let taskId: string | undefined;
     for (const [file, lock] of this.locks) {
       if (lock.workerId === workerId) {
         toRelease.push(file);
+        taskId = lock.taskId;
       }
     }
     for (const file of toRelease) {
@@ -111,6 +136,7 @@ export class LockManager {
     }
     if (toRelease.length > 0) {
       logger.info(`[LockManager] Released ${toRelease.length} locks for worker ${workerId}`);
+      this.onChange?.({ kind: 'lock_released', workerId, taskId, files: toRelease });
     }
   }
 
@@ -198,6 +224,7 @@ export class LockManager {
         if (now - lock.lastRenewed >= lock.ttl) {
           logger.warn(`[LockManager] Lock expired for ${file} (worker: ${lock.workerId})`);
           this.releaseLock(file, 'expired');
+          this.onChange?.({ kind: 'lock_released', workerId: lock.workerId, taskId: lock.taskId, files: [file] });
         }
       }
     }, 60_000);

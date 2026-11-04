@@ -45,6 +45,10 @@ describe('ClusterScheduler with a worktree pool', () => {
       workerExited: () => {},
       taskSettled: (taskId: string) => settled.push(taskId),
       recordTaskEvent: () => {},
+      taskMerged: () => {},
+      publishTaskOutcome: () => {},
+      taskDependencies: () => [],
+      bindWorker: () => {},
     } as unknown as ContextHub;
     const pool = new WorkerPool(box.config, hub);
     pool.registerBackend(scriptBackend);
