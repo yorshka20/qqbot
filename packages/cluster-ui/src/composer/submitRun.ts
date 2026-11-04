@@ -1,5 +1,6 @@
 import type { ClusterTask, ClusterTemplatesResponse, Ticket } from '@qqbot/api-types';
 import { acknowledgeClusterTask, createClusterJob, createTicket, getClusterTask, updateTicket } from '../api';
+import type { PlanningMode } from '../lib/planning';
 import { needsPlannerTicket, plannerTicketDraft, type Run, resolveTemplate } from '../lib/runs';
 
 export interface RunInput {
@@ -7,6 +8,7 @@ export interface RunInput {
   description: string;
   template?: string;
   ticketId?: string;
+  planning?: PlanningMode;
 }
 
 export interface SubmittedRun {
@@ -33,6 +35,7 @@ export async function submitRun(input: RunInput, templates: ClusterTemplatesResp
       workerTemplate: input.template,
       requirePlannerRole: role === 'planner' ? true : undefined,
       ticketId,
+      planning: role === 'planner' ? input.planning : undefined,
     });
     if (ticketId) {
       await updateTicket(ticketId, { status: 'dispatched', dispatchedJobId: task.jobId, project: input.project });
@@ -52,7 +55,13 @@ export async function submitRun(input: RunInput, templates: ClusterTemplatesResp
 export async function retryRun(run: Run, templates: ClusterTemplatesResponse | null): Promise<SubmittedRun> {
   const { description } = await getClusterTask(run.task.id);
   const next = await submitRun(
-    { project: run.task.project, description, template: run.task.workerTemplate, ticketId: run.ticketId },
+    {
+      project: run.task.project,
+      description,
+      template: run.task.workerTemplate,
+      ticketId: run.ticketId,
+      planning: run.planning,
+    },
     templates,
   );
   await acknowledgeClusterTask(run.task.id);

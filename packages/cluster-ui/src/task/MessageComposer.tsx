@@ -9,7 +9,7 @@ import { MESSAGE_ENABLED_HINT, messageAvailability } from '../lib/runs';
 
 const ENDED_HINT = '这条运行已结束，可以重试或复制续跑命令。';
 
-export function MessageComposer({ task }: { task: ClusterTask }) {
+export function MessageComposer({ task, discussing }: { task: ClusterTask; discussing: boolean }) {
   const { refresh } = useCluster();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -52,7 +52,9 @@ export function MessageComposer({ task }: { task: ClusterTask }) {
             disabled={!enabled}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="对 worker 说点什么（⌘Enter 发送）"
+            placeholder={
+              discussing ? '给 planner 提意见，它会按你说的改方案（⌘Enter 发送）' : '对 worker 说点什么（⌘Enter 发送）'
+            }
             aria-label="给 worker 发消息"
             className="max-h-40 min-h-0 min-w-0 resize-none"
           />

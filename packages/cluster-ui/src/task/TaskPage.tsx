@@ -16,6 +16,7 @@ import { acknowledgeClusterTask, killClusterTask } from '../api';
 import { useCluster } from '../app/ClusterData';
 import { togglePinned, usePinned } from '../app/pins';
 import { StageBadge } from '../components/StageBadge';
+import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import {
   Dialog,
@@ -35,8 +36,9 @@ import { useIsMobile } from '../hooks/use-mobile';
 import { readDetailOpen, readTaskTab, rememberDetailOpen, rememberTaskTab } from '../lib/memory';
 import { modelDisplayName } from '../lib/model';
 import { useOutput } from '../lib/outputs';
+import { PLANNING_STATE_LABEL, planningState } from '../lib/planning';
 import { homePath, parseOverlay, TASK_TABS, type TaskTab, taskPath, withOverlay } from '../lib/routes';
-import { type Run, runTimes, runTitle } from '../lib/runs';
+import { type Run, resolveTemplate, runTimes, runTitle } from '../lib/runs';
 import { isLive, stageOfStatus } from '../lib/stage';
 import { pathOfRun } from '../lib/taskList';
 import { formatClock, formatSpan } from '../lib/time';
@@ -160,6 +162,14 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
     return <p className="p-6 text-sm text-muted-foreground">正在读取这条运行…</p>;
   }
 
+  const template = resolveTemplate({ project: task.project, template: task.workerTemplate }, templates);
+  const isPlanner = templates?.templates.find((t) => t.name === template)?.role === 'planner';
+  const planning = planningState(task, {
+    isPlanner,
+    asks: run?.asks.length ?? 0,
+    children: runs.filter((candidate) => candidate.task.parentTaskId === task.id).length,
+  });
+
   const live = isLive(task);
   const stage = run?.stage ?? stageOfStatus(task.status);
   const title = run?.title ?? runTitle(task.description);
@@ -243,6 +253,7 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           <StageBadge stage={stage} />
+          {planning && <Badge variant="outline">{PLANNING_STATE_LABEL[planning]}</Badge>}
           {task.model && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -326,7 +337,7 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
       {tab === 'chat' && (
         <>
           <ConversationStream task={task} events={events} rootId={taskId} ticketId={ticketId} now={now} />
-          <MessageComposer task={task} />
+          <MessageComposer task={task} discussing={planning === 'discussing'} />
         </>
       )}
       {tab === 'topology' && (

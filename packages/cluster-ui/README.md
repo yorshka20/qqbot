@@ -33,7 +33,7 @@ bun test packages/cluster-ui
 | `src/composer/` | 新任务 composer、ticket 抽屉、`submitRun` |
 | `src/settings/` | 设置的六个分组：workers、templates、projects、concurrency、daemon、console |
 | `src/components/` | 业务组件；`components/ui/` 是 shadcn 生成的基础组件 |
-| `src/lib/` | 纯逻辑，都有单测：`routes`（路由契约）、`taskList`（对话列表分组与钉住）、`taskGraph`（拓扑图）、`home`、`stage`（状态映射）、`inbox`、`runs`（运行聚合、`resolveTemplate`、planner ticket 草稿）、`conversation` / `transcript`（对话视图）、`logs`、`usage` / `model`、`window`、`timeline`、`resume`、`workers`、`daemon`、`slots` |
+| `src/lib/` | 纯逻辑，都有单测：`routes`（路由契约）、`taskList`（对话列表分组与钉住）、`taskGraph`（拓扑图）、`home`、`stage`（状态映射）、`inbox`、`runs`（运行聚合、`resolveTemplate`、planner ticket 草稿）、`planning`（规划模式与规划状态）、`conversation` / `transcript`（对话视图）、`logs`、`usage` / `model`、`window`、`timeline`、`resume`、`workers`、`daemon`、`slots` |
 | `src/api.ts` `src/stream/` `src/auth/` | HTTP、SSE（fetch + ReadableStream，因为 `EventSource` 带不了 Authorization）、token |
 
 全页一条 SSE，事件触发 `ClusterData` 刷新；轮询只在流断开时兜底，切回隐藏的页签时补一次。

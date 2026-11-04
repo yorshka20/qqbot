@@ -16,6 +16,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { readComposerChoice, rememberComposerChoice } from '../lib/memory';
+import { PLANNING_MODE_LABEL, PLANNING_MODES, parsePlanningMode } from '../lib/planning';
 import { parseOverlay, taskPath, withOverlay } from '../lib/routes';
 import { composerDefaults, needsPlannerTicket, resolveTemplate } from '../lib/runs';
 import { submitRun, ticketDescription } from './submitRun';
@@ -30,6 +31,7 @@ function ComposerForm() {
   const navigate = useNavigate();
   const overlay = parseOverlay(location.search);
   const [saved] = useState(() => readComposerChoice());
+  const [planning, setPlanning] = useState(() => parsePlanningMode(saved.planning));
   const [text, setText] = useState('');
   const [project, setProject] = useState<string | null>(null);
   const [template, setTemplate] = useState<string | null>(null);
@@ -103,10 +105,11 @@ function ComposerForm() {
           description: ticket ? ticketDescription(ticket, text) : text.trim(),
           template: chosenTemplate || undefined,
           ticketId: ticket?.id,
+          planning,
         },
         templates,
       );
-      rememberComposerChoice({ project: chosenProject, template: chosenTemplate });
+      rememberComposerChoice({ project: chosenProject, template: chosenTemplate, planning });
       await refresh();
       navigate({
         pathname: taskPath(task.id),
@@ -196,6 +199,22 @@ function ComposerForm() {
           </SelectContent>
         </Select>
       </div>
+      {resolvedRole === 'planner' && (
+        <fieldset aria-label="规划模式" className="flex flex-wrap gap-2">
+          {PLANNING_MODES.map((mode) => (
+            <Button
+              key={mode}
+              type="button"
+              size="sm"
+              variant={planning === mode ? 'secondary' : 'outline'}
+              aria-pressed={planning === mode}
+              onClick={() => setPlanning(mode)}
+            >
+              {PLANNING_MODE_LABEL[mode]}
+            </Button>
+          ))}
+        </fieldset>
+      )}
       {readyTickets.length > 0 && !ticket && (
         <Select value={NO_TICKET} onValueChange={pickTicket}>
           <SelectTrigger className="w-full" aria-label="从 ticket 文件">
