@@ -428,6 +428,15 @@ export class WorkerPool {
       nudgedAt: null,
     };
     this.workers.set(workerId, worker);
+    // Bind the worker to its task in the hub again: a hub_report that arrives after the
+    // restart must still reach this task.
+    this.hub.workerRegistry.register(workerId, {
+      role: template?.role === 'planner' ? 'planner' : 'coder',
+      project: task.project,
+      templateName: worker.templateName,
+      jobId: task.jobId,
+    });
+    this.hub.workerRegistry.setTask(workerId, task.id);
     this.follow(worker, backend, undefined);
     logger.info(`[WorkerPool] Adopted worker ${workerId} (pid ${pid}) for task ${task.id}`);
     return true;

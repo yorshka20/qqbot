@@ -257,10 +257,11 @@ class FileLogger implements Logger {
       transports: consoleOutput ? [this.fileTransport, consoleTransport] : [this.fileTransport],
     });
 
-    // Check date periodically for long-running processes
+    // Check date periodically for long-running processes. The timer must not be what keeps a
+    // process alive: a one-shot CLI that only imported the logger has to exit when its work is done.
     setInterval(() => {
       this.checkDateChange();
-    }, 60000); // Check every minute
+    }, 60000).unref();
   }
 
   private checkDateChange(): void {

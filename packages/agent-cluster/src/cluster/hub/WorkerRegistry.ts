@@ -334,6 +334,11 @@ export class WorkerRegistry {
     };
     if (row.taskId) {
       reg.lastBoundTaskId = row.taskId;
+      // A worker that had not exited when the registry was last written is still bound to its
+      // task: its next hub_report must reach that task, also across a scheduler restart.
+      if (row.status !== 'exited') {
+        reg.currentTaskId = row.taskId;
+      }
     }
     return reg;
   }
