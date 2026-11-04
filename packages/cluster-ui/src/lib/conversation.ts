@@ -180,3 +180,36 @@ export function buildConversation(input: ConversationInput): ConversationEntry[]
     .sort((a, b) => a.entry.at - b.entry.at || a.index - b.index)
     .map(({ entry }) => entry);
 }
+
+const HEAD_ENTRIES = 2;
+const TAIL_ENTRIES = 8;
+
+export type ConversationItem =
+  | { fold: false; entry: ConversationEntry }
+  | { fold: true; id: string; entries: ConversationEntry[] };
+
+/**
+ * A long run keeps its first and last entries and folds the middle; a question still waiting
+ * is never folded away.
+ */
+export function foldConversation(entries: ConversationEntry[]): ConversationItem[] {
+  const tailStart = entries.length - TAIL_ENTRIES;
+  const items: ConversationItem[] = [];
+  let hidden: ConversationEntry[] = [];
+  const flush = () => {
+    if (hidden.length > 0) {
+      items.push({ fold: true, id: `fold:${hidden[0].id}`, entries: hidden });
+      hidden = [];
+    }
+  };
+  entries.forEach((entry, index) => {
+    if (index < HEAD_ENTRIES || index >= tailStart || (entry.kind === 'question' && entry.pending)) {
+      flush();
+      items.push({ fold: false, entry });
+    } else {
+      hidden.push(entry);
+    }
+  });
+  flush();
+  return items;
+}

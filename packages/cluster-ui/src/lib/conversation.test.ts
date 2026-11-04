@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterEventEntry, ClusterEventType, ClusterHelpRequest, ClusterTask } from '@qqbot/api-types';
-import { buildConversation, type ConversationEntry, type ConversationInput } from './conversation';
+import { buildConversation, type ConversationEntry, type ConversationInput, foldConversation } from './conversation';
 
 const T0 = Date.parse('2026-11-04T12:00:00Z');
 const MIN = 60_000;
@@ -219,5 +219,37 @@ describe('buildConversation', () => {
     ]);
     expect(systems[0].seq).toBeUndefined();
     expect(systems[2].seq).toBeDefined();
+  });
+});
+
+describe('foldConversation', () => {
+  function system(index: number): ConversationEntry {
+    return { kind: 'system', id: `s${index}`, at: T0 + index * MIN, text: `第 ${index} 条` };
+  }
+  function pendingQuestion(index: number): ConversationEntry {
+    return { kind: 'question', id: `q${index}`, at: T0 + index * MIN, askId: 'a', question: '?', pending: true };
+  }
+
+  test('a short conversation is not folded', () => {
+    const entries = Array.from({ length: 10 }, (_, i) => system(i));
+    expect(foldConversation(entries).every((item) => !item.fold)).toBe(true);
+  });
+
+  test('a long one keeps two at the head and eight at the tail', () => {
+    const entries = Array.from({ length: 30 }, (_, i) => system(i));
+    const items = foldConversation(entries);
+    expect(items).toHaveLength(2 + 1 + 8);
+    const fold = items[2];
+    expect(fold.fold && fold.entries).toHaveLength(20);
+    expect(items.slice(0, 2).map((item) => !item.fold && item.entry.id)).toEqual(['s0', 's1']);
+    expect(items.at(-1)).toEqual({ fold: false, entry: entries[29] });
+  });
+
+  test('a pending question in the middle stays and splits the fold', () => {
+    const entries = Array.from({ length: 30 }, (_, i) => (i === 10 ? pendingQuestion(i) : system(i)));
+    const items = foldConversation(entries);
+    const folds = items.filter((item) => item.fold);
+    expect(folds).toHaveLength(2);
+    expect(items.some((item) => !item.fold && item.entry.id === 'q10')).toBe(true);
   });
 });

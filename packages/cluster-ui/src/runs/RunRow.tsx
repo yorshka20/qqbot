@@ -4,6 +4,7 @@ import { STAGE_LABEL, STAGE_TONE, stageRank } from '../lib/stage';
 import { formatAgo, formatSpan } from '../lib/time';
 import { STAGE_ICON, StatePill } from '../ui/StatePill';
 import { StatusBar } from '../ui/StatusBar';
+import { ModelName, RunFactsLine } from './RunFacts';
 
 export function runSpanLabel(run: Run, now: number): string {
   const ended = stageRank(run.stage) >= stageRank('done') || run.stage === 'review';
@@ -22,6 +23,7 @@ export function RunRow({
   href,
   index,
   now,
+  exitedAt,
   selected,
   cursor,
   depth,
@@ -32,6 +34,7 @@ export function RunRow({
   href: string;
   index: number;
   now: number;
+  exitedAt?: number;
   selected: boolean;
   cursor: boolean;
   depth: number;
@@ -77,10 +80,14 @@ export function RunRow({
       <div className={`truncate text-16 ${selected ? 'font-medium' : ''}`} title={runBody(run.task.description)}>
         {run.title}
       </div>
-      <div className="flex min-w-0 items-baseline gap-2 text-14 text-ink-muted">
-        <span className="truncate">{[run.task.project, run.task.workerTemplate].filter(Boolean).join(' · ')}</span>
-        {run.task.model && <span className="ml-auto shrink-0 truncate font-mono text-13">{run.task.model}</span>}
+      <div className="flex min-w-0 items-baseline gap-1.5 text-14 text-ink-muted">
+        <span className="truncate" title={run.task.id}>
+          {[run.task.project, run.task.workerTemplate].filter(Boolean).join(' · ')}
+        </span>
+        <span aria-hidden>·</span>
+        <ModelName id={run.task.model} className="shrink-0 truncate" />
       </div>
+      <RunFactsLine task={run.task} exitedAt={exitedAt} now={now} />
     </a>
   );
 }

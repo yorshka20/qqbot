@@ -32,3 +32,13 @@ export function inWindow(run: Run, window: RunWindow, now: number): boolean {
   const at = toMs(run.task.completedAt) ?? toMs(run.task.createdAt) ?? 0;
   return at >= windowStart(window, now);
 }
+
+/** Whether the loaded history stops short of the window's start while the daemon still has older runs. */
+export function needsOlderHistory(
+  oldestLoadedAt: number | null,
+  window: RunWindow,
+  now: number,
+  hasMore: boolean,
+): boolean {
+  return hasMore && (oldestLoadedAt === null || oldestLoadedAt > windowStart(window, now));
+}

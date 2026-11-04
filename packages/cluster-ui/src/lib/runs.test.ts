@@ -5,9 +5,12 @@ import {
   buildRuns,
   composerDefaults,
   groupRunSections,
+  MESSAGE_ENABLED_HINT,
+  messageAvailability,
   needsPlannerTicket,
   orderRunsAsTree,
   parseFiles,
+  parseRunView,
   plannerTicketDraft,
   runBody,
   runTimes,
@@ -399,5 +402,37 @@ describe('plannerTicketDraft', () => {
       template: 'claude',
       body: description,
     });
+  });
+});
+
+describe('messageAvailability', () => {
+  test('a running task takes a message', () => {
+    expect(messageAvailability({ status: 'running' })).toEqual({ enabled: true, hint: MESSAGE_ENABLED_HINT });
+    expect(MESSAGE_ENABLED_HINT).toBe('worker 下一次调用 hub 时收到这条消息。');
+  });
+
+  test('a task with no worker yet explains the wait', () => {
+    for (const status of ['pending', 'claimed'] as const) {
+      expect(messageAvailability({ status })).toEqual({
+        enabled: false,
+        hint: '运行还没开始，worker 启动后才能发消息。',
+      });
+    }
+  });
+
+  test('a finished task is closed', () => {
+    for (const status of ['completed', 'failed', 'blocked', 'cancelled'] as const) {
+      expect(messageAvailability({ status })).toEqual({ enabled: false, hint: '运行已结束，重新提交或续跑。' });
+    }
+  });
+});
+
+describe('parseRunView', () => {
+  test('accepts the three views and nothing else', () => {
+    expect(parseRunView('chat')).toBe('chat');
+    expect(parseRunView('log')).toBe('log');
+    expect(parseRunView('result')).toBe('result');
+    expect(parseRunView('x')).toBeNull();
+    expect(parseRunView(null)).toBeNull();
   });
 });

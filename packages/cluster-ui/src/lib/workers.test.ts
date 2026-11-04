@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterWorkerHistoryEntry } from '@qqbot/api-types';
-import { exitedWorkers, workerResult, workerTaskId } from './workers';
+import { exitedWorkers, mergeWorkers, workerResult, workerTaskId } from './workers';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z');
 const DAY = 24 * 60 * 60 * 1000;
@@ -57,5 +57,20 @@ describe('workerTaskId', () => {
     expect(workerTaskId(entry({ currentTaskId: 'c', lastBoundTaskId: 'l' }))).toBe('c');
     expect(workerTaskId(entry({ lastBoundTaskId: 'l' }))).toBe('l');
     expect(workerTaskId(entry({}))).toBeUndefined();
+  });
+});
+
+describe('mergeWorkers', () => {
+  test('joins lists by worker id and the first list wins', () => {
+    const live = entry({ workerId: 'w1', status: 'active', lastReportSummary: 'live' });
+    const old = entry({ workerId: 'w1', lastReportSummary: 'old' });
+    const gone = entry({ workerId: 'w2' });
+    const merged = mergeWorkers([live], [old, gone]);
+    expect(merged.map((w) => w.workerId)).toEqual(['w1', 'w2']);
+    expect(merged[0].lastReportSummary).toBe('live');
+  });
+
+  test('no lists is an empty list', () => {
+    expect(mergeWorkers()).toEqual([]);
   });
 });

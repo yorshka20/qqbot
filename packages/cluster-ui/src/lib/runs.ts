@@ -3,6 +3,20 @@ import { isLive, type Stage, stageOf, stageRank } from './stage';
 import { toMs } from './time';
 import { inWindow, type RunWindow } from './window';
 
+export type RunView = 'chat' | 'log' | 'result';
+
+export const RUN_VIEWS: readonly RunView[] = ['chat', 'log', 'result'];
+
+export const RUN_VIEW_LABEL: Record<RunView, string> = {
+  chat: '对话',
+  log: '日志',
+  result: '结果',
+};
+
+export function parseRunView(value: string | null | undefined): RunView | null {
+  return RUN_VIEWS.find((view) => view === value) ?? null;
+}
+
 export interface Run {
   task: ClusterTask;
   stage: Stage;
@@ -308,5 +322,25 @@ export function parseFiles(filesModified: string | undefined): string[] {
     return Array.isArray(parsed) ? parsed.map(String) : [filesModified];
   } catch {
     return [filesModified];
+  }
+}
+
+export interface MessageAvailability {
+  enabled: boolean;
+  hint: string;
+}
+
+export const MESSAGE_ENABLED_HINT = 'worker 下一次调用 hub 时收到这条消息。';
+
+/** A message reaches a worker only while one is running the task. */
+export function messageAvailability(task: Pick<ClusterTask, 'status'>): MessageAvailability {
+  switch (task.status) {
+    case 'running':
+      return { enabled: true, hint: MESSAGE_ENABLED_HINT };
+    case 'pending':
+    case 'claimed':
+      return { enabled: false, hint: '运行还没开始，worker 启动后才能发消息。' };
+    default:
+      return { enabled: false, hint: '运行已结束，重新提交或续跑。' };
   }
 }

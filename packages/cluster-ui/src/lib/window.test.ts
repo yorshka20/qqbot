@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterTask } from '@qqbot/api-types';
 import { buildRuns, type Run } from './runs';
-import { inWindow, RUN_WINDOW_LABEL, windowStart } from './window';
+import { inWindow, needsOlderHistory, RUN_WINDOW_LABEL, windowStart } from './window';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z');
 const HOUR = 60 * 60 * 1000;
@@ -58,5 +58,24 @@ describe('inWindow', () => {
     const old = run({ status: 'cancelled' });
     expect(inWindow(old, '24h', NOW)).toBe(false);
     expect(inWindow(old, '7d', NOW)).toBe(true);
+  });
+});
+
+describe('needsOlderHistory', () => {
+  test('is false when nothing older exists', () => {
+    expect(needsOlderHistory(NOW - DAY * 30, '7d', NOW, false)).toBe(false);
+  });
+
+  test('is true when the oldest loaded run is newer than the window start', () => {
+    expect(needsOlderHistory(NOW - 2 * HOUR, '24h', NOW, true)).toBe(true);
+    expect(needsOlderHistory(null, '24h', NOW, true)).toBe(true);
+  });
+
+  test('is false when history already reaches past the window start', () => {
+    expect(needsOlderHistory(NOW - 2 * DAY, '24h', NOW, true)).toBe(false);
+  });
+
+  test('the all window keeps asking while more exists', () => {
+    expect(needsOlderHistory(NOW - 30 * DAY, 'all', NOW, true)).toBe(true);
   });
 });

@@ -15,11 +15,18 @@ describe('route', () => {
       pin: 'c',
       project: 'demo',
       stage: 'running' as const,
+      view: 'log' as const,
     };
     expect(parseRoute(routeHref(route))).toEqual(route);
   });
 
   test('a stage that does not exist is no filter at all', () => {
     expect(parseRoute('#/runs?stage=nope').stage).toBeNull();
+  });
+
+  test('a view that does not exist is no view at all', () => {
+    expect(parseRoute('#/runs/a?view=nope').view).toBeNull();
+    expect(parseRoute('#/runs/a').view).toBeNull();
+    expect(parseRoute('#/runs/a?view=chat').view).toBe('chat');
   });
 });

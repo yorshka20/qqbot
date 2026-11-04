@@ -1,5 +1,6 @@
 import { useCluster } from '../app/ClusterData';
 import { routeHref } from '../app/route';
+import type { Run } from '../lib/runs';
 import { STAGE_LABEL, STAGE_TONE, TONE_BG, type Tone } from '../lib/stage';
 import { formatSpan, toMs } from '../lib/time';
 import {
@@ -10,6 +11,7 @@ import {
   WORKER_STATE_TONE,
   type WorkerState,
 } from '../lib/topology';
+import { ModelName, RunFactsLine } from '../runs/RunFacts';
 import { runSpanLabel } from '../runs/RunRow';
 import { STAGE_ICON, StatePill } from '../ui/StatePill';
 import { StatusBar } from '../ui/StatusBar';
@@ -28,7 +30,7 @@ const WORKER_CARD: Record<WorkerState, string> = {
   asking: 'border-attention/40',
   failed: 'border-failed/40',
   idle: 'border-dashed border-line opacity-70',
-  exited: 'border-line',
+  exited: 'border-line opacity-70',
 };
 
 type NodeOf<K extends TopologyNode['kind']> = Extract<TopologyNode, { kind: K }>;
@@ -37,13 +39,46 @@ export function workerCardClass(state: WorkerState): string {
   return `rounded-ui border bg-surface-2 p-2.5 ${WORKER_CARD[state]}`;
 }
 
+export function isEndedRun(run: Run): boolean {
+  return run.stage === 'done' || run.stage === 'cancelled';
+}
+
+export function RunCardBody({ run, childRuns, now }: { run: Run; childRuns: number; now: number }) {
+  const tone = STAGE_TONE[run.stage];
+  return (
+    <>
+      <StatusBar tone={tone} active={run.stage === 'running' || run.stage === 'asking'} />
+      <div className="flex items-center gap-1.5">
+        <StatePill
+          tone={tone}
+          label={STAGE_LABEL[run.stage]}
+          icon={STAGE_ICON[run.stage]}
+          breathing={run.stage === 'running'}
+        />
+        {childRuns > 0 && (
+          <span className="shrink-0 rounded-ui bg-line/60 px-1.5 py-0.5 text-12 text-ink-muted">
+            规划器 · 派生 {childRuns}
+          </span>
+        )}
+        <span className="ml-auto shrink-0 text-13 text-ink-muted">{runSpanLabel(run, now)}</span>
+      </div>
+      <div className="truncate text-16">{run.title}</div>
+      <p className="truncate text-13 text-ink-muted">
+        <ModelName id={run.task.model} />
+      </p>
+    </>
+  );
+}
+
 export function WorkerFacts({ node, now }: { node: NodeOf<'worker'>; now: number }) {
-  const { templates } = useCluster();
+  const { templates, workerExits } = useCluster();
   const { worker, run, state } = node;
   const started = toMs(run?.task.workerStartedAt) ?? worker.spawnedAt ?? worker.stats.registeredAt;
-  const ended = toMs(run?.task.completedAt);
+  const ended = toMs(run?.task.completedAt) ?? workerExits.get(worker.workerId) ?? worker.exitedAt;
   const elapsed = (ended ?? now) - started;
-  const tone = WORKER_STATE_TONE[state];
+  const finished = run !== undefined && isEndedOrFailed(run);
+  const tone = finished ? STAGE_TONE[run.stage] : WORKER_STATE_TONE[state];
+  const label = finished ? STAGE_LABEL[run.stage] : WORKER_STATE_LABEL[state];
   const model = run?.task.model ?? templates?.templates.find((t) => t.name === worker.templateName)?.model;
   const nextSteps = worker.lastReportNextSteps;
   return (
@@ -51,18 +86,21 @@ export function WorkerFacts({ node, now }: { node: NodeOf<'worker'>; now: number
       <div className="flex items-center gap-1.5">
         <StatusDot tone={tone} breathing={state === 'working'} />
         <span className="truncate text-14 font-medium">{worker.templateName}</span>
-        {run?.task.workerPid !== undefined && (
+        {state === 'working' && run?.task.workerPid !== undefined && (
           <span className="font-mono text-13 text-ink-muted">{run.task.workerPid}</span>
         )}
         <span className="ml-auto shrink-0">
-          <StatePill tone={tone} label={WORKER_STATE_LABEL[state]} />
+          <StatePill tone={tone} label={label} />
         </span>
       </div>
-      {model && <p className="truncate font-mono text-12 text-ink-muted">{model}</p>}
+      <p className="truncate text-13 text-ink-muted">
+        <ModelName id={model} />
+      </p>
       <p className={`${nextSteps ? 'line-clamp-1' : 'line-clamp-2'} text-13 text-ink-muted`}>
         {worker.lastReportSummary ?? '还没有报告。'}
       </p>
       {nextSteps && <p className="truncate text-13 text-working">→ {nextSteps}</p>}
+      {run && <RunFactsLine task={run.task} exitedAt={workerExits.get(worker.workerId)} now={now} />}
       <div className="flex items-center gap-2 text-12 text-ink-muted">
         <span className="h-1 flex-1 rounded-ui bg-line">
           <span
@@ -75,6 +113,10 @@ export function WorkerFacts({ node, now }: { node: NodeOf<'worker'>; now: number
       </div>
     </div>
   );
+}
+
+function isEndedOrFailed(run: Run): boolean {
+  return run.stage !== 'running' && run.stage !== 'asking' && run.stage !== 'queued';
 }
 
 function NodeCard({ node, now }: { node: TopologyNode; now: number }) {
@@ -93,32 +135,15 @@ function NodeCard({ node, now }: { node: TopologyNode; now: number }) {
       );
     case 'run': {
       const { run } = node;
-      const tone = STAGE_TONE[run.stage];
       return (
         <a
           href={routeHref({ section: 'runs', runId: run.task.id })}
           style={box}
-          className="absolute block overflow-hidden rounded-ui border border-line bg-surface-2 p-2.5 pl-3.5 hover:border-ink-muted/60"
+          className={`absolute block overflow-hidden rounded-ui border border-line bg-surface-2 p-2.5 pl-3.5 hover:border-ink-muted/60 ${
+            isEndedRun(run) ? 'opacity-70' : ''
+          }`}
         >
-          <StatusBar tone={tone} active={run.stage === 'running' || run.stage === 'asking'} />
-          <div className="flex items-center gap-1.5">
-            <StatePill
-              tone={tone}
-              label={STAGE_LABEL[run.stage]}
-              icon={STAGE_ICON[run.stage]}
-              breathing={run.stage === 'running'}
-            />
-            {node.childRuns > 0 && (
-              <span className="shrink-0 rounded-ui bg-line/60 px-1.5 py-0.5 text-12 text-ink-muted">
-                规划器 · 派生 {node.childRuns}
-              </span>
-            )}
-          </div>
-          <div className="truncate text-16">{run.title}</div>
-          <div className="flex items-center gap-2 text-13 text-ink-muted">
-            <span className="shrink-0">{runSpanLabel(run, now)}</span>
-            {run.task.model && <span className="ml-auto min-w-0 truncate font-mono text-12">{run.task.model}</span>}
-          </div>
+          <RunCardBody run={run} childRuns={node.childRuns} now={now} />
         </a>
       );
     }

@@ -36,3 +36,16 @@ export function exitedWorkers(
 export function workerTaskId(entry: ClusterWorkerRegistration): string | undefined {
   return entry.resolvedTaskId ?? entry.currentTaskId ?? entry.lastBoundTaskId;
 }
+
+/** Worker lists joined by `workerId`; the first list wins, so a live registration outranks its history. */
+export function mergeWorkers(...lists: ClusterWorkerRegistration[][]): ClusterWorkerRegistration[] {
+  const byId = new Map<string, ClusterWorkerRegistration>();
+  for (const list of lists) {
+    for (const worker of list) {
+      if (!byId.has(worker.workerId)) {
+        byId.set(worker.workerId, worker);
+      }
+    }
+  }
+  return [...byId.values()];
+}

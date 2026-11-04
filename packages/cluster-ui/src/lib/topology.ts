@@ -149,11 +149,11 @@ export function workerState(run: Run | undefined): WorkerState {
 }
 
 const PROJECT_W = 132;
-const RUN_W = 264;
-const WORKER_W = 312;
+const RUN_W = 280;
+const WORKER_W = 328;
 const COLUMN_GAP = 48;
-const RUN_H = 84;
-const WORKER_H = 124;
+const RUN_H = 96;
+const WORKER_H = 184;
 const ROW_GAP = 16;
 const BAND_PAD = 8;
 const CORNER_RADIUS = 6;

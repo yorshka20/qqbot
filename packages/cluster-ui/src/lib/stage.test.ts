@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterTask } from '@qqbot/api-types';
-import { REVIEW_WINDOW_MS, stageOf, stageRank } from './stage';
+import { REVIEW_WINDOW_MS, stageOf, stageOfStatus, stageRank } from './stage';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z');
 
@@ -56,4 +56,16 @@ test('the order is needs-you, running, waiting, ended', () => {
   const ranks = rank.map(stageRank);
   expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
   expect(new Set(ranks).size).toBe(rank.length);
+});
+
+describe('stageOfStatus', () => {
+  test('maps every task status to a stage', () => {
+    expect(stageOfStatus('pending')).toBe('queued');
+    expect(stageOfStatus('claimed')).toBe('queued');
+    expect(stageOfStatus('running')).toBe('running');
+    expect(stageOfStatus('completed')).toBe('done');
+    expect(stageOfStatus('failed')).toBe('failed');
+    expect(stageOfStatus('blocked')).toBe('blocked');
+    expect(stageOfStatus('cancelled')).toBe('cancelled');
+  });
 });

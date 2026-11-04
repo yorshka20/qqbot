@@ -28,6 +28,7 @@ import { buildRuns, type Run, type TaskRow } from '../lib/runs';
 import { isLive } from '../lib/stage';
 import { toMs } from '../lib/time';
 import { useNow } from '../lib/useNow';
+import { mergeWorkers } from '../lib/workers';
 import { useClusterStream, useClusterStreamConnected, useRefreshOnClusterEvents } from '../stream/useClusterStream';
 
 const HISTORY_PAGE = 30;
@@ -88,6 +89,8 @@ interface Snapshot {
   help: ClusterHelpRequest[];
   helpHistory: ClusterHelpRequest[];
   workers: EnrichedWorkerRegistration[];
+  /** Workers the loaded jobs list, exited ones included: `/workers` forgets the workers of old jobs. */
+  jobWorkers: EnrichedWorkerRegistration[];
   workerHistory: ClusterWorkerHistoryEntry[];
   locks: ClusterLock[];
   workerExits: Map<string, number>;
@@ -99,6 +102,7 @@ const EMPTY: Snapshot = {
   help: [],
   helpHistory: [],
   workers: [],
+  jobWorkers: [],
   workerHistory: [],
   locks: [],
   workerExits: new Map(),
@@ -163,6 +167,7 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
 
         const rows = new Map<string, TaskRow>();
         const workerExits = new Map<string, number>();
+        const jobWorkers: EnrichedWorkerRegistration[] = [];
         for (const job of jobs) {
           for (const task of job?.tasks ?? []) {
             rows.set(task.id, { task, ticketId: job?.ticketId });
@@ -171,9 +176,15 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
             }
           }
           for (const worker of job?.workers ?? []) {
+            jobWorkers.push(worker);
             if (worker.exitedAt) {
               workerExits.set(worker.workerId, worker.exitedAt);
             }
+          }
+        }
+        for (const worker of historyWorkers.items) {
+          if (worker.exitedAt && !workerExits.has(worker.workerId)) {
+            workerExits.set(worker.workerId, worker.exitedAt);
           }
         }
         for (const task of active) {
@@ -188,6 +199,7 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
           help: helpHistory.filter((r) => r.status === 'pending'),
           helpHistory,
           workers,
+          jobWorkers,
           workerHistory: historyWorkers.items,
           locks,
           workerExits,
@@ -199,6 +211,7 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
           help: [],
           helpHistory: [],
           workers: [],
+          jobWorkers: [],
           workerHistory: [],
           locks: [],
         }));
@@ -273,7 +286,16 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [refresh]);
 
-  const runs = useMemo(() => buildRuns(snapshot.rows, snapshot.help, snapshot.workers, now), [snapshot, now]);
+  const runs = useMemo(
+    () =>
+      buildRuns(
+        snapshot.rows,
+        snapshot.help,
+        mergeWorkers(snapshot.workers, snapshot.jobWorkers, snapshot.workerHistory),
+        now,
+      ),
+    [snapshot, now],
+  );
 
   const oldestLoadedAt = useMemo(() => {
     let oldest: number | null = null;
