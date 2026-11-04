@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseClusterConfig } from '../../config';
 import { createClusterTables } from '../../schema';
-import { ContextHub } from '../ContextHub';
+import { ContextHub, type SchedulerBridge } from '../ContextHub';
 
 let dir: string;
 let hub: ContextHub;
@@ -61,5 +61,48 @@ describe('hub_wait', () => {
     hub.taskSettled('child-z');
     const result = await waiting;
     expect(result.reason).toBe('timeout');
+  });
+});
+
+describe('hub_wait snapshots and hub_query_task output', () => {
+  const child = (output: string) => ({
+    id: 'child-a',
+    jobId: 'job-1',
+    project: 'p',
+    description: 'child',
+    status: 'running',
+    workerId: 'exec-1',
+    parentTaskId: 'task-p',
+    createdAt: new Date().toISOString(),
+    output,
+  });
+
+  function wire(output: string): void {
+    hub.setSchedulerBridge({ findTask: (id: string) => (id === 'child-a' ? child(output) : undefined) } as unknown as SchedulerBridge);
+    hub.workerRegistry.setTask('planner-1', 'task-p');
+  }
+
+  test('a wait answer carries the watched tasks without their stdout', async () => {
+    wire('x'.repeat(50_000));
+    const result = await hub.handleWait('planner-1', { tasks: ['child-a'], timeoutMs: 20 });
+    expect(result.tasks).toHaveLength(1);
+    expect(result.tasks[0].status).toBe('running');
+    expect('output' in result.tasks[0]).toBe(false);
+    expect(JSON.stringify(result).length).toBeLessThan(2_000);
+  });
+
+  test('hub_query_task returns only the tail of a long live stdout and says so', () => {
+    wire(`${'a'.repeat(50_000)}END`);
+    const snapshot = hub.handleQueryTask('planner-1', { taskId: 'child-a' });
+    expect(snapshot.outputTruncated).toBe(true);
+    expect(snapshot.output?.length).toBe(8_000);
+    expect(snapshot.output?.endsWith('END')).toBe(true);
+  });
+
+  test('hub_query_task returns a short stdout whole', () => {
+    wire('short');
+    const snapshot = hub.handleQueryTask('planner-1', { taskId: 'child-a' });
+    expect(snapshot.output).toBe('short');
+    expect(snapshot.outputTruncated).toBeUndefined();
   });
 });

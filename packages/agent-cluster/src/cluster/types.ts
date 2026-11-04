@@ -351,8 +351,10 @@ export interface HubQueryTaskOutput {
   taskId: string;
   status: TaskStatus;
   workerId?: string;
-  /** Live stdout only while the worker is running; empty once persisted (stdout is not stored). */
+  /** Tail of the live stdout while the worker is running; empty once persisted (stdout is not stored). */
   output?: string;
+  /** Set when `output` is only the tail; the whole log is the task's log file on disk. */
+  outputTruncated?: boolean;
   /** hub_report summary — persisted and returned for completed tasks. */
   diffSummary?: string;
   error?: string;
@@ -368,18 +370,21 @@ export interface HubWaitInput {
   timeoutMs?: number;
 }
 
+/** A watched task as a wait answers it: its state, never its stdout. */
+export type HubTaskSnapshot = Omit<HubQueryTaskOutput, 'output' | 'outputTruncated'>;
+
 export interface HubWaitOutput {
   /** What ended the wait: a watched task settled, a message arrived for you, or nothing happened in time. */
   reason: 'task' | 'message' | 'timeout';
-  /** Snapshots of the watched tasks, as hub_query_task would answer. */
-  tasks: HubQueryTaskOutput[];
+  /** The watched tasks' state; read a child's stdout tail with hub_query_task. */
+  tasks: HubTaskSnapshot[];
   /** Messages, directives and answers that arrived, consumed as hub_sync would. */
   updates: HubUpdate[];
 }
 
 export interface HubWaitTaskInput {
   taskId: string;
-  /** Default 600_000 ms (10 min). Hub also enforces an absolute upper bound. */
+  /** Capped at the hub's wait window, like hub_wait. */
   timeoutMs?: number;
 }
 
