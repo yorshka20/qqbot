@@ -5,7 +5,16 @@ import { toMs } from './time';
  * What a run means to the owner. Phase 1 has no server-side stage, so it is derived:
  * pending help → asking; failed / blocked; completed and unseen → review; running; pending → queued.
  */
-export type Stage = 'asking' | 'failed' | 'blocked' | 'review' | 'running' | 'queued' | 'done' | 'cancelled';
+export type Stage =
+  | 'asking'
+  | 'failed'
+  | 'blocked'
+  | 'review'
+  | 'running'
+  | 'waiting'
+  | 'queued'
+  | 'done'
+  | 'cancelled';
 
 export const REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -15,6 +24,7 @@ export const STAGE_LABEL: Record<Stage, string> = {
   blocked: '受阻',
   review: '待查看',
   running: '在跑',
+  waiting: '等待中',
   queued: '排队',
   done: '已完成',
   cancelled: '已终止',
@@ -28,6 +38,7 @@ export const STAGE_TONE: Record<Stage, Tone> = {
   blocked: 'failed',
   review: 'done',
   running: 'working',
+  waiting: 'muted',
   queued: 'muted',
   done: 'done',
   cancelled: 'muted',
@@ -57,8 +68,11 @@ export const TONE_SOFT: Record<Tone, string> = {
   muted: 'bg-line/60',
 };
 
+/** Not ended: it has a worker, will get one, or is parked until something wakes its session. */
 export function isLive(task: ClusterTask): boolean {
-  return task.status === 'pending' || task.status === 'claimed' || task.status === 'running';
+  return (
+    task.status === 'pending' || task.status === 'claimed' || task.status === 'running' || task.status === 'waiting'
+  );
 }
 
 export function stageOf(task: ClusterTask, ctx: { asking: boolean; seen: boolean; now: number }): Stage {
@@ -68,6 +82,8 @@ export function stageOf(task: ClusterTask, ctx: { asking: boolean; seen: boolean
       return ctx.asking ? 'asking' : 'queued';
     case 'running':
       return ctx.asking ? 'asking' : 'running';
+    case 'waiting':
+      return ctx.asking ? 'asking' : 'waiting';
     case 'failed':
       return 'failed';
     case 'blocked':
@@ -88,6 +104,7 @@ const STAGE_RANK: Record<Stage, number> = {
   blocked: 1,
   review: 2,
   running: 3,
+  waiting: 4,
   queued: 4,
   done: 5,
   cancelled: 5,
@@ -105,6 +122,8 @@ export function stageOfStatus(status: ClusterTask['status']): Stage {
       return 'queued';
     case 'running':
       return 'running';
+    case 'waiting':
+      return 'waiting';
     case 'completed':
       return 'done';
     case 'failed':

@@ -28,6 +28,7 @@ function openHub(): ContextHub {
   opened.setSchedulerBridge({
     findTask: (id: string) => tasks.get(id),
     isTaskSettled: (id: string) => settled.has(id),
+    taskInboxed: () => {},
   } as unknown as SchedulerBridge);
   return opened;
 }
@@ -400,6 +401,7 @@ describe('hub_spawn validation', () => {
       findTask: (id: string) => tasks.get(id),
       isTaskSettled: (id: string) => settled.has(id),
       submitChildTask: async () => submit(),
+      taskInboxed: () => {},
     } as unknown as SchedulerBridge);
   }
 
@@ -473,6 +475,7 @@ describe('over the MCP transport', () => {
         received = opts.subscribe;
         return addTask('child', { worker: false });
       },
+      taskInboxed: () => {},
     } as unknown as SchedulerBridge);
 
     const spawned = await callTool('worker-planner', 'hub_spawn', {

@@ -33,6 +33,7 @@ import type {
   ParsedWorkerOutput,
   WorkerBackend,
   WorkerLaunch,
+  WorkerResumeConfig,
   WorkerSpawnConfig,
 } from '../types';
 import { ClaudeCliBackend } from './ClaudeCliBackend';
@@ -46,16 +47,19 @@ export class MinimaxBackend implements WorkerBackend {
   private readonly inner = new ClaudeCliBackend();
 
   async launch(config: WorkerSpawnConfig): Promise<WorkerLaunch> {
-    // Bake in MiniMax CN routing. Template-provided env still wins so users
-    // can pin a specific model variant or swap to a different MiniMax key
-    // per template without touching this file.
-    const env: Record<string, string> = {
-      ANTHROPIC_BASE_URL: MINIMAX_CN_ANTHROPIC_BASE_URL,
-      ANTHROPIC_MODEL: MINIMAX_DEFAULT_MODEL,
-      ...config.env,
-    };
+    return this.inner.launch({ ...config, env: this.routedEnv(config.env) });
+  }
 
-    return this.inner.launch({ ...config, env });
+  async resume(config: WorkerResumeConfig): Promise<WorkerLaunch> {
+    return this.inner.resume({ ...config, env: this.routedEnv(config.env) });
+  }
+
+  /**
+   * MiniMax CN routing. Template-provided env still wins so users can pin a specific model
+   * variant or swap to a different MiniMax key per template without touching this file.
+   */
+  private routedEnv(env: Record<string, string>): Record<string, string> {
+    return { ANTHROPIC_BASE_URL: MINIMAX_CN_ANTHROPIC_BASE_URL, ANTHROPIC_MODEL: MINIMAX_DEFAULT_MODEL, ...env };
   }
 
   /**

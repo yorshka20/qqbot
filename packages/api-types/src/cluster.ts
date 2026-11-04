@@ -3,13 +3,22 @@
 import type { PaginatedResponse } from './common';
 
 export type ClusterJobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-export type ClusterTaskStatus = 'pending' | 'claimed' | 'running' | 'completed' | 'failed' | 'blocked' | 'cancelled';
+/** `waiting`: the worker ended its turn; a message or event resumes its session. */
+export type ClusterTaskStatus =
+  | 'pending'
+  | 'claimed'
+  | 'running'
+  | 'waiting'
+  | 'completed'
+  | 'failed'
+  | 'blocked'
+  | 'cancelled';
 export type ClusterTaskSource = 'todo-file' | 'queue' | 'planner';
 export type ClusterWorkerRole = 'coder' | 'planner' | 'reviewer' | 'custom';
 /** Registry state of a worker; `/status` reports a different, finer vocabulary. */
 export type ClusterWorkerRegistryStatus = 'active' | 'idle' | 'exited';
 export type ClusterWorkerRuntimeStatus = 'starting' | 'running' | 'idle' | 'stopping' | 'exited';
-export type ClusterReportStatus = 'working' | 'completed' | 'failed' | 'blocked';
+export type ClusterReportStatus = 'working' | 'waiting' | 'completed' | 'failed' | 'blocked';
 export type ClusterHelpRequestType = 'clarification' | 'decision' | 'conflict' | 'escalation';
 export type ClusterHelpRequestStatus = 'pending' | 'answered' | 'expired';
 
@@ -32,7 +41,9 @@ export type ClusterEventType =
   | 'worker_joined'
   | 'worker_left'
   | 'message'
-  | 'help_request';
+  | 'help_request'
+  | 'task_waiting'
+  | 'task_resumed';
 
 export interface ClusterStatus {
   running: boolean;
@@ -195,6 +206,15 @@ export interface ClusterTask {
   worktreePath?: string;
   /** When the task's branch landed on the job's integration branch. */
   mergedAt?: string;
+  /** When the session was last picked up again in a new worker process. */
+  resumedAt?: string;
+  /** How many times the session was picked up again. */
+  resumeCount?: number;
+  /**
+   * Set by the task routes: whether a message to this task can wake its session. False while a
+   * worker runs it (the message goes to the worker directly), and for a backend without resume.
+   */
+  resumable?: boolean;
   /** Length of the whole stdout buffer; set only by the job-detail route. */
   outputBytes?: number;
   /** True when `output` is a tail slice rather than the whole buffer. */
@@ -368,7 +388,10 @@ export interface ClusterTaskMessageBody {
 /** `POST /api/cluster/tasks/:id/messages` */
 export interface ClusterTaskMessagedResponse {
   delivered: boolean;
-  workerId: string;
+  /** The worker that takes the message; unset when the message wakes the task's session instead. */
+  workerId?: string;
+  /** True when no worker was running: the message is queued and the daemon resumes the session. */
+  resuming: boolean;
 }
 
 /** `POST /api/cluster/tasks/:id/acknowledge` */

@@ -38,7 +38,9 @@ export type ClusterEventType =
   | 'worker_joined'
   | 'worker_left'
   | 'message'
-  | 'help_request';
+  | 'help_request'
+  | 'task_waiting'
+  | 'task_resumed';
 
 // ── Worker types ──
 
@@ -69,7 +71,7 @@ export interface WorkerRegistration {
   /** Latest hub_report nextSteps (required for status=working). */
   lastReportNextSteps?: string;
   /** Status from the most recent hub_report. */
-  lastReportStatus?: 'working' | 'completed' | 'failed' | 'blocked';
+  lastReportStatus?: HubReportStatus;
   stats: {
     tasksCompleted: number;
     tasksFailed: number;
@@ -101,12 +103,30 @@ export interface WorkerInstance {
 // ── Task / Job types ──
 
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-export type TaskStatus = 'pending' | 'claimed' | 'running' | 'completed' | 'failed' | 'blocked' | 'cancelled';
+/**
+ * `waiting`: the worker ended its turn with nothing to do (it reported `waiting`, or exited while
+ * its children were still running). The task keeps its slot and session; a message, an answer or
+ * a subscribed event wakes it by resuming the session in a new process.
+ */
+export type TaskStatus =
+  | 'pending'
+  | 'claimed'
+  | 'running'
+  | 'waiting'
+  | 'completed'
+  | 'failed'
+  | 'blocked'
+  | 'cancelled';
 export type TaskSourceType = 'todo-file' | 'queue' | 'planner';
 
 /** A task in one of these has ended; `blocked` holds work that needs someone to act on it. */
 export function isTerminalTaskStatus(status: TaskStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'blocked' || status === 'cancelled';
+}
+
+/** A task whose session can be picked up again: it is parked, or it ended and a person may continue it. */
+export function isResumableTaskStatus(status: TaskStatus): boolean {
+  return status === 'waiting' || status === 'completed' || status === 'failed' || status === 'blocked';
 }
 
 export type LandJobResult =
@@ -208,6 +228,10 @@ export interface TaskRecord {
   worktreePath?: string;
   /** When the task's branch landed on the job's integration branch. */
   mergedAt?: string;
+  /** When the session was last picked up again in a new worker process. */
+  resumedAt?: string;
+  /** How many times the session was picked up again. */
+  resumeCount?: number;
 }
 
 export interface TaskUsage {
@@ -333,8 +357,14 @@ export interface HubClaimOutput {
   suggestion?: string;
 }
 
+/**
+ * `waiting`: nothing to do until something the worker waits for happens; it ends its turn and the
+ * daemon resumes its session when that happens. `blocked` needs a person; `working` is a checkpoint.
+ */
+export type HubReportStatus = 'working' | 'waiting' | 'completed' | 'failed' | 'blocked';
+
 export interface HubReportInput {
-  status: 'working' | 'completed' | 'failed' | 'blocked';
+  status: HubReportStatus;
   summary: string;
   /**
    * Required when status is `working`: what you will do next before the next
@@ -640,6 +670,12 @@ export interface CredentialProbeResult {
  * spawns it detached, with stdout and stderr redirected to log files, so the worker outlives
  * a scheduler restart.
  */
+/** What a backend needs to pick a session up again: the spawn config plus the session and what to tell it. */
+export interface WorkerResumeConfig extends WorkerSpawnConfig {
+  /** The backend's own session id, as captured on the first run. */
+  sessionId: string;
+}
+
 export interface WorkerLaunch {
   cmd: string[];
   cwd: string;
@@ -655,6 +691,12 @@ export interface WorkerLaunch {
 export interface WorkerBackend {
   name: string;
   launch(config: WorkerSpawnConfig): Promise<WorkerLaunch>;
+  /**
+   * Optional: start a new process that continues the session `config.sessionId` with
+   * `config.taskPrompt` as its next input, in the same cwd the session was created in. A backend
+   * without it cannot be woken after its worker exits.
+   */
+  resume?(config: WorkerResumeConfig): Promise<WorkerLaunch>;
   /**
    * Optional: recognise the backend's session id in one line of its stdout stream, for
    * backends that only reveal it at run time (codex `thread.started`, dsh's first event).

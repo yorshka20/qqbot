@@ -68,8 +68,7 @@ claim 的作用是提前避开合并冲突：改了同一文件的两个分支�
 `nextSteps` 必须写清**接下来**要做什么 — 运维和 planner 都会看它来判断
 你是否在按预期推进。
 
-**长跑任务**：若执行可能超过 **8 分钟**，必须至少每 **8 分钟** report
-一次（带 `nextSteps`），否则集群会判定 worker 失联并 **SIGTERM**。
+不需要为了"证明活着"而 report：daemon 按你的输出判活。report 是给 planner 和 owner 看的进展。
 
 **每完成一个步骤就 `hub_sync` 一次**（owner 可能在控制台里给你发了话，它以 `from: "owner"` 的 directive 到达），改了 > 3 个文件或跑了 > 5 分钟也要补一次
 外部有没有新事件或 planner 指令。
@@ -165,8 +164,7 @@ hub_subscribe({
 
 - **不 claim 直接改文件 = 违规**。其他 worker 可能在各自的分支上改同一个
   文件，不 claim 的后果是你的分支合不进集成分支。
-- **长时间不 report = 被 kill**。超过 8 分钟没有 `hub_report(working)`，
-  你会被判定失联，锁被回收，task 被标 timeout。
+- **长时间既无输出也无 report = 被 kill**。真正在干活就不会触发；要等就 `hub_report(waiting)` 退出，不要空转。
 - **忽略 directive = 违规**。如果 `hub_sync` 返回 directive 消息，那是
   来自 planner 或人类的强制指令，**优先级高于你自己的判断**。
 - **无限重试同一个失败操作 = 违规**。3 次失败就 `hub_report(blocked)`，
@@ -224,5 +222,7 @@ Agent 在压力下会"合理化"跳过步骤。下面是 executor 最常见的�
 
 ## 需要等的时候
 
-需要等人回答（`hub_ask` 之后）或等别的 worker 时，用 `hub_wait({ timeoutMs })`：答案、消息或你订阅的事件一到它就返回。**不要 `sleep`，不要定时重试 `hub_sync`。**
-能先做的事先做，做完再 `hub_wait`。
+能先做的事先做。做完了还在等（`hub_ask` 的答案、兄弟任务合入、owner 的决定）就 **`hub_report({ status: 'waiting', summary: '在等什么' })` 然后结束回合**：
+进程退出、不占名额，等的事发生时 daemon 用同一个 session 唤醒你，并把答案 / 事件交给你（见 hub 工具说明的「被唤醒」）。
+只有"几秒内就会有结果"的情况才用 `hub_wait({ timeoutMs })` 短等。**不要 `sleep`，不要定时重试 `hub_sync`。**
+退出前先提交手头能提交的改动：没提交的内容在 worktree 里保留到你被唤醒，但不算交付。

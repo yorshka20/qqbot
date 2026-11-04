@@ -138,15 +138,22 @@ worker 的行为规则必须满足两个约束：
 
 #### `hub_report`
 
-上报进展，同时作为心跳。终态 report 触发锁释放。
+上报状态。不是心跳：调度层按 worker 的输出判活。`waiting` 和终态都释放锁。
+
+`waiting` 是 worker 没事可做时的退出方式：报完就结束回合、进程退出，任务保留 worktree 槽、订阅和 session，
+释放并发名额；任何投到它收件箱的东西（owner 的消息、`hub_ask` 的答案、订阅事件、child 结束）让调度层用
+backend 的 session 续跑（claude `--resume`、codex `exec resume`）起一个新进程，收件箱内容作为新回合的第一段输入。
+已经 `completed` / `failed` / `blocked` 的任务被人发话也会这样唤醒。退出码 0、没有终态 report、还有 child 没结束的
+worker 同样按 `waiting` 处理。
 
 ```
-描述: 上报你的工作进展。每完成一个有意义的步骤都应该调用。
-      这也是你的心跳——长时间不 report 会被视为失联。
-      status 为 completed/failed/blocked 时，hub 自动释放你持有的所有文件锁。
+描述: 上报你的状态。working = 有进展的检查点；waiting = 没事可做，报完结束回合，
+      等的事发生时 daemon 用同一个 session 唤醒你；completed/failed/blocked 结束任务。
+      status 为 waiting 或终态时，hub 自动释放你持有的所有文件锁。
 
 输入:
   status: "working"          // 正在进行中
+        | "waiting"          // 等待中：结束回合，由事件唤醒
         | "completed"        // 任务成功完成
         | "failed"           // 任务失败
         | "blocked"          // 任务被阻塞，无法继续

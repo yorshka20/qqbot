@@ -26,6 +26,7 @@ import {
 } from './prompts';
 import {
   type ClusterStatus,
+  type HubUpdate,
   isTerminalTaskStatus,
   type TaskRecord,
   type TaskUsage,
@@ -52,6 +53,26 @@ export type TaskProgressCallback = (task: TaskRecord) => void | Promise<void>;
 
 /** A durable field of a running task changed (pid, log path, session id) and should be persisted. */
 export type TaskUpdatedCallback = (task: TaskRecord) => void;
+
+/**
+ * Whether a task whose worker exited cleanly without a terminal report still has work in flight
+ * (children running): it is then parked as `waiting` rather than ended as `completed`.
+ */
+export type TaskOpenWorkCallback = (task: TaskRecord) => boolean;
+
+/** Pick a task's session up again instead of starting a fresh one. */
+export interface WorkerResume {
+  sessionId: string;
+  /** What arrived while the task had no worker: the resumed session's first input. */
+  updates: HubUpdate[];
+}
+
+const RESUME_PROMPT = 'resume.md';
+
+/** The inbox as the resumed session reads it: one JSON line per update, in order. */
+export function renderUpdates(updates: HubUpdate[]): string {
+  return ['```jsonl', ...updates.map((update) => JSON.stringify(update)), '```'].join('\n');
+}
 
 /**
  * Maximum number of recently-exited workers retained in memory for
@@ -187,6 +208,7 @@ export class WorkerPool {
   private taskCompletedCallback: TaskCompletedCallback | null = null;
   private taskProgressCallback: TaskProgressCallback | null = null;
   private taskUpdatedCallback: TaskUpdatedCallback | null = null;
+  private taskOpenWorkCallback: TaskOpenWorkCallback | null = null;
   /**
    * Lazy-loaded role system prompt content, keyed by worker role.
    * Each entry: `null` = not yet attempted, `''` = loaded but missing /
@@ -220,6 +242,11 @@ export class WorkerPool {
   /** Persist a running task whose pid, log path or session id just became known. */
   setTaskUpdatedCallback(cb: TaskUpdatedCallback | null): void {
     this.taskUpdatedCallback = cb;
+  }
+
+  /** Decide whether a clean exit without a terminal report parks the task instead of completing it. */
+  setTaskOpenWorkCallback(cb: TaskOpenWorkCallback | null): void {
+    this.taskOpenWorkCallback = cb;
   }
 
   /**
@@ -309,6 +336,7 @@ export class WorkerPool {
     projectPath: string,
     task: TaskRecord,
     prepareWorkspace?: () => Promise<WorkerWorkspace>,
+    resume?: WorkerResume,
   ): Promise<WorkerInstance | null> {
     if (this.paused) {
       logger.warn('[WorkerPool] Pool is paused, not spawning');
@@ -390,33 +418,8 @@ export class WorkerPool {
         throw new Error('Worker stopped while its workspace was being prepared');
       }
 
-      // Prepend the role-specific system prompt to the task description. We
-      // mutate `taskPrompt` for the spawn call only — the persisted
-      // TaskRecord.description is unchanged so the WebUI / DB still show the
-      // user's original ticket text without the boilerplate.
-      const rolePrompt = await this.loadRoleSystemPrompt(role, projectPath);
-      // The planner prompt carries a {{CLUSTER_AVAILABLE_EXECUTORS}} token
-      // rendered from live config so the planner's view of "which workers
-      // exist and what they're for" can never drift from the configured set.
-      const renderedRolePrompt =
-        role === 'planner' && rolePrompt
-          ? rolePrompt.replace(EXECUTOR_CATALOG_TOKEN, this.renderExecutorCatalog())
-          : rolePrompt;
-      const workspaceNote = workspace
-        ? renderPrompt(
-            await loadClusterPrompt(workspacePromptName(workspace), projectPath),
-            workspacePromptVars(workspace),
-          )
-        : '';
-      const planningName = workspace && planningPromptName(workspace);
-      const planningNote = planningName ? await loadClusterPrompt(planningName, projectPath) : '';
-      const effectivePrompt = [renderedRolePrompt, workspaceNote, planningNote, task.description]
-        .filter(Boolean)
-        .join('\n\n');
-
-      const launch = await backend.launch({
+      const spawnConfig = {
         workerId,
-        taskPrompt: effectivePrompt,
         projectPath: workspace?.cwd ?? projectPath,
         mcpConfigPath,
         hubUrl,
@@ -430,7 +433,23 @@ export class WorkerPool {
           CLUSTER_TASK_ID: task.id,
         },
         timeout: template.timeout,
-      });
+      };
+      let launch: WorkerLaunch;
+      if (resume) {
+        if (!backend.resume) {
+          throw new Error(`Backend ${backend.name} cannot resume a session`);
+        }
+        // The session already holds the role prompt and the task; it only needs what happened since.
+        const taskPrompt = renderPrompt(await loadClusterPrompt(RESUME_PROMPT, projectPath), {
+          UPDATES: renderUpdates(resume.updates),
+        });
+        launch = await backend.resume({ ...spawnConfig, taskPrompt, sessionId: resume.sessionId });
+      } else {
+        launch = await backend.launch({
+          ...spawnConfig,
+          taskPrompt: await this.firstPrompt(role, projectPath, workspace, task),
+        });
+      }
 
       const { child, logOffset } = await this.startDetached(launch, task.id);
       workerInstance.pid = child.pid;
@@ -855,7 +874,6 @@ export class WorkerPool {
 
     worker.status = 'exited';
     worker.child = null;
-    this.hub.workerExited(worker.id);
 
     const task = worker.currentTask;
     if (task) {
@@ -886,11 +904,13 @@ export class WorkerPool {
       // A terminal status set by hub_report stays authoritative: a SIGTERM exit code after a
       // voluntary `completed` report must not flip the task back to failed.
       if (!isTerminalTaskStatus(task.status)) {
-        task.completedAt = new Date().toISOString();
         const lastReport = this.hub.workerRegistry.get(worker.id);
         if (spawnError) {
           task.status = 'failed';
           task.error = spawnError;
+        } else if (lastReport?.lastReportStatus === 'waiting') {
+          // The worker ended its turn on purpose; the task lives on and a message resumes it.
+          task.status = 'waiting';
         } else if (lastReport?.lastReportStatus === 'blocked') {
           // A blocked report is not terminal while the worker lives, but it is the last word
           // once it exits: a clean exit must not turn stopped work into `completed` and land it.
@@ -899,12 +919,18 @@ export class WorkerPool {
         } else if (exitCode === null) {
           task.status = 'failed';
           task.error = 'Worker process ended without a terminal hub_report';
+        } else if (exitCode === 0 && this.taskOpenWorkCallback?.(task)) {
+          // Ended its turn while its children run: the planner is waiting for them, not done.
+          task.status = 'waiting';
         } else {
           task.status = exitCode === 0 ? 'completed' : 'failed';
           if (exitCode !== 0) {
             const stderrSuffix = stderrOutput.trim() ? `: ${stderrOutput.trim().slice(0, 1000)}` : '';
             task.error = `Process exited with code ${exitCode}${stderrSuffix}`;
           }
+        }
+        if (task.status !== 'waiting') {
+          task.completedAt = new Date().toISOString();
         }
       }
       if (rawEvents !== undefined) {
@@ -916,6 +942,7 @@ export class WorkerPool {
       }
     }
 
+    this.hub.workerExited(worker.id, task?.status === 'waiting' ? task.id : undefined);
     this.recordExited(worker);
     this.followed.delete(worker.id);
 
@@ -1011,17 +1038,15 @@ export class WorkerPool {
     }
     worker.status = 'exited';
     worker.child = null;
-    this.hub.workerExited(worker.id);
 
-    if (worker.currentTask) {
-      const task = worker.currentTask;
-      if (!isTerminalTaskStatus(task.status)) {
-        task.status = 'failed';
-        task.error = reason;
-        task.completedAt = new Date().toISOString();
-      }
+    const task = worker.currentTask;
+    if (task && !isTerminalTaskStatus(task.status) && task.status !== 'waiting') {
+      task.status = 'failed';
+      task.error = reason;
+      task.completedAt = new Date().toISOString();
     }
 
+    this.hub.workerExited(worker.id, task?.status === 'waiting' ? task.id : undefined);
     this.recordExited(worker);
 
     if (worker.currentTask && this.taskCompletedCallback) {
@@ -1072,6 +1097,35 @@ export class WorkerPool {
     return ['| Template | 成本 | 能力定位 & 适用场景 |', '|----------|------|---------------------|', ...rows].join(
       '\n',
     );
+  }
+
+  /**
+   * The prompt a fresh session starts from: the role prompt (with the executor catalog rendered
+   * for a planner), the workspace note, the planning mode, then the task description. The
+   * persisted `TaskRecord.description` stays the user's original text.
+   */
+  private async firstPrompt(
+    role: 'planner' | 'coder',
+    projectPath: string,
+    workspace: WorkerWorkspace | undefined,
+    task: TaskRecord,
+  ): Promise<string> {
+    const rolePrompt = await this.loadRoleSystemPrompt(role, projectPath);
+    // The planner prompt carries a {{CLUSTER_AVAILABLE_EXECUTORS}} token rendered from live
+    // config so the planner's view of "which workers exist" can never drift from the configured set.
+    const renderedRolePrompt =
+      role === 'planner' && rolePrompt
+        ? rolePrompt.replace(EXECUTOR_CATALOG_TOKEN, this.renderExecutorCatalog())
+        : rolePrompt;
+    const workspaceNote = workspace
+      ? renderPrompt(
+          await loadClusterPrompt(workspacePromptName(workspace), projectPath),
+          workspacePromptVars(workspace),
+        )
+      : '';
+    const planningName = workspace && planningPromptName(workspace);
+    const planningNote = planningName ? await loadClusterPrompt(planningName, projectPath) : '';
+    return [renderedRolePrompt, workspaceNote, planningNote, task.description].filter(Boolean).join('\n\n');
   }
 
   /**

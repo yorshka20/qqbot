@@ -85,7 +85,9 @@ function openDb(): Database {
     usage TEXT,
     branch TEXT,
     worktreePath TEXT,
-    mergedAt TEXT
+    mergedAt TEXT,
+    resumedAt TEXT,
+    resumeCount INTEGER
   )`);
   createClusterTables(db);
   return db;

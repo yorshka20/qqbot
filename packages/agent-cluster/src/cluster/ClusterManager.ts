@@ -81,6 +81,8 @@ export class ClusterManager {
       this.scheduler.taskUpdated(task);
     });
 
+    this.workerPool.setTaskOpenWorkCallback((task) => this.scheduler.hasOpenWork(task));
+
     this.workerPool.setTaskProgressCallback((task) => {
       this.scheduler.flushRunningTaskOutput(task);
       // Broadcast intermediate output so WebUI can show live worker progress
@@ -105,6 +107,7 @@ export class ClusterManager {
       submitChildTask: (opts) => this.scheduler.submitChildTask(opts),
       findTask: (taskId) => this.scheduler.findTask(taskId),
       isTaskSettled: (taskId) => this.scheduler.isTaskSettled(taskId),
+      taskInboxed: (taskId, type) => this.scheduler.taskInboxed(taskId, type),
     });
 
     this.hub.setReportCallback((workerId, taskId, input) => {
@@ -119,6 +122,12 @@ export class ClusterManager {
         // Already removed from activeTasks — either the exit-code path
         // beat us to it, or the worker reported after a prior fatal error.
         // Nothing to do.
+        return;
+      }
+      if (input.status === 'waiting') {
+        // The worker is ending its turn; the task stays open and its inbox wakes it.
+        task.status = 'waiting';
+        this.scheduler.markTaskCompleted(task);
         return;
       }
       task.status = input.status === 'completed' ? 'completed' : 'failed';
@@ -517,6 +526,8 @@ export class ClusterManager {
         ['branch', 'TEXT'],
         ['worktreePath', 'TEXT'],
         ['mergedAt', 'TEXT'],
+        ['resumedAt', 'TEXT'],
+        ['resumeCount', 'INTEGER'],
       ];
       for (const [name, type] of wanted) {
         if (have.has(name)) continue;

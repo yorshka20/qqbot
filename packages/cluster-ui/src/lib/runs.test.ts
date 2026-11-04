@@ -6,6 +6,7 @@ import {
   composerDefaults,
   groupRunSections,
   MESSAGE_ENABLED_HINT,
+  MESSAGE_RESUME_HINT,
   messageAvailability,
   needsPlannerTicket,
   orderRunsAsTree,
@@ -426,10 +427,23 @@ describe('messageAvailability', () => {
     }
   });
 
-  test('a finished task is closed', () => {
+  test('a finished task that cannot be resumed is closed', () => {
     for (const status of ['completed', 'failed', 'blocked', 'cancelled'] as const) {
-      expect(messageAvailability({ status })).toEqual({ enabled: false, hint: '运行已结束，重新提交或续跑。' });
+      expect(messageAvailability({ status })).toEqual({ enabled: false, hint: '运行已结束，且无法续跑：重新提交。' });
     }
+  });
+
+  test('a task the daemon can resume takes a message whatever its status', () => {
+    for (const status of ['waiting', 'completed', 'failed', 'blocked'] as const) {
+      expect(messageAvailability({ status, resumable: true })).toEqual({ enabled: true, hint: MESSAGE_RESUME_HINT });
+    }
+  });
+
+  test('a parked task whose session cannot be resumed says so', () => {
+    expect(messageAvailability({ status: 'waiting' })).toEqual({
+      enabled: false,
+      hint: '这条运行在等待，但它的 session 无法续跑。',
+    });
   });
 });
 

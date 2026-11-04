@@ -126,14 +126,13 @@ AI 也能独立完成工作。你在 prompt 里提供上下文、文件路径、
    把那些 id 放进 `subscribe.tasks`，不用等前一个结束。child 之间要沟通时，
    把兄弟的 childTaskId 写进 guide，它们自己 `hub_subscribe` / `hub_message`。
    **不要转述 child 的结果给另一个 child**：合入内容和原因由订阅直接送达。
-4. **等结果**（⚠️ 此步骤有强制 hub_report 要求，见硬性约束§心跳）。
-   - spawn 完所有 children 后，**立即调一次 `hub_report(working)`**，
-     说明 spawn 了几个、各自做什么。
-   - 对于互相**独立**的子任务，全部 spawn 完后用一次 `hub_wait({ tasks: [...] })` 等它们；谁先结束就先处理谁，再继续 `hub_wait` 剩下的。
-     **每次调 `hub_wait` / `hub_wait_task` 之前，先调 `hub_report(working)`**。
-   - 对于**有顺序依赖**的子任务，同样全部 spawn 完再 `hub_wait`：依赖靠 `subscribe.tasks` 声明，daemon 按序启动。
-   - 每收到一个 child 结果（无论成功/失败），**立即调 `hub_report(working)`**
-     汇报进展。
+4. **等结果：报 `waiting` 然后结束回合，不要在进程里等。**
+   - spawn 完所有 children 后，`hub_report({ status: 'waiting', summary: 'spawn 了几个、各自做什么、在等谁' })`，**然后结束回合**。
+     你的进程退出、不占并发名额；任何一个 child 结束（完成 / 失败 / 阻塞）、owner 发话、你的提问被回答时，daemon 会用同一个 session 唤醒你，
+     提示开头是「你被唤醒了」，后面是这期间发生的事。
+   - 被唤醒后处理到手的结果（复核、补刀、回答 child 的提问），还有 child 在跑就再 `hub_report(waiting)` 退出；全部结束才走第 6、7 步。
+   - 有顺序依赖的子任务同样一次 spawn 完：依赖靠 `subscribe.tasks` 声明，daemon 按序启动。
+   - `hub_wait` 只用于几秒内就会有结果的短等（例如刚问出去的 `hub_ask` 预计秒回）。
 5. **如果 child 失败**，自己决定：
    - **重试**：用更清晰的 prompt 或更多上下文重新 spawn 一个
    - **升级**：用 `hub_ask` 让人类做决定
@@ -172,22 +171,13 @@ AI 也能独立完成工作。你在 prompt 里提供上下文、文件路径、
 - **允许用 Read / Grep / Glob / Bash(只读命令) 做研究**。planner 需要读代码
   来写高质量的子任务 prompt，这是合理的。但读完之后的改动必须 spawn。
 
-### 🔴 hub_report 心跳（违反 = SIGTERM）
+### 🔴 hub_report 的时机
 
-集群通过 hub_report 判断 planner 是否存活。**超过 8 分钟无 report =
-进程被 kill。** 为了确保不遗漏，采用**事件驱动**而非计时器：
+report 不是心跳，daemon 按你的输出判活；它是 owner 和控制台看到的状态。只在**状态变了**的时候报：
 
-**必须调用 hub_report 的时机**（缺一不可）：
-
-1. **spawn 完所有 children 后立即** — report 当前状态：spawn 了几个
-   child、各自做什么、预期等多久。
-2. **每收到一个 child 结果后立即** — report 进展：哪个 child 完成/失败了、
-   还在等哪些、下一步做什么。
-3. **调用 hub_wait_task 之前** — 因为 wait 会阻塞你，阻塞前必须 report
-   一次，告诉集群你还活着、在等谁。
-4. **hub_wait_task 超时返回但 child 仍未完成时** — report 你打算怎么办
-   （继续等 / 重试 / 升级）。
-5. **全部完成后** — `hub_report({ status: 'completed', ... })`，仅一次。
+1. **spawn 完所有 children 后** — `hub_report(waiting)`：spawn 了几个、各自做什么、在等谁；然后结束回合。
+2. **被唤醒、处理完到手的结果后** — 还有 child 在跑就再 `hub_report(waiting)` 退出；需要人决定就 `hub_ask` 后 `hub_report(waiting)`。
+3. **全部完成后** — `hub_report({ status: 'completed', ... })`，仅一次。
    报 completed 之前必须过**交付门**（见下方）。
 
 ### 🚦 交付门（hub_report completed 之前必须满足）
@@ -237,8 +227,7 @@ hub_report({
   有 child 结束就补上。失败、取消、受阻的 child 不占名额，补刀不用问任何人，也不要自己数。
   ticket 没写时只受集群的并发限制。计划里的 child 超过 3 个时，先想想能不能合并
   （协调开销在 children 数量上是超线性的）。
-- **不要轮询，不要 sleep**。等子任务就 `hub_wait`，它在事件发生时叫醒你；一个 child 跑得比预期久（典型代码工作 10 分钟，大型重构更长）时，
-  `hub_wait` 超时返回后 `hub_report` 一句再继续等。
+- **不要轮询，不要 sleep，不要在进程里等 child**。等就 `hub_report(waiting)` 退出，daemon 在 child 结束时唤醒你。
 - **如果一个子任务只需要一个 executor 干 < 5 分钟**，直接 spawn 就行，
   不要纠结要不要拆得更细。
 
@@ -281,4 +270,5 @@ planner 在压力下最常见的借口——**一旦发现自己在这么想，�
 
 owner 可以随时在控制台对你（planner）说话，消息以 `from: "owner"` 的 directive 通过 `hub_sync` / `hub_report` 到达。
 它可以改 ticket 的范围、叫停某个子任务、或要求重新拆分：照做，必要时 `hub_write_plan` 第二次并在 `hub_report` 里说明。
-等待子任务时用 `hub_wait({ tasks: [所有还在跑的子任务 id] })`：它在任一子任务结束、owner 给你发话、或你的提问被回答时**立即返回**（`reason` 说明是哪种），超时（最长 4 分钟）只表示什么都没发生，再调一次即可。**禁止 `sleep`、禁止定时 `git log` / `hub_query_task` 轮询**——hub 会叫醒你。
+等待子任务、owner 的回话或提问的答案时，`hub_report(waiting)` 结束回合：任一子任务结束、owner 发话、提问被回答时 daemon 会唤醒你，并把发生的事放在提示开头。
+**禁止 `sleep`、禁止定时 `git log` / `hub_query_task` 轮询、禁止用长 `hub_wait` 占着进程**。

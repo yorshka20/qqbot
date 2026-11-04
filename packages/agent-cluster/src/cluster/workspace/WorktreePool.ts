@@ -193,6 +193,27 @@ export class WorktreePool {
     return lease;
   }
 
+  /**
+   * Lease the slot at `path` again for the task that used it before, if it is free: a resumed
+   * session must run where it was created. Null when the slot is leased to another task or gone.
+   */
+  leaseAgain(entry: ProjectEntry, kind: SlotKind, taskId: string, path: string): SlotLease | null {
+    const project = this.directoryName(entry);
+    const row = this.db
+      .query('SELECT * FROM cluster_worktree_slots WHERE project = ? AND path = ? AND kind = ? LIMIT 1')
+      .get(project, path, kind) as SlotRow | null;
+    if (!row || row.taskId !== null || !this.inRoot(row.path)) {
+      return null;
+    }
+    const leasedAt = new Date().toISOString();
+    this.db
+      .query(
+        'UPDATE cluster_worktree_slots SET taskId = ?, leasedAt = ? WHERE project = ? AND slot = ? AND taskId IS NULL',
+      )
+      .run(taskId, leasedAt, project, row.slot);
+    return { ...toLease(row), taskId, leasedAt };
+  }
+
   leaseOf(taskId: string): SlotLease | null {
     const row = this.db
       .query('SELECT * FROM cluster_worktree_slots WHERE taskId = ? LIMIT 1')
@@ -209,6 +230,22 @@ export class WorktreePool {
   async prepare(lease: SlotLease, entry: ProjectEntry, branch: string, startPoint: string): Promise<void> {
     await this.ensureWorktree(lease.path, entry);
     await git(lease.path, ['checkout', '-f', '-B', branch, startPoint], slotEnv(lease.path));
+    await git(lease.path, ['clean', '-fd'], slotEnv(lease.path));
+    if (lease.kind === 'executor') {
+      await this.installIfLockChanged(lease.project, lease.slot, lease.path, entry, `${lease.taskId}.install.log`);
+    }
+  }
+
+  /**
+   * Put a slot leased again back on the task's own branch, as the task left it. A slot the task
+   * still holds is left alone: the worker's uncommitted work is in it.
+   */
+  async reopen(lease: SlotLease, entry: ProjectEntry, branch: string, held: boolean): Promise<void> {
+    if (held) {
+      return;
+    }
+    await this.ensureWorktree(lease.path, entry);
+    await git(lease.path, ['checkout', '-f', branch], slotEnv(lease.path));
     await git(lease.path, ['clean', '-fd'], slotEnv(lease.path));
     if (lease.kind === 'executor') {
       await this.installIfLockChanged(lease.project, lease.slot, lease.path, entry, `${lease.taskId}.install.log`);

@@ -127,6 +127,11 @@ export class ClusterApi implements HubRoute {
    * unbounded worker stdout would be re-sent in full on every tick; `GET
    * /tasks/:id` (the single-task audit view) still returns the full record.
    */
+  /** Whether a message to the task would wake its session rather than reach a running worker. */
+  private withResumable(live: ClusterManager, task: TaskRecord): TaskRecord & { resumable: boolean } {
+    return { ...task, resumable: live.getScheduler().routeMessage(task).kind === 'resume' };
+  }
+
   private capTaskForList(t: TaskRecord): TaskRecord & { outputBytes?: number; outputTruncated?: boolean } {
     const OUT_CAP = 16384;
     const DESC_CAP = 2000;
@@ -244,7 +249,12 @@ export class ClusterApi implements HubRoute {
       }
 
       case '/tasks':
-        return jsonResponse<ClusterTask[]>(live.getScheduler().getActiveTasks());
+        return jsonResponse<ClusterTask[]>(
+          live
+            .getScheduler()
+            .getActiveTasks()
+            .map((t) => this.withResumable(live, t)),
+        );
 
       case '/events': {
         const limit = parseInt(url.searchParams.get('limit') || '50', 10);
@@ -305,7 +315,7 @@ export class ClusterApi implements HubRoute {
           const tasks = live
             .getScheduler()
             .getJobTasks(jobMatch[1])
-            .map((t) => this.capTaskForList(t));
+            .map((t) => this.capTaskForList(this.withResumable(live, t)));
           const workers = live.getHub().workerRegistry.getWorkersByJobId(jobMatch[1]);
           return jsonResponse<ClusterJobWithDetail>({
             ...job,
@@ -324,8 +334,8 @@ export class ClusterApi implements HubRoute {
           const subscriptions = live.getHub().subscriptions.of(task.id);
           const subscribed = subscriptions.tasks.length > 0 || subscriptions.files.length > 0 || subscriptions.branch;
           return jsonResponse<ClusterTaskDetail>({
-            ...task,
-            children: children.length > 0 ? children : undefined,
+            ...this.withResumable(live, task),
+            children: children.length > 0 ? children.map((child) => this.withResumable(live, child)) : undefined,
             subscriptions: subscribed ? subscriptions : undefined,
           });
         }
@@ -501,11 +511,22 @@ export class ClusterApi implements HubRoute {
           if (!text) return errorResponse('Missing required field: text', 400);
           const task = live.getScheduler().findTask(messageMatch[1]);
           if (!task) return errorResponse('Task not found', 404);
-          if (task.status !== 'running' || !task.workerId) {
-            return errorResponse(`Task is ${task.status}; only a running worker can take a message`, 409);
+          const from = body.from?.trim() || 'owner';
+          const route = live.getScheduler().routeMessage(task);
+          switch (route.kind) {
+            case 'worker':
+              live.getHub().messageWorker(route.workerId, task.id, text, from);
+              return jsonResponse<ClusterTaskMessagedResponse>({
+                delivered: true,
+                workerId: route.workerId,
+                resuming: false,
+              });
+            case 'resume':
+              live.getHub().messageTask(task.id, text, from);
+              return jsonResponse<ClusterTaskMessagedResponse>({ delivered: true, resuming: true });
+            case 'refused':
+              return errorResponse(route.reason, 409);
           }
-          live.getHub().messageWorker(task.workerId, task.id, text, body.from?.trim() || 'owner');
-          return jsonResponse<ClusterTaskMessagedResponse>({ delivered: true, workerId: task.workerId });
         }
 
         // /tasks/:id/acknowledge

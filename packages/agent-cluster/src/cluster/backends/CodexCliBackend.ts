@@ -32,6 +32,7 @@ import type {
   CredentialProbeResult,
   WorkerBackend,
   WorkerLaunch,
+  WorkerResumeConfig,
   WorkerSpawnConfig,
 } from '../types';
 import { interpretCodexLoginStatus, runCliAuthStatus } from './providerCredentialCheck';
@@ -47,23 +48,55 @@ export class CodexCliBackend implements WorkerBackend {
 
   async launch(config: WorkerSpawnConfig): Promise<WorkerLaunch> {
     // Template default args: ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check']
-    const args = [
-      ...config.args,
-      ...codexMcpServerArgs('cluster-context-hub', `${config.hubUrl}/mcp`, { 'X-Worker-Id': config.workerId }),
-      '--cd',
-      config.projectPath,
-      '-',
-    ];
+    const args = [...config.args, ...this.processArgs(config), '-'];
 
     logger.info(
       `[CodexCliBackend] Launching worker ${config.workerId}: ${config.command} (cwd: ${config.projectPath})`,
     );
 
+    return {
+      cmd: [config.command, ...args],
+      cwd: config.projectPath,
+      env: this.workerEnv(config),
+      stdin: config.taskPrompt,
+    };
+  }
+
+  /**
+   * `codex exec resume <thread id> -` continues the thread with the prompt on stdin. The
+   * subcommand goes right after `exec`; the template's other flags are accepted by `resume` too.
+   */
+  async resume(config: WorkerResumeConfig): Promise<WorkerLaunch> {
+    const [exec, ...rest] = config.args;
+    const args = [exec, 'resume', ...rest, ...this.processArgs(config), config.sessionId, '-'];
+
+    logger.info(
+      `[CodexCliBackend] Resuming worker ${config.workerId}: ${config.command} (cwd: ${config.projectPath}, thread: ${config.sessionId})`,
+    );
+
+    return {
+      cmd: [config.command, ...args],
+      cwd: config.projectPath,
+      env: this.workerEnv(config),
+      stdin: config.taskPrompt,
+      sessionId: config.sessionId,
+    };
+  }
+
+  private processArgs(config: WorkerSpawnConfig): string[] {
+    return [
+      ...codexMcpServerArgs('cluster-context-hub', `${config.hubUrl}/mcp`, { 'X-Worker-Id': config.workerId }),
+      '--cd',
+      config.projectPath,
+    ];
+  }
+
+  private workerEnv(config: WorkerSpawnConfig): Record<string, string> {
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(withoutCodexApiKeys(config.env))) {
       if (value !== undefined) env[key] = value;
     }
-    return { cmd: [config.command, ...args], cwd: config.projectPath, env, stdin: config.taskPrompt };
+    return env;
   }
 
   /** `codex exec --json` announces its thread as `{"type":"thread.started","thread_id":"…"}`. */

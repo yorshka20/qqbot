@@ -78,6 +78,21 @@ export class TaskWorkspaces {
     return this.pool.leaseOf(taskId) !== null;
   }
 
+  /**
+   * The slot a resumed task runs in: the one it still holds, else the one it ran in before,
+   * leased again. `busy` when that slot is taken; `unpooled` when the task ran in the checkout.
+   */
+  reclaim(task: TaskRecord, entry: ProjectEntry, kind: SlotKind): SlotLease | 'busy' | 'unpooled' {
+    const held = this.pool.leaseOf(task.id);
+    if (held) {
+      return held;
+    }
+    if (!task.worktreePath || !this.pool.isPooled(entry)) {
+      return 'unpooled';
+    }
+    return this.pool.leaseAgain(entry, kind, task.id, task.worktreePath) ?? 'busy';
+  }
+
   leases(): SlotLease[] {
     return this.pool.leases();
   }
@@ -113,6 +128,36 @@ export class TaskWorkspaces {
       branch,
       integrationBranch,
       baseBranch,
+      planning: job.planning,
+    };
+  }
+
+  /** The workspace of a task picked up again: its slot on its own branch, with the same facts the first run had. */
+  async reopen(
+    task: TaskRecord,
+    job: JobRecord,
+    entry: ProjectEntry,
+    lease: SlotLease,
+    held: boolean,
+  ): Promise<WorkerWorkspace> {
+    const branch = task.branch ?? taskBranchName(job.id, task.id);
+    const integrationBranch = job.integrationBranch ?? integrationBranchName(job.id);
+    await this.pool.reopen(lease, entry, branch, held);
+    task.branch = branch;
+    task.worktreePath = lease.path;
+    return {
+      cwd: lease.path,
+      env: {
+        CLUSTER_TASK_BRANCH: branch,
+        CLUSTER_INTEGRATION_BRANCH: integrationBranch,
+        CLUSTER_WORKTREE: lease.path,
+        CLUSTER_PLANNING: job.planning,
+      },
+      mode: 'pooled',
+      kind: lease.kind,
+      branch,
+      integrationBranch,
+      baseBranch: job.baseBranch,
       planning: job.planning,
     };
   }

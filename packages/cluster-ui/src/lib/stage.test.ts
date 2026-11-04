@@ -46,6 +46,11 @@ describe('stageOf', () => {
     expect(stageOf(task({ status: 'completed', completedAt: old }), quiet)).toBe('done');
   });
 
+  test('a parked task is waiting unless it asked something', () => {
+    expect(stageOf(task({ status: 'waiting' }), quiet)).toBe('waiting');
+    expect(stageOf(task({ status: 'waiting' }), { ...quiet, asking: true })).toBe('asking');
+  });
+
   test('cancelled needs nothing from anyone', () => {
     expect(stageOf(task({ status: 'cancelled' }), quiet)).toBe('cancelled');
   });
@@ -66,6 +71,7 @@ describe('stageOfStatus', () => {
     expect(stageOfStatus('completed')).toBe('done');
     expect(stageOfStatus('failed')).toBe('failed');
     expect(stageOfStatus('blocked')).toBe('blocked');
+    expect(stageOfStatus('waiting')).toBe('waiting');
     expect(stageOfStatus('cancelled')).toBe('cancelled');
   });
 });

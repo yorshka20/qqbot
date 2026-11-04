@@ -37,6 +37,7 @@ import type {
   ParsedWorkerOutput,
   WorkerBackend,
   WorkerLaunch,
+  WorkerResumeConfig,
   WorkerSpawnConfig,
 } from '../types';
 import { ClaudeCliBackend } from './ClaudeCliBackend';
@@ -59,19 +60,24 @@ export class DeepseekBackend implements WorkerBackend {
   private readonly inner = new ClaudeCliBackend();
 
   async launch(config: WorkerSpawnConfig): Promise<WorkerLaunch> {
-    // Bake in DeepSeek routing + model-alias remapping. Template-provided
-    // env still wins so users can pin specific variants per template.
-    const env: Record<string, string> = {
+    return this.inner.launch({ ...config, env: this.routedEnv(config.env) });
+  }
+
+  async resume(config: WorkerResumeConfig): Promise<WorkerLaunch> {
+    return this.inner.resume({ ...config, env: this.routedEnv(config.env) });
+  }
+
+  /** DeepSeek routing + model-alias remapping; template-provided env still wins. */
+  private routedEnv(env: Record<string, string>): Record<string, string> {
+    return {
       ANTHROPIC_BASE_URL: DEEPSEEK_ANTHROPIC_BASE_URL,
       ANTHROPIC_MODEL: DEEPSEEK_DEFAULT_MODEL,
       ANTHROPIC_DEFAULT_OPUS_MODEL: DEEPSEEK_DEFAULT_MODEL,
       ANTHROPIC_DEFAULT_SONNET_MODEL: DEEPSEEK_DEFAULT_MODEL,
       ANTHROPIC_DEFAULT_HAIKU_MODEL: DEEPSEEK_FAST_MODEL,
       CLAUDE_CODE_SUBAGENT_MODEL: DEEPSEEK_FAST_MODEL,
-      ...config.env,
+      ...env,
     };
-
-    return this.inner.launch({ ...config, env });
   }
 
   async verifyCredentials(config: CredentialProbeConfig): Promise<CredentialProbeResult> {

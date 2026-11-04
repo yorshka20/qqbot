@@ -191,11 +191,13 @@ export class HubMCPServer {
       'hub_report',
       {
         description:
-          'Report your task progress to the hub. Use status="working" for in-progress checkpoints, ' +
-          '"completed" / "failed" / "blocked" for terminal states. Reports release locks on terminal status. ' +
-          'When status is "working", nextSteps is REQUIRED (what you will do next) so the hub can prove you are not stuck.',
+          'Report your task state to the hub. status="working": a checkpoint (something changed). ' +
+          'status="waiting": nothing to do until something you wait for happens (a child ends, an answer or a ' +
+          'message arrives, a subscribed event fires) — report it, then END YOUR TURN; the daemon resumes this ' +
+          'session with what happened. "completed" / "failed" / "blocked" end the task. Locks are released on ' +
+          'waiting and terminal statuses. When status is "working", nextSteps is REQUIRED.',
         inputSchema: {
-          status: z.enum(['working', 'completed', 'failed', 'blocked']).describe('Current task status.'),
+          status: z.enum(['working', 'waiting', 'completed', 'failed', 'blocked']).describe('Current task status.'),
           summary: z.string().describe('Short summary of what just happened.'),
           nextSteps: z
             .string()
@@ -436,11 +438,10 @@ export class HubMCPServer {
       'hub_wait',
       {
         description:
-          'Block until something you must react to happens: a child task you watch reaches a terminal status, ' +
-          'a message/directive/answer arrives for you (owner messages included), an event you subscribed to with ' +
-          'hub_subscribe fires (reason="event"), or the window (max 240 s) ' +
-          'runs out. Nothing polls — the hub wakes you the moment the event occurs. Use this instead of sleep ' +
-          'or periodic hub_sync. reason=timeout means nothing happened: call it again.',
+          'Short wait (seconds, not minutes) for something that is about to happen: a child task you watch ' +
+          'settles, a message/directive/answer arrives for you, or a subscribed event fires (reason="event"). ' +
+          'For anything longer, hub_report(status="waiting") and end your turn instead: the daemon resumes your ' +
+          'session when it happens. Never sleep or poll. reason=timeout means nothing happened.',
         inputSchema: {
           tasks: z
             .array(z.string())

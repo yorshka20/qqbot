@@ -21,6 +21,7 @@ import type {
   UsageSample,
   WorkerBackend,
   WorkerLaunch,
+  WorkerResumeConfig,
   WorkerSpawnConfig,
 } from '../types';
 import { checkAnthropicCredential, interpretClaudeAuthStatus, runCliAuthStatus } from './providerCredentialCheck';
@@ -33,10 +34,57 @@ function readSessionIdArg(args: string[]): string | undefined {
   return args.find((a) => a.startsWith('--session-id='))?.slice('--session-id='.length);
 }
 
+function withoutSessionIdArg(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--session-id') {
+      i++;
+      continue;
+    }
+    if (arg.startsWith('--session-id=')) continue;
+    out.push(arg);
+  }
+  return out;
+}
+
 export class ClaudeCliBackend implements WorkerBackend {
   name = 'claude-cli';
 
   async launch(config: WorkerSpawnConfig): Promise<WorkerLaunch> {
+    const args = this.commonArgs(config);
+
+    // Choose the session id up front so the task knows it before the first line of output.
+    let sessionId = readSessionIdArg(args);
+    if (!sessionId) {
+      sessionId = randomUUID();
+      args.push('--session-id', sessionId);
+    }
+
+    logger.info(
+      `[ClaudeCliBackend] Launching worker ${config.workerId}: ${config.command} (cwd: ${config.projectPath}, mcp: ${config.mcpConfigPath}, session: ${sessionId})`,
+    );
+
+    return this.launchWith(config, args, sessionId);
+  }
+
+  /**
+   * `--resume <id>` continues the session the first run created; claude finds it by the cwd, so
+   * the worker must start where the session was created. The template's own `--session-id`, if
+   * any, is dropped: it would start a fresh session under that id.
+   */
+  async resume(config: WorkerResumeConfig): Promise<WorkerLaunch> {
+    const args = withoutSessionIdArg(this.commonArgs(config));
+    args.push('--resume', config.sessionId);
+
+    logger.info(
+      `[ClaudeCliBackend] Resuming worker ${config.workerId}: ${config.command} (cwd: ${config.projectPath}, session: ${config.sessionId})`,
+    );
+
+    return this.launchWith(config, args, config.sessionId);
+  }
+
+  private commonArgs(config: WorkerSpawnConfig): string[] {
     const args = [...config.args];
     const hasMcpConfig = args.includes('--mcp-config') || args.some((a) => a.startsWith('--mcp-config='));
     if (!hasMcpConfig) {
@@ -52,18 +100,10 @@ export class ClaudeCliBackend implements WorkerBackend {
         args.push('--verbose');
       }
     }
+    return args;
+  }
 
-    // Choose the session id up front so the task knows it before the first line of output.
-    let sessionId = readSessionIdArg(args);
-    if (!sessionId) {
-      sessionId = randomUUID();
-      args.push('--session-id', sessionId);
-    }
-
-    logger.info(
-      `[ClaudeCliBackend] Launching worker ${config.workerId}: ${config.command} (cwd: ${config.projectPath}, mcp: ${config.mcpConfigPath}, session: ${sessionId})`,
-    );
-
+  private launchWith(config: WorkerSpawnConfig, args: string[], sessionId: string): WorkerLaunch {
     return {
       cmd: [config.command, ...args, config.taskPrompt],
       cwd: config.projectPath,

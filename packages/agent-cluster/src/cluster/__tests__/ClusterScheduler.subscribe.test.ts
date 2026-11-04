@@ -43,6 +43,7 @@ describe('subscriptions against a real scheduler and real merges', () => {
       submitChildTask: (opts) => scheduler.submitChildTask(opts),
       findTask: (taskId) => scheduler.findTask(taskId),
       isTaskSettled: (taskId) => scheduler.isTaskSettled(taskId),
+      taskInboxed: (taskId, type) => scheduler.taskInboxed(taskId, type),
     });
     return { hub, pool, scheduler };
   }
@@ -173,7 +174,9 @@ describe('subscriptions against a real scheduler and real merges', () => {
     await open();
     const result = await planning;
 
-    expect(result.reason).toBe('task');
+    // The planner hears of a's failure as an event before c, the task it watches, is cancelled.
+    expect(['task', 'event']).toContain(result.reason);
+    await waitFor(() => c.status === 'cancelled', 8000, 'c cancelled');
     expect(a.status).toBe('failed');
     expect(b.status).toBe('cancelled');
     expect(b.error).toContain(`dependency ${a.id} ended failed`);

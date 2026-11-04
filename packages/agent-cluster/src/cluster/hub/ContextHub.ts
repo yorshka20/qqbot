@@ -82,7 +82,7 @@ import type {
 import { EventLog } from './EventLog';
 import { HubMCPServer } from './HubMCPServer';
 import { type LockChange, LockManager } from './LockManager';
-import { MessageBox } from './MessageBox';
+import { MessageBox, type MessageType } from './MessageBox';
 import { normalizeInterestPath, SubscriptionStore } from './SubscriptionStore';
 import { WorkerRegistry } from './WorkerRegistry';
 import { WAIT_MAX_MS } from './waitWindow';
@@ -152,6 +152,8 @@ export interface SchedulerBridge {
   findTask(taskId: string): TaskRecord | undefined;
   /** A task has ended and its branch, if any, has landed: its status will not change again. */
   isTaskSettled(taskId: string): boolean;
+  /** Something arrived for a task that has no worker: a parked or ended task may be woken by it. */
+  taskInboxed(taskId: string, type: MessageType): void;
 }
 
 /**
@@ -173,6 +175,10 @@ const TRANSIENT_EVENTS: ReadonlySet<HubSubscriptionEvent['kind']> = new Set([
 /** Where messages for a task wait until a worker starts on it. */
 function taskInbox(taskId: string): string {
   return `task:${taskId}`;
+}
+
+function inboxTaskId(address: string): string | undefined {
+  return address.startsWith('task:') ? address.slice('task:'.length) : undefined;
 }
 
 function clip(text: string): string {
@@ -220,9 +226,14 @@ export class ContextHub {
   ) {
     this.eventLog = new EventLog(db, config.hub.eventLogMaxSize);
     this.lockManager = new LockManager(db, this.eventLog, config.hub.lockTTL, (change) => this.locksChanged(change));
-    this.messageBox = new MessageBox(db, (workerId, type) =>
-      this.wake(workerId, type === 'event' ? 'event' : 'message'),
-    );
+    this.messageBox = new MessageBox(db, (target, type) => {
+      const taskId = inboxTaskId(target);
+      if (taskId) {
+        this.schedulerBridge?.taskInboxed(taskId, type);
+        return;
+      }
+      this.wake(target, type === 'event' ? 'event' : 'message');
+    });
     this.workerRegistry = new WorkerRegistry(db);
     this.subscriptions = new SubscriptionStore(db);
     this.mcpServer = new HubMCPServer(this);
@@ -358,13 +369,22 @@ export class ContextHub {
   /**
    * Notify hub that a worker process has exited (called by WorkerPool).
    */
-  workerExited(workerId: string): void {
+  /**
+   * The worker process is gone. `parkedTaskId` names its task when that task lives on without
+   * a worker (`waiting`): its subscriptions stay, and what the worker had not read moves to the
+   * task's inbox, where it wakes the task.
+   */
+  workerExited(workerId: string, parkedTaskId?: string): void {
     this.lockManager.releaseAll(workerId);
     const taskId = this.workerRegistry.get(workerId)?.lastBoundTaskId;
-    if (taskId) {
-      this.dropSubscriptions(taskId);
+    if (parkedTaskId) {
+      this.messageBox.readdress(workerId, taskInbox(parkedTaskId));
+    } else {
+      if (taskId) {
+        this.dropSubscriptions(taskId);
+      }
+      this.messageBox.discard(workerId);
     }
-    this.messageBox.discard(workerId);
     this.workerRegistry.markExited(workerId);
     this.eventLog.append('worker_left', workerId, {});
     this.broadcastSSE('worker_status', { workerId, status: 'exited' });
@@ -374,6 +394,18 @@ export class ContextHub {
   bindWorker(workerId: string, taskId: string): void {
     this.workerRegistry.setTask(workerId, taskId);
     this.messageBox.readdress(taskInbox(taskId), workerId);
+  }
+
+  /**
+   * Where a message for a task goes: its worker while that worker lives, else the task's own
+   * inbox, which wakes a parked or ended task. A task record keeps the id of a worker that has
+   * exited, so the registry decides, not the record.
+   */
+  private inboxFor(taskId: string, workerId: string | undefined): string {
+    if (workerId && this.workerRegistry.get(workerId)?.status !== 'exited') {
+      return workerId;
+    }
+    return taskInbox(taskId);
   }
 
   // ── MCP Tool implementations ──
@@ -461,6 +493,8 @@ export class ContextHub {
     });
 
     const isTerminal = input.status === 'completed' || input.status === 'failed' || input.status === 'blocked';
+    // The worker is about to end its turn; the locks go with the process, the task binding stays.
+    const parking = input.status === 'waiting';
 
     // Snapshot the taskId up front. The registration object is mutated
     // by `setTask(workerId, undefined)` further down in the terminal path,
@@ -477,6 +511,8 @@ export class ContextHub {
       eventType = 'task_failed';
     } else if (input.status === 'blocked') {
       eventType = 'task_blocked';
+    } else if (parking) {
+      eventType = 'task_waiting';
     } else {
       eventType = 'worker_progress';
     }
@@ -507,6 +543,8 @@ export class ContextHub {
     if (isTerminal) {
       this.lockManager.releaseAll(workerId);
       this.workerRegistry.setTask(workerId, undefined);
+    } else if (parking) {
+      this.lockManager.releaseAll(workerId);
     } else {
       // Renew locks for non-terminal reports
       this.lockManager.renewAll(workerId);
@@ -544,7 +582,10 @@ export class ContextHub {
     // worker is still alive waiting for intervention, so the task is not
     // terminal from the scheduler's POV; `working` is obviously not
     // terminal either.
-    if (this.reportCallback && (input.status === 'completed' || input.status === 'failed')) {
+    if (
+      this.reportCallback &&
+      (input.status === 'completed' || input.status === 'failed' || input.status === 'waiting')
+    ) {
       Promise.resolve(this.reportCallback(workerId, taskIdSnapshot, input)).catch((err) => {
         logger.error(`[ContextHub] reportCallback threw (worker=${workerId}, status=${input.status}):`, err);
       });
@@ -665,7 +706,7 @@ export class ContextHub {
       if (targetJob && ownJob && targetJob !== ownJob) {
         throw new Error(`hub_message: ${input.to} is not in your job`);
       }
-      const address = sibling ? (sibling.workerId ?? taskInbox(sibling.id)) : input.to;
+      const address = sibling ? this.inboxFor(sibling.id, sibling.workerId) : input.to;
       this.messageBox.send(address, workerId, input.content, 'message', input.priority);
     }
 
@@ -814,11 +855,11 @@ export class ContextHub {
 
   /** Queued in the MessageBox, whose send hook is what wakes a worker blocked in hub_wait. */
   private deliver(subscriberTaskId: string, event: HubSubscriptionEvent): void {
-    const workerId = this.schedulerBridge?.findTask(subscriberTaskId)?.workerId;
-    if (!workerId && TRANSIENT_EVENTS.has(event.kind)) {
+    const address = this.inboxFor(subscriberTaskId, this.schedulerBridge?.findTask(subscriberTaskId)?.workerId);
+    if (address !== subscriberTaskId && address.startsWith('task:') && TRANSIENT_EVENTS.has(event.kind)) {
       return;
     }
-    this.messageBox.send(workerId ?? taskInbox(subscriberTaskId), 'hub', JSON.stringify(event), 'event');
+    this.messageBox.send(address, 'hub', JSON.stringify(event), 'event');
   }
 
   private dropSubscriptions(taskId: string): void {
@@ -1123,10 +1164,19 @@ export class ContextHub {
     }
   }
 
-  /** Tell the task's subscribers how it ended. The scheduler calls this once per task. */
+  /**
+   * Tell the task's subscribers, and the planner that spawned it, how it ended. The scheduler
+   * calls this once per task. The planner gets it whether or not it subscribed: a planner that
+   * ended its turn while the child ran is woken by exactly this.
+   */
   publishTaskOutcome(task: TaskRecord): void {
-    for (const match of this.subscriptions.match(task.jobId, { taskId: task.id })) {
-      this.deliver(match.taskId, this.outcomeEvent(task));
+    const recipients = new Set(this.subscriptions.match(task.jobId, { taskId: task.id }).map((m) => m.taskId));
+    if (task.parentTaskId) {
+      recipients.add(task.parentTaskId);
+    }
+    recipients.delete(task.id);
+    for (const taskId of recipients) {
+      this.deliver(taskId, this.outcomeEvent(task));
     }
   }
 
@@ -1340,8 +1390,9 @@ export class ContextHub {
     request.answeredAt = new Date().toISOString();
     this.persistHelpRequest(request);
 
-    // Send answer to worker
-    this.messageBox.send(request.workerId, answeredBy, answer, 'answer');
+    // Send answer to worker, or to its task when the worker has exited: the answer wakes it.
+    const address = request.taskId ? this.inboxFor(request.taskId, request.workerId) : request.workerId;
+    this.messageBox.send(address, answeredBy, answer, 'answer');
     this.eventLog.append(
       'answer',
       answeredBy,
@@ -1372,6 +1423,26 @@ export class ContextHub {
     this.messageBox.send(workerId, from, text, 'directive', 'warning');
     this.eventLog.append('directive', from, { text }, { targetWorkerId: workerId, taskId });
     this.broadcastSSE('task_message', { taskId, workerId, from, kind: 'directive', text });
+  }
+
+  /**
+   * A person's message to a task that has no worker right now. It waits in the task's inbox,
+   * which wakes the task: the scheduler resumes its session and hands it the message.
+   */
+  messageTask(taskId: string, text: string, from = 'owner'): void {
+    this.eventLog.append('directive', from, { text }, { taskId });
+    this.broadcastSSE('task_message', { taskId, workerId: undefined, from, kind: 'directive', text });
+    this.messageBox.send(taskInbox(taskId), from, text, 'directive', 'warning');
+  }
+
+  /** Whether anything waits in the task's inbox. */
+  hasInbox(taskId: string): boolean {
+    return this.messageBox.getUnreadCount(taskInbox(taskId)) > 0;
+  }
+
+  /** Everything in the task's inbox, read: the input a resumed session starts from. */
+  takeInbox(taskId: string): HubUpdate[] {
+    return this.messageBox.consume(taskInbox(taskId));
   }
 
   /** Every help request the hub remembers, answered ones included, newest first. */
@@ -1484,6 +1555,10 @@ export class ContextHub {
         return `任务失败: ${data.summary || ''}`;
       case 'task_blocked':
         return `阻塞: ${data.summary || ''}`;
+      case 'task_waiting':
+        return `等待中: ${data.summary || ''}`;
+      case 'task_resumed':
+        return `已唤醒: ${data.reason || ''}`;
       case 'task_merged':
         return `已合入 ${data.integrationBranch || ''}`;
       case 'job_landed':

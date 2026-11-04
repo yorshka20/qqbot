@@ -9,10 +9,12 @@ import { logger, randomUUID } from '@qqbot/shared';
 import type { ProjectEntry, ProjectRegistry } from '../codingAgent/ProjectRegistry';
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
+import type { MessageType } from './hub/MessageBox';
 import type { TaskSource } from './sources/TaskSource';
 import {
   type HubSubscribeInput,
   isJobLandable,
+  isResumableTaskStatus,
   isTerminalTaskStatus,
   type JobRecord,
   type JobStatus,
@@ -23,9 +25,18 @@ import {
   type TaskRecord,
   type TaskStatus,
 } from './types';
-import type { WorkerPool } from './WorkerPool';
+import type { WorkerPool, WorkerResume } from './WorkerPool';
 import type { TaskWorkspaces } from './workspace/TaskWorkspaces';
 import type { SlotKind, SlotLease } from './workspace/WorktreePool';
+
+/** Messages that arrive together wake a task once. */
+const WAKE_COALESCE_MS = 2_000;
+
+/** Where a message to a task goes. */
+export type MessageRoute =
+  | { kind: 'worker'; workerId: string }
+  | { kind: 'resume' }
+  | { kind: 'refused'; reason: string };
 
 export class ClusterScheduler {
   private running = false;
@@ -45,6 +56,9 @@ export class ClusterScheduler {
   private settling = new Map<string, Promise<void>>();
   private dispatchRunning = false;
   private dispatchRequested = false;
+  /** Tasks with something in their inbox that should pick their session up again. */
+  private wakeRequested = new Set<string>();
+  private wakeTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private config: ClusterConfig,
@@ -86,6 +100,12 @@ export class ClusterScheduler {
     this.adoptRunningTasks();
     this.restoreQueuedChildren();
     await this.releaseOrphanedSlots();
+    // A message that arrived while no scheduler ran is in the inbox already; nothing will announce it again.
+    for (const task of this.activeTasks.values()) {
+      if (task.status === 'waiting' && this.hub.hasInbox(task.id)) {
+        this.wakeRequested.add(task.id);
+      }
+    }
     void this.dispatchPendingTasks();
 
     logger.info(`[ClusterScheduler] Started (interval: ${this.config.schedulingInterval}ms)`);
@@ -139,6 +159,23 @@ export class ClusterScheduler {
     // Always persist — allows the post-exit code path to refresh error/diffSummary
     // after hub_report fired first. Stdout is never written to SQLite.
     this.persistTask(task);
+
+    // The worker ended its turn with the task still open: it keeps its slot, its subscriptions
+    // and its session, and leaves `activeTasks` only when it ends for real. Its worker slot is
+    // free now, so whatever queued may start, and an inbox that filled meanwhile wakes it.
+    if (task.status === 'waiting') {
+      this.activeTasks.set(task.id, task);
+      if (this.hub.workerRegistry.get(task.workerId ?? '')?.lastReportStatus !== 'waiting') {
+        this.hub.recordTaskEvent('task_waiting', task, {
+          summary: 'Ended its turn while its children were still running',
+        });
+      }
+      if (this.hub.hasInbox(task.id)) {
+        this.wakeRequested.add(task.id);
+      }
+      void this.dispatchPendingTasks();
+      return;
+    }
 
     // A task in a slot is not over at its hub_report: the worker runs on until it exits and may
     // still commit, and the branch has yet to land, which can end the task as `blocked` instead.
@@ -267,9 +304,7 @@ export class ClusterScheduler {
       return { ok: false, code: 'already_terminal', status: task.status };
     }
 
-    const cascaded = this.getChildTasks(taskId).filter(
-      (c) => c.status === 'pending' || c.status === 'running' || c.status === 'claimed',
-    ).length;
+    const cascaded = this.getChildTasks(taskId).filter((c) => isLiveTaskStatus(c.status)).length;
 
     task.status = 'cancelled';
     task.error = reason?.trim() || 'Cancelled by operator';
@@ -313,7 +348,7 @@ export class ClusterScheduler {
 
     let cancelledTasks = 0;
     for (const task of this.getJobTasks(jobId)) {
-      if (task.status !== 'pending' && task.status !== 'claimed' && task.status !== 'running') continue;
+      if (!isLiveTaskStatus(task.status)) continue;
       const result = await this.cancelTask(task.id, reason);
       if (result.ok) cancelledTasks += 1;
     }
@@ -345,9 +380,7 @@ export class ClusterScheduler {
    */
   private async cascadeKillChildren(parentTaskId: string): Promise<void> {
     const children = this.getChildTasks(parentTaskId);
-    const liveChildren = children.filter(
-      (c) => c.status === 'pending' || c.status === 'running' || c.status === 'claimed',
-    );
+    const liveChildren = children.filter((c) => isLiveTaskStatus(c.status));
     if (liveChildren.length === 0) return;
 
     logger.info(
@@ -450,6 +483,61 @@ export class ClusterScheduler {
     this.persistTask(task);
   }
 
+  /** A worker exited cleanly without a terminal report: is the task still waiting on children? */
+  hasOpenWork(task: TaskRecord): boolean {
+    return this.getChildTasks(task.id).some((child) => !this.isTaskSettled(child.id));
+  }
+
+  /**
+   * Where a person's message to this task goes: to its worker while one runs it, into the
+   * task's inbox when its session can be resumed, nowhere otherwise.
+   */
+  routeMessage(task: TaskRecord): MessageRoute {
+    if (task.workerId && this.workerPool.isWorkerLive(task.workerId)) {
+      return { kind: 'worker', workerId: task.workerId };
+    }
+    if (task.status === 'pending' || task.status === 'claimed') {
+      return { kind: 'refused', reason: 'The task has not started; its worker will take messages once it runs' };
+    }
+    if (!isResumableTaskStatus(task.status)) {
+      return { kind: 'refused', reason: `A ${task.status} task cannot be resumed` };
+    }
+    const blocker = this.resumeBlocker(task);
+    return blocker ? { kind: 'refused', reason: blocker } : { kind: 'resume' };
+  }
+
+  /** Something landed in a task's inbox while it had no worker. */
+  taskInboxed(taskId: string, type: MessageType): void {
+    const task = this.findTask(taskId);
+    if (!task || !this.wakes(task, type)) return;
+    this.wakeRequested.add(taskId);
+    if (this.wakeTimer) return;
+    this.wakeTimer = setTimeout(() => {
+      this.wakeTimer = null;
+      void this.dispatchPendingTasks();
+    }, WAKE_COALESCE_MS);
+  }
+
+  /** A parked task wakes for anything; an ended one only for a person (a directive or an answer). */
+  private wakes(task: TaskRecord, type: MessageType): boolean {
+    if (task.status === 'waiting') return true;
+    if (task.status === 'completed' || task.status === 'failed' || task.status === 'blocked') {
+      return type === 'directive' || type === 'answer';
+    }
+    return false;
+  }
+
+  /** Why this task's session cannot be picked up again, or null when it can. */
+  private resumeBlocker(task: TaskRecord): string | null {
+    if (!task.sessionId) return 'No session id was recorded for this task';
+    const template = this.config.workerTemplates[task.workerTemplate ?? ''];
+    if (!template) return `Template "${task.workerTemplate}" is not configured`;
+    const backendType = template.type || 'claude-cli';
+    const backend = this.workerPool.getBackend(backendType);
+    if (!backend?.resume) return `Backend ${backendType} cannot resume a session`;
+    return null;
+  }
+
   /** A person marked the task as seen; answers the stamp, or null when the task is unknown. */
   acknowledgeTask(taskId: string, at = new Date().toISOString()): string | null {
     const task = this.findTask(taskId);
@@ -467,6 +555,10 @@ export class ClusterScheduler {
     if (this.loopTimer) {
       clearTimeout(this.loopTimer);
       this.loopTimer = null;
+    }
+    if (this.wakeTimer) {
+      clearTimeout(this.wakeTimer);
+      this.wakeTimer = null;
     }
     logger.info('[ClusterScheduler] Stopped');
   }
@@ -767,6 +859,7 @@ export class ClusterScheduler {
     templateName: string,
     projectInfo: ProjectEntry,
     lease: SlotLease | null,
+    resume?: WorkerResume & { heldSlot: boolean },
   ): Promise<boolean> {
     const worker = await this.workerPool.spawnWorker(
       templateName,
@@ -774,23 +867,107 @@ export class ClusterScheduler {
       projectInfo.path,
       task,
       lease
-        ? () => this.prepareWorkspace(task, projectInfo, lease)
+        ? resume
+          ? () => this.reopenWorkspace(task, projectInfo, lease, resume.heldSlot)
+          : () => this.prepareWorkspace(task, projectInfo, lease)
         : async () => this.workspaces.unpooled(projectInfo, this.slotKind(templateName), this.jobOf(task)),
+      resume,
     );
     if (worker) {
       task.status = isTerminalTaskStatus(task.status) ? task.status : 'running';
-      task.startedAt = new Date().toISOString();
+      if (!resume) task.startedAt = new Date().toISOString();
       this.persistTask(task);
       return true;
     }
     // Refused before it started; a failure while starting already ended the task.
     if (task.status === 'claimed') {
-      task.status = 'pending';
+      task.status = resume ? 'waiting' : 'pending';
       task.claimedAt = undefined;
       this.persistTask(task);
-      if (lease) await this.workspaces.release(lease);
+      if (lease && !resume?.heldSlot) await this.workspaces.release(lease);
     }
     return false;
+  }
+
+  /**
+   * Pick a task's session up again in a new worker, with its inbox as the first input. `busy`
+   * when no worker slot or worktree slot is free right now; `dropped` when there is nothing to
+   * wake it with, or it cannot be woken at all.
+   */
+  private async tryResume(task: TaskRecord, projectInfo: ProjectEntry): Promise<'resumed' | 'busy' | 'dropped'> {
+    if (task.workerId && this.workerPool.isWorkerLive(task.workerId)) return 'dropped';
+    if (!this.hub.hasInbox(task.id)) return 'dropped';
+    const blocker = this.resumeBlocker(task);
+    if (blocker) {
+      logger.warn(`[ClusterScheduler] Task ${task.id} cannot be resumed: ${blocker}`);
+      if (task.status === 'waiting') {
+        task.status = 'failed';
+        task.error = `Cannot resume: ${blocker}`;
+        task.completedAt = new Date().toISOString();
+        this.finalizeTask(task);
+      }
+      return 'dropped';
+    }
+    const templateName = task.workerTemplate as string;
+    if (!this.workerPool.canSpawnMore(templateName)) return 'busy';
+
+    const heldSlot = this.workspaces.holdsSlot(task.id);
+    const claim = this.workspaces.reclaim(task, projectInfo, this.slotKind(templateName));
+    if (claim === 'busy') return 'busy';
+    const lease = claim === 'unpooled' ? null : claim;
+
+    this.reopenTask(task);
+    const now = new Date().toISOString();
+    task.status = 'claimed';
+    task.claimedAt = now;
+    task.resumedAt = now;
+    task.resumeCount = (task.resumeCount ?? 0) + 1;
+    this.persistTask(task);
+    const updates = this.hub.takeInbox(task.id);
+    this.hub.recordTaskEvent('task_resumed', task, {
+      count: task.resumeCount,
+      reason: updates.map((update) => ('type' in update ? update.type : update.kind)).join(', '),
+    });
+
+    const spawned = this.spawnTaskWorker(task, templateName, projectInfo, lease, {
+      sessionId: task.sessionId as string,
+      updates,
+      heldSlot,
+    });
+    if (lease === null) return (await spawned) ? 'resumed' : 'dropped';
+    void spawned;
+    return 'resumed';
+  }
+
+  /** An ended task comes back to life: it counts as open again, and so does its job. */
+  private reopenTask(task: TaskRecord): void {
+    this.activeTasks.set(task.id, task);
+    if (!isTerminalTaskStatus(task.status)) return;
+    const job = this.jobOf(task);
+    if (job && !task.parentTaskId) {
+      if (task.status === 'completed') {
+        job.tasksCompleted -= 1;
+      } else {
+        job.tasksFailed -= 1;
+      }
+      job.status = 'running';
+      job.completedAt = undefined;
+      job.landError = undefined;
+      this.jobs.set(job.id, job);
+      this.persistJob(job);
+    }
+    task.completedAt = undefined;
+    task.error = undefined;
+  }
+
+  private async reopenWorkspace(task: TaskRecord, projectInfo: ProjectEntry, lease: SlotLease, held: boolean) {
+    const job = this.jobOf(task);
+    if (!job) {
+      throw new Error(`Job ${task.jobId} of task ${task.id} not found`);
+    }
+    const workspace = await this.workspaces.reopen(task, job, projectInfo, lease, held);
+    this.persistTask(task);
+    return workspace;
   }
 
   private async prepareWorkspace(task: TaskRecord, projectInfo: ProjectEntry, lease: SlotLease) {
@@ -1008,6 +1185,17 @@ export class ClusterScheduler {
       do {
         this.dispatchRequested = false;
         if (!this.running || this.workerPool.isPaused()) return;
+        // A woken session goes before a new launch: someone is waiting for its answer.
+        for (const taskId of Array.from(this.wakeRequested)) {
+          if (!this.workerPool.canSpawnMore()) break;
+          const task = this.findTask(taskId);
+          const projectInfo = task && this.projectRegistry.resolve(task.project);
+          if (!task || !projectInfo) {
+            this.wakeRequested.delete(taskId);
+            continue;
+          }
+          if ((await this.tryResume(task, projectInfo)) !== 'busy') this.wakeRequested.delete(taskId);
+        }
         for (const task of Array.from(this.activeTasks.values())) {
           if (task.status !== 'pending') continue;
           if (!this.workerPool.canSpawnMore()) break;
@@ -1090,7 +1278,7 @@ export class ClusterScheduler {
     // Filter out tasks already being worked on (by description match)
     const activeDescriptions = new Set<string>();
     for (const task of this.activeTasks.values()) {
-      if (task.status === 'running' || task.status === 'claimed') {
+      if (task.status === 'running' || task.status === 'claimed' || task.status === 'waiting') {
         activeDescriptions.add(task.description);
       }
     }
@@ -1157,8 +1345,8 @@ export class ClusterScheduler {
          (id, jobId, project, description, status, workerId, workerTemplate, source,
           createdAt, claimedAt, startedAt, completedAt, output, error, filesModified, diffSummary, metadata, parentTaskId,
           workerPid, workerStartedAt, logPath, sessionId, acknowledgedAt, model, usage,
-          branch, worktreePath, mergedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          branch, worktreePath, mergedAt, resumedAt, resumeCount)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           task.id,
@@ -1189,6 +1377,8 @@ export class ClusterScheduler {
           task.branch ?? null,
           task.worktreePath ?? null,
           task.mergedAt ?? null,
+          task.resumedAt ?? null,
+          task.resumeCount ?? null,
         );
     } catch (err) {
       logger.error('[ClusterScheduler] Failed to persist task:', err);
@@ -1320,6 +1510,7 @@ export class ClusterScheduler {
           `SELECT * FROM cluster_tasks
            WHERE (status = 'running' AND workerPid IS NOT NULL)
               OR status = 'claimed'
+              OR status = 'waiting'
               OR id IN (SELECT taskId FROM cluster_worktree_slots WHERE taskId IS NOT NULL)`,
         )
         .all() as Array<Record<string, unknown>>;
@@ -1339,6 +1530,8 @@ export class ClusterScheduler {
         adopted++;
         continue;
       }
+      // Parked on purpose: no process to adopt, and nothing to end.
+      if (task.status === 'waiting') continue;
       if (!isTerminalTaskStatus(task.status)) {
         task.status = 'failed';
         task.error = 'Worker process not found after scheduler restart';
@@ -1429,6 +1622,8 @@ export class ClusterScheduler {
       branch: (row.branch as string | null) ?? undefined,
       worktreePath: (row.worktreePath as string | null) ?? undefined,
       mergedAt: (row.mergedAt as string | null) ?? undefined,
+      resumedAt: (row.resumedAt as string | null) ?? undefined,
+      resumeCount: (row.resumeCount as number | null) ?? undefined,
     };
   }
 
@@ -1503,6 +1698,11 @@ export class ClusterScheduler {
     await this.tryDispatch(task, projectInfo);
     return task;
   }
+}
+
+/** Statuses a cancel reaches: the task has, or may still get, a worker. */
+function isLiveTaskStatus(status: TaskStatus): boolean {
+  return status === 'pending' || status === 'claimed' || status === 'running' || status === 'waiting';
 }
 
 function parseUsage(raw: unknown): TaskRecord['usage'] {

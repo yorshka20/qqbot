@@ -81,6 +81,7 @@ describe('hub_wait snapshots and hub_query_task output', () => {
     hub.setSchedulerBridge({
       findTask: (id: string) => (id === 'child-a' ? child(output) : undefined),
       isTaskSettled: () => false,
+      taskInboxed: () => {},
     } as unknown as SchedulerBridge);
     hub.workerRegistry.setTask('planner-1', 'task-p');
   }

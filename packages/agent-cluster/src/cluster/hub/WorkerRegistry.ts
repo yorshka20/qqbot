@@ -9,7 +9,7 @@
 
 import type { Database } from 'bun:sqlite';
 import { logger } from '@qqbot/shared';
-import type { WorkerRegistration } from '../types';
+import type { HubReportStatus, WorkerRegistration } from '../types';
 
 export class WorkerRegistry {
   private workers = new Map<string, WorkerRegistration>();
@@ -120,7 +120,7 @@ export class WorkerRegistry {
     payload: {
       summary: string;
       nextSteps?: string;
-      status: 'working' | 'completed' | 'failed' | 'blocked';
+      status: HubReportStatus;
     },
   ): void {
     const worker = this.workers.get(workerId);

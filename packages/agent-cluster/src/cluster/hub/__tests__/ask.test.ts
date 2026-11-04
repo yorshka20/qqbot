@@ -53,7 +53,7 @@ describe('hub_ask and hub_answer', () => {
     });
     if (!config) throw new Error('config');
     hub = new ContextHub(config, db, join(dir, 'tickets'));
-    hub.setSchedulerBridge({ findTask: (id: string) => tasks.get(id) } as unknown as SchedulerBridge);
+    hub.setSchedulerBridge({ findTask: (id: string) => tasks.get(id), taskInboxed: () => {} } as unknown as SchedulerBridge);
     hub.setAskListener((request) => toOwner.push(request));
   });
 

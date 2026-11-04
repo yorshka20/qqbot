@@ -14,6 +14,7 @@ function apiWith(subscriptions: HubSubscriptions): ClusterApi {
     getScheduler: () => ({
       findTask: (id: string) => ({ id, jobId: 'job-1', status: 'running' }),
       getChildTasks: () => [],
+      routeMessage: () => ({ kind: 'refused', reason: 'stub' }),
     }),
     getHub: () => ({ subscriptions: { of: () => subscriptions } }),
   };

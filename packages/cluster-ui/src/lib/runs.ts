@@ -234,6 +234,7 @@ const SECTION_OF_STAGE: Record<Stage, RunSectionKey> = {
   blocked: 'attention',
   review: 'attention',
   running: 'running',
+  waiting: 'queued',
   queued: 'queued',
   done: 'ended',
   cancelled: 'ended',
@@ -359,16 +360,22 @@ export interface MessageAvailability {
 }
 
 export const MESSAGE_ENABLED_HINT = 'worker 下一次调用 hub 时收到这条消息。';
+export const MESSAGE_RESUME_HINT = 'worker 已退出；这条消息会唤醒它的 session（续跑），它接着上次的上下文回复。';
 
-/** A message reaches a worker only while one is running the task. */
-export function messageAvailability(task: Pick<ClusterTask, 'status'>): MessageAvailability {
+/** A message reaches a running worker directly; with no worker it wakes the session when the daemon can resume it. */
+export function messageAvailability(task: Pick<ClusterTask, 'status' | 'resumable'>): MessageAvailability {
+  if (task.resumable) {
+    return { enabled: true, hint: MESSAGE_RESUME_HINT };
+  }
   switch (task.status) {
     case 'running':
       return { enabled: true, hint: MESSAGE_ENABLED_HINT };
     case 'pending':
     case 'claimed':
       return { enabled: false, hint: '运行还没开始，worker 启动后才能发消息。' };
+    case 'waiting':
+      return { enabled: false, hint: '这条运行在等待，但它的 session 无法续跑。' };
     default:
-      return { enabled: false, hint: '运行已结束，重新提交或续跑。' };
+      return { enabled: false, hint: '运行已结束，且无法续跑：重新提交。' };
   }
 }

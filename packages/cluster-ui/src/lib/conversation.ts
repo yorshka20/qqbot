@@ -202,6 +202,24 @@ export function buildConversation(input: ConversationInput): ConversationEntry[]
       case 'lock_acquired':
         entries.push({ kind: 'system', id, at, seq: event.seq, text: `锁定 ${lockedFileCount(event)} 个文件` });
         break;
+      case 'task_waiting':
+        entries.push({
+          kind: 'system',
+          id,
+          at,
+          seq: event.seq,
+          text: `等待中 · ${String(event.data.summary ?? '')}`,
+        });
+        break;
+      case 'task_resumed':
+        entries.push({
+          kind: 'system',
+          id,
+          at,
+          seq: event.seq,
+          text: `唤醒 session（第 ${String(event.data.count ?? '?')} 次）· ${String(event.data.reason ?? '')}`,
+        });
+        break;
       case 'message':
         entries.push({
           kind: 'system',

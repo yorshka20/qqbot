@@ -7,15 +7,13 @@ import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
 import { MESSAGE_ENABLED_HINT, messageAvailability } from '../lib/runs';
 
-const ENDED_HINT = '这条运行已结束，可以重试或复制续跑命令。';
-
 export function MessageComposer({ task, discussing }: { task: ClusterTask; discussing: boolean }) {
   const { refresh } = useCluster();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { enabled, hint } = messageAvailability(task);
-  const ended = task.status !== 'running' && task.status !== 'pending' && task.status !== 'claimed';
+  const direct = enabled && task.status === 'running' && !task.resumable;
 
   const send = async () => {
     const trimmed = text.trim();
@@ -64,7 +62,7 @@ export function MessageComposer({ task, discussing }: { task: ClusterTask; discu
           </Button>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          {ended ? ENDED_HINT : enabled ? `${MESSAGE_ENABLED_HINT}它只收到这条消息的文本，看不到上面的对话。` : hint}
+          {direct ? `${MESSAGE_ENABLED_HINT}它只收到这条消息的文本，看不到上面的对话。` : hint}
         </p>
         {error && <p className="mt-1 text-xs break-words whitespace-pre-wrap text-failed">{error}</p>}
       </div>
