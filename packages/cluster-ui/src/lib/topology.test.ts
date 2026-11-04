@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterTask, ClusterWorkerRegistration } from '@qqbot/api-types';
 import { buildRuns } from './runs';
-import { buildBranches, layoutTopology, workerState } from './topology';
+import { buildBranches, elapsedFraction, layoutTopology, workerState } from './topology';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z');
 
@@ -106,11 +106,65 @@ describe('layoutTopology', () => {
     }
   });
 
+  test('edges are rounded elbows that start and end on the node edges', () => {
+    const { nodes, edges } = layoutTopology(branches([planner, child], workers), []);
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const edge of edges) {
+      const from = byId.get(edge.from);
+      const to = byId.get(edge.to);
+      if (!from || !to) {
+        throw new Error('edge joins an unplaced node');
+      }
+      expect(edge.path.startsWith(`M${from.x + from.w} ${from.y + from.h / 2}`)).toBe(true);
+      expect(edge.path.endsWith(`H${to.x}`)).toBe(true);
+      const level = from.y + from.h / 2 === to.y + to.h / 2;
+      expect(edge.path.includes('A')).toBe(!level);
+    }
+  });
+
+  test('only the line from a run to a run it spawned is a spawn edge', () => {
+    const { edges } = layoutTopology(branches([planner, child], workers), []);
+    expect(edges.filter((e) => e.spawn).map((e) => e.id)).toEqual(['run:p>run:c']);
+  });
+
+  test('a run counts the runs it spawned', () => {
+    const { nodes } = layoutTopology(branches([planner, child, task('lone')], workers), []);
+    const childRuns = (id: string) => nodes.find((n) => n.id === id && n.kind === 'run');
+    expect(childRuns('run:p')).toMatchObject({ childRuns: 1 });
+    expect(childRuns('run:c')).toMatchObject({ childRuns: 0 });
+    expect(childRuns('run:lone')).toMatchObject({ childRuns: 0 });
+  });
+
+  test('each project gets a band that covers its nodes and no other project’s', () => {
+    const tree = branches(
+      [planner, task('o', { project: 'other', workerId: 'w9' })],
+      [...workers, worker('w9', { project: 'other' })],
+    );
+    const { nodes, bands } = layoutTopology(tree, []);
+    expect(bands.map((b) => b.alias)).toEqual(['demo', 'other']);
+    const inside = (b: { y: number; h: number }, n: { y: number; h: number }) =>
+      n.y >= b.y && n.y + n.h <= b.y + b.h;
+    const owner = (id: string) => bands.filter((b) => inside(b, nodes.find((n) => n.id === id) ?? { y: NaN, h: 0 }));
+    for (const id of ['project:demo', 'run:p', 'worker:w1']) {
+      expect(owner(id).map((b) => b.alias)).toEqual(['demo']);
+    }
+    for (const id of ['project:other', 'run:o', 'worker:w9']) {
+      expect(owner(id).map((b) => b.alias)).toEqual(['other']);
+    }
+  });
+
   test('counts a worker’s locks', () => {
     const lock = { filePath: 'a.ts', workerId: 'w1', claimedAt: NOW, lastRenewed: NOW, ttl: 1000 };
     const { nodes } = layoutTopology(branches([planner], workers.slice(0, 1)), [lock]);
     expect(nodes.find((n) => n.kind === 'worker')).toMatchObject({ lockedFiles: 1 });
   });
+});
+
+test('elapsedFraction is a capped share of half an hour', () => {
+  expect(elapsedFraction(0)).toBe(0);
+  expect(elapsedFraction(15 * 60_000)).toBe(0.5);
+  expect(elapsedFraction(2 * 60 * 60_000)).toBe(1);
+  expect(elapsedFraction(-5)).toBe(0);
 });
 
 test('workerState follows the run it serves', () => {

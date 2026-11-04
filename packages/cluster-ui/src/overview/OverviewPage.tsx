@@ -5,6 +5,8 @@ import { useSeen } from '../lib/memory';
 import type { Stage } from '../lib/stage';
 import { buildBranches, layoutTopology } from '../lib/topology';
 import { useNow } from '../lib/useNow';
+import { EmptyState } from '../ui/EmptyState';
+import { SkeletonRows } from '../ui/Skeleton';
 import { spareSlots } from '../workers/slots';
 import { BranchList } from './BranchList';
 import { TopologyMap } from './TopologyMap';
@@ -12,7 +14,8 @@ import { TopologyMap } from './TopologyMap';
 function Count({ label, value, href, tone }: { label: string; value: number; href: string; tone?: string }) {
   return (
     <a href={href} className="whitespace-nowrap hover:underline">
-      {label} <span className={`font-medium ${value > 0 ? (tone ?? 'text-ink') : 'text-ink-muted'}`}>{value}</span>
+      {label}{' '}
+      <span className={`text-18 font-medium ${value > 0 ? (tone ?? 'text-ink') : 'text-ink-muted'}`}>{value}</span>
     </a>
   );
 }
@@ -29,19 +32,32 @@ export function OverviewPage() {
   const stageHref = (stage: Stage) => routeHref({ section: 'runs', stage });
 
   return (
-    <div className="min-h-0 min-w-0 flex-1 overflow-auto bg-surface p-4 md:p-6">
-      <h1 className="mb-1 text-18 font-medium">总览</h1>
-      {loaded && branches.length === 0 ? (
-        <p className="text-15 text-ink-muted">现在没有 worker 在工作。</p>
+    <div className="min-h-0 min-w-0 flex-1 overflow-auto bg-surface p-5 md:p-8">
+      <h1 className="mb-4 text-18 font-medium">总览</h1>
+      {!loaded ? (
+        <SkeletonRows rows={4} />
+      ) : branches.length === 0 ? (
+        <EmptyState
+          title="现在没有 worker 在工作。"
+          hint="派一件事，这里会出现它的拓扑。"
+          action={
+            <a
+              href={routeHref({ section: 'runs', composing: true })}
+              className="rounded-ui px-3 py-1.5 text-14 font-medium text-ink hover:bg-surface-2"
+            >
+              新运行
+            </a>
+          }
+        />
       ) : (
         <>
-          <p className="mb-5 flex flex-wrap gap-x-4 text-13 text-ink-muted">
+          <p className="mb-6 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-15 text-ink-muted">
             <Count label="在跑" value={count('running')} href={stageHref('running')} tone="text-working" />
             <Count label="等你" value={count('asking')} href={stageHref('asking')} tone="text-attention" />
             <Count label="排队" value={count('queued')} href={stageHref('queued')} />
             <Count label="空闲槽" value={spareSlots(templates, workers)} href={routeHref({ section: 'workers' })} />
           </p>
-          <div className="hidden md:block">
+          <div className="hidden overflow-x-auto md:block">
             <TopologyMap topology={topology} now={now} />
           </div>
           <div className="md:hidden">

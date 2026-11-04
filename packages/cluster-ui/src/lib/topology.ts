@@ -22,7 +22,7 @@ export const WORKER_STATE_TONE: Record<WorkerState, Tone> = {
 
 export type TopologyNode =
   | { kind: 'project'; id: string; alias: string; x: number; y: number; w: number; h: number }
-  | { kind: 'run'; id: string; run: Run; x: number; y: number; w: number; h: number }
+  | { kind: 'run'; id: string; run: Run; childRuns: number; x: number; y: number; w: number; h: number }
   | {
       kind: 'worker';
       id: string;
@@ -42,11 +42,20 @@ export interface TopologyEdge {
   to: string;
   path: string;
   tone: Tone;
+  /** A run to a run it spawned: the ownership line, drawn heavier than a project's hold on its runs. */
+  spawn: boolean;
+}
+
+export interface TopologyBand {
+  alias: string;
+  y: number;
+  h: number;
 }
 
 export interface Topology {
   nodes: TopologyNode[];
   edges: TopologyEdge[];
+  bands: TopologyBand[];
   width: number;
   height: number;
 }
@@ -137,16 +146,34 @@ export function workerState(run: Run | undefined): WorkerState {
 const PROJECT_W = 132;
 const RUN_W = 264;
 const WORKER_W = 312;
-const COLUMN_GAP = 44;
-const RUN_H = 62;
-const WORKER_H = 74;
-const ROW_GAP = 14;
+const COLUMN_GAP = 48;
+const RUN_H = 84;
+const WORKER_H = 124;
+const ROW_GAP = 16;
+const BAND_PAD = 8;
+const CORNER_RADIUS = 6;
 const PROJECT_GAP = 30;
 const PROJECT_H = 46;
 
+/** Right, vertical, right, with each corner rounded by an arc that shrinks to fit a short rise. */
 function elbow(fromX: number, fromY: number, toX: number, toY: number): string {
+  const rise = toY - fromY;
+  if (rise === 0) {
+    return `M${fromX} ${fromY}H${toX}`;
+  }
   const mid = toX - COLUMN_GAP / 2;
-  return `M${fromX} ${fromY}H${mid}V${toY}H${toX}`;
+  const r = Math.min(CORNER_RADIUS, Math.abs(rise) / 2);
+  const dir = Math.sign(rise);
+  const turnIn = dir > 0 ? 1 : 0;
+  return (
+    `M${fromX} ${fromY}H${mid - r}A${r} ${r} 0 0 ${turnIn} ${mid} ${fromY + dir * r}` +
+    `V${toY - dir * r}A${r} ${r} 0 0 ${1 - turnIn} ${mid + r} ${toY}H${toX}`
+  );
+}
+
+/** No run has a known duration, so the bar reads "how long this has been going", capped. */
+export function elapsedFraction(elapsedMs: number, capMs = 30 * 60_000): number {
+  return Math.min(1, Math.max(0, elapsedMs / capMs));
 }
 
 /**
@@ -157,6 +184,7 @@ function elbow(fromX: number, fromY: number, toX: number, toY: number): string {
 export function layoutTopology(branches: ProjectBranch[], locks: ClusterLock[]): Topology {
   const nodes: TopologyNode[] = [];
   const edges: TopologyEdge[] = [];
+  const bands: TopologyBand[] = [];
   let cursor = 0;
   let right = 0;
 
@@ -188,6 +216,7 @@ export function layoutTopology(branches: ProjectBranch[], locks: ClusterLock[]):
       to: to.id,
       path: elbow(from.x + from.w, from.y + from.h / 2, to.x, to.y + to.h / 2),
       tone,
+      spawn: from.kind === 'run' && to.kind === 'run',
     });
   };
 
@@ -215,6 +244,7 @@ export function layoutTopology(branches: ProjectBranch[], locks: ClusterLock[]):
       kind: 'run',
       id: `run:${branch.run.task.id}`,
       run: branch.run,
+      childRuns: branch.children.length,
       x,
       y,
       w: RUN_W,
@@ -249,8 +279,9 @@ export function layoutTopology(branches: ProjectBranch[], locks: ClusterLock[]):
     for (const child of placed) {
       connect(node, child, 'muted');
     }
+    bands.push({ alias: project.alias, y: top - BAND_PAD, h: bottom - top + BAND_PAD * 2 });
     cursor += PROJECT_GAP;
   }
 
-  return { nodes, edges, width: right, height: Math.max(0, cursor - PROJECT_GAP - ROW_GAP) };
+  return { nodes, edges, bands, width: right, height: Math.max(0, cursor - PROJECT_GAP - ROW_GAP) };
 }
