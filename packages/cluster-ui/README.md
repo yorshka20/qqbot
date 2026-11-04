@@ -1,34 +1,50 @@
 # @qqbot/cluster-ui
 
-Agent cluster 的控制台：由 daemon serve（`<stateDir>/ui/`，挂在 `/`），部署在局域网。Vite + React 19 + Tailwind v4 + Radix，
-只依赖 `@qqbot/api-types` 的类型，不 import `@qqbot/agent-cluster`。
+Agent cluster 的控制台：daemon 把它当静态文件挂在 `/`，一个人在局域网里监工一群常驻 coding agent。
 
-六个 tab：**Overview · Source · Trigger · Eval · Execution · Settings**。Source / Trigger / Eval 等 Phase 2 的 Engine 才有数据源。
+它是**收件箱 + 运行**，不是管理后台。打开先回答"现在有没有需要我的"（收件箱），再回答"大家在干什么"
+（总览的任务拓扑、运行列表、一条运行的时间线），最后才是派活和控制。常见用法：手机上看一眼有没有卡住的、回答一个问题；
+第二块屏幕盯一条运行的日志；想到一件事，一句话派出去。
 
-## 运行
+界面上没有 job 这个概念，也没有 ticket 页：ticket 是新运行的一个来源，以及结果区的一个链接。
+
+## 怎么跑
+
+daemon 读与 bot 相同的配置树，多一个 `clusterDaemon` 块（`stateDir`、`http`、`auth.token`）。
 
 ```bash
-# 开发：vite 把 /api 和 /health proxy 到 daemon，默认 http://127.0.0.1:3200
+bun run packages/agent-cluster/src/daemon/main.ts                  # daemon，默认端口 3200
+bun run --filter @qqbot/cluster-ui dev                             # vite，/api 和 /health 代理到 daemon
 VITE_DEV_PROXY_TARGET=http://127.0.0.1:3210 bun run --filter @qqbot/cluster-ui dev
-
-# 部署：构建并装到 <stateDir>/ui，stateDir 取 $CLUSTER_STATE_DIR，缺省 data/cluster。daemon 不用重启
-CLUSTER_STATE_DIR=data/cluster bun run build:cluster-ui
+CLUSTER_STATE_DIR=<stateDir> bun run build:cluster-ui              # 构建并装进 <stateDir>/ui，daemon 不用重启
+bun test packages/cluster-ui
 ```
 
-## 鉴权与实时流
+第一次打开要输入 `clusterDaemon.auth.token`，存在这台设备的 `localStorage`，401 时退回输入框。
 
-- 首次打开输入 `cluster.jsonc` 的 `auth.token`，存在这个浏览器的 `localStorage`。任何请求收到 401 都会清掉 token、回到输入框。
-- `GET /api/cluster/stream` 要 Bearer，`EventSource` 带不了 header，所以用 `fetch` + `ReadableStream` 解析（`src/stream/`）。
-  全页共用一条连接，断线 5 秒重连。
+## 代码在哪
 
-## Panel 原则
+| 目录 | 内容 |
+|---|---|
+| `src/app/` | 外壳（Rail、三栏、底部 tab）、hash 路由、快捷键、主题；`ClusterData.tsx` 是唯一的数据源 |
+| `src/inbox/` | 收件箱：提问、失败或受阻、待查看 |
+| `src/overview/` | 总览：一行总计 + 项目 → 运行 → worker 的拓扑，手机上退化为分组列表 |
+| `src/runs/` | 运行列表、详情（时间线、日志、结果、会话）、composer、ticket 抽屉 |
+| `src/workers/` `src/projects/` `src/settings/` | 其余三页 |
+| `src/lib/` | 纯逻辑，都有单测：`stage`（状态映射）、`timeline`（节点、时间尺、折叠）、`topology`（分层布局）、`inbox`、`runs`、`resume` |
+| `src/api.ts` `src/stream/` `src/auth/` | HTTP、SSE（fetch + ReadableStream，因为 `EventSource` 带不了 Authorization）、token |
 
-三问：① 现在有没有需要我的？② 系统健康、在做对的事吗？③ 一件工作从 Trigger → Eval → Ticket 的历史？
+全页一条 SSE，事件触发 `ClusterData` 刷新；轮询只在流断开时兜底，切回隐藏的页签时补一次。
 
-1. 每个元素回答三问之一，否则删。
-2. 先列需要人的，再列系统问题，最后才是负载。
-3. 分类可判定、互斥、全覆盖。
-4. 一个概念一个地方。
-5. 数字等于它链接的列表长度。
-6. 健康态不占位。
-7. 破坏性动作要确认。
+路由：`#/inbox[/:id]`、`#/overview`、`#/runs[/:id]`、`#/projects`、`#/workers`、`#/settings`。
+查询参数：`pin`（钉住第二条运行）、`new`（打开 composer）、`project` 和 `stage`（筛选运行）、`ticket` 和 `file`（打开 ticket 抽屉）。
+
+快捷键：`j` `k` 上下、`Enter` 打开、`n` 新运行、`a` 聚焦回答框、`/` 搜索。
+
+## 设计 token
+
+全部在 `src/index.css`：`:root` 是深色，`:root[data-theme="light"]` 是浅色，`@theme inline` 把它们映射给 Tailwind。
+`@theme` 里清空了 Tailwind 的默认色板、字号、圆角和阴影，所以 `bg-red-500`、`text-sm`、`rounded-lg` 不生成任何样式：
+只有 `bg-surface`、`text-13`、`rounded-ui` 这类 token 可用。
+
+字体是 IBM Plex Sans / Plex Mono 的 latin 子集，打进产物，离线可用。Plex 没有中文字形，中文走系统字体。
