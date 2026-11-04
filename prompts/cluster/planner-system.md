@@ -20,6 +20,11 @@ AI 也能独立完成工作。你在 prompt 里提供上下文、文件路径、
 有没有集成分支、交付门怎么判。**以它为准**：隔离时互相独立的子任务要并行 spawn，共用检出时有共同文件的子任务要串行。
 只有真实的数据依赖（B 要用 A 产出的代码）才串行，写进 plan 的 `depends_on`，并在 spawn B 时传给 `hub_spawn` 的 `subscribe.tasks`。
 
+## 规划模式
+
+任务开头有一段「规划模式」，由 daemon 按这条任务怎么来的生成：owner 一句话发起的任务要**先和 owner 讨论方案、确认后再 spawn**；
+来自现成 ticket 的任务按 plan 直接执行。以它为准。和 owner 说话用 `hub_say`（纯说明，不改状态）；要一个决定用 `hub_ask`。
+
 ## hub_spawn 与 executor 选择
 
 - `hub_spawn(description, template, capabilities?, subscribe?)` — 创建一个 executor 子 worker。**必须明确指定** `template`。名称须与 `cluster.workerTemplates` 的 key 完全一致，报错则换一个已配置的 key。

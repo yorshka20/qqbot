@@ -40,6 +40,7 @@ describe('TaskWorkspaces', () => {
       taskCount: 1,
       tasksCompleted: 0,
       tasksFailed: 0,
+      planning: 'interactive',
     };
   }
 
@@ -239,22 +240,22 @@ describe('TaskWorkspaces', () => {
     expect(workspaces.holdsSlot(b.task.id)).toBe(false);
   });
 
-  test('the workspace note matches the mode and the role', async () => {
+  test('a workspace states its mode, role and branches; the words come from the prompt files', async () => {
     const { task } = await start('11111111');
     const lease = workspaces.claim(makeTask('33333333'), box.entry, 'planner');
     if (lease === 'busy' || lease === 'unpooled') throw new Error(`no planner slot: ${lease}`);
     const planner = await workspaces.prepare(makeTask('33333333'), job, box.entry, lease);
 
-    expect(planner.promptNote).toContain('并行 spawn');
-    expect(planner.promptNote).toContain('mergedAt');
-    expect(planner.promptNote).toContain(INTEGRATION);
+    expect(planner).toMatchObject({ mode: 'pooled', kind: 'planner', integrationBranch: INTEGRATION });
+    expect(planner.branch).toMatch(/^cluster\/aaaaaaaa-33333333$/);
     expect(task.branch).toBeDefined();
-
-    const executor = workspaces.unpooled(box.entry, 'executor');
-    expect(executor.cwd).toBe(box.repo);
-    expect(executor.promptNote).toContain('不是');
-    expect(executor.promptNote).not.toContain('集成分支会');
-    expect(workspaces.unpooled(box.entry, 'planner').promptNote).toContain('串行');
+    expect(workspaces.unpooled(box.entry, 'executor', job)).toEqual({
+      cwd: box.repo,
+      env: { CLUSTER_PLANNING: 'interactive' },
+      mode: 'shared',
+      kind: 'executor',
+      planning: 'interactive',
+    });
   });
 
   test('stop ends a publish that is still running instead of leaving it behind', async () => {

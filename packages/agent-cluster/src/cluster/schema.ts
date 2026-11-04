@@ -19,7 +19,9 @@ export const CLUSTER_TABLE_STATEMENTS: readonly string[] = [
   tasksCompleted INTEGER DEFAULT 0,
   tasksFailed INTEGER DEFAULT 0,
   metadata TEXT,
-  ticketId TEXT
+  ticketId TEXT,
+  integrationBranch TEXT,
+  planning TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS cluster_tasks (
   id TEXT PRIMARY KEY,

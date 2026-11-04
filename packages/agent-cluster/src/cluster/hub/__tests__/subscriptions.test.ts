@@ -421,3 +421,60 @@ describe('hub_spawn validation', () => {
     await expect(spawn({ tasks: ['a'] })).rejects.toThrow('ended failed');
   });
 });
+
+describe('over the MCP transport', () => {
+  async function callTool(workerId: string, name: string, args: Record<string, unknown>) {
+    const response = await hub.mcpServer.handleRequest(
+      new Request('http://hub/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          'X-Worker-Id': workerId,
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+      }),
+    );
+    const data = (await response.text()).split('\n').find((line) => line.startsWith('data: '));
+    const { result } = JSON.parse((data as string).slice('data: '.length));
+    return { isError: result.isError === true, text: result.content[0].text as string };
+  }
+
+  test('hub_subscribe and hub_unsubscribe validate and answer through the tool layer', async () => {
+    addTask('a');
+    addTask('b');
+
+    const subscribed = await callTool('worker-b', 'hub_subscribe', { tasks: ['a'], files: ['src/**'], branch: true });
+    expect(subscribed.isError).toBe(false);
+    expect(JSON.parse(subscribed.text).subscriptions).toMatchObject({ tasks: ['a'], files: ['src/**'], branch: true });
+
+    const unsubscribed = await callTool('worker-b', 'hub_unsubscribe', { branch: true });
+    expect(JSON.parse(unsubscribed.text).subscriptions.branch).toBe(false);
+
+    expect((await callTool('worker-b', 'hub_subscribe', { files: 'src/**' })).isError).toBe(true);
+  });
+
+  test('hub_spawn passes a nested subscribe through to the scheduler', async () => {
+    addTask('planner');
+    addTask('a');
+    hub.workerRegistry.register('worker-planner', { role: 'planner' });
+    let received: unknown;
+    hub.setSchedulerBridge({
+      findTask: (id: string) => tasks.get(id),
+      isTaskSettled: () => false,
+      submitChildTask: async (opts: { subscribe?: unknown }) => {
+        received = opts.subscribe;
+        return addTask('child', { worker: false });
+      },
+    } as unknown as SchedulerBridge);
+
+    const spawned = await callTool('worker-planner', 'hub_spawn', {
+      description: 'x',
+      template: 'tpl',
+      subscribe: { tasks: ['a'], branch: true },
+    });
+
+    expect(spawned.isError).toBe(false);
+    expect(received).toEqual({ tasks: ['a'], files: [], branch: true });
+  });
+});

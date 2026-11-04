@@ -377,10 +377,14 @@ export class ClusterApi implements HubRoute {
         if (!body.project || !body.description) {
           return errorResponse('Missing required fields: project, description', 400);
         }
+        if (body.planning !== undefined && body.planning !== 'interactive' && body.planning !== 'auto') {
+          return errorResponse("planning must be 'interactive' or 'auto'", 400);
+        }
         const task = await live.submitTask(body.project, body.description, {
           workerTemplate: body.workerTemplate,
           requirePlannerRole: body.requirePlannerRole === true ? true : undefined,
           ticketId: body.ticketId?.trim() || undefined,
+          planning: body.planning,
         });
         if (!task) {
           return errorResponse(

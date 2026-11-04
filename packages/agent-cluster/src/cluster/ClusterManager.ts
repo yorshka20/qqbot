@@ -20,7 +20,7 @@ import { PlannerService } from './PlannerService';
 import { createClusterTables } from './schema';
 import { QueueSource } from './sources/QueueSource';
 import { TodoFileSource } from './sources/TodoFileSource';
-import type { ClusterStatus, HelpRequest, JobRecord, TaskRecord } from './types';
+import type { ClusterStatus, HelpRequest, JobRecord, PlanningMode, TaskRecord } from './types';
 import { WorkerPool } from './WorkerPool';
 import { probeWorkerTemplates, type WorkerProbeResult } from './WorkerProbe';
 import { checkWorkerTemplateHealth } from './WorkerTemplateHealthCheck';
@@ -252,7 +252,7 @@ export class ClusterManager {
   async submitTask(
     project: string,
     description: string,
-    options?: { workerTemplate?: string; requirePlannerRole?: boolean; ticketId?: string },
+    options?: { workerTemplate?: string; requirePlannerRole?: boolean; ticketId?: string; planning?: PlanningMode },
   ): Promise<TaskRecord | null> {
     return this.scheduler.submitTask(project, description, options);
   }
@@ -547,7 +547,7 @@ export class ClusterManager {
       const cols = this.db.query('PRAGMA table_info(cluster_jobs)').all() as Array<{ name: string }>;
       if (cols.length === 0) return;
       const have = new Set(cols.map((c) => c.name));
-      for (const name of ['ticketId', 'integrationBranch']) {
+      for (const name of ['ticketId', 'integrationBranch', 'planning']) {
         if (have.has(name)) continue;
         this.db.run(`ALTER TABLE cluster_jobs ADD COLUMN ${name} TEXT`);
         logger.info(`[ClusterManager] Migrated cluster_jobs: added ${name} column`);

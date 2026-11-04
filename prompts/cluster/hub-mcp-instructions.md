@@ -11,6 +11,7 @@
 | `hub_subscribe` | 订阅兄弟任务的事件：`tasks`（同 job 的 task id）/ `files`（相对仓库根的路径或 glob）/ `branch: true`（集成分支有新合入） | 只能订阅本 job；已发生的事立即补给你（`caughtUp`），晚订阅不漏；你退出时订阅自动结束 |
 | `hub_unsubscribe` | 取消订阅 | 参数同上，什么都不写就是全部取消 |
 | `hub_ask` | 升级至人类或 planner 决策 | 立即返回 `askId`；先做能做的，需要答案时 `hub_wait` 等它 |
+| `hub_say` | 在本任务的对话里对 owner 说一句：方案摘要、对 directive 的回应、一行进展 | 不改状态（那是 `hub_report`），不提问（那是 `hub_ask`）；短 |
 | `hub_message` | 向其他 worker 发送消息 / 广播 | `to` 可以写兄弟的 task id；只用来告诉对方**一件事件带不出来的具体事实**，一句话、200 字以内 |
 
 ## Planner 专属工具（executor 调用会被拒绝）

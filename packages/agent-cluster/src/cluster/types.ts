@@ -30,6 +30,7 @@ export type ClusterEventType =
   | 'task_subscribed'
   | 'worker_progress'
   | 'directive'
+  | 'worker_message'
   | 'answer'
   | 'lock_released'
   | 'lock_acquired'
@@ -123,7 +124,11 @@ export interface JobRecord {
   ticketId?: string;
   /** Branch the job's finished tasks merge into; unset until its first task gets a worktree slot. */
   integrationBranch?: string;
+  /** Whether the planner confirms its plan with the owner in the conversation before spawning. */
+  planning: PlanningMode;
 }
+
+export type PlanningMode = 'interactive' | 'auto';
 
 export interface TaskRecord {
   id: string;
@@ -372,6 +377,15 @@ export interface HubUnsubscribeOutput {
   subscriptions: HubSubscriptions;
 }
 
+/** `hub_say`: a line to the owner in the task's conversation; no status change, no question. */
+export interface HubSayInput {
+  text: string;
+}
+
+export interface HubSayOutput {
+  sent: true;
+}
+
 // ── Planner-only MCP Tool I/O types ──
 
 export interface HubDispatchInput {
@@ -524,8 +538,13 @@ export interface WorkerSpawnConfig {
 export interface WorkerWorkspace {
   cwd: string;
   env: Record<string, string>;
-  /** Placed between the role prompt and the task description. */
-  promptNote: string;
+  /** Which `prompts/cluster/workspace-<mode>-<kind>.md` describes this workspace to the worker. */
+  mode: 'pooled' | 'shared';
+  kind: 'executor' | 'planner';
+  branch?: string;
+  integrationBranch?: string;
+  /** For a planner: which `prompts/cluster/planning-<mode>.md` it works under. */
+  planning: PlanningMode;
 }
 
 /**

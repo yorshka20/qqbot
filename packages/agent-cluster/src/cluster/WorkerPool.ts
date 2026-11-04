@@ -18,6 +18,13 @@ import type { ClusterConfig, WorkerBackendType } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import { LogTail } from './LogTail';
 import {
+  loadClusterPrompt,
+  planningPromptName,
+  renderPrompt,
+  workspacePromptName,
+  workspacePromptVars,
+} from './prompts';
+import {
   type ClusterStatus,
   isTerminalTaskStatus,
   type TaskRecord,
@@ -398,9 +405,13 @@ export class WorkerPool {
         role === 'planner' && rolePrompt
           ? rolePrompt.replace(EXECUTOR_CATALOG_TOKEN, this.renderExecutorCatalog())
           : rolePrompt;
-      const effectivePrompt = [renderedRolePrompt, workspace?.promptNote, task.description]
-        .filter(Boolean)
-        .join('\n\n');
+      const workspaceNote = workspace
+        ? renderPrompt(
+            await loadClusterPrompt(workspacePromptName(workspace), projectPath),
+            workspacePromptVars(workspace),
+          )
+        : '';
+      const effectivePrompt = [renderedRolePrompt, workspaceNote, task.description].filter(Boolean).join('\n\n');
 
       const launch = await backend.launch({
         workerId,

@@ -55,6 +55,8 @@ import type {
   HubReadPlanOutput,
   HubReportInput,
   HubReportOutput,
+  HubSayInput,
+  HubSayOutput,
   HubSpawnInput,
   HubSpawnOutput,
   HubSubscribeInput,
@@ -792,6 +794,21 @@ export class ContextHub {
     }
   }
 
+  /** `hub_say`: the worker speaks to the owner in its task's conversation. */
+  handleSay(workerId: string, input: HubSayInput): HubSayOutput {
+    this.workerRegistry.touch(workerId);
+    const reg = this.workerRegistry.get(workerId);
+    const text = input.text?.trim();
+    if (!text) {
+      throw new Error('hub_say: text is required');
+    }
+    const taskId = reg?.currentTaskId;
+    const jobId = taskId ? this.schedulerBridge?.findTask(taskId)?.jobId : undefined;
+    this.eventLog.append('worker_message', workerId, { text }, { taskId, jobId });
+    this.broadcastSSE('task_message', { taskId, workerId, from: 'worker', kind: 'say', text });
+    return { sent: true };
+  }
+
   // ── Planner-only tools ──
 
   async handleDispatch(workerId: string, input: HubDispatchInput): Promise<{ dispatched: boolean }> {
@@ -1395,6 +1412,8 @@ export class ContextHub {
     switch (type) {
       case 'file_changed':
         return `修改了文件: ${(data.filesModified as string[] | undefined)?.join(', ') || '(unknown)'}`;
+      case 'worker_message':
+        return String(data.text || '');
       case 'worker_progress':
         return `进展: ${data.summary || ''}${data.nextSteps ? ` → 下一步: ${data.nextSteps}` : ''}`;
       case 'task_completed':

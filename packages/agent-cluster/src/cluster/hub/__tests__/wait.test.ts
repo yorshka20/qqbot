@@ -108,4 +108,14 @@ describe('hub_wait snapshots and hub_query_task output', () => {
     expect(snapshot.output).toBe('short');
     expect(snapshot.outputTruncated).toBeUndefined();
   });
+
+  test('hub_say records what the worker said on its task and refuses an empty line', () => {
+    hub.workerRegistry.setTask('planner-1', 'task-p');
+    expect(hub.handleSay('planner-1', { text: '  方案：三步，先后端再前端。  ' })).toEqual({ sent: true });
+    const said = hub.eventLog.query({ type: 'worker_message' });
+    expect(said).toHaveLength(1);
+    expect(said[0].taskId).toBe('task-p');
+    expect(said[0].data.text).toBe('方案：三步，先后端再前端。');
+    expect(() => hub.handleSay('planner-1', { text: '   ' })).toThrow('text is required');
+  });
 });
