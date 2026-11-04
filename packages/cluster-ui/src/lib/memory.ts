@@ -1,3 +1,5 @@
+import type { TaskTab } from './routes';
+import { TASK_TABS } from './routes';
 import { parseRunView, type RunView } from './runs';
 import type { RunWindow } from './window';
 
@@ -5,6 +7,10 @@ import type { RunWindow } from './window';
 const COMPOSER_KEY = 'cluster-ui.composer';
 const RUN_VIEW_KEY = 'cluster-ui.run-view';
 const OVERVIEW_KEY = 'cluster-ui.overview';
+const SIDEBAR_KEY = 'cluster-ui.sidebar-open';
+const TASK_TAB_KEY = 'cluster-ui.task-tab';
+const DETAIL_OPEN_KEY = 'cluster-ui.task-detail-open';
+const PINNED_KEY = 'cluster-ui.pinned-tasks';
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -60,4 +66,38 @@ export function readOverviewChoice(): OverviewChoice {
 
 export function rememberOverviewChoice(choice: OverviewChoice): void {
   write(OVERVIEW_KEY, choice);
+}
+
+export function readSidebarOpen(): boolean {
+  return read<boolean>(SIDEBAR_KEY, true);
+}
+
+export function rememberSidebarOpen(open: boolean): void {
+  write(SIDEBAR_KEY, open);
+}
+
+export function readTaskTab(): TaskTab {
+  const saved = read<string | null>(TASK_TAB_KEY, null);
+  return TASK_TABS.find((tab) => tab === saved) ?? 'chat';
+}
+
+export function rememberTaskTab(tab: TaskTab): void {
+  write(TASK_TAB_KEY, tab);
+}
+
+export function readDetailOpen(): boolean {
+  return read<boolean>(DETAIL_OPEN_KEY, true);
+}
+
+export function rememberDetailOpen(open: boolean): void {
+  write(DETAIL_OPEN_KEY, open);
+}
+
+export function readPinnedTasks(): string[] {
+  const saved = read<unknown>(PINNED_KEY, []);
+  return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string') : [];
+}
+
+export function rememberPinnedTasks(ids: string[]): void {
+  write(PINNED_KEY, ids);
 }

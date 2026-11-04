@@ -62,12 +62,17 @@ describe('parseTranscript', () => {
     expect(entries?.[0]?.kind).toBe('text');
   });
 
+  test('marks an errored result as failed with its own title', () => {
+    const entries = parseTranscript(jsonl({ type: 'result', is_error: true, result: 'API Error: 400 bad request' }));
+    expect(entries?.[0]).toMatchObject({ kind: 'result', title: '运行出错', body: 'API Error: 400 bad request', failed: true });
+  });
+
   test('maps the final result and reasoning blocks', () => {
     const entries = parseTranscript(
       jsonl(assistant({ type: 'thinking', thinking: '想想怎么拆\n第二行' }), { type: 'result', subtype: 'success', result: '完成了' }),
     );
     expect(entries?.[0]).toMatchObject({ kind: 'reasoning', title: '思考 · 想想怎么拆' });
-    expect(entries?.[1]).toMatchObject({ kind: 'result', title: '最终答复', body: '完成了' });
+    expect(entries?.[1]).toMatchObject({ kind: 'result', title: '最终答复', body: '完成了', failed: false });
   });
 
   test('maps a codex agent_message item to text', () => {

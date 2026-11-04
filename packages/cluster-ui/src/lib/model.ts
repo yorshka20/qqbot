@@ -22,3 +22,8 @@ export function modelDisplayName(id: string | undefined): string {
   }
   return id;
 }
+
+/** The display name without its vendor prefix, for a row too narrow for "Claude Opus 5.5". */
+export function modelShortName(id: string | undefined): string {
+  return modelDisplayName(id).replace(/^Claude /, '');
+}

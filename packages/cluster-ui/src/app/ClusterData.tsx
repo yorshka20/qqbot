@@ -70,10 +70,10 @@ export interface ClusterData {
   loadMoreHistory: () => void;
 }
 
-const Context = createContext<ClusterData | null>(null);
+export const ClusterDataContext = createContext<ClusterData | null>(null);
 
 export function useCluster(): ClusterData {
-  const data = useContext(Context);
+  const data = useContext(ClusterDataContext);
   if (!data) {
     throw new Error('useCluster outside ClusterDataProvider');
   }
@@ -347,5 +347,5 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <Context.Provider value={value}>{children}</Context.Provider>;
+  return <ClusterDataContext.Provider value={value}>{children}</ClusterDataContext.Provider>;
 }

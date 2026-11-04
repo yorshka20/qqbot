@@ -1,3 +1,59 @@
+# 第三轮改动
+
+## 改了什么
+
+按 owner 的四条：
+
+- **按钮**：全部换成 shadcn `Button`（`default` / `outline` / `ghost` / `destructive`，图标按钮用 `icon` 尺寸），动词开头的中文文案；终止走确认 Dialog，不再用"点两次"的 `ConfirmButton`。动作按钮 `flex-wrap`，手机上放不下时折行，不横向溢出。
+- **紧凑拓扑**：拓扑 tab 只画当前这棵 task 树，每个节点一张小卡（状态点、标题、模型、已跑时间），布局交给 dagre，不再按 project 分带。
+- **第三方库**：不手写基础组件和图布局：shadcn（Radix）、`@xyflow/react` 加 `@dagrejs/dagre`、`react-router`、`react-resizable-panels`、`@tanstack/react-virtual`、`react-markdown`、`lucide-react`。
+- **前端 app 层级**：主对象是 task，一条对话。侧栏即首页（新任务、收件箱、对话列表、设置），主区是 `/t/:taskId` 的对话 / 拓扑 / 结果三个 tab，右侧可收起的详情面板；设置是 `/settings/:group` 的子页；URL 是 history 路由，不再是 hash。手机上侧栏是抽屉，返回、收件箱、新任务三个入口在顶栏。
+
+本轮收尾：键盘（`j` `k` `Enter` `n` `a` `/` `Esc`）、钉住、手机、深浅主题、删除旧代码、文档。
+
+## 用到的库和版本
+
+`react` ^19.2、`react-router` 7.18、`radix-ui` 1.8、`shadcn` 4.23（只为 `index.css` 里的 `shadcn/tailwind.css`，在 devDependencies）、`tailwindcss` 4.2、`@xyflow/react` 12.12、`@dagrejs/dagre` 3.1、`react-resizable-panels` 4.18、`@tanstack/react-virtual` 3.14、`react-markdown` 10.1、`lucide-react` 0.577、`class-variance-authority`、`clsx`、`tailwind-merge`。测试：`@happy-dom/global-registrator` 21、`@testing-library/react` 16。移除了直接依赖 `@radix-ui/react-dialog`（`radix-ui` 已含）。
+
+## `lib/` 的取舍
+
+- 删了 `layoutTopology`、`buildBranches` 及其类型和常量（连同它们的用例）：它们是手写的 elbow 布局和按 project 分组，owner 明确要求替换，由 `lib/taskGraph.ts` 接替。
+- 其余 `lib/` 的纯函数和测试都保留。旧页面删除后失去调用方的导出（类型除外）：
+  - `timeline.ts`：`buildTimeline`、`foldTimeline`、`rulerGap`、`rulerMinutesLabel`
+  - `topology.ts`：`elapsedFraction`、`workerState`、`WORKER_STATE_LABEL`、`WORKER_STATE_TONE`
+  - `runs.ts`：`groupRunSections`、`orderRunsAsTree`、`sortRuns`、`RUN_VIEWS`、`RUN_VIEW_LABEL`、`RUN_SECTION_LABEL`（`parseRunView` 只被 `memory.ts` 用）
+  - `memory.ts`：`readRunView`、`rememberRunView`、`readOverviewChoice`、`rememberOverviewChoice`
+  - `window.ts`：`needsOlderHistory`、`windowStart`、`RUN_WINDOW_LABEL`
+  - `inbox.ts`：`answersOf`；`logs.ts`：`stripAnsi`；`usage.ts`：`formatTokens`；`transcript.ts`：`toolTitle`；`workers.ts`：`workerTaskId`；`stage.ts`：`REVIEW_WINDOW_MS`；`home.ts`：`HOME_ATTENTION_LIMIT`；`taskGraph.ts`：`NODE_WIDTH`、`NODE_HEIGHT`
+
+  这些要不要删，由 owner 决定。
+
+## 决定
+
+- `/t/:taskId/w/:workerId` 里的 `:workerId` 取**子运行的 task id**：对话、事件、消息都按 task 存；已退出的 worker 可能不在 `/workers` 里，排队中的子运行还没有 worker。
+- "钉住"：旧语义是并排打开第二条运行，新布局没有第二栏，所以解释为钉在对话列表顶部。只有根运行可钉；被钉的对话不受 7 天窗口限制，状态记在这台设备的 `localStorage`。
+- 手机按规格 §16：侧栏即首页加抽屉，不做 §8 的底部 tab。
+- `/inbox` 上侧栏的对话列表让出键盘，只有收件箱自己的列表响应 `j` `k` `Enter`；`Esc` 只有 Dialog、Popover、菜单、下拉打开时才让给浮层，悬停的 tooltip 不算。
+- 登录页 `TokenGate` 原来还在用 `src/ui/` 的 `Button` / `Field`，删旧目录时一并改用 shadcn 的 `Button` / `Input`（`auth/session.ts` 的契约没动）。
+- 设置入口是侧栏底部的菜单（打开设置、主题、退出控制台），规格 §16.1 要求它像账号菜单，不是导航项。
+- 浅色主题的渲染测试用 `setTheme('light')` 而不是直接写 `dataset.theme`：React Flow 的 `colorMode` 读的是主题 store，不读 DOM 属性。
+
+## 没做到
+
+- 可选项没做：命令面板（cmdk）、进展卡里的日志片段。
+- 已结束运行的日志和失败原因依赖内存里的 `output`；daemon 重启后只剩 `task.error`。
+- 整个界面没有在浏览器里验证过：渲染测试（happy-dom）只证明不崩、内容在，不证明样式好看，也没有真的量过 375px 下有没有溢出。
+- JS 包约 1.4 MB（gzip 约 396 KB），拓扑和 markdown 都在主包里，没有做按需加载。局域网上用问题不大，手机首屏想更快时可以把拓扑 tab 拆出去。
+
+## 希望 daemon 提供
+
+第二轮的 12 项仍然成立（见下），新增 2 项：
+
+13. `hub_spawn` 把 `task_spawned` 写进 eventLog 并加入 `ClusterEventType`：现在只走 SSE，`/tasks/:id/events` 取不到，派生卡只能靠 `/tasks/:id` 的 `children` 生成，时间用子运行的 `createdAt`，不是派生发生的时刻。
+14. 把 worker 的 stdout 或最终 result 事件（含 `is_error` 文本）随任务落盘，让失败原因和日志在 daemon 重启后还在。
+
+---
+
 # 第二轮改动
 
 ## 改了什么

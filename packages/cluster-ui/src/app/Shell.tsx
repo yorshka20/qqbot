@@ -1,93 +1,146 @@
-import { InboxList } from '../inbox/InboxList';
-import { OverviewPage } from '../overview/OverviewPage';
-import { ProjectsPage } from '../projects/ProjectsPage';
-import { RunDetail } from '../runs/RunDetail';
-import { RunList } from '../runs/RunList';
-import { TicketDrawer } from '../runs/TicketDrawer';
-import { SettingsPage } from '../settings/SettingsPage';
-import { EmptyState } from '../ui/EmptyState';
-import { WorkersPage } from '../workers/WorkersPage';
+import { ArrowLeft, Inbox, Plus } from 'lucide-react';
+import { useEffect, useMemo, useRef } from 'react';
+import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '../components/ui/sidebar';
+import { TooltipProvider } from '../components/ui/tooltip';
+import { Composer } from '../composer/Composer';
+import { TicketSheet } from '../composer/TicketSheet';
+import { InboxPage } from '../inbox/InboxPage';
+import { buildInbox } from '../lib/inbox';
+import { readSidebarOpen, readTaskTab, rememberTaskTab } from '../lib/memory';
+import { homePath, inboxPath, parentPath, parseAppLocation, settingsPath, withOverlay } from '../lib/routes';
+import { SettingsLayout } from '../settings/SettingsLayout';
+import { TaskPage } from '../task/TaskPage';
+import { AppSidebar } from './AppSidebar';
 import { Banner } from './Banner';
 import { useCluster } from './ClusterData';
-import { useKey } from './keys';
-import { Rail, TabBar } from './Rail';
-import { navigate, type Route, routeHref, useRoute } from './route';
+import { HomePage } from './HomePage';
+import { overlayIsOpen, useKey } from './keys';
 
 function focusWhenRendered(selector: string): void {
   requestAnimationFrame(() => document.querySelector<HTMLElement>(selector)?.focus());
 }
 
-function useGlobalKeys(route: Route): void {
+function GlobalKeys() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { isMobile, state, setOpen, setOpenMobile } = useSidebar();
+
+  const lastPath = useRef(location.pathname);
+  useEffect(() => {
+    if (lastPath.current !== location.pathname) {
+      lastPath.current = location.pathname;
+      setOpenMobile(false);
+    }
+  }, [location.pathname, setOpenMobile]);
+
   useKey('n', (event) => {
     event.preventDefault();
-    navigate(routeHref({ section: 'runs', composing: true }));
+    navigate({ pathname: location.pathname, search: withOverlay(location.search, { new: true }) });
   });
   useKey('/', (event) => {
     event.preventDefault();
-    if (route.section === 'runs') {
-      focusWhenRendered('[data-search]');
+    if (isMobile) {
+      setOpenMobile(true);
+    } else if (state === 'collapsed') {
+      setOpen(true);
+    }
+    focusWhenRendered('[data-search]');
+  });
+  useKey('a', (event) => {
+    const box = () => document.querySelector<HTMLElement>('[data-answer-box]');
+    if (box()) {
+      event.preventDefault();
+      box()?.focus();
       return;
     }
-    // The input does not exist until the new section has rendered.
-    window.addEventListener('hashchange', () => focusWhenRendered('[data-search]'), { once: true });
-    navigate(routeHref({ section: 'runs' }));
+    const current = parseAppLocation(location.pathname, location.search);
+    if (current.page === 'task' && (current.tab ?? readTaskTab()) !== 'chat') {
+      event.preventDefault();
+      rememberTaskTab('chat');
+      const params = new URLSearchParams(location.search);
+      params.set('tab', 'chat');
+      navigate({ pathname: location.pathname, search: `?${params.toString()}` });
+      focusWhenRendered('[data-answer-box]');
+    }
   });
+  useKey('Escape', () => {
+    if (overlayIsOpen()) {
+      return;
+    }
+    const target = parentPath(parseAppLocation(location.pathname, location.search));
+    if (target !== `${location.pathname}${location.search}`) {
+      navigate(target);
+    }
+  });
+  return null;
 }
 
-function EmptyDetail({ hint }: { hint: boolean }) {
-  return (
-    <div className="hidden flex-1 items-center justify-center bg-surface md:flex">
-      <EmptyState title="选一条运行看详情。" hint={hint ? '用 j / k 移动，Enter 打开。' : undefined} />
-    </div>
-  );
-}
+function MobileBar() {
+  const { runs, help } = useCluster();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pending = useMemo(() => buildInbox(runs, help, null).length, [runs, help]);
+  const current = parseAppLocation(location.pathname, location.search);
 
-function ListAndDetail({ route }: { route: Route }) {
-  const { runs } = useCluster();
-  const open = route.runId !== null;
-  const list = route.section === 'inbox' ? <InboxList route={route} /> : <RunList route={route} />;
   return (
     <>
-      <div
-        className={`${open ? 'hidden md:flex' : 'flex'} min-h-0 w-full shrink-0 flex-col border-line bg-surface md:w-list md:border-r`}
-      >
-        {list}
+      {current.page !== 'home' && (
+        <Button variant="ghost" size="icon" aria-label="返回" asChild className="md:hidden">
+          <Link to={parentPath(current)}>
+            <ArrowLeft />
+          </Link>
+        </Button>
+      )}
+      <div className="ml-auto flex items-center gap-1 md:hidden">
+        <Button variant="ghost" size="sm" aria-label="收件箱" asChild>
+          <Link to={inboxPath()}>
+            <Inbox />
+            {pending > 0 && <Badge variant="secondary">{pending}</Badge>}
+          </Link>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="新任务"
+          onClick={() => navigate({ pathname: location.pathname, search: withOverlay(location.search, { new: true }) })}
+        >
+          <Plus />
+        </Button>
       </div>
-      {route.runId ? (
-        <RunDetail key={route.runId} runId={route.runId} route={route} />
-      ) : (
-        <EmptyDetail hint={route.section === 'runs' && runs.length > 0} />
-      )}
-      {route.pin && route.pin !== route.runId && (
-        <RunDetail key={`pin:${route.pin}`} runId={route.pin} route={route} pinned />
-      )}
     </>
   );
 }
 
-const PAGES = {
-  overview: OverviewPage,
-  projects: ProjectsPage,
-  workers: WorkersPage,
-  settings: SettingsPage,
-};
-
 export function Shell() {
-  const route = useRoute();
-  useGlobalKeys(route);
-
-  const { section } = route;
-  const Page = section === 'inbox' || section === 'runs' ? null : PAGES[section];
-
   return (
-    <div className="flex h-dvh min-h-0 flex-col bg-bg md:flex-row">
-      <Rail route={route} />
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <Banner />
-        <div className="flex min-h-0 flex-1">{Page ? <Page /> : <ListAndDetail route={route} />}</div>
-      </main>
-      {route.runId === null && <TabBar route={route} />}
-      <TicketDrawer route={route} />
-    </div>
+    <TooltipProvider>
+      <SidebarProvider defaultOpen={readSidebarOpen()} className="h-dvh min-h-0">
+        <GlobalKeys />
+        <AppSidebar />
+        <SidebarInset className="min-h-0 overflow-hidden">
+          <header className="flex h-10 shrink-0 items-center gap-2 border-b px-2">
+            <SidebarTrigger />
+            <MobileBar />
+          </header>
+          <Banner />
+          <main className="min-h-0 flex-1 overflow-y-auto">
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/inbox" element={<InboxPage />} />
+              <Route path="/t/:taskId" element={<TaskPage />} />
+              <Route path="/t/:taskId/w/:workerId" element={<TaskPage />} />
+              <Route path="/settings" element={<Navigate to={settingsPath()} replace />} />
+              <Route path="/settings/:group" element={<SettingsLayout />} />
+              <Route path="*" element={<Navigate to={homePath()} replace />} />
+            </Routes>
+          </main>
+        </SidebarInset>
+        <Composer />
+        <TicketSheet />
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }

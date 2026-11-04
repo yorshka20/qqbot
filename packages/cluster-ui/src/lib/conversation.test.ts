@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterEventEntry, ClusterEventType, ClusterHelpRequest, ClusterTask } from '@qqbot/api-types';
-import { buildConversation, type ConversationEntry, type ConversationInput, foldConversation } from './conversation';
+import {
+  buildConversation,
+  type ConversationEntry,
+  type ConversationInput,
+  failureReason,
+  foldConversation,
+} from './conversation';
 
 const T0 = Date.parse('2026-11-04T12:00:00Z');
 const MIN = 60_000;
@@ -46,7 +52,7 @@ function request(id: string, patch: Partial<ClusterHelpRequest> = {}): ClusterHe
 }
 
 function conversation(input: Partial<ConversationInput> = {}): ConversationEntry[] {
-  return buildConversation({ task: task(), events: [], help: [], helpHistory: [], ...input });
+  return buildConversation({ task: task(), events: [], help: [], helpHistory: [], children: [], ...input });
 }
 
 describe('buildConversation', () => {
@@ -219,6 +225,67 @@ describe('buildConversation', () => {
     ]);
     expect(systems[0].seq).toBeUndefined();
     expect(systems[2].seq).toBeDefined();
+  });
+});
+
+describe('spawn cards', () => {
+  const child = (id: string, minute: number, patch: Partial<ClusterTask> = {}): ClusterTask =>
+    task({ id, parentTaskId: 't1', description: `子任务 ${id}`, createdAt: new Date(T0 + minute * MIN).toISOString(), ...patch });
+
+  test('each child becomes a card at its creation time, once', () => {
+    const entries = conversation({ children: [child('c1', 3, { model: 'claude-opus-4-7' }), child('c2', 5)] });
+    const spawns = entries.filter((entry) => entry.kind === 'spawn');
+    expect(spawns.map((entry) => [entry.at, entry.childTaskId])).toEqual([
+      [T0 + 3 * MIN, 'c1'],
+      [T0 + 5 * MIN, 'c2'],
+    ]);
+    expect(spawns[0]).toMatchObject({ description: '子任务 c1', model: 'claude-opus-4-7' });
+  });
+
+  test('a repeated child id yields one card', () => {
+    const entries = conversation({ children: [child('c1', 3), child('c1', 3)] });
+    expect(entries.filter((entry) => entry.kind === 'spawn')).toHaveLength(1);
+  });
+});
+
+describe('failureReason', () => {
+  const output = (result: string) => JSON.stringify({ type: 'result', is_error: true, result });
+
+  test('prefers the report error, then the failed result, then the task error', () => {
+    const all = { reportError: '报告原因', output: output('API Error: 400'), taskError: 'Process exited with code 1' };
+    expect(failureReason(all)).toBe('报告原因');
+    expect(failureReason({ ...all, reportError: undefined })).toBe('API Error: 400');
+    expect(failureReason({ ...all, reportError: undefined, output: undefined })).toBe('Process exited with code 1');
+  });
+
+  test('falls back to the task error when the output has no failed result', () => {
+    expect(failureReason({ output: '$ plain text', taskError: 'Process exited with code 1' })).toBe(
+      'Process exited with code 1',
+    );
+    expect(failureReason({ output: '', taskError: 'boom' })).toBe('boom');
+    expect(failureReason({})).toBeUndefined();
+  });
+});
+
+describe('end card details', () => {
+  test('a failed run carries the reason and the files', () => {
+    const entries = conversation({
+      task: task({
+        status: 'failed',
+        error: 'Process exited with code 1',
+        completedAt: new Date(T0 + 9 * MIN).toISOString(),
+        filesModified: JSON.stringify(['a.ts', 'b.ts']),
+      }),
+      output: JSON.stringify({ type: 'result', is_error: true, result: 'API Error: 400' }),
+    });
+    expect(entries.at(-1)).toMatchObject({ kind: 'end', state: 'failed', reason: 'API Error: 400', files: ['a.ts', 'b.ts'] });
+  });
+
+  test('a completed run has no reason', () => {
+    const entries = conversation({
+      task: task({ status: 'completed', completedAt: new Date(T0 + 9 * MIN).toISOString() }),
+    });
+    expect(entries.at(-1)).toMatchObject({ kind: 'end', state: 'completed', reason: undefined, files: [] });
   });
 });
 
