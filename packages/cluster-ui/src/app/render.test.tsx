@@ -328,6 +328,11 @@ function LocationProbe() {
 
 const here = () => visited[visited.length - 1];
 
+/** A boolean, because a failed `expect` on two elements pretty-prints the whole DOM, and `waitFor` fails until focus lands. */
+function hasFocus(container: HTMLElement, selector: string): boolean {
+  return document.activeElement === container.querySelector(selector);
+}
+
 function renderAt(url: string) {
   visited = [];
   return render(
@@ -452,14 +457,14 @@ describe('keyboard', () => {
     const { container } = renderAt('/');
     await screen.findAllByText('等你处理');
     fireEvent.keyDown(window, { key: '/' });
-    await waitFor(() => expect(document.activeElement).toBe(container.querySelector('[data-search]')));
+    await waitFor(() => expect(hasFocus(container, '[data-search]')).toBe(true));
   });
 
   test('a focuses the pending answer box', async () => {
     const { container } = renderAt('/inbox');
     await screen.findAllByText('等你回答');
     fireEvent.keyDown(window, { key: 'a' });
-    await waitFor(() => expect(document.activeElement).toBe(container.querySelector('[data-answer-box]')));
+    await waitFor(() => expect(hasFocus(container, '[data-answer-box]')).toBe(true));
   });
 
   test('a from another tab switches to the conversation first', async () => {
@@ -467,7 +472,7 @@ describe('keyboard', () => {
     await screen.findAllByText('派生了 2 条子运行');
     fireEvent.keyDown(window, { key: 'a' });
     await waitFor(() => expect(here()).toContain('tab=chat'));
-    await waitFor(() => expect(document.activeElement).toBe(container.querySelector('[data-answer-box]')));
+    await waitFor(() => expect(hasFocus(container, '[data-answer-box]')).toBe(true));
   });
 
   test('Esc with a dialog open closes only the dialog', async () => {

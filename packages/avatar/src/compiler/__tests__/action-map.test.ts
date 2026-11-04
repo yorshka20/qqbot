@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ActionMap, mergeActionMapPayloads } from '../action-map';
+import { ActionMap, mergeActionMapPayloads, packagedActions } from '../action-map';
 import type { ResolvedAction } from '../types';
 
 type EnvelopeAction = Extract<ResolvedAction, { kind: 'envelope' }>;
@@ -26,7 +26,7 @@ function writeMapAndFixtures(entries: Record<string, unknown>, fixtures: Record<
 }
 
 describe('ActionMap.resolveAction', () => {
-  const map = new ActionMap();
+  const map = packagedActions();
 
   it('returns a ResolvedAction with targets for a known action', () => {
     const result = map.resolveAction('emotion_smile', 'happy', 1.0);
@@ -88,7 +88,7 @@ describe('ActionMap.resolveAction', () => {
 });
 
 describe('ActionMap.listActions', () => {
-  const map = new ActionMap();
+  const map = packagedActions();
 
   it('exposes description and category for envelope-kind core entry', () => {
     const actions = map.listActions();
@@ -565,7 +565,7 @@ describe('ActionMap — clip kind', () => {
 // Model-kind filtering tests (Task 2)
 // ---------------------------------------------------------------------------
 describe('ActionMap — modelSupport filtering (resolveAction)', () => {
-  const map = new ActionMap();
+  const map = packagedActions();
 
   it('vrm-only clip resolves null for cubism', () => {
     // vrm_greet_formal_bow has modelSupport: 'vrm' — filtered out for cubism
@@ -587,7 +587,7 @@ describe('ActionMap — modelSupport filtering (resolveAction)', () => {
 });
 
 describe('ActionMap — modelSupport filtering (listActions)', () => {
-  const map = new ActionMap();
+  const map = packagedActions();
 
   it('listActions("vrm") includes both-mode envelopes and vrm clips', () => {
     const names = map.listActions('vrm').map((a) => a.name);
@@ -634,14 +634,14 @@ describe('mergeActionMapPayloads + default package map', () => {
   });
 
   it('default ActionMap merges core (envelope) and per-category extend (clip) entries', () => {
-    const map = new ActionMap();
+    const map = packagedActions();
     expect(map.has('emotion_smile')).toBe(true);
     expect(map.has('vrm_pose_peace_sign')).toBe(true);
     expect(map.has('vrm_idle_loop')).toBe(true);
   });
 
   it('default map resolves a clip-kind extend entry for vrm', () => {
-    const map = new ActionMap();
+    const map = packagedActions();
     const r = map.resolveAction('vrm_idle_loop', 'n', 1, 'vrm');
     expect(r).not.toBeNull();
     expect(r!.kind).toBe('clip');

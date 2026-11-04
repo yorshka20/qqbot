@@ -89,7 +89,7 @@ describe('SqlQueryRunner', () => {
   });
 
   it('kills a query that outruns the timeout', async () => {
-    const runner = new SqlQueryRunner(dbPath, 1_000);
+    const runner = new SqlQueryRunner(dbPath, 150);
     const outcome = await runner.run(
       'WITH RECURSIVE forever(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM forever) SELECT count(*) FROM forever',
       10,

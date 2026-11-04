@@ -502,3 +502,14 @@ export class ActionMap {
     return [...seen];
   }
 }
+
+let packagedActionMap: ActionMap | undefined;
+
+/**
+ * The map built from the packaged assets, parsed once per process: they do not change while it
+ * runs, and reading every clip is by far the most expensive part of building a compiler.
+ */
+export function packagedActions(): ActionMap {
+  packagedActionMap ??= new ActionMap();
+  return packagedActionMap;
+}

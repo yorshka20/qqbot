@@ -13,6 +13,8 @@ import { restartDelay, Supervisor } from './Supervisor';
 const FAKE_BOT = fileURLToPath(new URL('./__fixtures__/fakeBot.ts', import.meta.url));
 const THROTTLE_MS = 600;
 const STOP_TIMEOUT_MS = 500;
+/** For tests that sit through the wait; the others keep margins a loaded machine cannot eat. */
+const SHORT_WAIT_MS = 150;
 
 let dir: string;
 let eventsFile: string;
@@ -59,7 +61,7 @@ function isAlive(pid: number): boolean {
   }
 }
 
-function startSupervisor(mode: string): Supervisor {
+function startSupervisor(mode: string, waits: Partial<Pick<AppDefinition, 'restartThrottleMs' | 'stopTimeoutMs'>> = {}): Supervisor {
   const app: AppDefinition = {
     name: 'fake-bot',
     cmd: [process.execPath, FAKE_BOT, eventsFile, mode],
@@ -68,6 +70,7 @@ function startSupervisor(mode: string): Supervisor {
     env: { PATH: process.env.PATH ?? '' },
     restartThrottleMs: THROTTLE_MS,
     stopTimeoutMs: STOP_TIMEOUT_MS,
+    ...waits,
     files: supervisorFiles(dir),
   };
   supervisor = new Supervisor(app, (line) => logged.push(line));
@@ -107,12 +110,12 @@ describe('Supervisor', () => {
   });
 
   it('starts a bot that keeps crashing again no sooner than the throttle allows', async () => {
-    const s = startSupervisor('crash');
+    const s = startSupervisor('crash', { restartThrottleMs: SHORT_WAIT_MS });
     await waitFor(() => starts().length >= 3, 8000);
     const [first, second, third] = starts();
     // Measured from start to start, with a little room for timer and spawn jitter.
-    expect(second.at - first.at).toBeGreaterThanOrEqual(THROTTLE_MS - 50);
-    expect(third.at - second.at).toBeGreaterThanOrEqual(THROTTLE_MS - 50);
+    expect(second.at - first.at).toBeGreaterThanOrEqual(SHORT_WAIT_MS - 50);
+    expect(third.at - second.at).toBeGreaterThanOrEqual(SHORT_WAIT_MS - 50);
     expect(s.status().lastExit?.code).toBe(1);
   });
 
@@ -128,12 +131,12 @@ describe('Supervisor', () => {
   });
 
   it('kills a bot that does not exit within the stop timeout', async () => {
-    const s = startSupervisor('stubborn');
+    const s = startSupervisor('stubborn', { stopTimeoutMs: SHORT_WAIT_MS });
     await waitFor(() => starts().length === 1);
     const { pid } = starts()[0];
     const before = Date.now();
     await s.close();
-    expect(Date.now() - before).toBeGreaterThanOrEqual(STOP_TIMEOUT_MS - 50);
+    expect(Date.now() - before).toBeGreaterThanOrEqual(SHORT_WAIT_MS - 50);
     expect(isAlive(pid)).toBe(false);
     expect(logged.some((line) => line.includes('killing it'))).toBe(true);
   });
@@ -152,11 +155,11 @@ describe('Supervisor', () => {
   });
 
   it('keeps a held bot stopped past the throttle, until released', async () => {
-    const s = startSupervisor('serve');
+    const s = startSupervisor('serve', { restartThrottleMs: SHORT_WAIT_MS });
     await waitFor(() => starts().length === 1);
     await s.hold();
     expect(s.status().state).toBe('held');
-    await Bun.sleep(THROTTLE_MS + 200);
+    await Bun.sleep(SHORT_WAIT_MS * 2);
     expect(starts()).toHaveLength(1);
 
     await s.release();

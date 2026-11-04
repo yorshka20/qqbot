@@ -60,6 +60,7 @@ export function findLatestLogFile(logsDir: string): string | null {
 export interface FollowLogOptions {
   signal: AbortSignal;
   initialLines: number;
+  pollMs?: number;
 }
 
 /**
@@ -70,7 +71,7 @@ export interface FollowLogOptions {
 export async function followLatestLog(
   logsDir: string,
   onLine: (line: string) => void,
-  { signal, initialLines }: FollowLogOptions,
+  { signal, initialLines, pollMs = POLL_MS }: FollowLogOptions,
 ): Promise<void> {
   let reader: LogReader | null = null;
   const first = findLatestLogFile(logsDir);
@@ -84,7 +85,7 @@ export async function followLatestLog(
     reader = openReader(first, onLine, content.length);
   }
   while (!signal.aborted) {
-    await sleep(POLL_MS, undefined, { signal }).catch(() => {});
+    await sleep(pollMs, undefined, { signal }).catch(() => {});
     reader?.drain();
     const latest = findLatestLogFile(logsDir);
     if (latest !== (reader?.path ?? null)) {

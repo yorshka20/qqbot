@@ -1,10 +1,12 @@
 import type { Database } from 'bun:sqlite';
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { git } from '../git';
 import { WorktreePool } from '../workspace/WorktreePool';
-import { createSandbox, openClusterDb, PROJECT, type Sandbox } from './worktreeFixtures';
+import { createSandbox, openClusterDb, PROJECT, removeSeedRepo, type Sandbox } from './worktreeFixtures';
+
+afterAll(removeSeedRepo);
 
 describe('WorktreePool', () => {
   let box: Sandbox;

@@ -24,7 +24,7 @@ async function waitFor(condition: () => boolean, timeoutMs = 5000, label = 'cond
   const started = Date.now();
   while (!condition()) {
     if (Date.now() - started > timeoutMs) throw new Error(`${label} not met within ${timeoutMs}ms`);
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }
 
@@ -120,6 +120,7 @@ describe('WorkerPool detached workers and adoption', () => {
     const parsed = parseClusterConfig({
       enabled: true,
       stateDir,
+      workerLivenessInterval: 25,
       workerTemplates: { [TEMPLATE]: { type: 'claude-cli', command: 'sh', args: [] } },
       projects: { [PROJECT]: { workerPreference: TEMPLATE } },
     });

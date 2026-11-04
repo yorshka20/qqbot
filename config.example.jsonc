@@ -1172,6 +1172,8 @@
     "idleTimeout": "15m",
     // Kill a task that runs longer than this in total (default: '3h')
     "timeout": "3h",
+    // How long past a CLI's exit to wait for EOF on its pipes, which commands it started can hold open (default: '2s')
+    // "streamDrainGrace": "2s",
     // Parent of the per-task directories workspace tasks run in (default: <os tmpdir>/qqbot-agent-workspaces,
     // which the OS may purge — point this at a durable directory to keep finished tasks around).
     // Each task gets its own `<YYYY-MM-DD>-<request slug>` directory holding the agent's
@@ -1392,6 +1394,8 @@
     // Optional — defaults to the machine's hostname.
     // "clusterId": "mac-mini",
     "schedulingInterval": "30s",
+    // How often a worker adopted across a restart is checked for liveness. Optional.
+    // "workerLivenessInterval": "2s",
     "maxConcurrentWorkers": 4,
     "hub": {
       "host": "127.0.0.1",

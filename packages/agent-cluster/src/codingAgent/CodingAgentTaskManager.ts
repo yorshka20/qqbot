@@ -41,14 +41,14 @@ const WORKSPACE_QUEUE_KEY = 'workspace';
 
 const DEFAULT_IDLE_TIMEOUT = '15m';
 const DEFAULT_TIMEOUT = '3h';
-const MAX_WATCHDOG_INTERVAL_MS = 30_000;
-/** Node-based CLIs can sit on SIGTERM while blocked in a fetch; escalate after this long. */
-const KILL_ESCALATION_MS = 5_000;
 /**
  * Commands the CLI started inherit its stdout/stderr and can keep them open
  * after the CLI itself exits, so EOF is only awaited this long past exit.
  */
-const STREAM_DRAIN_GRACE_MS = 2_000;
+const DEFAULT_STREAM_DRAIN_GRACE = '2s';
+const MAX_WATCHDOG_INTERVAL_MS = 30_000;
+/** Node-based CLIs can sit on SIGTERM while blocked in a fetch; escalate after this long. */
+const KILL_ESCALATION_MS = 5_000;
 
 interface RunningProcess {
   proc: Subprocess<'ignore' | Blob, 'pipe', 'pipe'>;
@@ -115,6 +115,7 @@ export class CodingAgentTaskManager {
   private promptTemplates: TaskPromptTemplates | null = null;
   private readonly idleTimeoutMs: number;
   private readonly timeoutMs: number;
+  private readonly streamDrainGraceMs: number;
   private readonly watchdogIntervalMs: number;
   private readonly taskStore: CodingAgentTaskStore;
 
@@ -132,6 +133,7 @@ export class CodingAgentTaskManager {
   ) {
     this.idleTimeoutMs = parseDuration(config.idleTimeout || DEFAULT_IDLE_TIMEOUT);
     this.timeoutMs = parseDuration(config.timeout || DEFAULT_TIMEOUT);
+    this.streamDrainGraceMs = parseDuration(config.streamDrainGrace || DEFAULT_STREAM_DRAIN_GRACE);
     this.watchdogIntervalMs = Math.min(MAX_WATCHDOG_INTERVAL_MS, this.idleTimeoutMs / 2, this.timeoutMs / 2);
     this.taskStore = new CodingAgentTaskStore(config.workspaceRoot || join(tmpdir(), 'qqbot-agent-workspaces'));
   }
@@ -422,7 +424,7 @@ export class CodingAgentTaskManager {
       let exitCode: number;
       try {
         exitCode = await proc.exited;
-        await Promise.race([Promise.all([stdout.done, stderr.done]), Bun.sleep(STREAM_DRAIN_GRACE_MS)]);
+        await Promise.race([Promise.all([stdout.done, stderr.done]), Bun.sleep(this.streamDrainGraceMs)]);
       } finally {
         clearInterval(watchdog);
         stdout.cancel();

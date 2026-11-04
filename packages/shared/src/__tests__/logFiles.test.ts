@@ -15,19 +15,25 @@ function writeLog(day: string, time: string, content: string): string {
   return path;
 }
 
+const POLL_MS = 5;
+
 /** Run the follower until `until` holds for the lines seen so far, driving it with `steps`. */
 async function follow(initialLines: number, steps: Array<() => void>, until: (lines: string[]) => boolean) {
   const lines: string[] = [];
   const abort = new AbortController();
-  const done = followLatestLog(logsDir, (line) => lines.push(line), { signal: abort.signal, initialLines });
+  const done = followLatestLog(logsDir, (line) => lines.push(line), {
+    signal: abort.signal,
+    initialLines,
+    pollMs: POLL_MS,
+  });
   for (const step of steps) {
-    await Bun.sleep(50);
+    await Bun.sleep(POLL_MS * 4);
     step();
-    await Bun.sleep(700);
+    await Bun.sleep(POLL_MS * 4);
   }
   const deadline = Date.now() + 3000;
   while (!until(lines) && Date.now() < deadline) {
-    await Bun.sleep(50);
+    await Bun.sleep(POLL_MS);
   }
   abort.abort();
   await done;

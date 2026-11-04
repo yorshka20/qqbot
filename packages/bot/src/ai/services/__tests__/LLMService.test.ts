@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 
-import { describe, expect, it, spyOn, test } from 'bun:test';
+import { describe, expect, it, jest, spyOn, test } from 'bun:test';
 import type { AIManager } from '@qqbot/llm';
 import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, ToolDefinition } from '@qqbot/llm';
 import { contentToPlainString } from '@qqbot/llm';
@@ -20,6 +20,24 @@ function createMockAIManager(): AIManager {
     getProviderForCapability: () => null,
     getDefaultLLM: () => null,
   } as unknown as AIManager;
+}
+
+/** Run `op` with each retry backoff firing as soon as everything else pending has run. */
+async function withoutBackoffWaits<T>(op: () => Promise<T>): Promise<T> {
+  jest.useFakeTimers();
+  try {
+    let settled = false;
+    const result = op().finally(() => {
+      settled = true;
+    });
+    while (!settled) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      jest.advanceTimersToNextTimer();
+    }
+    return await result;
+  } finally {
+    jest.useRealTimers();
+  }
 }
 
 describe('LLMService', () => {
@@ -197,11 +215,13 @@ describe('LLMService same-provider retry', () => {
       if (n === 1) throw new HttpClientError('Overloaded', 529);
       return { text: 'ok', resolvedModel: 'gemini-3.5-flash' };
     });
-    const res = await service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' });
+    const res = await withoutBackoffWaits(() =>
+      service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' }),
+    );
     expect(res.text).toBe('ok');
     expect(res.resolvedModel).toBe('gemini-3.5-flash');
     expect(getCalls()).toBe(2);
-  }, 20_000);
+  });
 
   it('retries a silent empty completion on the same provider', async () => {
     let n = 0;
@@ -209,10 +229,12 @@ describe('LLMService same-provider retry', () => {
       n++;
       return n === 1 ? { text: '', reasoningContent: '想到一半' } : { text: 'ok' };
     });
-    const res = await service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' });
+    const res = await withoutBackoffWaits(() =>
+      service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' }),
+    );
     expect(res.text).toBe('ok');
     expect(getCalls()).toBe(2);
-  }, 20_000);
+  });
 
   it('accepts a completion that carries only tool calls', async () => {
     const { service, getCalls } = makeService(async () => ({
@@ -953,7 +975,7 @@ describe('LLMService resolvedModel stamping', () => {
         { text: '这是答案', calls: [END_TURN_TOOL_NAME] },
       ]);
       const seen: string[] = [];
-      const res = await run(service, [noop, endTurn], seen);
+      const res = await withoutBackoffWaits(() => run(service, [noop, endTurn], seen));
 
       expect(requests).toHaveLength(2);
       expect(seen).toEqual(['这是答案 → end_turn', '<end_turn>']);

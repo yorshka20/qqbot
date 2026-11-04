@@ -18,7 +18,7 @@ async function until(condition: () => boolean, timeoutMs = 5000): Promise<void> 
     if (Date.now() > deadline) {
       throw new Error('timed out');
     }
-    await Bun.sleep(50);
+    await Bun.sleep(5);
   }
 }
 

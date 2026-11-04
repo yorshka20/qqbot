@@ -2,7 +2,7 @@
 // stream with its reconnection, and the proxy pass-through.
 
 import 'reflect-metadata';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, jest, test } from 'bun:test';
 import type { ClusterStatusResponse } from '@qqbot/api-types';
 import type { Config } from '@/core/config';
 import { type ClusterEvent, ClusterClient, ClusterClientError, readEventStream } from '../ClusterClient';
@@ -62,6 +62,7 @@ const STATUS: ClusterStatusResponse = {
 
 const daemons: FakeDaemon[] = [];
 afterEach(() => {
+  jest.useRealTimers();
   for (const daemon of daemons) {
     daemon.stop();
   }
@@ -185,9 +186,7 @@ describe('ClusterClient events', () => {
   });
 
   // The client retries every 5s, so the connection shows up on the second attempt at the earliest.
-  test(
-    'survives a daemon that is down and connects once it comes up',
-    async () => {
+  test('survives a daemon that is down and connects once it comes up', async () => {
     const d = daemon(() => Response.json({}));
     const url = d.url;
     const port = Number(new URL(url).port);
@@ -197,8 +196,16 @@ describe('ClusterClient events', () => {
     const client = clientFor(url);
     const abort = new AbortController();
     const events: ClusterEvent[] = [];
+    // Bun.sleep never resolves under fake timers; setImmediate stays real.
+    const turnsUntil = async (condition: () => boolean) => {
+      while (!condition()) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    };
+
+    jest.useFakeTimers();
     const done = client.events((e) => events.push(e), abort.signal);
-    await Bun.sleep(200);
+    await turnsUntil(() => jest.getTimerCount() > 0);
     expect(events).toEqual([]);
 
     const server = Bun.serve({
@@ -214,16 +221,18 @@ describe('ClusterClient events', () => {
       },
     });
     try {
-      await waitFor(() => events.length === 1, 8000);
+      jest.advanceTimersByTime(4999);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(events).toEqual([]);
+      jest.advanceTimersByTime(1);
+      await turnsUntil(() => events.length === 1);
       expect(events[0]).toEqual({ event: 'init', data: {} });
     } finally {
       abort.abort();
       await done;
       server.stop(true);
     }
-  },
-    15_000,
-  );
+  });
 });
 
 describe('ClusterClient proxy', () => {

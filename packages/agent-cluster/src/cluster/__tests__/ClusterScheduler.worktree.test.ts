@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ClusterScheduler } from '../ClusterScheduler';
@@ -9,7 +9,18 @@ import type { TaskRecord, WorkerBackend } from '../types';
 import { WorkerPool } from '../WorkerPool';
 import { TaskWorkspaces } from '../workspace/TaskWorkspaces';
 import { WorktreePool } from '../workspace/WorktreePool';
-import { createSandbox, EXECUTOR, openClusterDb, PLANNER, PROJECT, type Sandbox, waitFor } from './worktreeFixtures';
+import {
+  createSandbox,
+  EXECUTOR,
+  openClusterDb,
+  PLANNER,
+  PROJECT,
+  removeSeedRepo,
+  type Sandbox,
+  waitFor,
+} from './worktreeFixtures';
+
+afterAll(removeSeedRepo);
 
 /** Workers run the task description as a shell script, in the cwd the scheduler gave them. */
 const scriptBackend: WorkerBackend = {
