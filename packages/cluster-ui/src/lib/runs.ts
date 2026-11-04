@@ -93,7 +93,6 @@ export function buildRuns(
   rows: TaskRow[],
   help: ClusterHelpRequest[],
   workers: ClusterWorkerRegistration[],
-  seen: ReadonlySet<string>,
   now: number,
 ): Run[] {
   const workerById = new Map(workers.map((w) => [w.workerId, w]));
@@ -101,7 +100,7 @@ export function buildRuns(
     const asks = isLive(task)
       ? help.filter((h) => h.taskId === task.id).sort((a, b) => (toMs(a.createdAt) ?? 0) - (toMs(b.createdAt) ?? 0))
       : [];
-    const stage = stageOf(task, { asking: asks.length > 0, seen: seen.has(task.id), now });
+    const stage = stageOf(task, { asking: asks.length > 0, seen: task.acknowledgedAt !== undefined, now });
     return {
       task,
       stage,

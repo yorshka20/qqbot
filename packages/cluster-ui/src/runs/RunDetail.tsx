@@ -1,10 +1,10 @@
 import type { ClusterTaskDetail } from '@qqbot/api-types';
 import { ArrowLeft, CornerLeftUp, Pin, PinOff } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { killClusterTask } from '../api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { acknowledgeClusterTask, killClusterTask } from '../api';
 import { useCluster } from '../app/ClusterData';
 import { navigate, type Route, routeHref, withRoute } from '../app/route';
-import { markSeen, useAnswers } from '../lib/memory';
+import { answersOf } from '../lib/inbox';
 import { type Run, runTitle } from '../lib/runs';
 import { isLive, STAGE_LABEL, STAGE_TONE, TONE_TEXT } from '../lib/stage';
 import { formatClock, formatSpan, toMs } from '../lib/time';
@@ -57,6 +57,22 @@ function Actions({ run, task }: { run: Run; task: ClusterTaskDetail }) {
       await refresh();
     });
 
+  const acknowledge = () =>
+    act(async () => {
+      await acknowledgeClusterTask(task.id);
+      await refresh();
+    });
+
+  // Reading a finished run is what clears it from the inbox; a failure needs an explicit decision.
+  const requested = useRef(new Set<string>());
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `acknowledge` is rebuilt every render; the run id and stage are the trigger
+  useEffect(() => {
+    if (run.stage === 'review' && !requested.current.has(task.id)) {
+      requested.current.add(task.id);
+      void acknowledge();
+    }
+  }, [run.stage, task.id]);
+
   const live = isLive(task);
   const needsDismissal = run.stage === 'failed' || run.stage === 'blocked';
 
@@ -72,7 +88,11 @@ function Actions({ run, task }: { run: Run; task: ClusterTaskDetail }) {
           重试这条运行
         </Button>
       )}
-      {needsDismissal && <Button onClick={() => markSeen(task.id)}>标记已看</Button>}
+      {needsDismissal && (
+        <Button disabled={busy} onClick={acknowledge}>
+          标记已看
+        </Button>
+      )}
       {live && <ConfirmButton label="终止 worker" confirmLabel="确认终止" disabled={busy} onConfirm={kill} />}
       {error && <p className="w-full text-13 text-failed">{error}</p>}
     </div>
@@ -134,20 +154,13 @@ function ChildRuns({ runs, route }: { runs: Run[]; route: Route }) {
 }
 
 export function RunDetail({ runId, route, pinned = false }: { runId: string; route: Route; pinned?: boolean }) {
-  const { loaded, runs, help, workerExits } = useCluster();
+  const { loaded, runs, help, helpHistory, workerExits } = useCluster();
   const { task: detail, events, failed } = useRunDetail(runId);
-  const answers = useAnswers();
+  const answers = useMemo(() => answersOf(helpHistory), [helpHistory]);
   const now = useNow();
 
   const run = runs.find((r) => r.task.id === runId);
   const task = detail ?? run?.task ?? null;
-
-  // Reading a finished run is what clears it from the inbox; a failure needs an explicit decision.
-  useEffect(() => {
-    if (run?.stage === 'review') {
-      markSeen(runId);
-    }
-  }, [run?.stage, runId]);
 
   // Until the shared load lands, every pending question would read as already answered.
   const nodes = useMemo(

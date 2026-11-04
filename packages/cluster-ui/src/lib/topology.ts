@@ -73,18 +73,17 @@ export interface RunBranch {
 }
 
 /** What belongs on the map: the live runs, and what still waits in the inbox for the owner. */
-function onMap(run: Run, seen: ReadonlySet<string>): boolean {
+function onMap(run: Run): boolean {
   if (isLive(run.task)) {
     return true;
   }
-  return (run.stage === 'failed' || run.stage === 'blocked' || run.stage === 'review') && !seen.has(run.task.id);
+  return (
+    (run.stage === 'failed' || run.stage === 'blocked' || run.stage === 'review') &&
+    run.task.acknowledgedAt === undefined
+  );
 }
 
-export function buildBranches(
-  runs: Run[],
-  workers: ClusterWorkerRegistration[],
-  seen: ReadonlySet<string>,
-): ProjectBranch[] {
+export function buildBranches(runs: Run[], workers: ClusterWorkerRegistration[]): ProjectBranch[] {
   const byId = new Map(runs.map((r) => [r.task.id, r]));
   const childrenOf = new Map<string, Run[]>();
   for (const run of runs) {
@@ -96,7 +95,7 @@ export function buildBranches(
 
   const branch = (run: Run): RunBranch | null => {
     const children = (childrenOf.get(run.task.id) ?? []).flatMap((c) => branch(c) ?? []);
-    return onMap(run, seen) || children.length > 0 ? { run, children } : null;
+    return onMap(run) || children.length > 0 ? { run, children } : null;
   };
 
   const projects = new Map<string, ProjectBranch>();

@@ -33,15 +33,13 @@ function worker(id: string, patch: Partial<ClusterWorkerRegistration> = {}): Clu
 }
 
 function branches(tasks: ClusterTask[], workers: ClusterWorkerRegistration[], seen: string[] = []) {
-  const seenSet = new Set(seen);
   const runs = buildRuns(
-    tasks.map((t) => ({ task: t })),
+    tasks.map((t) => ({ task: seen.includes(t.id) ? { ...t, acknowledgedAt: '2026-11-04T11:59:00Z' } : t })),
     [],
     workers,
-    seenSet,
     NOW,
   );
-  return buildBranches(runs, workers, seenSet);
+  return buildBranches(runs, workers);
 }
 
 describe('buildBranches', () => {
@@ -169,7 +167,7 @@ test('elapsedFraction is a capped share of half an hour', () => {
 
 test('workerState follows the run it serves', () => {
   expect(workerState(undefined)).toBe('idle');
-  const [run] = buildRuns([{ task: task('r') }], [], [], new Set(), NOW);
+  const [run] = buildRuns([{ task: task('r') }], [], [], NOW);
   expect(workerState(run)).toBe('working');
   expect(workerState({ ...run, stage: 'asking' })).toBe('asking');
   expect(workerState({ ...run, stage: 'blocked' })).toBe('failed');

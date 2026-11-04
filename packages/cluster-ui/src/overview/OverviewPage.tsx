@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { useCluster } from '../app/ClusterData';
 import { routeHref } from '../app/route';
-import { useSeen } from '../lib/memory';
 import type { Stage } from '../lib/stage';
 import { buildBranches, layoutTopology } from '../lib/topology';
 import { useNow } from '../lib/useNow';
@@ -22,10 +21,9 @@ function Count({ label, value, href, tone }: { label: string; value: number; hre
 
 export function OverviewPage() {
   const { runs, workers, locks, templates, loaded } = useCluster();
-  const seen = useSeen();
   const now = useNow();
 
-  const branches = useMemo(() => buildBranches(runs, workers, seen), [runs, workers, seen]);
+  const branches = useMemo(() => buildBranches(runs, workers), [runs, workers]);
   const topology = useMemo(() => layoutTopology(branches, locks), [branches, locks]);
 
   const count = (stage: Stage) => runs.filter((r) => r.stage === stage).length;

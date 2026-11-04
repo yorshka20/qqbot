@@ -1,14 +1,5 @@
-import { useSyncExternalStore } from 'react';
-
-/**
- * What only this browser knows. Phase 1 has no server-side stage, so "seen" lives here; the
- * daemon does not expose an answered request either, so the timeline shows the answers given
- * from this browser and a bare "已回答" for any other.
- */
-const SEEN_KEY = 'cluster-ui.seen';
-const ANSWERS_KEY = 'cluster-ui.answers';
+/** What only this browser knows: the composer's last choice. */
 const COMPOSER_KEY = 'cluster-ui.composer';
-const MAX_ENTRIES = 500;
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -27,52 +18,12 @@ function write(key: string, value: unknown): void {
   }
 }
 
-let seen: ReadonlySet<string> = new Set(read<string[]>(SEEN_KEY, []));
-let answers: ReadonlyMap<string, string> = new Map(read<[string, string][]>(ANSWERS_KEY, []));
-const listeners = new Set<() => void>();
-
-function notify(): void {
-  for (const listener of listeners) {
-    listener();
-  }
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-export function useSeen(): ReadonlySet<string> {
-  return useSyncExternalStore(subscribe, () => seen);
-}
-
-export function useAnswers(): ReadonlyMap<string, string> {
-  return useSyncExternalStore(subscribe, () => answers);
-}
-
-export function markSeen(taskId: string): void {
-  if (seen.has(taskId)) {
-    return;
-  }
-  const next = [...seen, taskId].slice(-MAX_ENTRIES);
-  seen = new Set(next);
-  write(SEEN_KEY, next);
-  notify();
-}
-
-export function rememberAnswer(askId: string, answer: string): void {
-  const next = [...answers, [askId, answer] as [string, string]].slice(-MAX_ENTRIES);
-  answers = new Map(next);
-  write(ANSWERS_KEY, next);
-  notify();
-}
-
 interface ComposerChoice {
   project?: string;
   template?: string;
 }
 
-/** The composer's last project/template, read once when it opens; not part of the subscribe/notify store. */
+/** The composer's last project/template, read once when it opens. */
 export function readComposerChoice(): ComposerChoice {
   return read<ComposerChoice>(COMPOSER_KEY, {});
 }

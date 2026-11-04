@@ -1,7 +1,6 @@
 import { type KeyboardEvent, useState } from 'react';
 import { answerClusterHelpRequest } from '../api';
 import { useCluster } from '../app/ClusterData';
-import { rememberAnswer } from '../lib/memory';
 import { Button } from '../ui/Button';
 import { INPUT_CLASS } from '../ui/Field';
 
@@ -28,9 +27,7 @@ export function AnswerBox({
     setError(null);
     try {
       const { answered } = await answerClusterHelpRequest(askId, { answer: trimmed, answeredBy: 'owner' });
-      if (answered) {
-        rememberAnswer(askId, trimmed);
-      } else {
+      if (!answered) {
         setError('这个问题已经被回答或过期了。');
       }
       await refresh();

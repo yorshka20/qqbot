@@ -1,11 +1,14 @@
-import { Plus } from 'lucide-react';
+import { ChevronRight, Plus } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { useCluster } from '../app/ClusterData';
 import { useListCursor } from '../app/keys';
 import { type Route, routeHref } from '../app/route';
-import { groupInboxByDay, type InboxItem } from '../lib/inbox';
+import { type ArchiveItem, buildInboxArchive, groupInboxByDay, type InboxItem } from '../lib/inbox';
+import { formatClock } from '../lib/time';
 import { useNow } from '../lib/useNow';
 import { EmptyState } from '../ui/EmptyState';
 import { SkeletonRows } from '../ui/Skeleton';
+import { StatusBar } from '../ui/StatusBar';
 import { InboxRow } from './InboxRow';
 import { useInbox } from './useInbox';
 
@@ -14,9 +17,69 @@ function itemHref(item: InboxItem): string {
   return routeHref({ section: 'inbox', runId });
 }
 
+const ARCHIVE_LABEL: Record<ArchiveItem['kind'], string> = {
+  answered: '已回答',
+  failed: '失败已看',
+  review: '结果已看',
+};
+
+function ArchiveRow({ item, selected, now }: { item: ArchiveItem; selected: boolean; now: number }) {
+  return (
+    <a
+      href={routeHref({ section: 'inbox', runId: item.run.task.id })}
+      className="relative block border-b border-line/60 px-4 py-2 pl-5 hover:bg-surface-2/50"
+    >
+      <StatusBar tone="muted" active={selected} />
+      <div className="flex items-baseline gap-2">
+        <span className="shrink-0 text-13 text-ink-muted">
+          {formatClock(item.at, now)} · {ARCHIVE_LABEL[item.kind]}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-15">{item.run.title}</span>
+      </div>
+      {item.help && (
+        <p className="line-clamp-2 text-14 text-ink-muted">
+          问：{item.help.question} / 答：{item.help.answer}
+        </p>
+      )}
+    </a>
+  );
+}
+
+function Archive({ archive, runId, now }: { archive: ArchiveItem[]; runId: string | null; now: number }) {
+  const [open, setOpen] = useState(false);
+  const groups = groupInboxByDay(
+    archive.map((item) => ({ item, since: item.at })),
+    now,
+  ).reverse();
+
+  return (
+    <section>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-1 px-4 py-2 text-left text-14 text-ink-muted hover:bg-surface-2/50"
+      >
+        <ChevronRight className={`size-4 shrink-0 ${open ? 'rotate-90' : ''}`} />
+        已处理 · {archive.length}
+      </button>
+      {open &&
+        groups.map((group) => (
+          <div key={group.label}>
+            <div className="px-4 py-1.5 text-12 font-medium text-ink-muted">{group.label}</div>
+            {group.items.map(({ item }) => (
+              <ArchiveRow key={item.id} item={item} selected={item.run.task.id === runId} now={now} />
+            ))}
+          </div>
+        ))}
+    </section>
+  );
+}
+
 export function InboxList({ route }: { route: Route }) {
-  const { loaded } = useCluster();
+  const { loaded, runs, helpHistory } = useCluster();
   const items = useInbox(route);
+  const archive = useMemo(() => buildInboxArchive(runs, helpHistory), [runs, helpHistory]);
   const now = useNow();
   const groups = groupInboxByDay(items, now);
   const flatItems = groups.flatMap((g) => g.items);
@@ -67,6 +130,7 @@ export function InboxList({ route }: { route: Route }) {
               })}
             </div>
           ))}
+        {loaded && archive.length > 0 && <Archive archive={archive} runId={route.runId} now={now} />}
       </div>
     </>
   );

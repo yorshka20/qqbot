@@ -99,7 +99,7 @@ describe('sortRuns', () => {
       task('failed', { status: 'failed', completedAt: '2026-11-04T10:00:00Z' }),
       task('asking'),
     ].map((t) => ({ task: t }));
-    const runs = buildRuns(rows, [ask('a1', 'asking')], [], new Set(), NOW);
+    const runs = buildRuns(rows, [ask('a1', 'asking')], [], NOW);
     expect(sortRuns(runs).map((r) => r.task.id)).toEqual([
       'asking',
       'failed',
@@ -111,17 +111,30 @@ describe('sortRuns', () => {
   });
 });
 
+describe('buildRuns', () => {
+  test('a completed run with acknowledgedAt is done, not review', () => {
+    const finished = task('c', { status: 'completed', completedAt: '2026-11-04T11:45:00Z' });
+    const seen = { ...finished, acknowledgedAt: '2026-11-04T11:50:00Z' };
+    const [unseen, acked] = buildRuns([{ task: finished }, { task: seen }], [], [], NOW);
+    expect(unseen.stage).toBe('review');
+    expect(acked.stage).toBe('done');
+  });
+});
+
 describe('orderRunsAsTree', () => {
   const done = (id: string, patch: Partial<ClusterTask> = {}) =>
     task(id, { status: 'completed', completedAt: '2026-11-04T11:30:00Z', ...patch });
 
+  const acknowledged = new Set(['p', 'p2', 'x', 'a', 'b', 'c', 'g', 'solo-old', 'solo-new']);
+  const withAck = (t: ClusterTask): ClusterTask =>
+    acknowledged.has(t.id) ? { ...t, acknowledgedAt: '2026-11-04T11:59:00Z' } : t;
+
   function tree(rows: ClusterTask[], help: ClusterHelpRequest[] = []) {
     return orderRunsAsTree(
       buildRuns(
-        rows.map((t) => ({ task: t })),
+        rows.map((t) => ({ task: withAck(t) })),
         help,
         [],
-        new Set(['p', 'p2', 'x', 'a', 'b', 'c', 'g', 'solo-old', 'solo-new']),
         NOW,
       ),
     );
@@ -134,7 +147,7 @@ describe('orderRunsAsTree', () => {
       done('solo-new', { completedAt: '2026-11-04T11:00:00Z' }),
     ];
     const rowsOut = tree(rows);
-    const expected = sortRuns(buildRuns(rows.map((t) => ({ task: t })), [], [], new Set(['solo-old', 'solo-new']), NOW));
+    const expected = sortRuns(buildRuns(rows.map((t) => ({ task: withAck(t) })), [], [], NOW));
     expect(rowsOut.map((r) => r.run.task.id)).toEqual(expected.map((r) => r.task.id));
     expect(rowsOut.every((r) => r.depth === 0 && !r.lastChild && r.childRuns === 0)).toBe(true);
   });
@@ -183,15 +196,13 @@ describe('buildInbox', () => {
   const finished = task('c', { status: 'completed', completedAt: '2026-11-04T11:45:00Z' });
 
   function inbox(rows: ClusterTask[], help: ClusterHelpRequest[], seen: string[], open: string | null = null) {
-    const seenSet = new Set(seen);
     const runs = buildRuns(
-      rows.map((t) => ({ task: t })),
+      rows.map((t) => ({ task: seen.includes(t.id) ? { ...t, acknowledgedAt: '2026-11-04T11:59:00Z' } : t })),
       help,
       [],
-      seenSet,
       NOW,
     );
-    return buildInbox(runs, help, seenSet, open);
+    return buildInbox(runs, help, open);
   }
 
   test('lists questions, then failures, then results to read', () => {

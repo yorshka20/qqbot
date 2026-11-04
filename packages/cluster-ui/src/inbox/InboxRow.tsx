@@ -1,9 +1,9 @@
 import type { LucideIcon } from 'lucide-react';
 import { useState } from 'react';
+import { acknowledgeClusterTask } from '../api';
 import { useCluster } from '../app/ClusterData';
 import { navigate, routeHref } from '../app/route';
 import type { InboxItem } from '../lib/inbox';
-import { markSeen } from '../lib/memory';
 import type { Tone } from '../lib/stage';
 import { formatWait } from '../lib/time';
 import { AnswerBox } from '../runs/AnswerBox';
@@ -17,6 +17,33 @@ const KIND: Record<InboxItem['kind'], { label: string; tone: Tone; icon: LucideI
   failed: { label: '失败', tone: 'failed', icon: STAGE_ICON.failed },
   review: { label: '待查看', tone: 'done', icon: STAGE_ICON.review },
 };
+
+function SeenButton({ taskId }: { taskId: string }) {
+  const { refresh } = useCluster();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const acknowledge = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await acknowledgeClusterTask(taskId);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <Button disabled={busy} onClick={acknowledge}>
+        标记已看
+      </Button>
+      {error && <p className="text-13 text-failed">{error}</p>}
+    </>
+  );
+}
 
 function FailedActions({ item }: { item: Extract<InboxItem, { kind: 'failed' }> }) {
   const { templates, refresh } = useCluster();
@@ -41,7 +68,7 @@ function FailedActions({ item }: { item: Extract<InboxItem, { kind: 'failed' }> 
       <Button variant="solid" disabled={busy} onClick={retry} title="用同样的描述重新提交一条运行">
         重试这条运行
       </Button>
-      <Button onClick={() => markSeen(item.run.task.id)}>标记已看</Button>
+      <SeenButton taskId={item.run.task.id} />
       {error && <p className="text-13 text-failed">{error}</p>}
     </div>
   );
@@ -104,7 +131,11 @@ export function InboxRow({
       <div className="mt-3 border-t border-line/60 pt-3">
         {item.kind === 'ask' && <AnswerBox askId={item.help.id} options={item.help.options} compact />}
         {item.kind === 'failed' && <FailedActions item={item} />}
-        {item.kind === 'review' && <Button onClick={() => markSeen(item.run.task.id)}>标记已看</Button>}
+        {item.kind === 'review' && (
+          <div className="flex items-center gap-1.5">
+            <SeenButton taskId={item.run.task.id} />
+          </div>
+        )}
       </div>
     </div>
   );

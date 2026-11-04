@@ -21,7 +21,6 @@ import {
   listClusterLocks,
   listClusterWorkers,
 } from '../api';
-import { useSeen } from '../lib/memory';
 import { hasOutput, setOutput } from '../lib/outputs';
 import { buildRuns, type Run, type TaskRow } from '../lib/runs';
 import { isLive } from '../lib/stage';
@@ -30,7 +29,14 @@ import { useClusterStream, useClusterStreamConnected, useRefreshOnClusterEvents 
 
 const HISTORY_PAGE = 30;
 const FALLBACK_POLL_MS = 5000;
-const REFRESH_EVENTS = ['init', 'worker_status', 'help_request', 'task_spawned'] as const;
+const REFRESH_EVENTS = [
+  'init',
+  'worker_status',
+  'help_request',
+  'task_spawned',
+  'task_acknowledged',
+  'task_message',
+] as const;
 
 export interface ClusterData {
   loaded: boolean;
@@ -39,7 +45,10 @@ export interface ClusterData {
   health: ClusterDaemonHealthResponse | null;
   cluster: ClusterStatusResponse | null;
   runs: Run[];
+  /** Pending questions only. */
   help: ClusterHelpRequest[];
+  /** Every question, answered ones included, newest first. */
+  helpHistory: ClusterHelpRequest[];
   workers: EnrichedWorkerRegistration[];
   locks: ClusterLock[];
   templates: ClusterTemplatesResponse | null;
@@ -70,13 +79,22 @@ function isTerminal(status: string): boolean {
 interface Snapshot {
   rows: TaskRow[];
   help: ClusterHelpRequest[];
+  helpHistory: ClusterHelpRequest[];
   workers: EnrichedWorkerRegistration[];
   locks: ClusterLock[];
   workerExits: Map<string, number>;
   hasMoreHistory: boolean;
 }
 
-const EMPTY: Snapshot = { rows: [], help: [], workers: [], locks: [], workerExits: new Map(), hasMoreHistory: false };
+const EMPTY: Snapshot = {
+  rows: [],
+  help: [],
+  helpHistory: [],
+  workers: [],
+  locks: [],
+  workerExits: new Map(),
+  hasMoreHistory: false,
+};
 
 /**
  * Everything the screens read comes from here, moved by the one SSE stream. Polling runs only
@@ -93,7 +111,6 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
   const [version, setVersion] = useState(0);
   const [historyLimit, setHistoryLimit] = useState(HISTORY_PAGE);
 
-  const seen = useSeen();
   const now = useNow();
 
   /** A terminal job no longer changes, so its detail is read once. */
@@ -125,9 +142,9 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
       setCluster(status);
       setUnreachable(false);
       if (status.started) {
-        const [active, help, workers, locks, history] = await Promise.all([
+        const [active, helpHistory, workers, locks, history] = await Promise.all([
           listClusterActiveTasks(),
-          listClusterHelpRequests(),
+          listClusterHelpRequests('all'),
           listClusterWorkers(),
           listClusterLocks(),
           listClusterHistoryJobs({ limit: historyLimitRef.current }),
@@ -158,14 +175,15 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
         running.current = new Set(active.filter((t) => t.status === 'running').map((t) => t.id));
         setSnapshot({
           rows: [...rows.values()],
-          help,
+          help: helpHistory.filter((r) => r.status === 'pending'),
+          helpHistory,
           workers,
           locks,
           workerExits,
           hasMoreHistory: history.hasMore,
         });
       } else {
-        setSnapshot((prev) => ({ ...prev, help: [], workers: [], locks: [] }));
+        setSnapshot((prev) => ({ ...prev, help: [], helpHistory: [], workers: [], locks: [] }));
       }
       setVersion((v) => v + 1);
     } catch {
@@ -237,10 +255,7 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [refresh]);
 
-  const runs = useMemo(
-    () => buildRuns(snapshot.rows, snapshot.help, snapshot.workers, seen, now),
-    [snapshot, seen, now],
-  );
+  const runs = useMemo(() => buildRuns(snapshot.rows, snapshot.help, snapshot.workers, now), [snapshot, now]);
 
   const loadMoreHistory = useCallback(() => setHistoryLimit((limit) => limit + HISTORY_PAGE), []);
 
@@ -252,6 +267,7 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
       cluster,
       runs,
       help: snapshot.help,
+      helpHistory: snapshot.helpHistory,
       workers: snapshot.workers,
       locks: snapshot.locks,
       templates,
