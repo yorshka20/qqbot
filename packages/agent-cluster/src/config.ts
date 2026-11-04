@@ -70,6 +70,8 @@ export interface CodingAgentConfig {
   idleTimeout?: string;
   // Kill a task that runs longer than this in total (default: '3h')
   timeout?: string;
+  // How long past a CLI's exit to wait for EOF on its pipes, which commands it started can hold open (default: '2s')
+  streamDrainGrace?: string;
   // Max concurrent tasks (default: 1)
   maxConcurrentTasks?: number;
   // Project registry for multi-project support

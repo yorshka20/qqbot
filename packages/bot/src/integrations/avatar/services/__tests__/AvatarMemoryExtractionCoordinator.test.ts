@@ -13,7 +13,7 @@
 //   - LLM resolution precedence (override → taskProviders.memoryExtract
 //     → avatar.llmProvider → the default LLM)
 
-import { describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, jest, mock, test } from 'bun:test';
 import type { Config } from '@/core/config';
 import type { AvatarSource } from '../../types';
 import { AvatarMemoryExtractionCoordinator } from '../AvatarMemoryExtractionCoordinator';
@@ -124,9 +124,19 @@ function setup(opts: SetupOptions = {}): CoordinatorEnv {
   return { coordinator, fakeConfig, fakeSession, extractService };
 }
 
+/** Move the fake clock on, then let whatever the fired timers started run to its next wait. */
 function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+  jest.advanceTimersByTime(ms);
+  return new Promise((r) => setImmediate(r));
 }
+
+beforeEach(() => {
+  jest.useFakeTimers();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 describe('AvatarMemoryExtractionCoordinator', () => {
   test('is a no-op when avatar.memoryExtraction.enabled is false', async () => {

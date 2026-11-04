@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, jest, mock } from 'bun:test';
 import type { Config } from '@/core/config';
 import { DEFAULT_CHAT_REASONING_EFFORTS } from '@/core/config/types/ai';
 import type { ConversationMessageEntry } from '@/conversation/history';
@@ -110,7 +110,17 @@ describe('PromptAssemblyStage history image resolution', () => {
     const stage = new PromptAssemblyStage(registry, mockPromptManager, { getResourceTempUrl } as any, NO_AI_CONFIG);
     const ctx = makeContext([0, 1].map(entryWithImage));
 
-    await stage.execute(ctx);
+    jest.useFakeTimers();
+    try {
+      const executed = stage.execute(ctx);
+      while (jest.getTimerCount() === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      jest.advanceTimersByTime(5000);
+      await executed;
+    } finally {
+      jest.useRealTimers();
+    }
 
     // The stalled entry must not hold up the prompt, and must still carry its text.
     expect(ctx.messages.length).toBeGreaterThan(0);
@@ -118,5 +128,5 @@ describe('PromptAssemblyStage history image resolution', () => {
       expect(typeof message.content).toBe('string');
     }
     expect(ctx.messages.some((m) => typeof m.content === 'string' && m.content.includes('history 0'))).toBe(true);
-  }, 15000);
+  });
 });

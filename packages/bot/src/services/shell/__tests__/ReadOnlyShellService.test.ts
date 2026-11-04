@@ -126,7 +126,14 @@ describe('ReadOnlyShellService — path boundary', () => {
   });
 
   it('allows dot-directories for reads (.git inspection)', () => {
-    const r = service.run('ls .git');
+    // Its own root: in a linked worktree the repo's `.git` is a file, not a directory.
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'shell-dotdir-')));
+    mkdirSync(join(root, '.git'));
+    writeFileSync(join(root, '.git', 'HEAD'), 'ref: refs/heads/master\n');
+    const r = new ReadOnlyShellService(createFileReadService({ root, filterPaths: [], filterExtensions: [] }), root).run(
+      'ls .git',
+    );
+    rmSync(root, { recursive: true, force: true });
     expect(r.success).toBe(true);
     expect(r.output).toContain('HEAD');
   });

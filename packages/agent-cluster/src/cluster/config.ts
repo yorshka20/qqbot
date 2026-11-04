@@ -27,6 +27,8 @@ export interface ClusterConfig {
    */
   worktreeRoot: string;
   schedulingInterval: number; // ms
+  /** How often an adopted worker, which has no child handle to report its exit, is checked for liveness. */
+  workerLivenessInterval: number; // ms
   maxConcurrentWorkers: number;
 
   hub: {
@@ -263,6 +265,10 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
       typeof r.schedulingInterval === 'string'
         ? parseDuration(r.schedulingInterval)
         : (r.schedulingInterval as number) || 30_000,
+    workerLivenessInterval:
+      typeof r.workerLivenessInterval === 'string'
+        ? parseDuration(r.workerLivenessInterval)
+        : (r.workerLivenessInterval as number) || 2000,
     maxConcurrentWorkers: (r.maxConcurrentWorkers as number) || 6,
     hub: {
       port: (hubRaw.port as number) || 3200,

@@ -32,7 +32,7 @@ function createManager(config: Partial<CodingAgentConfig> = {}) {
     {
       enabled: true,
       port: 0,
-      idleTimeout: '1s',
+      idleTimeout: '300ms',
       timeout: '1h',
       // Never the default <tmpdir>/qqbot-agent-workspaces: that is the real bot's root, and task
       // directories are named after the prompt, so repeated runs exhaust a name's suffixes.
@@ -58,6 +58,13 @@ function run(manager: CodingAgentTaskManager, script: string, workingDirectory =
   return task;
 }
 
+/** The status flips before the spawn, but the shell executor only awaits microtasks in between. */
+async function untilSpawned(manager: CodingAgentTaskManager, taskId: string) {
+  do {
+    await Bun.sleep(5);
+  } while (manager.getTask(taskId)?.status !== 'running');
+}
+
 describe('CodingAgentTaskManager watchdog', () => {
   test('a silent process is killed as stalled', async () => {
     const { manager } = createManager();
@@ -71,7 +78,7 @@ describe('CodingAgentTaskManager watchdog', () => {
 
   test('a process that keeps writing is not killed', async () => {
     const { manager } = createManager();
-    const task = run(manager, 'for i in 1 2 3 4 5; do echo tick >&2; sleep 0.4; done; echo DONE');
+    const task = run(manager, 'for i in 1 2 3 4 5 6 7 8; do echo tick >&2; sleep 0.05; done; echo DONE');
     const done = await manager.awaitTaskCompletion(task.id);
     expect(done.status).toBe('completed');
     expect(done.result).toBe('DONE');
@@ -79,23 +86,23 @@ describe('CodingAgentTaskManager watchdog', () => {
 
   test('MCP activity counts as life', async () => {
     const { manager } = createManager();
-    const task = run(manager, 'sleep 2; echo DONE');
-    const keepAlive = setInterval(() => manager.touch(task.id), 300);
+    const task = run(manager, 'sleep 0.5; echo DONE');
+    const keepAlive = setInterval(() => manager.touch(task.id), 50);
     const done = await manager.awaitTaskCompletion(task.id);
     clearInterval(keepAlive);
     expect(done.status).toBe('completed');
   });
 
   test('the total timeout applies even to an active process', async () => {
-    const { manager } = createManager({ idleTimeout: '10s', timeout: '1s' });
-    const task = run(manager, 'while true; do echo tick; sleep 0.2; done');
+    const { manager } = createManager({ idleTimeout: '10s', timeout: '200ms' });
+    const task = run(manager, 'while true; do echo tick; sleep 0.02; done');
     const done = await manager.awaitTaskCompletion(task.id);
     expect(done.status).toBe('failed');
     expect(done.error).toContain('运行超过');
   });
 
   test('a background child holding the pipe does not keep the task open', async () => {
-    const { manager } = createManager({ idleTimeout: '30s' });
+    const { manager } = createManager({ idleTimeout: '30s', streamDrainGrace: '50ms' });
     const task = run(manager, '(sleep 30 &); echo DONE');
     const started = Date.now();
     const done = await manager.awaitTaskCompletion(task.id);
@@ -111,7 +118,7 @@ describe('CodingAgentTaskManager lifecycle', () => {
     const project = mkdtempSync(join(tmpdir(), 'coding-agent-test-'));
     const first = run(manager, 'sleep 30', project);
     const second = run(manager, 'echo SECOND', project);
-    await Bun.sleep(200);
+    await untilSpawned(manager, first.id);
     expect(manager.cancelTask(first.id)).toBe(true);
 
     const done = await manager.awaitTaskCompletion(second.id);
@@ -124,8 +131,8 @@ describe('CodingAgentTaskManager lifecycle', () => {
 
   test('started / progress reports are relayed and a completed report does not finalize the task', async () => {
     const { manager, progress } = createManager({ idleTimeout: '30s' });
-    const task = run(manager, 'sleep 0.5; echo DONE');
-    await Bun.sleep(100);
+    const task = run(manager, 'sleep 0.1; echo DONE');
+    await untilSpawned(manager, task.id);
     manager.handleTaskNotification({ taskId: task.id, status: 'started', message: '理解了任务' });
     manager.handleTaskNotification({ taskId: task.id, status: 'progress', message: '完成一半', progress: 50 });
     manager.handleTaskNotification({ taskId: task.id, status: 'completed', result: '早报的结果' });
@@ -147,7 +154,7 @@ describe('CodingAgentTaskManager workspace tasks', () => {
       ...shellExecutor(),
       async buildInvocation(input) {
         invocations.push(input);
-        return { cmd: ['sh', '-c', 'sleep 0.3; echo DONE'], env: { ...process.env }, cleanup: async () => {} };
+        return { cmd: ['sh', '-c', 'sleep 0.02; echo DONE'], env: { ...process.env }, cleanup: async () => {} };
       },
     };
     const manager = new CodingAgentTaskManager(

@@ -183,6 +183,14 @@ When testing changes:
 4. Use `bun run debug` for interactive mock message testing when needed
 5. Check WebSocket connections with `LOG_LEVEL=debug` for protocol-level debugging
 
+**Tests never wait out a production delay.** A full `bun test` is meant to stay around 20 s. Drive a
+fixed delay with fake timers (`jest.useFakeTimers()`; `Bun.sleep` never resolves under them, `setImmediate`
+stays real) or shorten it through the config value or option that sets it; poll for a condition
+instead of sleeping for a guessed time. Tests that need real git share one seed repository through
+`worktreeFixtures`. Rank files with `bun test --reporter=junit --reporter-outfile=<file>` before
+blaming a suspect. Discovery is scoped in `bunfig.toml`: a directory of checkouts anywhere but a dot
+directory must be listed in `pathIgnorePatterns`, or every copy runs as part of the suite.
+
 When template files already exist on disk, load them with `loadTemplatesFromDirectory()` so the test exercises the production path; don't hand-register via `registerTemplate` when the file is right there.
 
 **Never put real user data in tests or in prompt files.** No real QQ numbers, group ids,

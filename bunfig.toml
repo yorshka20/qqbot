@@ -2,6 +2,11 @@
 # `bun test` is a builtin and never runs the package.json "test" script.
 # The logger opens a file at import time, so this has to run first.
 preload = ["./scripts/test-preload.ts"]
+# Cluster worktree slots under data/ are full checkouts, and discovery walks every directory but
+# node_modules and dot directories (so .claude/worktrees is already skipped). A path argument
+# only filters, so `bun test packages/x` would match the slots too. Each slot is a whole extra
+# suite, on whatever stale code it holds. Patterns are relative to the working directory.
+pathIgnorePatterns = ["data/**"]
 
 [install]
 # Automatically install peer dependencies

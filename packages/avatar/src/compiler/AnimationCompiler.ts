@@ -7,7 +7,7 @@ import type { TunableParam, TunableSection } from '../preview/types';
 const PERF_LOG_ENABLED = process.env.AVATAR_PERF_LOG === '1';
 
 import { type AvatarActivity, DEFAULT_ACTIVITY } from '../state/types';
-import { ActionMap, type ResolveActionOptions } from './action-map';
+import { ActionMap, packagedActions, type ResolveActionOptions } from './action-map';
 import { sampleClip } from './clips/sampleClip';
 import { applyEasing } from './easing';
 import { AmbientAudioLayer } from './layers/AmbientAudioLayer';
@@ -182,7 +182,7 @@ export class AnimationCompiler extends EventEmitter {
       ...DEFAULT_CONFIG,
       ...config,
     };
-    this.actionMap = new ActionMap(actionMapPath);
+    this.actionMap = actionMapPath ? new ActionMap(actionMapPath) : packagedActions();
     this.restPose = options.restPose ?? loadRestPose();
     if (options.registerContinuousStack !== false) {
       this.registerContinuousStack();

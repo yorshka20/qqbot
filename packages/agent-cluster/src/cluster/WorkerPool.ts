@@ -59,9 +59,6 @@ export type TaskUpdatedCallback = (task: TaskRecord) => void;
  */
 const RECENTLY_EXITED_MAX = 50;
 
-/** How often an adopted worker (no child handle) is checked for liveness. */
-const LIVENESS_POLL_MS = 2000;
-
 /** Slack allowed between a task's recorded start and the process start `ps` reports. */
 const START_TIME_TOLERANCE_MS = 60_000;
 
@@ -803,7 +800,7 @@ export class WorkerPool {
             if (worker.pid !== null && !isAlive(worker.pid)) {
               void this.finalize(worker, null);
             }
-          }, LIVENESS_POLL_MS)
+          }, this.config.workerLivenessInterval)
         : null;
 
     this.followed.set(worker.id, {
@@ -932,7 +929,7 @@ export class WorkerPool {
           clearInterval(timer);
           resolve();
         }
-      }, 100);
+      }, 25);
     });
   }
 

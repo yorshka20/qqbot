@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { git } from '../git';
@@ -7,7 +7,17 @@ import type { ContextHub } from '../hub/ContextHub';
 import type { ClusterEventType, JobRecord, TaskRecord } from '../types';
 import { TaskWorkspaces } from '../workspace/TaskWorkspaces';
 import { WorktreePool } from '../workspace/WorktreePool';
-import { commitFile, createSandbox, openClusterDb, PROJECT, type Sandbox, waitFor } from './worktreeFixtures';
+import {
+  commitFile,
+  createSandbox,
+  openClusterDb,
+  PROJECT,
+  removeSeedRepo,
+  type Sandbox,
+  waitFor,
+} from './worktreeFixtures';
+
+afterAll(removeSeedRepo);
 
 const JOB_ID = 'aaaaaaaa-1111-2222-3333-444444444444';
 const INTEGRATION = 'cluster/aaaaaaaa';
