@@ -45,6 +45,28 @@ bun test packages/cluster-ui
 
 全部在 `src/index.css`：`:root` 是深色，`:root[data-theme="light"]` 是浅色，`@theme inline` 把它们映射给 Tailwind。
 `@theme` 里清空了 Tailwind 的默认色板、字号、圆角和阴影，所以 `bg-red-500`、`text-sm`、`rounded-lg` 不生成任何样式：
-只有 `bg-surface`、`text-13`、`rounded-ui` 这类 token 可用。
+只有 `bg-surface`、`text-13`、`rounded-ui` 这类 token 可用。圆角只有 `rounded-ui`（6px），没有阴影。
 
 字体是 IBM Plex Sans / Plex Mono 的 latin 子集，打进产物，离线可用。Plex 没有中文字形，中文走系统字体。
+
+字号 scale（`text-*`），逐档用处：
+
+| token | 值 | 用处 |
+|---|---|---|
+| `text-24` | 24px | 运行详情标题（唯一） |
+| `text-18` | 18px | List 与页面标题、收件箱「等了 N 分钟」 |
+| `text-16` | 16px | 列表行标题、拓扑运行节点标题、时间线终态标签 |
+| `text-15` | 15px | 正文散文（`body` 的基准） |
+| `text-14` | 14px | 次要信息：元信息行、按钮、表单 label |
+| `text-13` | 13px | 三级信息与等宽：时间戳、pid、sessionId、日志正文 |
+| `text-12` | 12px | 状态胶囊文字、时间尺注记 |
+
+终端（日志面板）在浅色模式下仍然是深底：`bg-log-bg` / `text-log-ink`。
+`w-list`（23rem）是 List 列宽，`max-w-measure`（44rem）是详情阅读宽度。
+
+四个共享状态 primitive（`src/ui/`），后面的收件箱 / 时间线 / 拓扑都消费它们：
+
+- `StatePill` — 带图标或呼吸点的状态胶囊（淡底 + tone 文字色）
+- `StatusBar` — 列表行左侧 3px 的竖条，标出这一行的 tone
+- `EmptyState` — 空列表占位：纯 CSS 的三条横线 + 标题 + 可选提示与操作
+- `SkeletonRows` — 加载态的静态占位条（无动效）

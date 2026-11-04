@@ -7,7 +7,7 @@ export function ProjectsPage() {
   return (
     <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-surface p-4 md:p-6">
       <div className="max-w-3xl">
-        <h1 className="mb-4 text-17 font-medium">项目</h1>
+        <h1 className="mb-4 text-18 font-medium">项目</h1>
         <ul className="flex flex-col">
           {projects?.projects.map((project) => {
             const own = runs.filter((r) => r.task.project === project.alias);

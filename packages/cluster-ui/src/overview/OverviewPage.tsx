@@ -30,7 +30,7 @@ export function OverviewPage() {
 
   return (
     <div className="min-h-0 min-w-0 flex-1 overflow-auto bg-surface p-4 md:p-6">
-      <h1 className="mb-1 text-17 font-medium">总览</h1>
+      <h1 className="mb-1 text-18 font-medium">总览</h1>
       {loaded && branches.length === 0 ? (
         <p className="text-15 text-ink-muted">现在没有 worker 在工作。</p>
       ) : (

@@ -67,7 +67,7 @@ export function InboxRow({
   const head = (
     <>
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-17 font-medium text-attention">{formatWait(now - item.since)}</span>
+        <span className="text-18 font-medium text-attention">{formatWait(now - item.since)}</span>
         <span className={`text-13 ${TONE_TEXT[tone]}`}>{label}</span>
       </div>
       <div className="truncate text-15">{title}</div>

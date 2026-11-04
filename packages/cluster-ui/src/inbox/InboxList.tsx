@@ -22,7 +22,7 @@ export function InboxList({ route }: { route: Route }) {
   return (
     <>
       <header className="flex items-center justify-between px-4 pt-3 pb-2">
-        <h1 className="text-17 font-medium">{items.length > 0 && `${items.length} 件需要你`}</h1>
+        <h1 className="text-18 font-medium">{items.length > 0 && `${items.length} 件需要你`}</h1>
         <a
           href={routeHref({ section: 'runs', composing: true })}
           aria-label="新运行"

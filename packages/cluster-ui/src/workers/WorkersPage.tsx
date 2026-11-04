@@ -84,7 +84,7 @@ export function WorkersPage() {
   return (
     <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-surface p-4 md:p-6">
       <div className="max-w-4xl">
-        <h1 className="mb-4 text-17 font-medium">工作器</h1>
+        <h1 className="mb-4 text-18 font-medium">工作器</h1>
         <Section
           title={`${alive.length} 个 worker 活着`}
           aside={

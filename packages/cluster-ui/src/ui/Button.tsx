@@ -17,7 +17,7 @@ export function Button({ variant = 'quiet', className = '', type = 'button', ...
   return (
     <button
       type={type}
-      className={`inline-flex items-center gap-1.5 rounded-ui px-2.5 py-1 text-13 font-medium whitespace-nowrap disabled:opacity-50 ${VARIANT[variant]} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-ui px-3 py-1.5 text-14 font-medium whitespace-nowrap disabled:opacity-50 ${VARIANT[variant]} ${className}`}
       {...props}
     />
   );

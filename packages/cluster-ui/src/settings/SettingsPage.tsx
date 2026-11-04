@@ -49,7 +49,7 @@ export function SettingsPage() {
   return (
     <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-surface p-4 md:p-6">
       <div className="max-w-3xl">
-        <h1 className="mb-4 text-17 font-medium">设置</h1>
+        <h1 className="mb-4 text-18 font-medium">设置</h1>
         <Section title="调度">
           <Fact label="状态">{schedulingState}</Fact>
           {health && <Fact label="daemon 启动于">{new Date(health.startedAt).toLocaleString('zh-CN')}</Fact>}

@@ -166,7 +166,7 @@ export function RunDetail({ runId, route, pinned = false }: { runId: string; rou
         )}
         <header className="mb-5">
           <div className="flex items-start justify-between gap-3">
-            <h1 className="min-w-0 text-22 font-medium break-words">{run?.title ?? runTitle(task.description)}</h1>
+            <h1 className="min-w-0 text-24 font-medium break-words">{run?.title ?? runTitle(task.description)}</h1>
             {pinned ? (
               <a
                 href={closePin}

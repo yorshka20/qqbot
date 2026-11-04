@@ -44,7 +44,7 @@ export function RunList({ route }: { route: Route }) {
   return (
     <>
       <header className="flex items-center gap-2 px-4 pt-3 pb-2">
-        <h1 className="text-17 font-medium">运行</h1>
+        <h1 className="text-18 font-medium">运行</h1>
         <input
           data-search
           type="search"
