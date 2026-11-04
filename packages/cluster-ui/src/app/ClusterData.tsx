@@ -40,6 +40,7 @@ const REFRESH_EVENTS = [
   'task_spawned',
   'task_acknowledged',
   'task_message',
+  'task_event',
 ] as const;
 
 export interface ClusterData {
@@ -64,6 +65,8 @@ export interface ClusterData {
   hasMoreHistory: boolean;
   /** Epoch ms of the earliest loaded run, so a window switch can tell whether history is enough. */
   oldestLoadedAt: number | null;
+  /** Read a finished job again: its detail is otherwise kept from the first read. */
+  reloadJob: (jobId: string) => Promise<void>;
   /** Bumped after every successful refresh, so a detail view can follow it. */
   version: number;
   refresh: () => Promise<void>;
@@ -170,7 +173,7 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
         const jobWorkers: EnrichedWorkerRegistration[] = [];
         for (const job of jobs) {
           for (const task of job?.tasks ?? []) {
-            rows.set(task.id, { task, ticketId: job?.ticketId, planning: job?.planning });
+            rows.set(task.id, { task, ticketId: job?.ticketId, planning: job?.planning, job: job ?? undefined });
             if (task.output && !hasOutput(task.id)) {
               setOutput(task.id, task.output);
             }
@@ -308,6 +311,14 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
     return oldest;
   }, [snapshot.rows]);
 
+  const reloadJob = useCallback(
+    (jobId: string): Promise<void> => {
+      finishedJobs.current.delete(jobId);
+      return refresh();
+    },
+    [refresh],
+  );
+
   const loadMoreHistory = useCallback(() => setHistoryLimit((limit) => limit + HISTORY_PAGE), []);
 
   const value = useMemo<ClusterData>(
@@ -329,6 +340,7 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
       oldestLoadedAt,
       version,
       refresh,
+      reloadJob,
       loadMoreHistory,
     }),
     [
@@ -343,6 +355,7 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
       oldestLoadedAt,
       version,
       refresh,
+      reloadJob,
       loadMoreHistory,
     ],
   );

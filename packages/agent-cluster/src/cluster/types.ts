@@ -109,6 +109,19 @@ export function isTerminalTaskStatus(status: TaskStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'blocked' || status === 'cancelled';
 }
 
+export type LandJobResult =
+  | { code: 'not_found' }
+  | { code: 'not_landable'; reason: string }
+  | { code: 'done'; landed: boolean; error?: string };
+
+/** The work of a finished job waits on its integration branch: a landing failed, or the job predates landing. */
+export function isJobLandable(job: JobRecord, root: TaskRecord): boolean {
+  if (job.landedAt || !job.integrationBranch) {
+    return false;
+  }
+  return job.landError ? root.status === 'blocked' : !job.baseBranch && root.status === 'completed';
+}
+
 export interface JobRecord {
   id: string;
   project: string;
@@ -129,6 +142,8 @@ export interface JobRecord {
   baseBranch?: string;
   /** When the integration branch landed on `baseBranch`; unset when there was nothing to land. */
   landedAt?: string;
+  /** Why the last landing failed; set until a landing succeeds. */
+  landError?: string;
   /** How many of the job's children may run at once. Only a running child takes a place. */
   maxChildren?: number;
   /** Whether the planner confirms its plan with the owner in the conversation before spawning. */
@@ -308,7 +323,6 @@ export interface HubSubscriptionEvent {
 export type HubUpdate = HubLogUpdate | HubSubscriptionEvent;
 
 export interface HubClaimInput {
-  taskId: string;
   intent: string;
   files: string[];
 }

@@ -105,6 +105,13 @@ describe('buildTaskList', () => {
     expect(ids(history)).toEqual(['seen']);
   });
 
+  test('a failed child of a finished job leaves the family in history', () => {
+    const runs = [run({ id: 'root', stage: 'done' }), run({ id: 'kid', parent: 'root', stage: 'failed' })];
+    const { active, history } = buildTaskList(runs, { now: NOW, query: '', historyWindow: '7d', pinned: NONE });
+    expect(active).toEqual([]);
+    expect(ids(history)).toEqual(['root']);
+  });
+
   test('ended families are history, newest first, within seven days', () => {
     const runs = [
       run({ id: 'old', at: NOW - 8 * DAY }),

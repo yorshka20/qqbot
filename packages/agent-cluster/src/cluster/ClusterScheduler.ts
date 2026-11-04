@@ -12,9 +12,11 @@ import type { ContextHub } from './hub/ContextHub';
 import type { TaskSource } from './sources/TaskSource';
 import {
   type HubSubscribeInput,
+  isJobLandable,
   isTerminalTaskStatus,
   type JobRecord,
   type JobStatus,
+  type LandJobResult,
   type PlanningMode,
   type SubmitTaskOptions,
   type TaskCandidate,
@@ -358,6 +360,39 @@ export class ClusterScheduler {
         }
       }
     }
+  }
+
+  /**
+   * Land a job whose root task finished but whose work is not on the base branch: a landing that
+   * failed, once its cause is gone, or a job from before jobs ended there.
+   */
+  async landJob(jobId: string): Promise<LandJobResult> {
+    const job = this.resolveJob(jobId);
+    const root = this.getJobTasks(jobId).find((task) => !task.parentTaskId);
+    const entry = job && this.projectRegistry.resolve(job.project);
+    if (!job || !root || !entry) {
+      return { code: 'not_found' };
+    }
+    if (!isJobLandable(job, root)) {
+      return { code: 'not_landable', reason: `Job ${jobId} has nothing waiting to land` };
+    }
+    const wasCompleted = root.status === 'completed';
+    root.status = 'completed';
+    root.error = undefined;
+    job.landError = undefined;
+
+    const landed = await this.workspaces.landAgain(root, job, entry);
+
+    const completed = root.status === 'completed';
+    if (completed !== wasCompleted) {
+      job.tasksCompleted += completed ? 1 : -1;
+      job.tasksFailed += completed ? -1 : 1;
+    }
+    job.status = completed ? 'completed' : 'failed';
+    this.persistTask(root);
+    this.persistJob(job);
+    this.fireJobCompletedCallback(job);
+    return { code: 'done', landed, error: root.error };
   }
 
   private fireJobCompletedCallback(job: JobRecord): void {
@@ -1050,8 +1085,8 @@ export class ClusterScheduler {
       this.db
         .query(
           `INSERT OR REPLACE INTO cluster_jobs
-         (id, project, description, status, createdAt, startedAt, completedAt, taskCount, tasksCompleted, tasksFailed, metadata, ticketId, integrationBranch, planning, baseBranch, landedAt, maxChildren)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, project, description, status, createdAt, startedAt, completedAt, taskCount, tasksCompleted, tasksFailed, metadata, ticketId, integrationBranch, planning, baseBranch, landedAt, landError, maxChildren)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           job.id,
@@ -1070,6 +1105,7 @@ export class ClusterScheduler {
           job.planning,
           job.baseBranch ?? null,
           job.landedAt ?? null,
+          job.landError ?? null,
           job.maxChildren ?? null,
         );
     } catch (err) {
@@ -1326,6 +1362,7 @@ export class ClusterScheduler {
       planning: (row.planning as PlanningMode | null) ?? 'auto',
       baseBranch: (row.baseBranch as string | null) ?? undefined,
       landedAt: (row.landedAt as string | null) ?? undefined,
+      landError: (row.landError as string | null) ?? undefined,
       maxChildren: (row.maxChildren as number | null) ?? undefined,
     };
   }

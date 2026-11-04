@@ -1,10 +1,11 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AlertTriangle, ArrowDown, Wrench } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { getClusterTaskOutput } from '../api';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { logLines } from '../lib/logs';
-import { OUTPUT_TAIL_CHARS, useOutput } from '../lib/outputs';
+import { hasOutput, OUTPUT_TAIL_CHARS, setOutput, useOutput } from '../lib/outputs';
 import { formatClock } from '../lib/time';
 import { parseTranscript, type TranscriptEntry } from '../lib/transcript';
 import { cn } from '../lib/utils';
@@ -105,6 +106,30 @@ export function LogView({
   className?: string;
 }) {
   const raw = useOutput(taskId);
+  const [reading, setReading] = useState(!live && raw === '');
+  useEffect(() => {
+    if (live || hasOutput(taskId)) {
+      setReading(false);
+      return;
+    }
+    let cancelled = false;
+    setReading(true);
+    getClusterTaskOutput(taskId)
+      .then(({ output }) => {
+        if (!cancelled && output) {
+          setOutput(taskId, output);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) {
+          setReading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId, live]);
   const lines = useMemo(() => logLines(raw), [raw]);
   const entries = useMemo(() => parseTranscript(raw), [raw]);
   const [mode, setMode] = useState<Mode>('readable');
@@ -150,8 +175,8 @@ export function LogView({
   if (count === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        {live ? '还没有输出。' : '这条运行已结束，daemon 只在内存里保留 stdout，输出读不到了。'}
-        {!live && logPath && <span className="font-mono text-xs break-all"> 完整日志在 cluster 主机上：{logPath}</span>}
+        {reading ? '正在读取日志…' : live ? '还没有输出。' : '这条运行没有留下输出。'}
+        {!live && !reading && logPath && <span className="font-mono text-xs break-all"> 日志文件：{logPath}</span>}
       </p>
     );
   }

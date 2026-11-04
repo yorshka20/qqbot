@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ClusterScheduler } from '../ClusterScheduler';
 import { git } from '../git';
@@ -21,9 +21,12 @@ import {
 } from './worktreeFixtures';
 
 /** Workers run the task description as a shell script, in the cwd the scheduler gave them. */
+const launchedPrompts: string[] = [];
+
 const scriptBackend: WorkerBackend = {
   name: 'claude-cli',
   async launch(config) {
+    launchedPrompts.push(config.taskPrompt);
     const script = config.taskPrompt.split('\n\n').at(-1) ?? '';
     return { cmd: ['sh', '-c', script], cwd: config.projectPath, env: config.env };
   },
@@ -241,6 +244,70 @@ describe('ClusterScheduler with a worktree pool', () => {
     expect(job?.baseBranch).toBe('master');
     expect(job?.landedAt).toBeDefined();
     expect(readFileSync(join(box.repo, 'a.txt'), 'utf8')).toBe('a\n');
+  });
+
+  test('a planner is told its planning mode; an executor is not', async () => {
+    launchedPrompts.length = 0;
+    const interactive = await cluster.scheduler.submitTask(PROJECT, 'exit 0', {
+      workerTemplate: PLANNER,
+      planning: 'interactive',
+    });
+    if (!interactive) throw new Error('submitTask refused');
+    await waitFor(() => isDone(interactive), 8000, 'interactive planner settled');
+    expect(launchedPrompts.at(-1)).toContain('owner 点头之后才有 executor 动手');
+
+    const executor = await cluster.scheduler.submitTask(PROJECT, 'exit 0');
+    if (!executor) throw new Error('submitTask refused');
+    await waitFor(() => isDone(executor), 8000, 'executor settled');
+    expect(launchedPrompts.at(-1)).not.toContain('owner 点头之后才有 executor 动手');
+  });
+
+  test('a failed landing can run again once its cause is gone, and the job then completes', async () => {
+    const gate = join(box.stateDir, 'root-go');
+    const task = await cluster.scheduler.submitTask(
+      PROJECT,
+      `while [ ! -e ${gate} ]; do sleep 0.05; done; echo ours > shared.txt; git add shared.txt; git -c user.name=w -c user.email=w@example.invalid commit -qm ours`,
+    );
+    if (!task) throw new Error('submitTask refused');
+    await waitFor(() => task.status === 'running', 8000, 'root running');
+    writeFileSync(join(box.repo, 'shared.txt'), 'owner is editing this\n');
+    await Bun.write(gate, '');
+    await waitFor(() => isDone(task), 8000, 'root settled');
+    expect(task.status).toBe('blocked');
+    expect(cluster.scheduler.getJob(task.jobId)?.landError).toContain('shared.txt');
+
+    const refused = await cluster.scheduler.landJob(task.jobId);
+    expect(refused).toMatchObject({ code: 'done', landed: false });
+    expect(cluster.scheduler.findTask(task.id)?.status).toBe('blocked');
+
+    await git(box.repo, ['checkout', '--', 'shared.txt']);
+    expect(await cluster.scheduler.landJob(task.jobId)).toEqual({ code: 'done', landed: true, error: undefined });
+
+    const job = cluster.scheduler.getJob(task.jobId);
+    expect(cluster.scheduler.findTask(task.id)?.status).toBe('completed');
+    expect(job).toMatchObject({ status: 'completed', tasksCompleted: 1, tasksFailed: 0 });
+    expect(job?.landError).toBeUndefined();
+    expect(readFileSync(join(box.repo, 'shared.txt'), 'utf8')).toBe('ours\n');
+    expect(await cluster.scheduler.landJob(task.jobId)).toMatchObject({ code: 'not_landable' });
+  });
+
+  test('a job from before jobs ended on the base branch can land, and a worker that stopped cannot', async () => {
+    const task = await cluster.scheduler.submitTask(PROJECT, commitAs('old'));
+    if (!task) throw new Error('submitTask refused');
+    await waitFor(() => isDone(task), 8000, 'root settled');
+    const job = cluster.scheduler.getJob(task.jobId);
+    if (!job) throw new Error('job');
+    await git(box.repo, ['reset', '-q', '--hard', 'HEAD~1']);
+    job.landedAt = undefined;
+    job.baseBranch = undefined;
+
+    expect(await cluster.scheduler.landJob(task.jobId)).toMatchObject({ code: 'done', landed: true });
+    expect(existsSync(join(box.repo, 'old.txt'))).toBe(true);
+
+    const stopped = await cluster.scheduler.submitTask(PROJECT, 'exit 1');
+    if (!stopped) throw new Error('submitTask refused');
+    await waitFor(() => isDone(stopped), 8000, 'failed root settled');
+    expect(await cluster.scheduler.landJob(stopped.jobId)).toMatchObject({ code: 'not_landable' });
   });
 
   test('a job that cannot land on the base branch fails, with the reason on its root task', async () => {

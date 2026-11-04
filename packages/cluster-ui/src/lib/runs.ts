@@ -1,5 +1,6 @@
 import type {
   ClusterHelpRequest,
+  ClusterJob,
   ClusterTask,
   ClusterTemplatesResponse,
   ClusterWorkerRegistration,
@@ -30,6 +31,7 @@ export interface Run {
   title: string;
   ticketId?: string;
   planning?: PlanningMode;
+  job?: ClusterJob;
   worker?: ClusterWorkerRegistration;
   /** Pending questions, oldest first. */
   asks: ClusterHelpRequest[];
@@ -41,6 +43,7 @@ export interface TaskRow {
   task: ClusterTask;
   ticketId?: string;
   planning?: PlanningMode;
+  job?: ClusterJob;
 }
 
 const TITLE_MAX = 120;
@@ -120,17 +123,20 @@ export function buildRuns(
   now: number,
 ): Run[] {
   const workerById = new Map(workers.map((w) => [w.workerId, w]));
-  return rows.map(({ task, ticketId, planning }) => {
+  return rows.map(({ task, ticketId, planning, job }) => {
     const asks = isLive(task)
       ? help.filter((h) => h.taskId === task.id).sort((a, b) => (toMs(a.createdAt) ?? 0) - (toMs(b.createdAt) ?? 0))
       : [];
-    const stage = stageOf(task, { asking: asks.length > 0, seen: task.acknowledgedAt !== undefined, now });
+    // A child's result is its planner's to read; the owner reviews what the root task delivered.
+    const seen = task.acknowledgedAt !== undefined || task.parentTaskId !== undefined;
+    const stage = stageOf(task, { asking: asks.length > 0, seen, now });
     return {
       task,
       stage,
       title: runTitle(task.description),
       ticketId,
       planning,
+      job,
       worker: task.workerId ? workerById.get(task.workerId) : undefined,
       asks,
       since: stageSince(task, stage, asks),

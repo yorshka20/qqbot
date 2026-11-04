@@ -5,7 +5,7 @@ import { useCluster } from '../app/ClusterData';
 import { StatusDot } from '../components/StatusDot';
 import { Button } from '../components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
-import { modelDisplayName, modelShortName } from '../lib/model';
+import { modelDisplayName, runModelName } from '../lib/model';
 import { taskPath, workerPath } from '../lib/routes';
 import { runTimes, runTitle } from '../lib/runs';
 import { isLive, STAGE_LABEL, STAGE_TONE, type Stage } from '../lib/stage';
@@ -40,7 +40,7 @@ export function TaskNode({ data }: NodeProps<TaskFlowNode>) {
   const { workerExits, workers, locks } = useCluster();
   const exitedAt = task.workerId ? workerExits.get(task.workerId) : undefined;
   const { startedAt, endedAt, durationMs } = runTimes(task, exitedAt, now);
-  const title = isRoot ? runTitle(task.description) : (task.workerTemplate ?? runTitle(task.description));
+  const title = runTitle(task.description);
   const ended = !isLive(task);
   const lastSaid = workers.find((worker) => worker.workerId === task.workerId)?.lastReportSummary;
   const lockCount = locks.filter(
@@ -64,7 +64,7 @@ export function TaskNode({ data }: NodeProps<TaskFlowNode>) {
           <Handle type="target" position={Position.Left} className="opacity-0" />
           <StatusDot tone={STAGE_TONE[stage]} breathing={stage === 'running'} />
           <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
-          <span className="shrink-0 text-muted-foreground">{modelShortName(task.model)}</span>
+          <span className="shrink-0 text-muted-foreground">{runModelName(task)}</span>
           <span className="shrink-0 tabular-nums text-muted-foreground">
             {durationMs !== null ? formatSpan(durationMs) : '—'}
           </span>
@@ -73,7 +73,7 @@ export function TaskNode({ data }: NodeProps<TaskFlowNode>) {
       </TooltipTrigger>
       <TooltipContent className="flex-col items-stretch gap-0.5">
         <Detail label="任务">{runTitle(task.description)}</Detail>
-        <Detail label="模型">{task.model ? modelDisplayName(task.model) : '未知'}</Detail>
+        <Detail label="模型">{task.model ? modelDisplayName(task.model) : runModelName(task)}</Detail>
         <Detail label="状态">{STAGE_LABEL[stage]}</Detail>
         <Detail label="开始">{startedAt !== null ? formatClock(startedAt, now) : '尚未开始'}</Detail>
         <Detail label="用时">{durationMs !== null ? formatSpan(durationMs) : '—'}</Detail>

@@ -54,6 +54,7 @@ function openDb(): Database {
     planning TEXT,
     baseBranch TEXT,
     landedAt TEXT,
+    landError TEXT,
     maxChildren INTEGER
   )`);
   db.run(`CREATE TABLE cluster_tasks (

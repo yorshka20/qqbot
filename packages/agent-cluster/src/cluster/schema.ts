@@ -24,6 +24,7 @@ export const CLUSTER_TABLE_STATEMENTS: readonly string[] = [
   planning TEXT,
   baseBranch TEXT,
   landedAt TEXT,
+  landError TEXT,
   maxChildren INTEGER
   )`,
   `CREATE TABLE IF NOT EXISTS cluster_tasks (

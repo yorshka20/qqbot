@@ -27,13 +27,11 @@ export function latestSince(item: TaskListItem): number {
   return Math.max(...familyOf(item).map((run) => run.since));
 }
 
-function attentionOf(family: Run[]): TaskAttention | null {
+function attentionOf(root: Run, family: Run[]): TaskAttention | null {
   if (family.some((run) => run.stage === 'asking')) {
     return 'asking';
   }
-  const unhandled = family.some(
-    (run) => (run.stage === 'failed' || run.stage === 'blocked') && run.task.acknowledgedAt === undefined,
-  );
+  const unhandled = (root.stage === 'failed' || root.stage === 'blocked') && root.task.acknowledgedAt === undefined;
   return unhandled ? 'failed' : null;
 }
 
@@ -68,7 +66,7 @@ function buildItems(runs: Run[]): TaskListItem[] {
 
   return roots.map((root) => {
     const children = descendants(root);
-    return { root, children, attention: attentionOf([root, ...children]) };
+    return { root, children, attention: attentionOf(root, [root, ...children]) };
   });
 }
 

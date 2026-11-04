@@ -147,7 +147,7 @@ describe('events reaching a subscriber', () => {
   test('a lock release wakes a file subscriber with the files it follows', async () => {
     addTask('a');
     addTask('b');
-    hub.handleClaim('worker-a', { taskId: 'a', intent: 'edit', files: ['src/x.ts', 'src/y.ts', 'README.md'] });
+    hub.handleClaim('worker-a', { intent: 'edit', files: ['src/x.ts', 'src/y.ts', 'README.md'] });
     hub.handleSubscribe('worker-b', { files: ['src/**'] });
 
     const waiting = hub.handleWait('worker-b', { timeoutMs: 5_000 });
@@ -169,21 +169,28 @@ describe('events reaching a subscriber', () => {
     addTask('b');
     hub.handleSubscribe('worker-b', { files: ['src/x.ts'] });
 
-    hub.handleClaim('worker-b', { taskId: 'b', intent: 'edit', files: ['src/x.ts'] });
+    hub.handleClaim('worker-b', { intent: 'edit', files: ['src/x.ts'] });
     expect(hub.messageBox.getUnreadCount('worker-b')).toBe(0);
     hub.lockManager.releaseAll('worker-b');
     expect(hub.messageBox.getUnreadCount('worker-b')).toBe(0);
 
-    hub.handleClaim('worker-a', { taskId: 'a', intent: 'edit', files: ['src/x.ts'] });
-    hub.handleClaim('worker-a', { taskId: 'a', intent: 'again', files: ['src/x.ts'] });
+    hub.handleClaim('worker-a', { intent: 'edit', files: ['src/x.ts'] });
+    hub.handleClaim('worker-a', { intent: 'again', files: ['src/x.ts'] });
     expect(hub.messageBox.consume('worker-b')).toMatchObject([{ kind: 'lock_acquired', taskId: 'a' }]);
+  });
+
+  test('what a worker claims under never moves it off the task it was started for', () => {
+    addTask('a');
+    hub.handleClaim('worker-a', { intent: 'edit', files: ['src/x.ts'] });
+    expect(hub.workerRegistry.get('worker-a')?.currentTaskId).toBe('a');
+    expect(hub.lockManager.getActiveLocks()[0]).toMatchObject({ taskId: 'a', workerId: 'worker-a' });
   });
 
   test('a lock in another job says nothing to this one', () => {
     addTask('b');
     addTask('stranger', { jobId: 'job-2' });
     hub.handleSubscribe('worker-b', { files: ['src/x.ts'] });
-    hub.handleClaim('worker-stranger', { taskId: 'stranger', intent: 'edit', files: ['src/x.ts'] });
+    hub.handleClaim('worker-stranger', { intent: 'edit', files: ['src/x.ts'] });
     expect(hub.messageBox.getUnreadCount('worker-b')).toBe(0);
   });
 
@@ -333,7 +340,7 @@ describe('events reaching a subscriber', () => {
     expect(hub.taskDependencies('b')).toEqual(['a']);
 
     hub.handleReport('worker-a', { status: 'working', summary: 'halfway', nextSteps: 'finish' });
-    hub.handleClaim('worker-a', { taskId: 'a', intent: 'edit', files: ['src/x.ts'] });
+    hub.handleClaim('worker-a', { intent: 'edit', files: ['src/x.ts'] });
     a.status = 'completed';
     hub.publishTaskOutcome(a);
 

@@ -9,7 +9,7 @@ import { StageBadge } from '../components/StageBadge';
 import { Button } from '../components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
 import { failureReason } from '../lib/conversation';
-import { modelShortName } from '../lib/model';
+import { runModelName } from '../lib/model';
 import { workerPath } from '../lib/routes';
 import { parseFiles, runTitle } from '../lib/runs';
 import { stageOfStatus } from '../lib/stage';
@@ -147,7 +147,7 @@ export function ResultTab({
                     <Link to={workerPath(rootId, child.id)}>
                       <StageBadge stage={stage} />
                       <span className="min-w-0 flex-1 truncate text-left">{runTitle(child.description)}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{modelShortName(child.model)}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{runModelName(child)}</span>
                     </Link>
                   </Button>
                 </li>

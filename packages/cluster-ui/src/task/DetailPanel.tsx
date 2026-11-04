@@ -75,7 +75,7 @@ export function DetailPanel({
   const { templates, projects } = useCluster();
   const templateType = templates?.templates.find((template) => template.name === task.workerTemplate)?.type;
   const projectPath = projects?.projects.find((project) => project.alias === task.project)?.path;
-  const command = resumeCommand(templateType, task.sessionId, projectPath);
+  const command = resumeCommand(templateType, task.sessionId, task.worktreePath ?? projectPath);
   const usage = usageFacts(task.usage);
   const body = runBody(task.description);
 

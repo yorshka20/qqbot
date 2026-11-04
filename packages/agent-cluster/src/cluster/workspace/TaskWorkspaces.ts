@@ -114,6 +114,15 @@ export class TaskWorkspaces {
     return { cwd: entry.path, env: { CLUSTER_PLANNING: planning }, mode: 'shared', kind, planning };
   }
 
+  /** `scheduler.landJob` after its checks: the same landing as at the end of a job, and its publish. */
+  async landAgain(task: TaskRecord, job: JobRecord, entry: ProjectEntry): Promise<boolean> {
+    const landed = await this.landJob(task, job, entry);
+    if (landed && entry.publish) {
+      void this.publish(task, job.baseBranch as string, entry, entry.publish);
+    }
+    return landed;
+  }
+
   /** End the publish commands still running; a build is derived state the next merge rebuilds. */
   async stop(): Promise<void> {
     for (const controller of this.publishing.values()) {
@@ -207,16 +216,19 @@ export class TaskWorkspaces {
    */
   private async landJob(task: TaskRecord, job: JobRecord, entry: ProjectEntry): Promise<boolean> {
     const from = job.integrationBranch as string;
-    const onto = job.baseBranch as string;
+    const onto = job.baseBranch ?? entry.baseBranch ?? (await defaultBranch(entry.path));
+    job.baseBranch = onto;
     const outcome = await this.enqueue(`base:${onto}`, () => merge(entry.path, from, onto));
     switch (outcome.kind) {
       case 'empty':
         return false;
       case 'conflict':
-        this.block(task, `Merge conflict landing ${from} on ${onto}:\n${outcome.detail}`);
+        job.landError = `Merge conflict landing ${from} on ${onto}:\n${outcome.detail}`;
+        this.block(task, job.landError);
         return false;
       case 'refused':
-        this.block(task, refusalReason(from, onto, outcome));
+        job.landError = refusalReason(from, onto, outcome);
+        this.block(task, job.landError);
         return false;
       case 'merged':
         job.landedAt = new Date().toISOString();

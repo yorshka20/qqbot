@@ -124,6 +124,9 @@ function blockText(content: unknown): string | undefined {
 
 type Draft = Omit<TranscriptEntry, 'id' | 'at'>;
 
+/** Claude CLI events that say the session is alive and nothing about the work. */
+const CLAUDE_HEARTBEATS = new Set(['tool_progress', 'rate_limit_event']);
+
 function rawDraft(line: string): Draft {
   return { kind: 'raw', title: clip(line, TITLE_MAX), body: line };
 }
@@ -256,6 +259,9 @@ function parseEvent(event: Json, type: string, line: string): Parsed {
       return { drafts: [rawDraft(line)], at };
     }
     return { drafts: [codexItemDraft(item, line)], itemId: asString(item.id), at: at ?? eventTime(item) };
+  }
+  if (CLAUDE_HEARTBEATS.has(type)) {
+    return { drafts: [], at };
   }
   if (type === 'assistant' || type === 'user' || type === 'result' || type === 'system') {
     return { drafts: claudeDrafts(event, type), at };

@@ -411,7 +411,11 @@ export class WorkerPool {
             workspacePromptVars(workspace),
           )
         : '';
-      const effectivePrompt = [renderedRolePrompt, workspaceNote, task.description].filter(Boolean).join('\n\n');
+      const planningName = workspace && planningPromptName(workspace);
+      const planningNote = planningName ? await loadClusterPrompt(planningName, projectPath) : '';
+      const effectivePrompt = [renderedRolePrompt, workspaceNote, planningNote, task.description]
+        .filter(Boolean)
+        .join('\n\n');
 
       const launch = await backend.launch({
         workerId,

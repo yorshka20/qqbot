@@ -207,7 +207,7 @@ function ComposerForm() {
               key={mode}
               type="button"
               size="sm"
-              variant={planning === mode ? 'secondary' : 'outline'}
+              variant={planning === mode ? 'default' : 'outline'}
               aria-pressed={planning === mode}
               onClick={() => setPlanning(mode)}
             >

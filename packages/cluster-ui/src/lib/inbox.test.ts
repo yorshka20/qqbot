@@ -1,6 +1,6 @@
 import type { ClusterHelpRequest, ClusterTask } from '@qqbot/api-types';
 import { describe, expect, test } from 'bun:test';
-import { answersOf, buildInboxArchive, groupInboxByDay, type InboxItem } from './inbox';
+import { answersOf, buildInbox, buildInboxArchive, groupInboxByDay, type InboxItem } from './inbox';
 import { buildRuns } from './runs';
 
 const NOW = new Date(2026, 10, 4, 12, 0).getTime();
@@ -138,5 +138,21 @@ describe('buildInboxArchive', () => {
     ]);
     const items = buildInboxArchive(runs, [answered('q5', 't3', '2026-11-04T10:30:00Z')]);
     expect(items.map((i) => i.id)).toEqual(['review:c3', 'answered:q5', 'failed:f3']);
+  });
+});
+
+describe('buildInbox', () => {
+  const inboxOf = (tasks: ClusterTask[]) =>
+    buildInbox(buildRuns(tasks.map((task) => ({ task })), [], [], NOW), [], null).map((item) => item.key);
+
+  test("a child's failure or result is its planner's, not the owner's", () => {
+    const root = runTask('root', { status: 'running' });
+    const failed = runTask('child-a', { status: 'failed', parentTaskId: 'root' });
+    const finished = runTask('child-b', { status: 'completed', parentTaskId: 'root' });
+    expect(inboxOf([root, failed, finished])).toEqual([]);
+  });
+
+  test("the root task's outcome is the owner's", () => {
+    expect(inboxOf([runTask('root', { status: 'blocked' })])).toEqual(['failed:root']);
   });
 });

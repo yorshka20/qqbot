@@ -423,9 +423,12 @@ export class ContextHub {
 
   handleClaim(workerId: string, input: HubClaimInput): HubClaimOutput {
     this.workerRegistry.touch(workerId);
-    this.workerRegistry.setTask(workerId, input.taskId);
+    const taskId = this.workerRegistry.get(workerId)?.lastBoundTaskId;
+    if (!taskId) {
+      throw new Error('hub_claim: this worker has no task');
+    }
 
-    const result = this.lockManager.tryAcquire(input.files, workerId, input.taskId);
+    const result = this.lockManager.tryAcquire(input.files, workerId, taskId);
 
     if (result.granted) {
       this.eventLog.append(
@@ -435,7 +438,7 @@ export class ContextHub {
           intent: input.intent,
           files: input.files,
         },
-        { taskId: input.taskId },
+        { taskId },
       );
     }
 
