@@ -171,7 +171,8 @@ worker 的行为规则必须满足两个约束：
 请求帮助或决策。异步的——不阻塞 worker 执行。
 
 ```
-描述: 遇到自己无法决策的问题时调用。问题会被转发给 planner 或人工。
+描述: 遇到自己无法决策的问题时调用。owner 总能看到（控制台收件箱和 QQ，经 `help_request` 事件）；
+      executor 的问题同时发给它自己的 planner 一次，planner 用 `hub_answer` 回答。`escalation` 和 planner 自己的问题只到 owner。
       发出后不要停下来等回复——先跳过这个问题继续做能做的部分。
       回复会通过后续的 hub_sync 或 hub_report 的 directives 返回。
 
@@ -530,7 +531,7 @@ planner 也是一个 worker，但行为不同：
 - **额外 MCP tool**：`hub_dispatch`（向调度器请求启动新的 coder worker）、`hub_directive`（给特定 worker 发指令）
 - **触发时机**：
   - 新 Job 创建时，planner 负责拆解为具体 task
-  - coder 发出 `hub_ask` 时，planner 收到并回复
+  - child 发出 `hub_ask` 时，它的 planner 收到一次，能答就 `hub_answer`
   - coder 完成任务后，planner 审查结果，决定是否需要后续工作
 
 planner 的额外 MCP tools：

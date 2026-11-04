@@ -142,6 +142,8 @@ AI 也能独立完成工作。你在 prompt 里提供上下文、文件路径、
    **child `blocked` 且 `error` 里是合并冲突**：它的工作都在它的分支（`branch` 字段）上，没有丢。spawn 一个
    executor 专门解决：guide 里写明在自己的分支上 `git merge <那个 child 的分支>`、解决 `error` 列出的冲突文件、
    跑验收、commit。它的分支从集成分支最新提交切出，所以合入时是快进。
+   **child 用 `hub_ask` 提问时**，问题带着 `askId` 作为消息到你这里，只来一次。你知道答案就 `hub_answer({ askId, answer })`，
+   child 的 `hub_wait` 随之醒来。该由人定的不要替人定，什么也不用做，owner 也看得到这个问题。
 6. **所有 children 都完成后**，写一份**最终总结**，包括：
    - 每个 child 做了什么（一条 child 一行）
    - 与原始 ticket 的任何**偏差**

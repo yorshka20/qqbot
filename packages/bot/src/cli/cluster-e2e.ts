@@ -22,7 +22,7 @@
 //      unique sentinel argument, then asserts the hub-side EventLog (or
 //      escalation callback) recorded the call. Validates the complete
 //      worker→hub loop: claude MCP client → /mcp → HubMCPServer →
-//      ContextHub.handleXxx → EventLog/PlannerService → SQLite.
+//      ContextHub.handleXxx → EventLog → SQLite.
 //       - hub_claim: asserts a `lock_acquired` event with our UUID file path
 //         in its `files` array. Validates LockManager path.
 //       - hub_report: asserts a `task_completed` event with our UUID summary
@@ -31,9 +31,9 @@
 //         waiting for process exit).
 //       - hub_ask: asserts the EscalationCallback (installed in-test,
 //         overriding the bootstrap QQ-owner notifier) was fired with our
-//         UUID question. Validates the Phase 2 round 2 §2.5 PlannerService
+//         UUID question. Validates the Phase 2 round 2 §2.5
 //         escalation path: ContextHub.handleAsk → cluster_help_requests →
-//         PlannerService.processHelpRequests poll → notifyEscalation.
+//         ContextHub ask listener.
 //
 // Usage:
 //   bun run cluster:e2e [--project <alias>] [--template <name>] \
@@ -220,7 +220,7 @@ function parseArgs(): E2EArgs {
   const plannerExecutorTemplate = get('--planner-executor', 'claude-sonnet');
 
   // hub_ask mode: ask the agent to escalate via hub_ask. We force
-  // type=escalation so PlannerService routes through the human-notification
+  // type=escalation so ContextHub routes through the human-notification
   // path (notifyEscalation → escalationCallback) instead of trying to find
   // a planner worker. The assert below installs a synchronous in-test
   // EscalationCallback that records the HelpRequest, then verifies the
@@ -604,8 +604,8 @@ async function main() {
   // the QQ-owner notifier wired by bootstrap — that's intentional, the
   // e2e doesn't want to actually push a QQ message every run.
   //
-  // PlannerService.setEscalationCallback is last-write-wins, so just
-  // calling attachEscalationNotifier here replaces the bootstrap one.
+  // ContextHub.setAskListener is last-write-wins, so just calling
+  // attachEscalationNotifier here replaces the bootstrap one.
   // We deliberately do NOT restore the bootstrap notifier on teardown:
   // the e2e process exits right after, so the bootstrap notifier never
   // gets a chance to run anyway.
@@ -673,26 +673,6 @@ async function main() {
         logger.warn(
           `[ClusterE2E] ${args.plannerMode ? 'planner' : 'hub_report'} mode: waited ${graceMs}ms after terminal status but task.output ` +
             `is still empty. Worker may have crashed or never printed anything after hub_report.`,
-        );
-      }
-    }
-
-    // hub_ask mode: PlannerService.processHelpRequests polls every 10s,
-    // so the escalation callback may not have fired yet by the time the
-    // worker process exits. Wait up to 15s for `recordedEscalation` to be
-    // populated. The callback is what we're asserting on; this can't be
-    // skipped — the polling interval is the inherent latency.
-    if (args.mcpTool === 'hub_ask' && !recordedEscalation) {
-      const graceMs = 15_000;
-      const start = Date.now();
-      while (Date.now() - start < graceMs && !recordedEscalation) {
-        await new Promise((r) => setTimeout(r, 250));
-      }
-      if (!recordedEscalation) {
-        logger.warn(
-          `[ClusterE2E] hub_ask mode: waited ${graceMs}ms for PlannerService to fire escalation ` +
-            `callback but it never did. Either the agent didn't call hub_ask, hub_ask wasn't ` +
-            `routed through notifyEscalation, or the escalation callback is missing.`,
         );
       }
     }
@@ -856,7 +836,7 @@ async function main() {
         );
       } else if (args.mcpTool === 'hub_ask') {
         logger.info(
-          `[ClusterE2E] ✅ PASS (MCP mode) — task completed, sentinel echoed, and PlannerService ` +
+          `[ClusterE2E] ✅ PASS (MCP mode) — task completed, sentinel echoed, and the ask listener ` +
             `fired the escalation callback with question matching "${args.mcpAskQuestion}"`,
         );
       } else {
@@ -899,9 +879,9 @@ async function main() {
       } else {
         // hub_ask
         logger.error(
-          `[ClusterE2E] ✗ FAIL (MCP mode) — task completed and sentinel echoed, but PlannerService ` +
+          `[ClusterE2E] ✗ FAIL (MCP mode) — task completed and sentinel echoed, but the ask listener ` +
             `never fired the escalation callback with question "${args.mcpAskQuestion}". Either the ` +
-            `agent didn't call hub_ask, called it with the wrong question, or PlannerService.processHelpRequests ` +
+            `agent didn't call hub_ask, called it with the wrong question, or the ask listener ` +
             `polling didn't catch up within the grace period.`,
         );
       }

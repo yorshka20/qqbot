@@ -8,7 +8,8 @@
 
 import 'reflect-metadata';
 
-import { logger } from '@qqbot/shared';
+import { existsSync } from 'node:fs';
+import { fromRepoRoot, logger } from '@qqbot/shared';
 import { startApp } from '@/core/app';
 
 function numberArg(name: string, fallback: number): number {
@@ -18,6 +19,17 @@ function numberArg(name: string, fallback: number): number {
 
 const timeoutMs = numberArg('--timeout', 30_000);
 const settleMs = numberArg('--settle', 2_000);
+
+/**
+ * A fresh worktree has no local config, which is gitignored. The tracked example boots the same
+ * module graph, so a pre-commit there passes on the code alone and never needs real secrets.
+ */
+function smokeConfigPath(): string | undefined {
+  if (process.env.CONFIG_PATH || existsSync(fromRepoRoot('config.d')) || existsSync(fromRepoRoot('config.jsonc'))) {
+    return process.env.CONFIG_PATH;
+  }
+  return fromRepoRoot('config.example.jsonc');
+}
 
 const timer = setTimeout(() => {
   logger.error('[SmokeTest] Timed out after', timeoutMs, 'ms');
@@ -34,7 +46,7 @@ process.on('unhandledRejection', (reason) => {
 async function smokeTest() {
   logger.info('[SmokeTest] Starting initialization smoke test...');
 
-  const app = await startApp(process.env.CONFIG_PATH, { connect: false });
+  const app = await startApp(smokeConfigPath(), { connect: false });
 
   await new Promise((resolve) => setTimeout(resolve, settleMs));
   if (asyncFailures.length > 0) {

@@ -193,6 +193,10 @@ debugging is the usual way this happens: those dumps are local-only, the tests a
 are committed and shared. Anonymising costs nothing — a fixture never needs the real name
 to prove the behaviour.
 
+In a fresh worktree, where no `config.d/` or `config.jsonc` exists, `smoke-test` boots on the tracked
+`config.example.jsonc`, so it needs no real secrets. Keep that file strict JSONC with no trailing comma
+before a commented-out tail: pre-commit in every cluster worktree loads it.
+
 ### Why smoke-test is required
 
 `typecheck` and `build` only validate static types — they cannot catch runtime initialization order issues (circular imports causing TDZ errors, DI tokens referenced before registration, etc.). The `smoke-test` runs the exact same `startApp()` as `packages/bot/src/index.ts`, only without `connect`, so it loads the same module graph and exercises the same initialization and shutdown code.

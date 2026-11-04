@@ -895,7 +895,7 @@
       //   "baseURL": "https://api.siliconflow.com/v1",
       //   "temperature": 0.7
       // }
-    },
+    }
     // Per-model pricing for /usage cost estimation and the ai.usage controls.
     // Key = model name (trailing * for prefix match). Text models: input / output (and
     // optionally cachedInput, for prompt tokens served from the provider's cache) in USD
@@ -1647,7 +1647,7 @@
   "cardRender": {
     "appearance": "auto",
     "darkHours": { "from": 18, "to": 9 }
-  },
+  }
   // WebUI docs preview (optional) — adds extra browse roots to the
   // `/api/docs/*` backend that powers the WebUI 文档 page.
   //

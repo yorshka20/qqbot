@@ -25,6 +25,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { getRepoRoot, logger } from '@qqbot/shared';
 import { z } from 'zod';
 import type {
+  HubAnswerInput,
   HubAskInput,
   HubClaimInput,
   HubDirectiveInput,
@@ -236,9 +237,9 @@ export class HubMCPServer {
       'hub_ask',
       {
         description:
-          'Ask a question that requires human judgment (clarification, decision between options, conflict ' +
-          'resolution, escalation). Hub returns askId immediately and routes the question to the WebUI / QQ ' +
-          'owner. The answer arrives later as a message in your next hub_sync poll.',
+          'Ask a question you cannot settle yourself (clarification, decision between options, conflict resolution, ' +
+          "escalation). Returns askId immediately. The owner always sees it; an executor's planner gets it too, " +
+          'unless the type is escalation. The answer wakes hub_wait and arrives in hub_sync.',
         inputSchema: {
           type: z.enum(['clarification', 'decision', 'conflict', 'escalation']).describe('What kind of help you need.'),
           question: z.string().describe('The question itself, written for a human reader.'),
@@ -251,6 +252,24 @@ export class HubMCPServer {
       },
       async (args, extra) =>
         this.runTool('hub_ask', extra, (workerId) => this.hub.handleAsk(workerId, args as unknown as HubAskInput)),
+    );
+
+    // hub_answer
+    register(
+      'hub_answer',
+      {
+        description:
+          "Planner only: answer a question one of your children asked with hub_ask. The child's hub_wait wakes with " +
+          'it. Leave a question that needs a human alone: the owner sees it too.',
+        inputSchema: {
+          askId: z.string().describe('The askId in the message that brought you the question.'),
+          answer: z.string().describe('The answer, complete enough for the child to act on.'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_answer', extra, (workerId) =>
+          this.hub.handleAnswer(workerId, args as unknown as HubAnswerInput),
+        ),
     );
 
     // hub_message

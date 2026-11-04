@@ -16,7 +16,6 @@ import { MinimaxBackend } from './backends/MinimaxBackend';
 import { ClusterScheduler } from './ClusterScheduler';
 import type { ClusterConfig } from './config';
 import { ContextHub } from './hub/ContextHub';
-import { PlannerService } from './PlannerService';
 import { createClusterTables } from './schema';
 import { QueueSource } from './sources/QueueSource';
 import { TodoFileSource } from './sources/TodoFileSource';
@@ -33,7 +32,6 @@ export class ClusterManager {
   private worktrees: WorktreePool;
   private workspaces: TaskWorkspaces;
   private scheduler: ClusterScheduler;
-  private plannerService: PlannerService;
   private queueSources = new Map<string, QueueSource>();
   private started = false;
   /**
@@ -63,7 +61,6 @@ export class ClusterManager {
     this.worktrees = new WorktreePool(config, db, projectRegistry);
     this.workspaces = new TaskWorkspaces(config, this.hub, this.worktrees, projectRegistry);
     this.scheduler = new ClusterScheduler(config, this.hub, this.workerPool, db, projectRegistry, this.workspaces);
-    this.plannerService = new PlannerService(config, this.hub, this.workerPool);
 
     // Wire dispatch callback
     this.hub.setDispatchCallback(async (candidate) => {
@@ -192,9 +189,6 @@ export class ClusterManager {
       );
     }
 
-    // Start planner service
-    this.plannerService.start();
-
     this.started = true;
     logger.info('[ClusterManager] Agent Cluster started');
 
@@ -219,7 +213,6 @@ export class ClusterManager {
 
     logger.info('[ClusterManager] Stopping Agent Cluster...');
 
-    this.plannerService.stop();
     await this.scheduler.stop();
     await this.workerPool.stop(options);
     await this.scheduler.waitForSettling();
@@ -319,14 +312,6 @@ export class ClusterManager {
   }
 
   /**
-   * Access the planner service (for wiring escalation callbacks from
-   * outside the cluster module).
-   */
-  getPlannerService(): PlannerService {
-    return this.plannerService;
-  }
-
-  /**
    * Wire human-escalation notification for hub_ask requests. Called from
    * bootstrap once MessageAPI is constructed. The cluster module
    * intentionally doesn't import MessageAPI / ProtocolName directly —
@@ -335,12 +320,15 @@ export class ClusterManager {
    * requests still get persisted and surfaced via the WebUI / `/cluster
    * ask list` command, just no QQ push notification.
    *
-   * `notify` receives the same `HelpRequest` shape as the underlying
-   * `EscalationCallback` and is expected to handle delivery + error
-   * recovery internally.
+   * `notify` gets every question no planner takes first, and is expected
+   * to handle delivery and error recovery internally.
    */
   attachEscalationNotifier(notify: (request: HelpRequest) => Promise<void> | void): void {
-    this.plannerService.setEscalationCallback(notify);
+    this.hub.setAskListener((request) => {
+      void Promise.resolve(notify(request)).catch((err) =>
+        logger.error(`[ClusterManager] Escalation notifier threw for askId=${request.id}:`, err),
+      );
+    });
     logger.info('[ClusterManager] Escalation notifier attached');
   }
 

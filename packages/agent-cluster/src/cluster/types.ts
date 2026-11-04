@@ -356,6 +356,15 @@ export interface HubAskOutput {
   expectedResponseTime?: string;
 }
 
+export interface HubAnswerInput {
+  askId: string;
+  answer: string;
+}
+
+export interface HubAnswerOutput {
+  delivered: true;
+}
+
 export interface HubMessageInput {
   /** A worker id, a sibling's task id, or `all`. */
   to: string;

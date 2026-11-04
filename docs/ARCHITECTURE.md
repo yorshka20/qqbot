@@ -1104,7 +1104,6 @@ The Agent Cluster (`packages/agent-cluster/src/cluster/`) enables multi-worker p
 | `ContextHub` | Shared coordination hub — lock manager, event log, message box |
 | `WorkerPool` | Spawns and manages worker subprocesses |
 | `ClusterScheduler` | Assigns tasks to workers; persists task state to SQLite |
-| `PlannerService` | Uses LLM to decompose goals into task plans |
 | `LockManager` | File-level lock granting/releasing for workers |
 | `EventLog` | Append-only event log for cluster activity |
 

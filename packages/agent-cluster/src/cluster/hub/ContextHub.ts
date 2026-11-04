@@ -42,6 +42,8 @@ import { bucketForProject, findTicketDir, ticketDirForCreate } from '../tickets/
 import type {
   ClusterEventType,
   HelpRequest,
+  HubAnswerInput,
+  HubAnswerOutput,
   HubAskInput,
   HubAskOutput,
   HubClaimInput,
@@ -197,6 +199,7 @@ export class ContextHub {
   private reportCallback: ReportCallback | null = null;
   private heartbeatCallback: HeartbeatCallback | null = null;
   private schedulerBridge: SchedulerBridge | null = null;
+  private askListener: ((request: HelpRequest) => void) | null = null;
   private sseSubscribers = new Set<SSESubscriber>();
   /** Workers blocked in hub_wait, by worker id, with the tasks each one watches. */
   private waiters = new Map<string, { tasks: Set<string>; resolve: (reason: 'task' | 'message' | 'event') => void }>();
@@ -259,6 +262,11 @@ export class ContextHub {
    */
   setSchedulerBridge(bridge: SchedulerBridge): void {
     this.schedulerBridge = bridge;
+  }
+
+  /** Told of every question no planner takes first. */
+  setAskListener(listener: (request: HelpRequest) => void): void {
+    this.askListener = listener;
   }
 
   /**
@@ -584,11 +592,55 @@ export class ContextHub {
       options: input.options,
     });
 
+    // The owner sees every question through the stream above. A child's planner gets it once as
+    // well, because it often knows the answer; an escalation is meant for the owner alone.
+    const planner = input.type === 'escalation' ? undefined : this.plannerOf(reg?.currentTaskId);
+    if (planner) {
+      const options = input.options?.length ? `\n选项：${input.options.join(' / ')}` : '';
+      const context = input.context ? `\n背景：${input.context}` : '';
+      this.messageBox.send(
+        planner,
+        workerId,
+        `child ${reg?.currentTaskId} 提问（askId ${askId}，${input.type}）：${input.question}${options}${context}`,
+        'message',
+        'warning',
+      );
+    } else {
+      this.askListener?.(helpRequest);
+    }
+
     return {
       received: true,
       askId,
-      expectedResponseTime: 'planner 通常 1-2 分钟内回复',
+      expectedResponseTime: planner ? '你的 planner 或 owner 会回答' : '等 owner 回答',
     };
+  }
+
+  /** A planner answers its own child; anyone else's question is not its to close. */
+  handleAnswer(workerId: string, input: HubAnswerInput): HubAnswerOutput {
+    this.workerRegistry.touch(workerId);
+    if (this.workerRegistry.get(workerId)?.role !== 'planner') {
+      throw new Error('hub_answer is only available to planner-role workers');
+    }
+    const request = this.helpRequests.get(input.askId);
+    if (!request) {
+      throw new Error(`hub_answer: no question ${input.askId}`);
+    }
+    if (this.plannerOf(request.taskId) !== workerId) {
+      throw new Error(`hub_answer: question ${input.askId} did not come from one of your children`);
+    }
+    if (!this.answerHelpRequest(input.askId, input.answer, workerId)) {
+      throw new Error(`hub_answer: question ${input.askId} was already answered`);
+    }
+    return { delivered: true };
+  }
+
+  /** The live worker of the planner above this task, if there is one. */
+  private plannerOf(taskId: string | undefined): string | undefined {
+    const parentId = taskId ? this.schedulerBridge?.findTask(taskId)?.parentTaskId : undefined;
+    const parent = parentId ? this.schedulerBridge?.findTask(parentId) : undefined;
+    const worker = parent?.workerId ? this.workerRegistry.get(parent.workerId) : undefined;
+    return worker && worker.status !== 'exited' ? worker.workerId : undefined;
   }
 
   handleMessage(workerId: string, input: HubMessageInput): HubMessageOutput {
