@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterHelpRequest, ClusterTask } from '@qqbot/api-types';
 import { buildInbox } from './inbox';
-import { buildRuns, composerDefaults, parseFiles, runTitle, sortRuns } from './runs';
+import { buildRuns, composerDefaults, orderRunsAsTree, parseFiles, runTitle, sortRuns } from './runs';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z');
 
@@ -71,6 +71,73 @@ describe('sortRuns', () => {
       'queued',
       'done-new',
       'done-old',
+    ]);
+  });
+});
+
+describe('orderRunsAsTree', () => {
+  const done = (id: string, patch: Partial<ClusterTask> = {}) =>
+    task(id, { status: 'completed', completedAt: '2026-11-04T11:30:00Z', ...patch });
+
+  function tree(rows: ClusterTask[], help: ClusterHelpRequest[] = []) {
+    return orderRunsAsTree(
+      buildRuns(
+        rows.map((t) => ({ task: t })),
+        help,
+        [],
+        new Set(['p', 'p2', 'x', 'a', 'b', 'c', 'g', 'solo-old', 'solo-new']),
+        NOW,
+      ),
+    );
+  }
+
+  test('without parent links the order is sortRuns and every depth is 0', () => {
+    const rows = [
+      done('solo-old', { completedAt: '2026-11-04T09:00:00Z' }),
+      task('running'),
+      done('solo-new', { completedAt: '2026-11-04T11:00:00Z' }),
+    ];
+    const rowsOut = tree(rows);
+    const expected = sortRuns(buildRuns(rows.map((t) => ({ task: t })), [], [], new Set(['solo-old', 'solo-new']), NOW));
+    expect(rowsOut.map((r) => r.run.task.id)).toEqual(expected.map((r) => r.task.id));
+    expect(rowsOut.every((r) => r.depth === 0 && !r.lastChild && r.childRuns === 0)).toBe(true);
+  });
+
+  test('a child follows its parent even when its own stage ranks earlier', () => {
+    const out = tree([task('other', { status: 'pending' }), done('p'), task('a', { parentTaskId: 'p' })]);
+    expect(out.map((r) => [r.run.task.id, r.depth])).toEqual([
+      ['p', 0],
+      ['a', 1],
+      ['other', 0],
+    ]);
+    expect(out[0].childRuns).toBe(1);
+  });
+
+  test('a family with a question outranks a family that is all done', () => {
+    const out = tree(
+      [done('x'), done('p'), task('a', { parentTaskId: 'p' }), done('solo-new', { completedAt: '2026-11-04T11:59:00Z' })],
+      [ask('a1', 'a')],
+    );
+    expect(out.map((r) => r.run.task.id)).toEqual(['p', 'a', 'solo-new', 'x']);
+  });
+
+  test('a parent outside the list makes its child a root', () => {
+    const out = tree([task('a', { parentTaskId: 'filtered-out' })]);
+    expect(out).toMatchObject([{ depth: 0, lastChild: false }]);
+  });
+
+  test('three levels nest, children in spawn order, the last sibling of each group closes its rail', () => {
+    const out = tree([
+      done('p'),
+      task('b', { parentTaskId: 'p', createdAt: '2026-11-04T11:10:00Z' }),
+      task('a', { parentTaskId: 'p', createdAt: '2026-11-04T11:05:00Z' }),
+      task('g', { parentTaskId: 'a', createdAt: '2026-11-04T11:06:00Z' }),
+    ]);
+    expect(out.map((r) => [r.run.task.id, r.depth, r.lastChild])).toEqual([
+      ['p', 0, false],
+      ['a', 1, false],
+      ['g', 2, true],
+      ['b', 1, true],
     ]);
   });
 });

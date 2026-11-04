@@ -1,5 +1,5 @@
 import type { ClusterTaskDetail } from '@qqbot/api-types';
-import { ArrowLeft, Pin, PinOff } from 'lucide-react';
+import { ArrowLeft, CornerLeftUp, Pin, PinOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { killClusterTask } from '../api';
 import { useCluster } from '../app/ClusterData';
@@ -94,6 +94,9 @@ function Facts({ task, now }: { task: ClusterTaskDetail; now: number }) {
   if (ran !== null) {
     rows.push(['已跑', formatSpan(ran)]);
   }
+  if (task.model) {
+    rows.push(['模型', task.model]);
+  }
   if (rows.length === 0) {
     return null;
   }
@@ -183,6 +186,7 @@ export function RunDetail({ runId, route, pinned = false }: { runId: string; rou
   const closePin = withRoute(route, { pin: null });
   const children = runs.filter((r) => r.task.parentTaskId === task.id);
   const terminal = !live;
+  const parent = task.parentTaskId ? runs.find((r) => r.task.id === task.parentTaskId) : undefined;
 
   const meta = [task.project, task.workerTemplate].filter(Boolean).join(' · ');
 
@@ -197,6 +201,15 @@ export function RunDetail({ runId, route, pinned = false }: { runId: string; rou
         )}
         <header className="mb-5 md:flex md:items-start md:justify-between md:gap-8">
           <div className="min-w-0 flex-1">
+            {task.parentTaskId && (
+              <a
+                href={withRoute(route, { runId: task.parentTaskId })}
+                className="mb-1 inline-flex max-w-full items-center gap-1 text-14 text-ink-muted hover:text-ink"
+              >
+                <CornerLeftUp className="size-4 shrink-0" />
+                <span className="truncate underline">{parent?.title ?? '上级运行'}</span>
+              </a>
+            )}
             <div className="flex items-start justify-between gap-3">
               <h1 className="min-w-0 text-24 font-medium tracking-tight break-words">
                 {run?.title ?? runTitle(task.description)}

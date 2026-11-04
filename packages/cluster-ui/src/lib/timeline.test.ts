@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterEventEntry, ClusterEventType, ClusterTask } from '@qqbot/api-types';
-import { buildTimeline, foldTimeline, rulerGap, rulerMinutesLabel, type TimelineNode } from './timeline';
+import { buildTimeline, foldTimeline, reportStats, rulerGap, rulerMinutesLabel, type TimelineNode } from './timeline';
 
 const T0 = Date.parse('2026-11-04T12:00:00Z');
 const MIN = 60_000;
@@ -123,6 +123,46 @@ describe('buildTimeline', () => {
       events: [],
     });
     expect(nodes.at(-1)).toMatchObject({ kind: 'end', state: 'cancelled', summary: '手动终止' });
+  });
+});
+
+describe('reportStats', () => {
+  test('keeps every number a report carried', () => {
+    expect(reportStats({ linesAdded: 12, linesRemoved: 3, testsRan: 10, testsPassed: 9 })).toEqual({
+      linesAdded: 12,
+      linesRemoved: 3,
+      testsRan: 10,
+      testsPassed: 9,
+    });
+  });
+
+  test('a report with no numbers has no stats', () => {
+    expect(reportStats(undefined)).toBeUndefined();
+    expect(reportStats({ error: '挂了', blockReason: '缺凭据' })).toBeUndefined();
+  });
+
+  test('only the numbers present are kept', () => {
+    expect(reportStats({ testsRan: 4 })).toEqual({ testsRan: 4 });
+  });
+});
+
+describe('progress report fields', () => {
+  test('a progress node carries the files and numbers of its report', () => {
+    const nodes = buildTimeline({
+      ...base,
+      task: task(),
+      events: [
+        event('worker_progress', 2, {
+          summary: '改完了',
+          filesModified: ['src/a.ts', 'src/b.ts'],
+          detail: { linesAdded: 5 },
+        }),
+      ],
+    });
+    expect(nodes.find((n) => n.kind === 'progress')).toMatchObject({
+      files: ['src/a.ts', 'src/b.ts'],
+      stats: { linesAdded: 5 },
+    });
   });
 });
 

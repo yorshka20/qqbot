@@ -5,6 +5,7 @@ import { formatClock } from '../lib/time';
 import {
   type EndState,
   foldTimeline,
+  type ReportStats,
   type RulerGap,
   rulerGap,
   rulerMinutesLabel,
@@ -132,6 +133,39 @@ function Question({ node }: { node: Extract<TimelineNode, { kind: 'question' }> 
   );
 }
 
+const FILES_SHOWN = 3;
+
+function FileList({ files }: { files: string[] }) {
+  if (files.length === 0) {
+    return null;
+  }
+  const shown = files.slice(0, FILES_SHOWN).join('、');
+  const rest = files.length - FILES_SHOWN;
+  return (
+    <p className="truncate font-mono text-13 text-ink-muted">
+      文件：{shown}
+      {rest > 0 && ` 等 ${files.length} 个`}
+    </p>
+  );
+}
+
+function StatsLine({ stats }: { stats?: ReportStats }) {
+  if (!stats) {
+    return null;
+  }
+  return (
+    <p className="flex gap-3 text-13 text-ink-muted tabular-nums">
+      {stats.linesAdded !== undefined && <span className="text-done">+{stats.linesAdded}</span>}
+      {stats.linesRemoved !== undefined && <span className="text-failed">-{stats.linesRemoved}</span>}
+      {stats.testsRan !== undefined && (
+        <span>
+          测试 {stats.testsPassed ?? 0}/{stats.testsRan}
+        </span>
+      )}
+    </p>
+  );
+}
+
 function NodeBody({ node }: { node: TimelineNode }) {
   switch (node.kind) {
     case 'note':
@@ -140,7 +174,9 @@ function NodeBody({ node }: { node: TimelineNode }) {
       return (
         <div>
           <p className="text-15 whitespace-pre-wrap break-words">{node.summary}</p>
-          {node.nextSteps && <p className="text-13 break-words text-ink-muted">下一步 · {node.nextSteps}</p>}
+          {node.nextSteps && <p className="text-14 break-words text-working">→ {node.nextSteps}</p>}
+          <FileList files={node.files} />
+          <StatsLine stats={node.stats} />
           {node.lockedFiles > 0 && <p className="text-13 text-ink-muted">锁了 {node.lockedFiles} 个文件</p>}
         </div>
       );
@@ -152,6 +188,7 @@ function NodeBody({ node }: { node: TimelineNode }) {
         <div className={`rounded-ui border-l-2 bg-surface-2 p-3 ${END_BORDER[tone]}`}>
           <div className={`text-16 font-medium ${TONE_TEXT[tone]}`}>{label}</div>
           {node.summary && <p className="mt-1 text-15 whitespace-pre-wrap break-words">{node.summary}</p>}
+          <StatsLine stats={node.stats} />
         </div>
       );
     }

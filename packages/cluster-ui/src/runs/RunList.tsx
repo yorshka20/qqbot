@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { useCluster } from '../app/ClusterData';
 import { useListCursor } from '../app/keys';
 import { type Route, routeHref, withRoute } from '../app/route';
-import { sortRuns } from '../lib/runs';
+import { orderRunsAsTree } from '../lib/runs';
 import { STAGE_LABEL } from '../lib/stage';
 import { useNow } from '../lib/useNow';
 import { Button } from '../ui/Button';
@@ -29,7 +29,7 @@ export function RunList({ route }: { route: Route }) {
 
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return sortRuns(
+    return orderRunsAsTree(
       runs.filter(
         (run) =>
           (!route.project || run.task.project === route.project) &&
@@ -40,7 +40,7 @@ export function RunList({ route }: { route: Route }) {
   }, [runs, route.project, route.stage, search]);
 
   const hrefOf = (id: string) => withRoute(route, { runId: id, composing: false });
-  const hrefs = visible.map((run) => hrefOf(run.task.id));
+  const hrefs = visible.map(({ run }) => hrefOf(run.task.id));
   const { cursor } = useListCursor(hrefs);
 
   return (
@@ -90,10 +90,13 @@ export function RunList({ route }: { route: Route }) {
         {loaded && visible.length === 0 && runs.length > 0 && (
           <EmptyState title="没有符合条件的运行。" hint="清掉筛选再看看。" />
         )}
-        {visible.map((run, index) => (
+        {visible.map(({ run, depth, lastChild, childRuns }, index) => (
           <RunRow
             key={run.task.id}
             run={run}
+            depth={depth}
+            lastChild={lastChild}
+            childRuns={childRuns}
             href={hrefs[index]}
             index={index}
             now={now}

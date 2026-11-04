@@ -95,6 +95,52 @@ export function sortRuns(runs: Run[]): Run[] {
   });
 }
 
+export interface RunTreeRow {
+  run: Run;
+  /** 0 for a root; a planner's spawned run is 1, its own children 2, … */
+  depth: number;
+  /** Last among its parent's children: the tree rail stops at the elbow. */
+  lastChild: boolean;
+  /** How many runs this one spawned; 0 means no role label. */
+  childRuns: number;
+}
+
+/** sortRuns order for families, spawn order inside one. */
+export function orderRunsAsTree(runs: Run[]): RunTreeRow[] {
+  const ids = new Set(runs.map((r) => r.task.id));
+  const childrenOf = new Map<string, Run[]>();
+  const roots: Run[] = [];
+  for (const run of runs) {
+    const parent = run.task.parentTaskId;
+    if (parent && ids.has(parent)) {
+      childrenOf.set(parent, [...(childrenOf.get(parent) ?? []), run]);
+    } else {
+      roots.push(run);
+    }
+  }
+  for (const siblings of childrenOf.values()) {
+    siblings.sort((a, b) => (toMs(a.task.createdAt) ?? 0) - (toMs(b.task.createdAt) ?? 0));
+  }
+
+  const familyRank = (run: Run): number =>
+    Math.min(stageRank(run.stage), ...(childrenOf.get(run.task.id) ?? []).map(familyRank));
+  const rankOf = new Map(roots.map((root) => [root.task.id, familyRank(root)]));
+  const orderedRoots = sortRuns(roots).sort((a, b) => (rankOf.get(a.task.id) ?? 0) - (rankOf.get(b.task.id) ?? 0));
+
+  const rows: RunTreeRow[] = [];
+  const walk = (run: Run, depth: number, lastChild: boolean) => {
+    const children = childrenOf.get(run.task.id) ?? [];
+    rows.push({ run, depth, lastChild, childRuns: children.length });
+    for (const [index, child] of children.entries()) {
+      walk(child, depth + 1, index === children.length - 1);
+    }
+  };
+  for (const root of orderedRoots) {
+    walk(root, 0, false);
+  }
+  return rows;
+}
+
 /**
  * What the composer opens with: the remembered project if it still exists, else the configured
  * default; the remembered template only follows a remembered project that hit.

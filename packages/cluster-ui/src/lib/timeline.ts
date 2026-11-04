@@ -1,11 +1,47 @@
-import type { ClusterEventEntry, ClusterHelpRequest, ClusterTask, ReportEventData } from '@qqbot/api-types';
+import type {
+  ClusterEventEntry,
+  ClusterHelpRequest,
+  ClusterTask,
+  ReportEventData,
+  ReportEventDetail,
+} from '@qqbot/api-types';
 import { toMs } from './time';
 
 export type EndState = 'completed' | 'failed' | 'blocked' | 'cancelled';
 
+export interface ReportStats {
+  linesAdded?: number;
+  linesRemoved?: number;
+  testsRan?: number;
+  testsPassed?: number;
+}
+
+const STAT_KEYS = ['linesAdded', 'linesRemoved', 'testsRan', 'testsPassed'] as const;
+
+/** undefined when a report carried no numbers at all, so the row is skipped. */
+export function reportStats(detail: ReportEventDetail | undefined): ReportStats | undefined {
+  const stats: ReportStats = {};
+  for (const key of STAT_KEYS) {
+    const value = detail?.[key];
+    if (typeof value === 'number') {
+      stats[key] = value;
+    }
+  }
+  return Object.keys(stats).length > 0 ? stats : undefined;
+}
+
 export type TimelineNode =
   | { kind: 'note'; id: string; at: number; text: string }
-  | { kind: 'progress'; id: string; at: number; summary: string; nextSteps?: string; lockedFiles: number }
+  | {
+      kind: 'progress';
+      id: string;
+      at: number;
+      summary: string;
+      nextSteps?: string;
+      files: string[];
+      stats?: ReportStats;
+      lockedFiles: number;
+    }
   | {
       kind: 'question';
       id: string;
@@ -17,7 +53,7 @@ export type TimelineNode =
       pending: boolean;
       answer?: string;
     }
-  | { kind: 'end'; id: string; at: number; state: EndState; summary?: string };
+  | { kind: 'end'; id: string; at: number; state: EndState; summary?: string; stats?: ReportStats };
 
 export interface TimelineInput {
   task: ClusterTask;
@@ -45,7 +81,14 @@ function eventNode(event: ClusterEventEntry, input: TimelineInput): TimelineNode
   const end = END_STATE[event.type];
   if (end) {
     const report = event.data as ReportEventData;
-    return { kind: 'end', id, at, state: end, summary: report.summary?.trim() || report.detail?.error };
+    return {
+      kind: 'end',
+      id,
+      at,
+      state: end,
+      summary: report.summary?.trim() || report.detail?.error,
+      stats: reportStats(report.detail),
+    };
   }
   switch (event.type) {
     case 'worker_progress': {
@@ -56,6 +99,8 @@ function eventNode(event: ClusterEventEntry, input: TimelineInput): TimelineNode
         at,
         summary: report.summary?.trim() || '在工作',
         nextSteps: report.nextSteps?.trim() || undefined,
+        files: Array.isArray(report.filesModified) ? report.filesModified.map(String) : [],
+        stats: reportStats(report.detail),
         lockedFiles: 0,
       };
     }
