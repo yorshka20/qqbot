@@ -3,6 +3,7 @@ import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
 import { useNavigate } from 'react-router';
 import { useCluster } from '../app/ClusterData';
 import { StatusDot } from '../components/StatusDot';
+import { Button } from '../components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
 import { modelDisplayName, modelShortName } from '../lib/model';
 import { taskPath, workerPath } from '../lib/routes';
@@ -50,11 +51,12 @@ export function TaskNode({ data }: NodeProps<TaskFlowNode>) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
+        <Button
           type="button"
+          variant="ghost"
           onClick={() => navigate(isRoot ? taskPath(rootId, 'topology') : workerPath(rootId, task.id, 'chat'))}
           className={cn(
-            'flex h-full w-full items-center gap-2 rounded-md border bg-card px-2.5 text-left text-xs text-card-foreground',
+            'flex h-full w-full justify-start gap-2 rounded-md border border-border bg-card px-2.5 text-left font-normal text-xs text-card-foreground hover:bg-muted hover:text-card-foreground dark:hover:bg-muted',
             current && 'ring-2 ring-ring',
             ended && 'opacity-60',
           )}
@@ -67,7 +69,7 @@ export function TaskNode({ data }: NodeProps<TaskFlowNode>) {
             {durationMs !== null ? formatSpan(durationMs) : '—'}
           </span>
           <Handle type="source" position={Position.Right} className="opacity-0" />
-        </button>
+        </Button>
       </TooltipTrigger>
       <TooltipContent className="flex-col items-stretch gap-0.5">
         <Detail label="任务">{runTitle(task.description)}</Detail>

@@ -505,6 +505,39 @@ describe('pinning', () => {
   });
 });
 
+describe('settings menu and scroll areas', () => {
+  test('the sidebar footer menu opens settings and offers themes and sign out', async () => {
+    renderAt('/');
+    await screen.findAllByText('等你处理');
+    const trigger = screen.getByRole('button', { name: '设置' });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    const openSettings = await screen.findByText('打开设置');
+    expect(screen.getAllByText('退出控制台').length).toBe(1);
+    expect(screen.getAllByText('跟随系统').length).toBe(1);
+    fireEvent.click(openSettings);
+    await waitFor(() => expect(here()).toBe('/settings/workers'));
+  });
+
+  test('the detail panel and the result tab scroll inside a scroll area', async () => {
+    const taskPage = renderAt(`/t/${ROOT}`);
+    await screen.findAllByText('正在拆分子任务');
+    expect(taskPage.container.querySelector('[data-slot="scroll-area"]')).not.toBeNull();
+    expect(screen.getAllByText('任务描述').length).toBeGreaterThan(0);
+    cleanup();
+    const resultPage = renderAt(`/t/${ROOT}?tab=result`);
+    await screen.findAllByText('派生了 2 条子运行');
+    expect(resultPage.container.querySelectorAll('[data-slot="scroll-area"]').length).toBeGreaterThan(1);
+  });
+
+  test('a topology node still opens its child run', async () => {
+    const { container } = renderAt(`/t/${ROOT}?tab=topology`);
+    await screen.findAllByText('coder-done');
+    const canvas = container.querySelector('.react-flow') as HTMLElement;
+    fireEvent.click(within(canvas).getByText('coder-done'));
+    await waitFor(() => expect(here()).toBe(`/t/${ROOT}/w/${DONE}?tab=chat`));
+  });
+});
+
 describe('mobile', () => {
   const desktopWidth = window.innerWidth;
   beforeAll(() => {

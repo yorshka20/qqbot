@@ -35,19 +35,21 @@
 - 手机按规格 §16：侧栏即首页加抽屉，不做 §8 的底部 tab。
 - `/inbox` 上侧栏的对话列表让出键盘，只有收件箱自己的列表响应 `j` `k` `Enter`；`Esc` 只有 Dialog、Popover、菜单、下拉打开时才让给浮层，悬停的 tooltip 不算。
 - 登录页 `TokenGate` 原来还在用 `src/ui/` 的 `Button` / `Field`，删旧目录时一并改用 shadcn 的 `Button` / `Input`（`auth/session.ts` 的契约没动）。
-- 深色主题的渲染测试用 `setTheme('light')` 而不是直接写 `dataset.theme`：React Flow 的 `colorMode` 读的是主题 store，不读 DOM 属性。
+- 设置入口是侧栏底部的菜单（打开设置、主题、退出控制台），规格 §16.1 要求它像账号菜单，不是导航项。
+- 浅色主题的渲染测试用 `setTheme('light')` 而不是直接写 `dataset.theme`：React Flow 的 `colorMode` 读的是主题 store，不读 DOM 属性。
 
 ## 没做到
 
 - 可选项没做：命令面板（cmdk）、进展卡里的日志片段。
 - 已结束运行的日志和失败原因依赖内存里的 `output`；daemon 重启后只剩 `task.error`。
 - 整个界面没有在浏览器里验证过：渲染测试（happy-dom）只证明不崩、内容在，不证明样式好看，也没有真的量过 375px 下有没有溢出。
+- JS 包约 1.4 MB（gzip 约 396 KB），拓扑和 markdown 都在主包里，没有做按需加载。局域网上用问题不大，手机首屏想更快时可以把拓扑 tab 拆出去。
 
 ## 希望 daemon 提供
 
 第二轮的 12 项仍然成立（见下），新增 2 项：
 
-13. `hub_spawn` 把 `task_spawned` 写进 eventLog 并加入 `ClusterEventType`：现在只走 SSE，`/tasks/:id/events` 取不到，刷新后对话里就没有"派生了子运行"这一条。
+13. `hub_spawn` 把 `task_spawned` 写进 eventLog 并加入 `ClusterEventType`：现在只走 SSE，`/tasks/:id/events` 取不到，派生卡只能靠 `/tasks/:id` 的 `children` 生成，时间用子运行的 `createdAt`，不是派生发生的时刻。
 14. 把 worker 的 stdout 或最终 result 事件（含 `is_error` 文本）随任务落盘，让失败原因和日志在 daemon 重启后还在。
 
 ---

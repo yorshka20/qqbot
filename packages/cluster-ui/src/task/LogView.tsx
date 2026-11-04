@@ -60,9 +60,15 @@ function TranscriptRow({
     content = (
       <>
         {foldable ? (
-          <button type="button" onClick={onToggle} aria-expanded={expanded} className="block w-full min-w-0 text-left">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            className="h-auto w-full min-w-0 justify-start rounded-none p-0 text-left font-normal text-inherit whitespace-normal hover:bg-log-ink/10 hover:text-inherit dark:hover:bg-log-ink/10"
+          >
             {label}
-          </button>
+          </Button>
         ) : (
           label
         )}

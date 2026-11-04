@@ -5,6 +5,7 @@ import { useCluster } from '../app/ClusterData';
 import { Markdown } from '../components/Markdown';
 import { Button } from '../components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
+import { ScrollArea } from '../components/ui/scroll-area';
 import { copyText } from '../lib/clipboard';
 import { resumeCommand } from '../lib/resume';
 import { runBody } from '../lib/runs';
@@ -79,44 +80,46 @@ export function DetailPanel({
   const body = runBody(task.description);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto px-2">
-      <Section title="任务描述">
-        {body ? (
-          <div className="max-h-96 overflow-auto">
-            <Markdown>{body}</Markdown>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">没有描述。</p>
-        )}
-      </Section>
-      <Section title="会话">
-        <div className="flex flex-col gap-1">
-          {task.workerId && <Fact label="worker" value={task.workerId} copyable />}
-          {task.workerPid !== undefined && <Fact label="pid" value={task.workerPid} copyable />}
-          {task.sessionId && <Fact label="session" value={task.sessionId} copyable />}
-          {task.model && <Fact label="模型 id" value={task.model} copyable />}
-          <Fact label="context" value={usage.context} />
-          <Fact label="输入" value={usage.input} />
-          <Fact label="输出" value={usage.output} />
-          <Fact label="轮数" value={usage.turns} />
-          <Fact label="成本" value={usage.cost ?? '未知'} />
-          {command ? (
-            <Fact label="续跑命令" value={command} copyable />
+    <ScrollArea className="h-full min-h-0">
+      <div className="flex flex-col px-2">
+        <Section title="任务描述">
+          {body ? (
+            <div className="max-h-96 overflow-auto">
+              <Markdown>{body}</Markdown>
+            </div>
           ) : (
-            <Fact label="续跑命令" value="这个后端不支持续跑" />
+            <p className="text-sm text-muted-foreground">没有描述。</p>
           )}
-        </div>
-      </Section>
-      <Section
-        title="日志"
-        action={
-          <Button variant="ghost" size="icon-sm" onClick={onOpenLog} aria-label="全屏查看日志">
-            <Maximize2 />
-          </Button>
-        }
-      >
-        <LogView taskId={task.id} live={live} logPath={task.logPath} className="h-80" />
-      </Section>
-    </div>
+        </Section>
+        <Section title="会话">
+          <div className="flex flex-col gap-1">
+            {task.workerId && <Fact label="worker" value={task.workerId} copyable />}
+            {task.workerPid !== undefined && <Fact label="pid" value={task.workerPid} copyable />}
+            {task.sessionId && <Fact label="session" value={task.sessionId} copyable />}
+            {task.model && <Fact label="模型 id" value={task.model} copyable />}
+            <Fact label="context" value={usage.context} />
+            <Fact label="输入" value={usage.input} />
+            <Fact label="输出" value={usage.output} />
+            <Fact label="轮数" value={usage.turns} />
+            <Fact label="成本" value={usage.cost ?? '未知'} />
+            {command ? (
+              <Fact label="续跑命令" value={command} copyable />
+            ) : (
+              <Fact label="续跑命令" value="这个后端不支持续跑" />
+            )}
+          </div>
+        </Section>
+        <Section
+          title="日志"
+          action={
+            <Button variant="ghost" size="icon-sm" onClick={onOpenLog} aria-label="全屏查看日志">
+              <Maximize2 />
+            </Button>
+          }
+        >
+          <LogView taskId={task.id} live={live} logPath={task.logPath} className="h-80" />
+        </Section>
+      </div>
+    </ScrollArea>
   );
 }

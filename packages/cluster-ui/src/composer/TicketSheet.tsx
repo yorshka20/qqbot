@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { getTicket, getTicketResult, updateTicket } from '../api';
 import { Button } from '../components/ui/button';
+import { ScrollArea } from '../components/ui/scroll-area';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../components/ui/sheet';
 import { Textarea } from '../components/ui/textarea';
 import { parseOverlay, withOverlay } from '../lib/routes';
@@ -63,9 +64,9 @@ function ResultFile({ ticketId, file }: { ticketId: string; file: string }) {
     return <p className="px-4 text-sm text-muted-foreground">正在读取结果文件…</p>;
   }
   return (
-    <pre className="mx-4 mb-4 min-h-0 flex-1 overflow-y-auto rounded-md bg-muted p-3 font-mono text-xs break-words whitespace-pre-wrap">
-      {content}
-    </pre>
+    <ScrollArea className="mx-4 mb-4 min-h-0 flex-1 rounded-md bg-muted">
+      <pre className="p-3 font-mono text-xs break-words whitespace-pre-wrap">{content}</pre>
+    </ScrollArea>
   );
 }
 

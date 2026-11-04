@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from '../components/ui/dialog';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../components/ui/resizable';
+import { ScrollArea } from '../components/ui/scroll-area';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
@@ -334,9 +335,9 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
         </div>
       )}
       {tab === 'result' && (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <ScrollArea className="min-h-0 flex-1">
           <ResultTab task={task} rootId={taskId} ticketId={ticketId} output={output} live={live} />
-        </div>
+        </ScrollArea>
       )}
     </div>
   );
