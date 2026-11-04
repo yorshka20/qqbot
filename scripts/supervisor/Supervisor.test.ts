@@ -110,12 +110,12 @@ describe('Supervisor', () => {
   });
 
   it('starts a bot that keeps crashing again no sooner than the throttle allows', async () => {
-    const s = startSupervisor('crash', { restartThrottleMs: SHORT_WAIT_MS });
+    const s = startSupervisor('crash');
     await waitFor(() => starts().length >= 3, 8000);
     const [first, second, third] = starts();
     // Measured from start to start, with a little room for timer and spawn jitter.
-    expect(second.at - first.at).toBeGreaterThanOrEqual(SHORT_WAIT_MS - 50);
-    expect(third.at - second.at).toBeGreaterThanOrEqual(SHORT_WAIT_MS - 50);
+    expect(second.at - first.at).toBeGreaterThanOrEqual(THROTTLE_MS - 50);
+    expect(third.at - second.at).toBeGreaterThanOrEqual(THROTTLE_MS - 50);
     expect(s.status().lastExit?.code).toBe(1);
   });
 

@@ -30,7 +30,8 @@ bun run lint:fix      # Auto-fix issues
 bun run format        # Format code
 
 # Testing
-bun test
+bun run test          # Parallel, about 8 s; leaves out packages/avatar and tools
+bun test              # Everything, serial, about 23 s (bunfig cannot turn on --parallel)
 
 # Smoke test (MANDATORY before committing — validates full initialization)
 bun run smoke-test

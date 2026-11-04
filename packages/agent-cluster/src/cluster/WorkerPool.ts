@@ -10,7 +10,7 @@
  */
 
 import { type ChildProcess, spawn as spawnChild, spawnSync } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve as resolvePath } from 'node:path';
 import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
@@ -428,7 +428,7 @@ export class WorkerPool {
         timeout: template.timeout,
       });
 
-      const child = await this.startDetached(launch, task.id);
+      const { child, logOffset } = await this.startDetached(launch, task.id);
       workerInstance.pid = child.pid;
       workerInstance.child = child;
       workerInstance.logPath = this.outPath(task.id);
@@ -439,7 +439,7 @@ export class WorkerPool {
       if (launch.sessionId) task.sessionId = launch.sessionId;
       task.model = templateModel(template);
 
-      this.follow(workerInstance, backend, launch.cleanup);
+      this.follow(workerInstance, backend, logOffset, launch.cleanup);
       child.on('exit', (code) => void this.finalize(workerInstance, code));
       child.on('error', (err) => {
         logger.error(`[WorkerPool] Worker ${workerId} process error:`, err);
@@ -514,7 +514,9 @@ export class WorkerPool {
       jobId: task.jobId,
     });
     this.hub.workerRegistry.setTask(workerId, task.id);
-    this.follow(worker, backend, undefined);
+    // Its earlier output is already in the file: read from the beginning so the in-memory
+    // `task.output` matches what a fresh scheduler would have seen.
+    this.follow(worker, backend, 0, undefined);
     logger.info(`[WorkerPool] Adopted worker ${workerId} (pid ${pid}) for task ${task.id}`);
     return true;
   }
@@ -697,12 +699,19 @@ export class WorkerPool {
   /**
    * Start the worker in its own process group with its output on files. The parent's log
    * descriptors are closed right after the spawn: the child holds its own copies.
+   *
+   * `logOffset` is where this run's stdout begins. The log is appended to across runs of a task,
+   * and it has to be read before the spawn: the worker can write before the pool follows it.
    */
-  private async startDetached(launch: WorkerLaunch, taskId: string): Promise<ChildProcess & { pid: number }> {
+  private async startDetached(
+    launch: WorkerLaunch,
+    taskId: string,
+  ): Promise<{ child: ChildProcess & { pid: number }; logOffset: number }> {
     mkdirSync(this.assignmentsDir, { recursive: true });
     const out = openSync(this.outPath(taskId), 'a');
     const err = openSync(this.errPath(taskId), 'a');
     try {
+      const logOffset = fstatSync(out).size;
       const child = spawnChild(launch.cmd[0], launch.cmd.slice(1), {
         cwd: launch.cwd,
         env: { ...process.env, ...launch.env },
@@ -725,7 +734,7 @@ export class WorkerPool {
         child.stdin.end(launch.stdin);
       }
       child.unref();
-      return child as ChildProcess & { pid: number };
+      return { child: child as ChildProcess & { pid: number }, logOffset };
     } finally {
       closeSync(out);
       closeSync(err);
@@ -733,7 +742,12 @@ export class WorkerPool {
   }
 
   /** Follow a worker's stdout file and, without a child handle, its liveness. */
-  private follow(worker: WorkerInstance, backend: WorkerBackend, cleanup: (() => Promise<void>) | undefined): void {
+  private follow(
+    worker: WorkerInstance,
+    backend: WorkerBackend,
+    logOffset: number,
+    cleanup: (() => Promise<void>) | undefined,
+  ): void {
     const task = worker.currentTask;
     const logPath = worker.logPath ?? this.outPath(task?.id ?? worker.id);
     let lastProgress = 0;
@@ -785,9 +799,7 @@ export class WorkerPool {
         }
       },
     );
-    // An adopted worker's earlier output is already in the file: start from the beginning
-    // so the in-memory `task.output` matches what a fresh scheduler would have seen.
-    tail.start(worker.child === null);
+    tail.start(logOffset);
 
     const liveness =
       worker.child === null && worker.pid !== null

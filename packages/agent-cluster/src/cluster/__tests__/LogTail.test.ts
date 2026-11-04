@@ -42,7 +42,7 @@ describe('LogTail', () => {
 
   test('splits appended text into lines and keeps a half line until it is finished', async () => {
     const { path, tail, lines, chunks } = setup();
-    tail.start();
+    tail.start(0);
 
     appendFileSync(path, 'first\nsecond part ');
     await waitFor(() => chunks.length === 1);
@@ -57,7 +57,7 @@ describe('LogTail', () => {
 
   test('a half line is also kept across more than one poll', async () => {
     const { path, tail, lines, chunks } = setup();
-    tail.start();
+    tail.start(0);
 
     appendFileSync(path, 'a');
     await waitFor(() => chunks.length === 1);
@@ -70,23 +70,23 @@ describe('LogTail', () => {
     expect(lines).toEqual(['abc']);
   });
 
-  test('start() skips what the file already holds; start(true) reads it', async () => {
+  test('start() reads from the offset it is given', async () => {
     const skipping = setup('old line\n');
-    skipping.tail.start();
+    skipping.tail.start('old line\n'.length);
     appendFileSync(skipping.path, 'new line\n');
     await waitFor(() => skipping.lines.length === 1);
     expect(skipping.lines).toEqual(['new line']);
     expect(skipping.chunks).toEqual(['new line\n']);
 
     const reading = setup('old line\n');
-    reading.tail.start(true);
+    reading.tail.start(0);
     await waitFor(() => reading.lines.length === 1);
     expect(reading.lines).toEqual(['old line']);
   });
 
   test('stop() reads what was appended since the last poll and flushes the unfinished line', () => {
     const { path, tail, lines, chunks } = setup();
-    tail.start();
+    tail.start(0);
 
     appendFileSync(path, 'done\nno newline at the end');
     tail.stop();
@@ -97,7 +97,7 @@ describe('LogTail', () => {
 
   test('blank lines are not reported as lines but still count as output', async () => {
     const { path, tail, lines, chunks } = setup();
-    tail.start();
+    tail.start(0);
 
     appendFileSync(path, '\n   \nreal\n');
     await waitFor(() => lines.length === 1);
@@ -107,7 +107,7 @@ describe('LogTail', () => {
 
   test('a file that does not exist yet is picked up once it appears', async () => {
     const { path, tail, lines } = setup();
-    tail.start();
+    tail.start(0);
     await new Promise((resolve) => setTimeout(resolve, INTERVAL_MS * 3));
 
     writeFileSync(path, 'late\n');
@@ -117,8 +117,8 @@ describe('LogTail', () => {
 
   test('start() is idempotent and stop() can be called again without effect', () => {
     const { path, tail, lines } = setup();
-    tail.start();
-    tail.start();
+    tail.start(0);
+    tail.start(0);
     appendFileSync(path, 'once\n');
     tail.stop();
     tail.stop();

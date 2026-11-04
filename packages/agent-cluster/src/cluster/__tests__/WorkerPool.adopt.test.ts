@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { type ClusterConfig, parseClusterConfig } from '../config';
 import type { ContextHub } from '../hub/ContextHub';
 import type { TaskRecord, WorkerBackend } from '../types';
@@ -165,6 +165,39 @@ describe('WorkerPool detached workers and adoption', () => {
     await waitFor(() => existsSync(task.logPath ?? '') && readFileSync(task.logPath ?? '', 'utf8').includes('start'));
     expect(existsSync(join(stateDir, 'assignments', 'task-spawn.err.log'))).toBe(true);
     await waitFor(() => (task.output ?? '').includes('start'), 3000, 'tail delivered stdout');
+  });
+
+  test('output written before the pool follows the worker is kept, and an earlier run of the task is not replayed', async () => {
+    const { hub } = stubHub();
+    const logPath = join(stateDir, 'assignments', 'task-early.out.log');
+    mkdirSync(dirname(logPath), { recursive: true });
+    writeFileSync(logPath, 'earlier run\n');
+
+    const pool = new WorkerPool(config, hub);
+    pool.registerBackend({
+      ...fakeBackend('echo early; sleep 30'),
+      async launch(launchConfig) {
+        return {
+          cmd: ['sh', '-c', 'echo early; sleep 30'],
+          cwd: launchConfig.projectPath,
+          env: launchConfig.env,
+          // Read right after the spawn: holding here is a loaded machine taking its time to reach `follow`.
+          get sessionId() {
+            while (!readFileSync(logPath, 'utf8').includes('early')) {
+              Bun.sleepSync(5);
+            }
+            return undefined;
+          },
+        };
+      },
+    });
+    pools.push(pool);
+    const task = makeTask('task-early');
+
+    await spawnTracked(pool, task);
+
+    await waitFor(() => (task.output ?? '').includes('early'), 3000, 'tail delivered the early line');
+    expect(task.output).not.toContain('earlier run');
   });
 
   test('stop() leaves the worker running; a new pool adopts it and killWorkers ends it as failed', async () => {
