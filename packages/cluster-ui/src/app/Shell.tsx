@@ -5,6 +5,7 @@ import { RunDetail } from '../runs/RunDetail';
 import { RunList } from '../runs/RunList';
 import { TicketDrawer } from '../runs/TicketDrawer';
 import { SettingsPage } from '../settings/SettingsPage';
+import { EmptyState } from '../ui/EmptyState';
 import { WorkersPage } from '../workers/WorkersPage';
 import { Banner } from './Banner';
 import { useCluster } from './ClusterData';
@@ -39,8 +40,8 @@ function useGlobalKeys(route: Route): void {
 
 function EmptyDetail({ hint }: { hint: boolean }) {
   return (
-    <div className="hidden flex-1 items-start bg-surface p-6 text-13 text-ink-muted md:flex">
-      {hint && '用 j / k 移动，Enter 打开。'}
+    <div className="hidden flex-1 items-center justify-center bg-surface md:flex">
+      <EmptyState title="选一条运行看详情。" hint={hint ? '用 j / k 移动，Enter 打开。' : undefined} />
     </div>
   );
 }
@@ -52,7 +53,7 @@ function ListAndDetail({ route }: { route: Route }) {
   return (
     <>
       <div
-        className={`${open ? 'hidden md:flex' : 'flex'} min-h-0 w-full shrink-0 flex-col border-line bg-surface md:w-80 md:border-r lg:w-[22rem]`}
+        className={`${open ? 'hidden md:flex' : 'flex'} min-h-0 w-full shrink-0 flex-col border-line bg-surface md:w-list md:border-r`}
       >
         {list}
       </div>

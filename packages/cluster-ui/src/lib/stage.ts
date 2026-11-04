@@ -49,6 +49,14 @@ export const TONE_BG: Record<Tone, string> = {
   muted: 'bg-ink-muted',
 };
 
+export const TONE_SOFT: Record<Tone, string> = {
+  attention: 'bg-attention/12',
+  working: 'bg-working/12',
+  done: 'bg-done/12',
+  failed: 'bg-failed/12',
+  muted: 'bg-line/60',
+};
+
 export function isLive(task: ClusterTask): boolean {
   return task.status === 'pending' || task.status === 'claimed' || task.status === 'running';
 }

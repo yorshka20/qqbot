@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { formatAgo, formatClock, formatSpan, formatWait } from './time';
+import { formatAgo, formatClock, formatDayLabel, formatSpan, formatWait } from './time';
 
 const MIN = 60_000;
 
@@ -24,5 +24,21 @@ describe('formatClock', () => {
     const at = new Date(2026, 10, 4, 15, 2).getTime();
     expect(formatClock(at, new Date(2026, 10, 4, 23, 0).getTime())).toBe('15:02');
     expect(formatClock(at, new Date(2026, 10, 5, 1, 0).getTime())).toBe('11-04 15:02');
+  });
+});
+
+describe('formatDayLabel', () => {
+  const now = new Date(2026, 10, 4, 12, 0).getTime();
+
+  test('today', () => {
+    expect(formatDayLabel(new Date(2026, 10, 4, 9, 0).getTime(), now)).toBe('今天');
+  });
+
+  test('yesterday', () => {
+    expect(formatDayLabel(new Date(2026, 10, 3, 23, 0).getTime(), now)).toBe('昨天');
+  });
+
+  test('anything earlier is a bare date', () => {
+    expect(formatDayLabel(new Date(2026, 10, 1, 9, 0).getTime(), now)).toBe('11-01');
   });
 });

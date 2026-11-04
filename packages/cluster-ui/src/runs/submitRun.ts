@@ -1,6 +1,5 @@
 import type { ClusterTask, ClusterTemplatesResponse, Ticket } from '@qqbot/api-types';
-import { createClusterJob, getClusterTask, updateTicket } from '../api';
-import { markSeen } from '../lib/memory';
+import { acknowledgeClusterTask, createClusterJob, getClusterTask, updateTicket } from '../api';
 import type { Run } from '../lib/runs';
 
 export interface RunInput {
@@ -33,7 +32,7 @@ export async function retryRun(run: Run, templates: ClusterTemplatesResponse | n
     { project: run.task.project, description, template: run.task.workerTemplate, ticketId: run.ticketId },
     templates,
   );
-  markSeen(run.task.id);
+  await acknowledgeClusterTask(run.task.id);
   return next;
 }
 

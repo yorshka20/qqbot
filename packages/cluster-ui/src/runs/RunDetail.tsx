@@ -1,17 +1,20 @@
 import type { ClusterTaskDetail } from '@qqbot/api-types';
-import { ArrowLeft, Pin, PinOff } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { killClusterTask } from '../api';
+import { ArrowLeft, CornerLeftUp, Pin, PinOff } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { acknowledgeClusterTask, killClusterTask } from '../api';
 import { useCluster } from '../app/ClusterData';
 import { navigate, type Route, routeHref, withRoute } from '../app/route';
-import { markSeen, useAnswers } from '../lib/memory';
+import { answersOf } from '../lib/inbox';
 import { type Run, runTitle } from '../lib/runs';
 import { isLive, STAGE_LABEL, STAGE_TONE, TONE_TEXT } from '../lib/stage';
-import { formatSpan, toMs } from '../lib/time';
+import { formatClock, formatSpan, toMs } from '../lib/time';
 import { buildTimeline } from '../lib/timeline';
 import { useNow } from '../lib/useNow';
 import { Button, ConfirmButton } from '../ui/Button';
+import { EmptyState } from '../ui/EmptyState';
 import { Section } from '../ui/Section';
+import { STAGE_ICON, StatePill } from '../ui/StatePill';
+import { DescriptionSection } from './DescriptionSection';
 import { LogPane } from './LogPane';
 import { ResultSection } from './ResultSection';
 import { SessionSection } from './SessionSection';
@@ -54,17 +57,29 @@ function Actions({ run, task }: { run: Run; task: ClusterTaskDetail }) {
       await refresh();
     });
 
+  const acknowledge = () =>
+    act(async () => {
+      await acknowledgeClusterTask(task.id);
+      await refresh();
+    });
+
+  // Reading a finished run is what clears it from the inbox; a failure needs an explicit decision.
+  const requested = useRef(new Set<string>());
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `acknowledge` is rebuilt every render; the run id and stage are the trigger
+  useEffect(() => {
+    if (run.stage === 'review' && !requested.current.has(task.id)) {
+      requested.current.add(task.id);
+      void acknowledge();
+    }
+  }, [run.stage, task.id]);
+
   const live = isLive(task);
   const needsDismissal = run.stage === 'failed' || run.stage === 'blocked';
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       {run.stage === 'asking' && (
-        <Button
-          variant="solid"
-          onClick={() => document.querySelector<HTMLElement>('[data-answer-box]')?.focus()}
-          className="mr-1"
-        >
+        <Button variant="solid" onClick={() => document.querySelector<HTMLElement>('[data-answer-box]')?.focus()}>
           回答
         </Button>
       )}
@@ -73,9 +88,47 @@ function Actions({ run, task }: { run: Run; task: ClusterTaskDetail }) {
           重试这条运行
         </Button>
       )}
-      {needsDismissal && <Button onClick={() => markSeen(task.id)}>标记已看</Button>}
+      {needsDismissal && (
+        <Button disabled={busy} onClick={acknowledge}>
+          标记已看
+        </Button>
+      )}
       {live && <ConfirmButton label="终止 worker" confirmLabel="确认终止" disabled={busy} onConfirm={kill} />}
       {error && <p className="w-full text-13 text-failed">{error}</p>}
+    </div>
+  );
+}
+
+function Facts({ task, now }: { task: ClusterTaskDetail; now: number }) {
+  const started = toMs(task.workerStartedAt) ?? toMs(task.startedAt);
+  const ran = elapsed(task, now);
+  const rows: [string, string][] = [];
+  if (task.workerId) {
+    rows.push(['worker', task.workerId]);
+  }
+  if (task.workerPid !== undefined) {
+    rows.push(['pid', String(task.workerPid)]);
+  }
+  if (started !== null) {
+    rows.push(['开始', formatClock(started, now)]);
+  }
+  if (ran !== null) {
+    rows.push(['已跑', formatSpan(ran)]);
+  }
+  if (task.model) {
+    rows.push(['模型', task.model]);
+  }
+  if (rows.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mt-4 flex shrink-0 flex-col gap-0.5 text-14 md:mt-0">
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex gap-3">
+          <span className="w-12 shrink-0 text-ink-muted">{label}</span>
+          <span className="min-w-0 font-mono text-13">{value}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -101,20 +154,13 @@ function ChildRuns({ runs, route }: { runs: Run[]; route: Route }) {
 }
 
 export function RunDetail({ runId, route, pinned = false }: { runId: string; route: Route; pinned?: boolean }) {
-  const { loaded, runs, help, workerExits } = useCluster();
+  const { loaded, runs, help, helpHistory, workerExits } = useCluster();
   const { task: detail, events, failed } = useRunDetail(runId);
-  const answers = useAnswers();
+  const answers = useMemo(() => answersOf(helpHistory), [helpHistory]);
   const now = useNow();
 
   const run = runs.find((r) => r.task.id === runId);
   const task = detail ?? run?.task ?? null;
-
-  // Reading a finished run is what clears it from the inbox; a failure needs an explicit decision.
-  useEffect(() => {
-    if (run?.stage === 'review') {
-      markSeen(runId);
-    }
-  }, [run?.stage, runId]);
 
   // Until the shared load lands, every pending question would read as already answered.
   const nodes = useMemo(
@@ -142,7 +188,7 @@ export function RunDetail({ runId, route, pinned = false }: { runId: string; rou
             <ArrowLeft className="size-4" />
             返回
           </a>
-          <p className="text-15 text-ink-muted">{failed ? '读不到这条运行。它可能已被清理，或调度已停止。' : ''}</p>
+          {failed && <EmptyState title="读不到这条运行。" hint="它可能已被清理，或调度已停止。" />}
         </div>
       </div>
     );
@@ -154,53 +200,74 @@ export function RunDetail({ runId, route, pinned = false }: { runId: string; rou
   const closePin = withRoute(route, { pin: null });
   const children = runs.filter((r) => r.task.parentTaskId === task.id);
   const terminal = !live;
+  const parent = task.parentTaskId ? runs.find((r) => r.task.id === task.parentTaskId) : undefined;
+
+  const meta = [task.project, task.workerTemplate].filter(Boolean).join(' · ');
 
   return (
     <article className={shell}>
-      <div className="w-full max-w-3xl p-4 md:p-6">
+      <div className="w-full max-w-measure p-5 md:p-8">
         {!pinned && (
           <a href={backHref} className="mb-3 inline-flex items-center gap-1 text-13 text-ink-muted md:hidden">
             <ArrowLeft className="size-4" />
             返回
           </a>
         )}
-        <header className="mb-5">
-          <div className="flex items-start justify-between gap-3">
-            <h1 className="min-w-0 text-22 font-medium break-words">{run?.title ?? runTitle(task.description)}</h1>
-            {pinned ? (
+        <header className="mb-5 md:flex md:items-start md:justify-between md:gap-8">
+          <div className="min-w-0 flex-1">
+            {task.parentTaskId && (
               <a
-                href={closePin}
-                title="取消钉住"
-                className="hidden rounded-ui p-1 text-ink-muted hover:bg-surface-2 xl:block"
+                href={withRoute(route, { runId: task.parentTaskId })}
+                className="mb-1 inline-flex max-w-full items-center gap-1 text-14 text-ink-muted hover:text-ink"
               >
-                <PinOff className="size-4" />
+                <CornerLeftUp className="size-4 shrink-0" />
+                <span className="truncate underline">{parent?.title ?? '上级运行'}</span>
               </a>
-            ) : (
-              <a
-                href={withRoute(route, { pin: runId, runId: null })}
-                title="钉住这条运行，再开另一条"
-                className="hidden rounded-ui p-1 text-ink-muted hover:bg-surface-2 xl:block"
-              >
-                <Pin className="size-4" />
-              </a>
+            )}
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="min-w-0 text-24 font-medium tracking-tight break-words">
+                {run?.title ?? runTitle(task.description)}
+              </h1>
+              {pinned ? (
+                <a
+                  href={closePin}
+                  title="取消钉住"
+                  className="hidden rounded-ui p-1 text-ink-muted hover:bg-surface-2 xl:block"
+                >
+                  <PinOff className="size-4" />
+                </a>
+              ) : (
+                <a
+                  href={withRoute(route, { pin: runId, runId: null })}
+                  title="钉住这条运行，再开另一条"
+                  className="hidden rounded-ui p-1 text-ink-muted hover:bg-surface-2 xl:block"
+                >
+                  <Pin className="size-4" />
+                </a>
+              )}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-14 text-ink-muted">
+              {meta && <span>{meta}</span>}
+              {stage && (
+                <StatePill
+                  tone={STAGE_TONE[stage]}
+                  label={STAGE_LABEL[stage]}
+                  icon={STAGE_ICON[stage]}
+                  breathing={stage === 'running'}
+                />
+              )}
+              {ran !== null && <span>已跑 {formatSpan(ran)}</span>}
+            </div>
+            {run && (
+              <div className="mt-4">
+                <Actions run={run} task={task} />
+              </div>
             )}
           </div>
-          <p className="mt-1 text-13 text-ink-muted">
-            {[task.project, task.workerTemplate].filter(Boolean).join(' · ')}
-            {stage && (
-              <>
-                {' · '}
-                <span className={TONE_TEXT[STAGE_TONE[stage]]}>{STAGE_LABEL[stage]}</span>
-              </>
-            )}
-            {ran !== null && ` · 已跑 ${formatSpan(ran)}`}
-          </p>
-          {run && (
-            <div className={`mt-2 ${run.stage === 'asking' ? '' : '-ml-2.5'}`}>
-              <Actions run={run} task={task} />
-            </div>
-          )}
+          {!pinned && <Facts task={task} now={now} />}
         </header>
+
+        <DescriptionSection description={task.description} />
 
         <Section title="时间线">
           <Timeline nodes={nodes} live={live} now={now} />

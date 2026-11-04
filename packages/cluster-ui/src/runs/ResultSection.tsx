@@ -30,7 +30,7 @@ export function ResultSection({ task, ticketId, route }: { task: ClusterTaskDeta
       {task.error && <p className="text-15 whitespace-pre-wrap break-words text-failed">{task.error}</p>}
       {changed.length > 0 && (
         <div className="mt-2">
-          <div className="text-13 text-ink-muted">改了 {changed.length} 个文件</div>
+          <div className="text-14 text-ink-muted">改了 {changed.length} 个文件</div>
           <ul className="font-mono text-13 break-all">
             {changed.map((file) => (
               <li key={file}>{file}</li>
@@ -39,15 +39,18 @@ export function ResultSection({ task, ticketId, route }: { task: ClusterTaskDeta
         </div>
       )}
       {ticketId && (
-        <p className="mt-2 text-13 text-ink-muted">
+        <p className="mt-2 text-14 text-ink-muted">
           写回了 ticket{' '}
-          <a href={withRoute(route, { ticket: ticketId })} className="text-ink underline">
+          <a href={withRoute(route, { ticket: ticketId })} className="font-mono text-13 text-ink underline">
             {ticketId}
           </a>
           {files.map((file) => (
             <span key={file}>
               {' · '}
-              <a href={withRoute(route, { ticket: ticketId, ticketFile: file })} className="text-ink underline">
+              <a
+                href={withRoute(route, { ticket: ticketId, ticketFile: file })}
+                className="font-mono text-13 text-ink underline"
+              >
                 {file}
               </a>
             </span>

@@ -83,7 +83,7 @@ export function TicketDrawer({ route }: { route: Route }) {
           className="fixed inset-y-0 right-0 z-10 flex w-full flex-col gap-3 border-l border-line bg-surface p-4 md:w-[36rem]"
         >
           <div className="flex items-start justify-between gap-3">
-            <Dialog.Title className="min-w-0 text-17 font-medium break-words">
+            <Dialog.Title className="min-w-0 text-18 font-medium break-words">
               {ticketFile ?? ticket?.frontmatter.title ?? ticketId}
             </Dialog.Title>
             <Dialog.Close asChild>

@@ -1,7 +1,6 @@
 import { type KeyboardEvent, useState } from 'react';
 import { answerClusterHelpRequest } from '../api';
 import { useCluster } from '../app/ClusterData';
-import { rememberAnswer } from '../lib/memory';
 import { Button } from '../ui/Button';
 import { INPUT_CLASS } from '../ui/Field';
 
@@ -28,9 +27,7 @@ export function AnswerBox({
     setError(null);
     try {
       const { answered } = await answerClusterHelpRequest(askId, { answer: trimmed, answeredBy: 'owner' });
-      if (answered) {
-        rememberAnswer(askId, trimmed);
-      } else {
+      if (!answered) {
         setError('这个问题已经被回答或过期了。');
       }
       await refresh();
@@ -54,15 +51,9 @@ export function AnswerBox({
       {options && options.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {options.map((option) => (
-            <button
-              key={option}
-              type="button"
-              disabled={sending}
-              onClick={() => send(option)}
-              className="rounded-ui bg-surface-2 px-2.5 py-1 text-left text-13 hover:text-attention disabled:opacity-50"
-            >
+            <Button key={option} disabled={sending} onClick={() => send(option)}>
               {option}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -77,7 +68,7 @@ export function AnswerBox({
           aria-label="回答"
           className={`${INPUT_CLASS} resize-none`}
         />
-        <Button variant="solid" disabled={sending || !text.trim()} onClick={() => send(text)} className="py-1.5">
+        <Button variant="solid" disabled={sending || !text.trim()} onClick={() => send(text)}>
           发送回答
         </Button>
       </div>

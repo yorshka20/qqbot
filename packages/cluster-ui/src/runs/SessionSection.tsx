@@ -1,4 +1,5 @@
 import type { ClusterTaskDetail } from '@qqbot/api-types';
+import { Copy } from 'lucide-react';
 import { useState } from 'react';
 import { useCluster } from '../app/ClusterData';
 import { copyText } from '../lib/clipboard';
@@ -10,9 +11,9 @@ const COPIED_MS = 1500;
 
 function Fact({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="flex gap-3 text-13">
+    <div className="flex gap-3 text-14">
       <span className="w-16 shrink-0 text-ink-muted">{label}</span>
-      <span className="min-w-0 font-mono break-all">{value}</span>
+      <span className="min-w-0 font-mono text-13 break-all">{value}</span>
     </div>
   );
 }
@@ -37,7 +38,17 @@ export function SessionSection({ task }: { task: ClusterTaskDetail }) {
   }
 
   return (
-    <Section title="会话" aside={command && <Button onClick={copy}>{copied ? '已复制' : '复制续跑命令'}</Button>}>
+    <Section
+      title="会话"
+      aside={
+        command && (
+          <Button onClick={copy}>
+            <Copy className="size-3.5" />
+            {copied ? '已复制' : '复制续跑命令'}
+          </Button>
+        )
+      }
+    >
       <div className="flex flex-col gap-0.5">
         <Fact label="worker" value={task.workerId} />
         {task.workerPid !== undefined && <Fact label="pid" value={task.workerPid} />}

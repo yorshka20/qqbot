@@ -1,11 +1,47 @@
-import type { ClusterEventEntry, ClusterHelpRequest, ClusterTask, ReportEventData } from '@qqbot/api-types';
+import type {
+  ClusterEventEntry,
+  ClusterHelpRequest,
+  ClusterTask,
+  ReportEventData,
+  ReportEventDetail,
+} from '@qqbot/api-types';
 import { toMs } from './time';
 
 export type EndState = 'completed' | 'failed' | 'blocked' | 'cancelled';
 
+export interface ReportStats {
+  linesAdded?: number;
+  linesRemoved?: number;
+  testsRan?: number;
+  testsPassed?: number;
+}
+
+const STAT_KEYS = ['linesAdded', 'linesRemoved', 'testsRan', 'testsPassed'] as const;
+
+/** undefined when a report carried no numbers at all, so the row is skipped. */
+export function reportStats(detail: ReportEventDetail | undefined): ReportStats | undefined {
+  const stats: ReportStats = {};
+  for (const key of STAT_KEYS) {
+    const value = detail?.[key];
+    if (typeof value === 'number') {
+      stats[key] = value;
+    }
+  }
+  return Object.keys(stats).length > 0 ? stats : undefined;
+}
+
 export type TimelineNode =
   | { kind: 'note'; id: string; at: number; text: string }
-  | { kind: 'progress'; id: string; at: number; summary: string; nextSteps?: string; lockedFiles: number }
+  | {
+      kind: 'progress';
+      id: string;
+      at: number;
+      summary: string;
+      nextSteps?: string;
+      files: string[];
+      stats?: ReportStats;
+      lockedFiles: number;
+    }
   | {
       kind: 'question';
       id: string;
@@ -17,7 +53,7 @@ export type TimelineNode =
       pending: boolean;
       answer?: string;
     }
-  | { kind: 'end'; id: string; at: number; state: EndState; summary?: string };
+  | { kind: 'end'; id: string; at: number; state: EndState; summary?: string; stats?: ReportStats };
 
 export interface TimelineInput {
   task: ClusterTask;
@@ -45,7 +81,14 @@ function eventNode(event: ClusterEventEntry, input: TimelineInput): TimelineNode
   const end = END_STATE[event.type];
   if (end) {
     const report = event.data as ReportEventData;
-    return { kind: 'end', id, at, state: end, summary: report.summary?.trim() || report.detail?.error };
+    return {
+      kind: 'end',
+      id,
+      at,
+      state: end,
+      summary: report.summary?.trim() || report.detail?.error,
+      stats: reportStats(report.detail),
+    };
   }
   switch (event.type) {
     case 'worker_progress': {
@@ -56,6 +99,8 @@ function eventNode(event: ClusterEventEntry, input: TimelineInput): TimelineNode
         at,
         summary: report.summary?.trim() || '在工作',
         nextSteps: report.nextSteps?.trim() || undefined,
+        files: Array.isArray(report.filesModified) ? report.filesModified.map(String) : [],
+        stats: reportStats(report.detail),
         lockedFiles: 0,
       };
     }
@@ -160,32 +205,42 @@ export function rulerGap(fromMs: number, toMsValue: number): RulerGap {
   return minutes > MAX_RULER_MINUTES ? { ticks: 0, foldedMinutes: minutes } : { ticks: minutes, foldedMinutes: null };
 }
 
-export type TimelineItem = { fold: false; node: TimelineNode } | { fold: true; id: string; count: number };
+/** The ruler's tick count read back as a label, e.g. "3 分钟". */
+export function rulerMinutesLabel(ticks: number): string {
+  return `${ticks} 分钟`;
+}
+
+export type TimelineItem = { fold: false; node: TimelineNode } | { fold: true; id: string; nodes: TimelineNode[] };
 
 const HEAD_NODES = 2;
-const TAIL_NODES = 8;
+const TAIL_NODES = 20;
 
 /**
  * A run that reports often would push the log and the session off the page. The start and the
- * recent end stay, the middle folds; a question still waiting is never folded away.
+ * recent end stay, the middle folds; a worker's progress report and a question still waiting
+ * are never folded away.
  */
 export function foldTimeline(nodes: TimelineNode[]): TimelineItem[] {
   const tailStart = nodes.length - TAIL_NODES;
   const items: TimelineItem[] = [];
-  let hidden = 0;
-  const flush = (beforeId: string) => {
-    if (hidden > 0) {
-      items.push({ fold: true, id: `fold:${beforeId}`, count: hidden });
-      hidden = 0;
+  let hidden: TimelineNode[] = [];
+  const flush = () => {
+    if (hidden.length > 0) {
+      items.push({ fold: true, id: `fold:${hidden[0].id}`, nodes: hidden });
+      hidden = [];
     }
   };
   nodes.forEach((node, index) => {
-    const kept = index < HEAD_NODES || index >= tailStart || (node.kind === 'question' && node.pending);
+    const kept =
+      index < HEAD_NODES ||
+      index >= tailStart ||
+      node.kind === 'progress' ||
+      (node.kind === 'question' && node.pending);
     if (kept) {
-      flush(node.id);
+      flush();
       items.push({ fold: false, node });
     } else {
-      hidden += 1;
+      hidden.push(node);
     }
   });
   return items;

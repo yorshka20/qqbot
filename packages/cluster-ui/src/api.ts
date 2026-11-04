@@ -18,6 +18,7 @@ import type {
   ClusterStartedResponse,
   ClusterStatusResponse,
   ClusterTask,
+  ClusterTaskAcknowledgedResponse,
   ClusterTaskCancelledResponse,
   ClusterTaskDetail,
   ClusterTemplatesResponse,
@@ -146,8 +147,13 @@ export function listClusterLocks(): Promise<ClusterLock[]> {
   return request('List cluster locks', `${CLUSTER}/locks`);
 }
 
-export function listClusterHelpRequests(): Promise<ClusterHelpRequest[]> {
-  return request('List cluster help requests', `${CLUSTER}/help`);
+/** `?status=all` lists answered and expired requests too, newest first. */
+export function listClusterHelpRequests(status?: 'pending' | 'all'): Promise<ClusterHelpRequest[]> {
+  return request('List cluster help requests', `${CLUSTER}/help${query({ status })}`);
+}
+
+export function acknowledgeClusterTask(taskId: string): Promise<ClusterTaskAcknowledgedResponse> {
+  return post('Acknowledge task', `${CLUSTER}/tasks/${id(taskId)}/acknowledge`);
 }
 
 export function createClusterJob(input: ClusterJobSubmitBody): Promise<ClusterTask> {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterEventEntry, ClusterEventType, ClusterTask } from '@qqbot/api-types';
-import { buildTimeline, foldTimeline, rulerGap, type TimelineNode } from './timeline';
+import { buildTimeline, foldTimeline, reportStats, rulerGap, rulerMinutesLabel, type TimelineNode } from './timeline';
 
 const T0 = Date.parse('2026-11-04T12:00:00Z');
 const MIN = 60_000;
@@ -46,6 +46,12 @@ describe('rulerGap', () => {
 
   test('clock skew never draws a negative gap', () => {
     expect(rulerGap(T0, T0 - MIN)).toEqual({ ticks: 0, foldedMinutes: null });
+  });
+});
+
+describe('rulerMinutesLabel', () => {
+  test('reads a tick count back as a minute label', () => {
+    expect(rulerMinutesLabel(3)).toBe('3 分钟');
   });
 });
 
@@ -120,6 +126,46 @@ describe('buildTimeline', () => {
   });
 });
 
+describe('reportStats', () => {
+  test('keeps every number a report carried', () => {
+    expect(reportStats({ linesAdded: 12, linesRemoved: 3, testsRan: 10, testsPassed: 9 })).toEqual({
+      linesAdded: 12,
+      linesRemoved: 3,
+      testsRan: 10,
+      testsPassed: 9,
+    });
+  });
+
+  test('a report with no numbers has no stats', () => {
+    expect(reportStats(undefined)).toBeUndefined();
+    expect(reportStats({ error: '挂了', blockReason: '缺凭据' })).toBeUndefined();
+  });
+
+  test('only the numbers present are kept', () => {
+    expect(reportStats({ testsRan: 4 })).toEqual({ testsRan: 4 });
+  });
+});
+
+describe('progress report fields', () => {
+  test('a progress node carries the files and numbers of its report', () => {
+    const nodes = buildTimeline({
+      ...base,
+      task: task(),
+      events: [
+        event('worker_progress', 2, {
+          summary: '改完了',
+          filesModified: ['src/a.ts', 'src/b.ts'],
+          detail: { linesAdded: 5 },
+        }),
+      ],
+    });
+    expect(nodes.find((n) => n.kind === 'progress')).toMatchObject({
+      files: ['src/a.ts', 'src/b.ts'],
+      stats: { linesAdded: 5 },
+    });
+  });
+});
+
 describe('foldTimeline', () => {
   const note = (i: number): TimelineNode => ({ kind: 'note', id: `n${i}`, at: T0 + i, text: String(i) });
 
@@ -129,16 +175,39 @@ describe('foldTimeline', () => {
   });
 
   test('the middle of a long stream folds into one row', () => {
-    const items = foldTimeline(Array.from({ length: 30 }, (_, i) => note(i)));
-    expect(items.filter((item) => item.fold)).toMatchObject([{ count: 20 }]);
-    expect(items).toHaveLength(11);
+    const items = foldTimeline(Array.from({ length: 40 }, (_, i) => note(i)));
+    const folds = items.filter((item) => item.fold);
+    expect(folds).toHaveLength(1);
+    expect(folds[0].fold && folds[0].nodes).toHaveLength(18);
+    expect(items).toHaveLength(23);
   });
 
   test('a waiting question survives the fold', () => {
-    const nodes = Array.from({ length: 30 }, (_, i) => note(i));
+    const nodes = Array.from({ length: 40 }, (_, i) => note(i));
     nodes[10] = { kind: 'question', id: 'q', at: T0 + 10, askId: 'a', question: '？', pending: true };
     const items = foldTimeline(nodes);
     expect(items.some((item) => !item.fold && item.node.id === 'q')).toBe(true);
     expect(items.filter((item) => item.fold)).toHaveLength(2);
+  });
+
+  test('progress reports are never folded away', () => {
+    const nodes: TimelineNode[] = Array.from({ length: 30 }, (_, i) => ({
+      kind: 'progress',
+      id: `p${i}`,
+      at: T0 + i,
+      summary: String(i),
+      files: [],
+      lockedFiles: 0,
+    }));
+    const items = foldTimeline(nodes);
+    expect(items).toHaveLength(30);
+    expect(items.every((item) => !item.fold)).toBe(true);
+  });
+
+  test('a fold carries exactly the nodes it hides', () => {
+    const nodes = Array.from({ length: 30 }, (_, i) => note(i));
+    const folds = foldTimeline(nodes).filter((item) => item.fold);
+    expect(folds).toHaveLength(1);
+    expect(folds[0].fold && folds[0].nodes.map((n) => n.id)).toEqual(nodes.slice(2, 10).map((n) => n.id));
   });
 });
