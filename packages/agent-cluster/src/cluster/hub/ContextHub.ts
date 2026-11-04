@@ -936,8 +936,43 @@ export class ContextHub {
 
     // Send answer to worker
     this.messageBox.send(request.workerId, answeredBy, answer, 'answer');
+    this.eventLog.append(
+      'answer',
+      answeredBy,
+      { askId, question: request.question, answer },
+      { targetWorkerId: request.workerId, taskId: request.taskId },
+    );
+    this.broadcastSSE('task_message', {
+      taskId: request.taskId,
+      workerId: request.workerId,
+      from: answeredBy,
+      kind: 'answer',
+      text: answer,
+    });
 
     return true;
+  }
+
+  /** A person marked a task as seen; the console's inbox drops it. */
+  taskAcknowledged(taskId: string, acknowledgedAt: string): void {
+    this.broadcastSSE('task_acknowledged', { taskId, acknowledgedAt });
+  }
+
+  /**
+   * A person's message to a running worker. It is queued as a directive, which the worker
+   * takes on its next hub_sync or hub_report, and recorded on the task's timeline.
+   */
+  messageWorker(workerId: string, taskId: string | undefined, text: string, from = 'owner'): void {
+    this.messageBox.send(workerId, from, text, 'directive', 'warning');
+    this.eventLog.append('directive', from, { text }, { targetWorkerId: workerId, taskId });
+    this.broadcastSSE('task_message', { taskId, workerId, from, kind: 'directive', text });
+  }
+
+  /** Every help request the hub remembers, answered ones included, newest first. */
+  getHelpRequests(status: 'pending' | 'all' = 'pending'): HelpRequest[] {
+    const all = Array.from(this.helpRequests.values());
+    const picked = status === 'all' ? all : all.filter((r) => r.status === 'pending');
+    return picked.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   getPendingHelpRequests(): HelpRequest[] {

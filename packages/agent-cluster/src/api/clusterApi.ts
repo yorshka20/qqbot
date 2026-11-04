@@ -30,6 +30,9 @@
  *   - POST /api/cluster/workers/:id/kill
  *   - POST /api/cluster/tasks/:id/kill
  *   - POST /api/cluster/jobs/:id/kill
+ *   - POST /api/cluster/tasks/:id/messages  { text, from? } → a directive to the task's running worker
+ *   - POST /api/cluster/tasks/:id/acknowledge  a person saw this task; the inbox drops it
+ *   - GET  /api/cluster/help?status=all      answered requests too
  *   - POST /api/cluster/help/:id/answer
  */
 
@@ -48,8 +51,11 @@ import type {
   ClusterStartedResponse,
   ClusterStatusResponse,
   ClusterTask,
+  ClusterTaskAcknowledgedResponse,
   ClusterTaskCancelledResponse,
   ClusterTaskDetail,
+  ClusterTaskMessageBody,
+  ClusterTaskMessagedResponse,
   ClusterTemplatesResponse,
   ClusterWorkerHistoryResponse,
   ClusterWorkerKilledResponse,
@@ -61,6 +67,7 @@ import { logger } from '@qqbot/shared';
 import type { ClusterManager } from '../cluster/ClusterManager';
 import type { HubRoute } from '../cluster/hub/ContextHub';
 import type { ClusterEventType, TaskRecord, WorkerRegistration } from '../cluster/types';
+import { templateModel } from '../cluster/WorkerPool';
 import type { WorkerProbeResult } from '../cluster/WorkerProbe';
 import type { ProjectRegistry } from '../codingAgent/ProjectRegistry';
 import { errorResponse, jsonResponse } from './http';
@@ -176,6 +183,7 @@ export class ClusterApi implements HubRoute {
           type: t.type,
           role: t.role ?? 'executor',
           command: t.command,
+          model: templateModel(t),
           maxConcurrent: t.maxConcurrent,
           capabilities: t.capabilities,
           costTier: t.costTier,
@@ -244,8 +252,11 @@ export class ClusterApi implements HubRoute {
       case '/locks':
         return jsonResponse<ClusterLock[]>(live.getHub().lockManager.getActiveLocks());
 
-      case '/help':
-        return jsonResponse<ClusterHelpRequest[]>(live.getHub().getPendingHelpRequests());
+      case '/help': {
+        // `?status=all` includes answered and expired requests, newest first; default is pending only.
+        const status = new URL(req.url).searchParams.get('status') === 'all' ? 'all' : 'pending';
+        return jsonResponse<ClusterHelpRequest[]>(live.getHub().getHelpRequests(status));
+      }
 
       case '/stream':
         return this.handleSSEStream(live);
@@ -431,6 +442,30 @@ export class ClusterApi implements HubRoute {
             jobId: jobKillMatch[1],
             cancelledTasks: result.cancelledTasks,
           });
+        }
+
+        // /tasks/:id/messages
+        const messageMatch = subPath.match(/^\/tasks\/([^/]+)\/messages$/);
+        if (messageMatch) {
+          const body = (await req.json().catch(() => ({}))) as Partial<ClusterTaskMessageBody>;
+          const text = typeof body.text === 'string' ? body.text.trim() : '';
+          if (!text) return errorResponse('Missing required field: text', 400);
+          const task = live.getScheduler().findTask(messageMatch[1]);
+          if (!task) return errorResponse('Task not found', 404);
+          if (task.status !== 'running' || !task.workerId) {
+            return errorResponse(`Task is ${task.status}; only a running worker can take a message`, 409);
+          }
+          live.getHub().messageWorker(task.workerId, task.id, text, body.from?.trim() || 'owner');
+          return jsonResponse<ClusterTaskMessagedResponse>({ delivered: true, workerId: task.workerId });
+        }
+
+        // /tasks/:id/acknowledge
+        const ackMatch = subPath.match(/^\/tasks\/([^/]+)\/acknowledge$/);
+        if (ackMatch) {
+          const acknowledgedAt = live.getScheduler().acknowledgeTask(ackMatch[1]);
+          if (!acknowledgedAt) return errorResponse('Task not found', 404);
+          live.getHub().taskAcknowledged(ackMatch[1], acknowledgedAt);
+          return jsonResponse<ClusterTaskAcknowledgedResponse>({ taskId: ackMatch[1], acknowledgedAt });
         }
 
         // /help/:id/answer

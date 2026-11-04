@@ -627,6 +627,8 @@ export class ClusterManager {
         ['workerStartedAt', 'TEXT'],
         ['logPath', 'TEXT'],
         ['sessionId', 'TEXT'],
+        ['acknowledgedAt', 'TEXT'],
+        ['model', 'TEXT'],
       ];
       for (const [name, type] of wanted) {
         if (have.has(name)) continue;

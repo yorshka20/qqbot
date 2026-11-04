@@ -145,6 +145,10 @@ export interface ClusterTask {
   logPath?: string;
   /** The backend's own session id (claude / codex / dsh), once known. */
   sessionId?: string;
+  /** When a person marked the task as seen; unset while the inbox still lists it. */
+  acknowledgedAt?: string;
+  /** The model the worker runs on: what its CLI reported, else the template's `--model`. */
+  model?: string;
   /** Length of the whole stdout buffer; set only by the job-detail route. */
   outputBytes?: number;
   /** True when `output` is a tail slice rather than the whole buffer. */
@@ -205,6 +209,8 @@ export interface ClusterWorkerTemplate {
   /** A root planner task may only run on a planner-role template. */
   role?: 'planner' | 'executor';
   command: string;
+  /** The model the template pins (`--model` argument or the backend's model env var), when it does. */
+  model?: string;
   maxConcurrent: number;
   capabilities: string[];
   costTier: 'low' | 'medium' | 'high';
@@ -254,6 +260,25 @@ export interface ClusterJobSubmitBody {
 /** `POST /api/cluster/{tasks,jobs}/:id/kill` */
 export interface ClusterCancelBody {
   reason?: string;
+}
+
+/** `POST /api/cluster/tasks/:id/messages` — a person's message to the task's running worker. */
+export interface ClusterTaskMessageBody {
+  text: string;
+  /** Who writes; shown on the timeline. Defaults to `owner`. */
+  from?: string;
+}
+
+/** `POST /api/cluster/tasks/:id/messages` */
+export interface ClusterTaskMessagedResponse {
+  delivered: boolean;
+  workerId: string;
+}
+
+/** `POST /api/cluster/tasks/:id/acknowledge` */
+export interface ClusterTaskAcknowledgedResponse {
+  taskId: string;
+  acknowledgedAt: string;
 }
 
 /** `POST /api/cluster/help/:id/answer` */

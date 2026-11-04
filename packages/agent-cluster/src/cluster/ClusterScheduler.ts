@@ -340,6 +340,15 @@ export class ClusterScheduler {
     this.persistTask(task);
   }
 
+  /** A person marked the task as seen; answers the stamp, or null when the task is unknown. */
+  acknowledgeTask(taskId: string, at = new Date().toISOString()): string | null {
+    const task = this.findTask(taskId);
+    if (!task) return null;
+    task.acknowledgedAt = at;
+    this.persistTask(task);
+    return at;
+  }
+
   /**
    * Stop the scheduling loop.
    */
@@ -901,8 +910,8 @@ export class ClusterScheduler {
           `INSERT OR REPLACE INTO cluster_tasks
          (id, jobId, project, description, status, workerId, workerTemplate, source,
           createdAt, claimedAt, startedAt, completedAt, output, error, filesModified, diffSummary, metadata, parentTaskId,
-          workerPid, workerStartedAt, logPath, sessionId)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          workerPid, workerStartedAt, logPath, sessionId, acknowledgedAt, model)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           task.id,
@@ -927,6 +936,8 @@ export class ClusterScheduler {
           task.workerStartedAt ?? null,
           task.logPath ?? null,
           task.sessionId ?? null,
+          task.acknowledgedAt ?? null,
+          task.model ?? null,
         );
     } catch (err) {
       logger.error('[ClusterScheduler] Failed to persist task:', err);
@@ -1132,6 +1143,8 @@ export class ClusterScheduler {
       workerStartedAt: (row.workerStartedAt as string | null) ?? undefined,
       logPath: (row.logPath as string | null) ?? undefined,
       sessionId: (row.sessionId as string | null) ?? undefined,
+      acknowledgedAt: (row.acknowledgedAt as string | null) ?? undefined,
+      model: (row.model as string | null) ?? undefined,
     };
   }
 

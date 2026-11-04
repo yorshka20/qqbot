@@ -148,6 +148,10 @@ export interface TaskRecord {
   logPath?: string;
   /** The backend's own session id, once known, so the same session can be resumed later. */
   sessionId?: string;
+  /** When a person marked this task as seen (ISO); the inbox stops listing it as needing a look. */
+  acknowledgedAt?: string;
+  /** The model the worker actually ran on, as its CLI reported it; the template's `--model` until then. */
+  model?: string;
 }
 
 export interface TaskCandidate {
@@ -465,6 +469,8 @@ export interface WorkerBackend {
    * backends that only reveal it at run time (codex `thread.started`, dsh's first event).
    */
   sessionIdFrom?(line: string): string | undefined;
+  /** Optional: recognise the model id the CLI reports in one line of its stdout stream. */
+  modelFrom?(line: string): string | undefined;
   /**
    * Confirm the credential this backend's CLI would authenticate with.
    * Runs on every cluster start, so implementations must stay free: a provider
