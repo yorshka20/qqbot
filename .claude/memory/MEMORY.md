@@ -32,3 +32,4 @@ Accumulated user preferences and project facts for this repo, one file per entry
 
 - [feedback_cross_platform_user_binding.md](feedback_cross_platform_user_binding.md) — 跨平台身份绑定（unified_user_id）暂不实现，但改动不能把门关死
 - [Cluster console is desktop only](cluster-ui-desktop-only.md) — no mobile work or mobile acceptance criteria for packages/cluster-ui
+- [Cluster jobs land on the live checkout](cluster-jobs-land-on-live-checkout.md) — base branch landing stays automatic, no opt-in; guards refuse unsafe cases
