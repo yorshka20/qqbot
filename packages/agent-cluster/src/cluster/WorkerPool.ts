@@ -17,14 +17,16 @@ import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
 import type { ClusterConfig, WorkerBackendType } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import { LogTail } from './LogTail';
-import type {
-  ClusterStatus,
-  TaskRecord,
-  TaskUsage,
-  UsageSample,
-  WorkerBackend,
-  WorkerInstance,
-  WorkerLaunch,
+import {
+  type ClusterStatus,
+  isTerminalTaskStatus,
+  type TaskRecord,
+  type TaskUsage,
+  type UsageSample,
+  type WorkerBackend,
+  type WorkerInstance,
+  type WorkerLaunch,
+  type WorkerWorkspace,
 } from './types';
 
 /**
@@ -302,6 +304,7 @@ export class WorkerPool {
     project: string,
     projectPath: string,
     task: TaskRecord,
+    prepareWorkspace?: () => Promise<WorkerWorkspace>,
   ): Promise<WorkerInstance | null> {
     if (this.paused) {
       logger.warn('[WorkerPool] Pool is paused, not spawning');
@@ -326,20 +329,6 @@ export class WorkerPool {
 
     const role: 'coder' | 'planner' = template.role === 'planner' ? 'planner' : 'coder';
 
-    // Prepend the role-specific system prompt to the task description. We
-    // mutate `taskPrompt` for the spawn call only — the persisted
-    // TaskRecord.description is unchanged so the WebUI / DB still show the
-    // user's original ticket text without the boilerplate.
-    const rolePrompt = await this.loadRoleSystemPrompt(role, projectPath);
-    // The planner prompt carries a {{CLUSTER_AVAILABLE_EXECUTORS}} token
-    // rendered from live config so the planner's view of "which workers
-    // exist and what they're for" can never drift from the configured set.
-    const renderedRolePrompt =
-      role === 'planner' && rolePrompt
-        ? rolePrompt.replace(EXECUTOR_CATALOG_TOKEN, this.renderExecutorCatalog())
-        : rolePrompt;
-    const effectivePrompt = renderedRolePrompt ? `${renderedRolePrompt}\n\n${task.description}` : task.description;
-
     if (!this.canSpawnMore(templateName)) {
       logger.warn(`[WorkerPool] Cannot spawn more workers (limit reached)`);
       return null;
@@ -354,7 +343,6 @@ export class WorkerPool {
 
     const workerId = `worker-${randomUUID().slice(0, 8)}`;
     const hubUrl = `http://${this.config.hub.host}:${this.config.hub.port}`;
-    const mcpConfigPath = await this.generateMCPConfig(workerId, hubUrl);
 
     const workerInstance: WorkerInstance = {
       id: workerId,
@@ -371,7 +359,10 @@ export class WorkerPool {
       nudgedAt: null,
     };
 
+    // Registered before the first await: preparing a workspace can take minutes, and for all of
+    // that time `canSpawnMore` must count this worker and a cancel must be able to reach it.
     this.workers.set(workerId, workerInstance);
+    task.workerId = workerId;
 
     this.hub.workerRegistry.register(workerId, {
       role,
@@ -389,16 +380,39 @@ export class WorkerPool {
     });
 
     try {
+      const mcpConfigPath = await this.generateMCPConfig(workerId, hubUrl);
+      const workspace = await prepareWorkspace?.();
+      if (workerInstance.status !== 'starting' || isTerminalTaskStatus(task.status)) {
+        throw new Error('Worker stopped while its workspace was being prepared');
+      }
+
+      // Prepend the role-specific system prompt to the task description. We
+      // mutate `taskPrompt` for the spawn call only — the persisted
+      // TaskRecord.description is unchanged so the WebUI / DB still show the
+      // user's original ticket text without the boilerplate.
+      const rolePrompt = await this.loadRoleSystemPrompt(role, projectPath);
+      // The planner prompt carries a {{CLUSTER_AVAILABLE_EXECUTORS}} token
+      // rendered from live config so the planner's view of "which workers
+      // exist and what they're for" can never drift from the configured set.
+      const renderedRolePrompt =
+        role === 'planner' && rolePrompt
+          ? rolePrompt.replace(EXECUTOR_CATALOG_TOKEN, this.renderExecutorCatalog())
+          : rolePrompt;
+      const effectivePrompt = [renderedRolePrompt, workspace?.promptNote, task.description]
+        .filter(Boolean)
+        .join('\n\n');
+
       const launch = await backend.launch({
         workerId,
         taskPrompt: effectivePrompt,
-        projectPath,
+        projectPath: workspace?.cwd ?? projectPath,
         mcpConfigPath,
         hubUrl,
         command: template.command,
         args: template.args,
         env: {
           ...(template.env || {}),
+          ...workspace?.env,
           CLUSTER_WORKER_ID: workerId,
           CLUSTER_HUB_URL: hubUrl,
           CLUSTER_TASK_ID: task.id,
@@ -434,9 +448,11 @@ export class WorkerPool {
       // 'failed' instead of being stuck in 'pending' forever.
       if (this.taskCompletedCallback) {
         try {
-          task.status = 'failed';
-          task.error = err instanceof Error ? err.message : String(err);
-          task.completedAt = new Date().toISOString();
+          if (!isTerminalTaskStatus(task.status)) {
+            task.status = 'failed';
+            task.error = err instanceof Error ? err.message : String(err);
+            task.completedAt = new Date().toISOString();
+          }
           await this.taskCompletedCallback(task);
         } catch (cbErr) {
           logger.error(`[WorkerPool] taskCompletedCallback threw on spawn-failure path:`, cbErr);
@@ -526,10 +542,15 @@ export class WorkerPool {
     return true;
   }
 
+  /** The worker's process is still ours to wait for, or has yet to start. */
+  isWorkerLive(workerId: string): boolean {
+    return this.workers.has(workerId);
+  }
+
   /**
    * Get cluster status.
    */
-  getStatus(): ClusterStatus {
+  getStatus(): Omit<ClusterStatus, 'worktrees'> {
     const workers = Array.from(this.workers.values());
     const now = Date.now();
 
@@ -839,12 +860,17 @@ export class WorkerPool {
       task.output = finalMessage;
       // A terminal status set by hub_report stays authoritative: a SIGTERM exit code after a
       // voluntary `completed` report must not flip the task back to failed.
-      const alreadyTerminal = task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled';
-      if (!alreadyTerminal) {
+      if (!isTerminalTaskStatus(task.status)) {
         task.completedAt = new Date().toISOString();
+        const lastReport = this.hub.workerRegistry.get(worker.id);
         if (spawnError) {
           task.status = 'failed';
           task.error = spawnError;
+        } else if (lastReport?.lastReportStatus === 'blocked') {
+          // A blocked report is not terminal while the worker lives, but it is the last word
+          // once it exits: a clean exit must not turn stopped work into `completed` and land it.
+          task.status = 'blocked';
+          task.error = lastReport.lastReportSummary;
         } else if (exitCode === null) {
           task.status = 'failed';
           task.error = 'Worker process ended without a terminal hub_report';
@@ -904,7 +930,11 @@ export class WorkerPool {
    */
   private async killWorkerInstance(worker: WorkerInstance): Promise<void> {
     if (worker.status === 'stopping' || worker.status === 'exited') return;
+    const preparing = worker.status === 'starting';
     worker.status = 'stopping';
+    // No process yet: `spawnWorker` sees the status once the workspace is ready and winds the
+    // worker down itself. Force-cleaning now would free a slot an install is still running in.
+    if (preparing) return;
 
     const pid = worker.pid;
     const sendSignal = (signal: 'SIGTERM' | 'SIGKILL'): void => {
@@ -960,8 +990,7 @@ export class WorkerPool {
 
     if (worker.currentTask) {
       const task = worker.currentTask;
-      const alreadyTerminal = task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled';
-      if (!alreadyTerminal) {
+      if (!isTerminalTaskStatus(task.status)) {
         task.status = 'failed';
         task.error = reason;
         task.completedAt = new Date().toISOString();

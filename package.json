@@ -18,6 +18,7 @@
     "cluster:restart": "bun run scripts/supervisor/cli.ts --app cluster restart",
     "cluster:status": "bun run scripts/supervisor/cli.ts --app cluster status",
     "cluster:logs": "bun run scripts/supervisor/cli.ts --app cluster logs",
+    "cluster:gc": "bun run packages/agent-cluster/src/daemon/gc.ts",
     "bot": "bun run packages/bot/src/index.ts",
     "deploy": "bun run scripts/deploy.ts",
     "web": "bun run --filter @qqbot/webui dev",

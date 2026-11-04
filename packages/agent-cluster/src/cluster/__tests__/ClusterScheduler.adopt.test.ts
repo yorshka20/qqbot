@@ -8,8 +8,11 @@ import type { ProjectRegistry } from '../../codingAgent/ProjectRegistry';
 import { ClusterScheduler } from '../ClusterScheduler';
 import { type ClusterConfig, parseClusterConfig } from '../config';
 import type { ContextHub } from '../hub/ContextHub';
+import { createClusterTables } from '../schema';
 import type { JobRecord, TaskRecord, WorkerBackend } from '../types';
 import { WorkerPool } from '../WorkerPool';
+import { TaskWorkspaces } from '../workspace/TaskWorkspaces';
+import { WorktreePool } from '../workspace/WorktreePool';
 
 const TEMPLATE = 'fake';
 const PROJECT = 'proj';
@@ -46,7 +49,8 @@ function openDb(): Database {
     tasksCompleted INTEGER DEFAULT 0,
     tasksFailed INTEGER DEFAULT 0,
     metadata TEXT,
-    ticketId TEXT
+    ticketId TEXT,
+    integrationBranch TEXT
   )`);
   db.run(`CREATE TABLE cluster_tasks (
     id TEXT PRIMARY KEY,
@@ -73,8 +77,12 @@ function openDb(): Database {
     sessionId TEXT,
     acknowledgedAt TEXT,
     model TEXT,
-    usage TEXT
+    usage TEXT,
+    branch TEXT,
+    worktreePath TEXT,
+    mergedAt TEXT
   )`);
+  createClusterTables(db);
   return db;
 }
 
@@ -116,7 +124,7 @@ function readJob(db: Database, id: string): Record<string, unknown> {
 
 function stubHub(): ContextHub {
   return {
-    workerRegistry: { register: () => ({}), setTask: () => {} },
+    workerRegistry: { register: () => ({}), setTask: () => {}, get: () => undefined },
     eventLog: { append: () => ({}) },
     messageBox: { send: () => 'message-id' },
     workerExited: () => {},
@@ -210,7 +218,9 @@ describe('ClusterScheduler.adoptRunningTasks', () => {
     const hub = stubHub();
     pool = new WorkerPool(config, hub);
     pool.registerBackend(neverLaunched);
-    scheduler = new ClusterScheduler(config, hub, pool, db, stubProjectRegistry(projectDir));
+    const registry = stubProjectRegistry(projectDir);
+    const workspaces = new TaskWorkspaces(config, hub, new WorktreePool(config, db, registry), registry);
+    scheduler = new ClusterScheduler(config, hub, pool, db, registry, workspaces);
     pool.setTaskCompletedCallback((task) => scheduler.markTaskCompleted(task));
   });
 

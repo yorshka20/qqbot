@@ -24,10 +24,13 @@ import type { ClusterStatus, HelpRequest, JobRecord, TaskRecord } from './types'
 import { WorkerPool } from './WorkerPool';
 import { probeWorkerTemplates, type WorkerProbeResult } from './WorkerProbe';
 import { checkWorkerTemplateHealth } from './WorkerTemplateHealthCheck';
+import { TaskWorkspaces } from './workspace/TaskWorkspaces';
+import { WorktreePool } from './workspace/WorktreePool';
 
 export class ClusterManager {
   private hub: ContextHub;
   private workerPool: WorkerPool;
+  private worktrees: WorktreePool;
   private scheduler: ClusterScheduler;
   private plannerService: PlannerService;
   private queueSources = new Map<string, QueueSource>();
@@ -56,7 +59,15 @@ export class ClusterManager {
     this.initDatabase();
     this.hub = new ContextHub(config, db, ticketsDir);
     this.workerPool = new WorkerPool(config, this.hub);
-    this.scheduler = new ClusterScheduler(config, this.hub, this.workerPool, db, projectRegistry);
+    this.worktrees = new WorktreePool(config, db, projectRegistry);
+    this.scheduler = new ClusterScheduler(
+      config,
+      this.hub,
+      this.workerPool,
+      db,
+      projectRegistry,
+      new TaskWorkspaces(config, this.hub, this.worktrees, projectRegistry),
+    );
     this.plannerService = new PlannerService(config, this.hub, this.workerPool);
 
     // Wire dispatch callback
@@ -101,6 +112,7 @@ export class ClusterManager {
     this.hub.setSchedulerBridge({
       submitChildTask: (opts) => this.scheduler.submitChildTask(opts),
       findTask: (taskId) => this.scheduler.findTask(taskId),
+      isTaskSettled: (taskId) => this.scheduler.isTaskSettled(taskId),
     });
 
     this.hub.setReportCallback((workerId, taskId, input) => {
@@ -213,6 +225,7 @@ export class ClusterManager {
     this.plannerService.stop();
     await this.scheduler.stop();
     await this.workerPool.stop(options);
+    await this.scheduler.waitForSettling();
     await this.hub.stop();
 
     this.started = false;
@@ -275,7 +288,7 @@ export class ClusterManager {
    * Get cluster status.
    */
   getStatus(): ClusterStatus {
-    return this.workerPool.getStatus();
+    return { ...this.workerPool.getStatus(), worktrees: this.worktrees.status() };
   }
 
   /**
@@ -477,7 +490,7 @@ export class ClusterManager {
     createClusterTables(this.db);
 
     this.migrateClusterEventsCreatedAtColumn();
-    this.migrateClusterJobsTicketIdColumn();
+    this.migrateClusterJobsColumns();
     this.migrateClusterTasksWorkerColumns();
 
     logger.info('[ClusterManager] Database tables initialized');
@@ -519,6 +532,9 @@ export class ClusterManager {
         ['acknowledgedAt', 'TEXT'],
         ['model', 'TEXT'],
         ['usage', 'TEXT'],
+        ['branch', 'TEXT'],
+        ['worktreePath', 'TEXT'],
+        ['mergedAt', 'TEXT'],
       ];
       for (const [name, type] of wanted) {
         if (have.has(name)) continue;
@@ -530,15 +546,18 @@ export class ClusterManager {
     }
   }
 
-  private migrateClusterJobsTicketIdColumn(): void {
+  private migrateClusterJobsColumns(): void {
     try {
       const cols = this.db.query('PRAGMA table_info(cluster_jobs)').all() as Array<{ name: string }>;
       if (cols.length === 0) return;
-      if (cols.some((c) => c.name === 'ticketId')) return;
-      this.db.run('ALTER TABLE cluster_jobs ADD COLUMN ticketId TEXT');
-      logger.info('[ClusterManager] Migrated cluster_jobs: added ticketId column');
+      const have = new Set(cols.map((c) => c.name));
+      for (const name of ['ticketId', 'integrationBranch']) {
+        if (have.has(name)) continue;
+        this.db.run(`ALTER TABLE cluster_jobs ADD COLUMN ${name} TEXT`);
+        logger.info(`[ClusterManager] Migrated cluster_jobs: added ${name} column`);
+      }
     } catch (err) {
-      logger.error('[ClusterManager] cluster_jobs ticketId migration failed:', err);
+      logger.error('[ClusterManager] cluster_jobs column migration failed:', err);
     }
   }
 }

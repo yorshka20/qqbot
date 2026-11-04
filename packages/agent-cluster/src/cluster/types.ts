@@ -22,6 +22,9 @@ export type ClusterEventType =
   | 'task_completed'
   | 'task_failed'
   | 'task_blocked'
+  | 'task_merged'
+  | 'task_published'
+  | 'task_publish_failed'
   | 'worker_progress'
   | 'directive'
   | 'answer'
@@ -96,6 +99,11 @@ export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancel
 export type TaskStatus = 'pending' | 'claimed' | 'running' | 'completed' | 'failed' | 'blocked' | 'cancelled';
 export type TaskSourceType = 'todo-file' | 'queue' | 'planner';
 
+/** A task in one of these has ended; `blocked` holds work that needs someone to act on it. */
+export function isTerminalTaskStatus(status: TaskStatus): boolean {
+  return status === 'completed' || status === 'failed' || status === 'blocked' || status === 'cancelled';
+}
+
 export interface JobRecord {
   id: string;
   project: string;
@@ -110,6 +118,8 @@ export interface JobRecord {
   metadata?: string;
   /** Ticket id that dispatched this job. Used for result writeback. */
   ticketId?: string;
+  /** Branch the job's finished tasks merge into; unset until its first task gets a worktree slot. */
+  integrationBranch?: string;
 }
 
 export interface TaskRecord {
@@ -154,6 +164,12 @@ export interface TaskRecord {
   model?: string;
   /** Token usage the worker's CLI reported so far; totals once the run ended. */
   usage?: TaskUsage;
+  /** The task's own branch; unset on a task that ran in the project checkout. */
+  branch?: string;
+  /** The worktree slot the worker ran in. */
+  worktreePath?: string;
+  /** When the task's branch landed on the job's integration branch. */
+  mergedAt?: string;
 }
 
 export interface TaskUsage {
@@ -358,6 +374,10 @@ export interface HubQueryTaskOutput {
   error?: string;
   startedAt?: string;
   completedAt?: string;
+  /** The task's own branch. */
+  branch?: string;
+  /** Set once the branch landed on the job's integration branch. */
+  mergedAt?: string;
 }
 
 /** `hub_wait`: block until something this worker must react to happens. */
@@ -437,6 +457,14 @@ export interface WorkerSpawnConfig {
   /** Environment variables: process.env + template.env + cluster-injected vars. */
   env: Record<string, string>;
   timeout: number;
+}
+
+/** Where a worker runs when it is not in the project checkout, and what it is told about that. */
+export interface WorkerWorkspace {
+  cwd: string;
+  env: Record<string, string>;
+  /** Placed between the role prompt and the task description. */
+  promptNote: string;
 }
 
 /**
@@ -551,4 +579,13 @@ export interface ClusterStatus {
     currentTaskDescription?: string;
     uptime: number;
   }>;
+  worktrees: WorktreePoolStatus[];
+}
+
+export interface WorktreePoolStatus {
+  project: string;
+  /** Executor slots; planners have their own, which never compete with these. */
+  size: number;
+  plannerSize: number;
+  leased: Array<{ slot: string; kind: 'executor' | 'planner'; path: string; taskId: string; leasedAt: string }>;
 }

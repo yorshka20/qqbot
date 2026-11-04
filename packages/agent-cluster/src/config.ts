@@ -12,6 +12,15 @@ export interface ProjectRegistryConfig {
     type?: 'bun' | 'node' | 'python' | 'rust' | 'generic';
     description?: string;
     promptTemplateKey?: string;
+    // Worktree slots for this project's executors (default: its effective executor
+    // concurrency). 0 keeps every worker in `path`, one at a time in practice.
+    worktrees?: number;
+    // Branch a job's integration branch is cut from (default: the repo's default branch)
+    baseBranch?: string;
+    // Run in a slot when the lockfile changed (default: `bun install` / `npm install` by type)
+    install?: string;
+    // Shell command run after each merge, on the integration branch's content
+    publish?: string;
   }>;
 }
 

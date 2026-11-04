@@ -27,6 +27,14 @@ export interface ProjectEntry {
   description?: string;
   /** Whether the project has a CLAUDE.md file (auto-detected at runtime) */
   hasClaudeMd: boolean;
+  /** Worktree slots for this project's executors; unset means its effective executor concurrency */
+  worktrees?: number;
+  /** Branch a job's integration branch is cut from; unset means the repo's default branch */
+  baseBranch?: string;
+  /** Install command run in a slot when the lockfile changed; unset means the default for `type` */
+  install?: string;
+  /** Shell command run after each merge, on the integration branch's content */
+  publish?: string;
 }
 
 /** Serializable format for persisted projects */
@@ -36,6 +44,10 @@ interface PersistedProject {
   type?: ProjectEntry['type'];
   description?: string;
   promptTemplateKey?: string;
+  worktrees?: number;
+  baseBranch?: string;
+  install?: string;
+  publish?: string;
 }
 
 export interface ProjectRegistryOptions {
@@ -167,6 +179,10 @@ export class ProjectRegistry {
       promptTemplateKey: entry.promptTemplateKey,
       description: entry.description,
       hasClaudeMd,
+      worktrees: entry.worktrees,
+      baseBranch: entry.baseBranch,
+      install: entry.install,
+      publish: entry.publish,
     };
 
     this.projects.set(entry.alias, project);
@@ -289,6 +305,10 @@ export class ProjectRegistry {
         type: entry.type,
         description: entry.description,
         promptTemplateKey: entry.promptTemplateKey,
+        worktrees: entry.worktrees,
+        baseBranch: entry.baseBranch,
+        install: entry.install,
+        publish: entry.publish,
       });
     }
 

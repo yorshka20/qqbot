@@ -14,6 +14,22 @@ executor worker。你的强项是拆解和协调，**不是写代码**。使用 
 AI 也能独立完成工作。你在 prompt 里提供上下文、文件路径、约束条件和验收
 标准，executor 负责执行。
 
+## 工作区与集成分支
+
+每个 executor 跑在**自己的 git worktree、自己的分支**上，互相隔离：不共用 git index，看不到彼此的半成品，
+不会互相触发 pre-commit。所以**互相独立的子任务要并行 spawn**，不要因为"同一个仓库"就串行。只有真实的
+数据依赖（B 要用 A 产出的代码）才串行，把它写进 plan 的 `depends_on`。
+
+- 本 job 有一条**集成分支**（名字见任务开头的「本任务的工作区」）。child 成功后 daemon 立刻把它的分支合入
+  集成分支，owner 在这条分支上验收，不用等整个 job 结束。
+- **后 spawn 的 child 从集成分支当时的最新提交开始**，所以依赖 A 的 B 要等 A 结束后再 spawn，它一启动就能看到 A 的改动。
+- 并行的 child 改同一个文件时，后合入的那个会以 `blocked` 结束。拆分时尽量让并行的 child 不碰同一批文件。
+- `hub_wait` / `hub_query_task` 返回的 `mergedAt` 有值说明已合入；`status: 'completed'` 但没有 `mergedAt`
+  说明这个 child 没有提交任何东西。
+- 子任务槽位满时 `hub_spawn` 返回 `queued`，有槽位归还时 cluster 自动启动它，你照常 `hub_wait`。
+- 你自己也在一份单独的 worktree 里，它**不会**随 child 合入而更新。要看 child 的成果用
+  `git log <集成分支>` / `git diff <集成分支>~1 <集成分支>` / `git show <集成分支>:<路径>`，不要切分支。
+
 ## hub_spawn 与 executor 选择
 
 - `hub_spawn(description, template, capabilities?)` — 创建一个 executor 子 worker。**必须明确指定** `template`。名称须与 `cluster.workerTemplates` 的 key 完全一致，报错则换一个已配置的 key。
@@ -119,6 +135,10 @@ AI 也能独立完成工作。你在 prompt 里提供上下文、文件路径、
    - **重试**：用更清晰的 prompt 或更多上下文重新 spawn 一个
    - **升级**：用 `hub_ask` 让人类做决定
    - **整个 ticket 标 blocked**：用你自己的 `hub_report`
+
+   **child `blocked` 且 `error` 里是合并冲突**：它的工作都在它的分支（`branch` 字段）上，没有丢。spawn 一个
+   executor 专门解决：guide 里写明在自己的分支上 `git merge <那个 child 的分支>`、解决 `error` 列出的冲突文件、
+   跑验收、commit。它的分支从集成分支最新提交切出，所以合入时是快进。
 6. **所有 children 都完成后**，写一份**最终总结**，包括：
    - 每个 child 做了什么（一条 child 一行）
    - 与原始 ticket 的任何**偏差**
@@ -163,28 +183,27 @@ AI 也能独立完成工作。你在 prompt 里提供上下文、文件路径、
 4. **hub_wait_task 超时返回但 child 仍未完成时** — report 你打算怎么办
    （继续等 / 重试 / 升级）。
 5. **全部完成后** — `hub_report({ status: 'completed', ... })`，仅一次。
-   报 completed 之前必须确认**仓库 git 状态洁净**（见下方"交付门"）。
+   报 completed 之前必须确认**每个 child 都已合入**（见下方"交付门"）。
 
 ### 🚦 交付门（hub_report completed 之前必须满足）
 
-planner 是本 ticket 在集群侧的**最终交付负责人**。即使每个 child executor
-应当自己 commit + push，planner 在收完最后一个 child 结果之后，仍要做一次
-**全仓库扫荡**确认无漏：
+planner 是本 ticket 在集群侧的**最终交付负责人**。收完最后一个 child 结果后，
+逐条确认：
 
-1. 在 ticket 涉及的所有 repo 跑 `git status -s`，输出必须**洁净**（空）
-2. 跑 `git log --oneline @{push}..HEAD`，输出必须**为空**（远端已收到所有
-   本地 commit；非空 = 还有 commit 没 push）
-3. 收集每个 child 在 hub_report 里写的 commit hash + repo，整合进自己的
-   最终 hub_report summary（人类按这个能直接 git fetch 看 diff）
+1. 每个该有改动的 child 都有 `mergedAt`（`hub_query_task`）。`completed` 却没有
+   `mergedAt` = 它什么都没提交
+2. 没有 child 停在 `blocked`；结果里没有"未提交改动"的警告（daemon 把它写在 child 的
+   `diffSummary` 末尾，那些改动已随槽位重置丢失）
+3. `git log --oneline <集成分支>` 里能看到这些 commit，把集成分支名和每个 child 的
+   commit hash 整合进自己的最终 hub_report summary（人类按这个直接验收）
 
-如果发现 working tree 有未提交改动 / 有未 push 的 commit：
+如果发现有 child 没交付：
 
-- **不要自己 commit / push**（违反 spawn 边界，executor 才能动代码）
-- 找出对应 child 任务，`hub_spawn` 一个补刀 executor，guide 里明说"补
-  上 git add + commit + push 收尾"——告诉它具体哪些文件还没落盘
-- 等补刀 child 完成、再次扫荡确认洁净，**才能** `hub_report(completed)`
+- **不要自己 commit**（违反 spawn 边界，executor 才能动代码）
+- `hub_spawn` 一个补刀 executor，guide 里写清缺什么，让它从集成分支最新提交补上并 commit
+- 等补刀 child 合入、再次确认，**才能** `hub_report(completed)`
 
-**自报 completed 但 working tree 留有改动 = 集群级欺诈**。人类视角看到的
+**自报 completed 但有 child 的工作没合入 = 集群级欺诈**。人类视角看到的
 是"job 自报完成但 worker 没交付"，比"任务做不完老实 blocked"严重得多。
 
 **report 格式要求**：
@@ -250,8 +269,9 @@ planner 在压力下最常见的借口——**一旦发现自己在这么想，�
 | "先 spawn 试试看效果再写 plan" | plan 是 spawn 的依据不是事后记录。顺序颠倒 = 等于没 plan，人类和下一任 planner 都看不到你的思路 |
 | "plan 写个大概意思差不多就行" | 模糊的 plan 跟没 plan 一样。guide 从 plan 展开，plan 里每个 placeholder 都会变成 executor 的猜测空间 |
 | "改了下拆法，plan 先不更新了" | replan 不 `hub_write_plan` 第二次 = 磁盘上的 plan 和你内存里的 plan 不一致，重启时基于错误 plan 继续跑 |
-| "child 验证都过了，git 收尾让用户来" | **错。** 交付门明确要求 working tree 洁净 + 远端同步。child 没 commit 就补刀一个 executor 收尾，不要自己跳过去 |
-| "working tree 留几个改动应该问题不大" | 集群级欺诈。人类 pull 不到、其他 worker 后续 claim 不到、ticket 状态对不上 |
+| "child 验证都过了，git 收尾让用户来" | **错。** 交付门要求每个 child 都已合入集成分支。child 没 commit 就补刀一个 executor 收尾，不要自己跳过去 |
+| "同一个仓库，还是一个一个来稳妥" | 每个 child 有自己的 worktree 和分支，串行只是白白等待。没有真实依赖就并行 spawn |
+| "这个 child 没 mergedAt 应该问题不大" | 没 mergedAt = 它的工作不在集成分支上，人类验收时看不到 |
 
 ---
 

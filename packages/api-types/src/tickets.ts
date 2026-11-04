@@ -121,6 +121,7 @@ export interface TicketJobSnapshot {
     taskCount: number;
     tasksCompleted: number;
     tasksFailed: number;
+    integrationBranch?: string;
   };
   tasks: Array<{
     id: string;
@@ -130,6 +131,8 @@ export interface TicketJobSnapshot {
     workerTemplate?: string;
     source: string;
     status: string;
+    branch?: string;
+    mergedAt?: string;
     createdAt: string;
     startedAt?: string;
     completedAt?: string;

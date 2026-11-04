@@ -12,6 +12,9 @@ bun run dev
 bun run build && bun run start
 bun run status | restart | stop | logs
 
+# Remove cluster worktrees no pool claims (--dry-run lists them)
+bun run cluster:gc
+
 # Update a running deployment: fetch, fast-forward only, bun install, restart
 bun run deploy          # `bun run deploy --check` reports what it would do
 
@@ -252,7 +255,8 @@ them, so the dependency only ever runs bot → package.
   `@qqbot/shared` and `tsyringe`.
 - **`@qqbot/agent-cluster`** (`packages/agent-cluster/`) — everything that runs coding-agent CLIs:
   the cluster (`src/cluster/`: scheduler, worker pool, hub + `HubMCPServer`, ticket storage and
-  format), the coding-agent task layer (`src/codingAgent/`: executors, `CodingAgentTaskManager`, its
+  format, and `workspace/`: the per-project git worktree pool, task branches and merges into a job's
+  integration branch), the coding-agent task layer (`src/codingAgent/`: executors, `CodingAgentTaskManager`, its
   on-disk record store, `ProjectRegistry`) and the CLI stream parsers (`src/cli/`). Its config types
   (`CodingAgentConfig`, `ProjectRegistryConfig`, `TicketsConfig`) live in `src/config.ts`.
   `ProjectRegistry` is the separate `@qqbot/agent-cluster/projects` entry for the same reason as

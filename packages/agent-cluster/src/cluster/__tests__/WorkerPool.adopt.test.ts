@@ -39,6 +39,7 @@ function stubHub(): { hub: ContextHub; exited: string[]; registered: string[] } 
         return {};
       },
       setTask: () => {},
+      get: () => undefined,
     },
     eventLog: { append: () => ({}) },
     messageBox: { send: () => 'message-id' },

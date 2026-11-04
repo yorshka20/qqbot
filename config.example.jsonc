@@ -1327,7 +1327,22 @@
       //   "alias": "my-project",
       //   "path": "/home/user/projects/my-project",
       //   "type": "bun",
-      //   "description": "My Project"
+      //   "description": "My Project",
+      //   // Cluster worktree pool: executors of this project run in parallel, each in a slot
+      //   // under <stateDir>/work/<alias>/ on its own branch. Slots are reused and keep their
+      //   // node_modules. Default: the project's effective executor concurrency
+      //   // (min of cluster.maxConcurrentWorkers, projects.<alias>.maxWorkers and the enabled
+      //   // executors' maxConcurrent). Planners have their own slots on top of this. 0 turns
+      //   // the pool off and workers share `path`.
+      //   "worktrees": 3,
+      //   // Branch each job's integration branch `cluster/<job>` is cut from.
+      //   // Default: the repo's default branch (origin/HEAD, else what `path` has checked out).
+      //   "baseBranch": "main",
+      //   // Run in a slot when its lockfile changed. Default by type: bun install / npm install.
+      //   "install": "bun install",
+      //   // Run after each merge, on the integration branch's content, in the worktree
+      //   // <stateDir>/work/<alias>/publish. Logs to <stateDir>/assignments/<taskId>.publish.log.
+      //   "publish": "CLUSTER_STATE_DIR=/abs/path/data/cluster bun run build:cluster-ui"
       // }
     ]
   },
@@ -1423,7 +1438,7 @@
           "--output-format",
           "text"
         ],
-        "maxConcurrent": 2,
+        "maxConcurrent": 3,
         "timeout": "20m",
         "capabilities": [
           "code"

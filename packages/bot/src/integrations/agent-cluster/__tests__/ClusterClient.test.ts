@@ -56,6 +56,7 @@ const STATUS: ClusterStatusResponse = {
     completedTasks: 3,
     failedTasks: 0,
     workers: [],
+    worktrees: [],
   },
 };
 

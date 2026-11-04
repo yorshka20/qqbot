@@ -6,8 +6,9 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from '@qqbot/shared';
-import { spawn } from 'bun';
+
 import type { ProjectRegistry } from '../codingAgent/ProjectRegistry';
+import { runGit } from './git';
 
 /** Default ProjectRegistry alias for the centralized tickets repo */
 export const CLUSTER_TICKETS_REGISTRY_ALIAS = 'cluster-tickets';
@@ -44,19 +45,6 @@ export async function runClusterTicketsSyncWithRegistry(
 }
 
 const TAG = '[ClusterTicketsGit]';
-
-async function runGit(cwd: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
-  const proc = spawn({
-    cmd: ['git', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const code = await proc.exited;
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  return { code, stdout, stderr };
-}
 
 export function isClusterTicketsGitRepo(dir: string): boolean {
   return existsSync(join(dir, '.git'));

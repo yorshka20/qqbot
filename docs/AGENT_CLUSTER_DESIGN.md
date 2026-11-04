@@ -511,6 +511,59 @@ hub_directive:
 
 ---
 
+### 4.7 Worktree 池与集成分支
+
+同一项目的 worker 不共用一份检出：共用 git index、看得见彼此的半成品、互相触发 pre-commit，planner 只能串行。
+每个项目有一个固定大小的 worktree 池（`cluster/workspace/WorktreePool.ts`），分支与合入由
+`cluster/workspace/TaskWorkspaces.ts` 负责。
+
+**槽位**
+
+- 路径 `<stateDir>/work/<project>/<n>`，首次使用时 `git worktree add`，之后一直复用，`node_modules` 留在槽里。
+  lockfile 与上次安装时不同才跑安装命令（项目的 `install`，默认按 `type` 取 `bun install` / `npm install`）。
+- 大小：项目的 `worktrees`，默认 `min(cluster.maxConcurrentWorkers, projects.<alias>.maxWorkers, 已启用 executor 的 maxConcurrent 之和)`。
+  不是 git 仓库或 `worktrees: 0` 的项目没有池，worker 跑在项目目录里。
+- **planner 有自己的槽** `planner-<n>`，不占 executor 的名额，也不安装依赖。planner 在 `hub_wait` 里一直持有租约，
+  和 executor 共用一个池的话，等待中的 planner 会占住自己的 child 需要的槽。
+- 主检出永远不是槽。`<stateDir>` 默认在主检出内部，槽里的 git 命令都带 `GIT_CEILING_DIRECTORIES`：
+  丢了 `.git` 文件的槽会让 git 报错，而不是向上找到主检出再 `checkout -f`。
+- 租约存在 `cluster_worktree_slots`，daemon 重启后被接管的 worker 继续持有；worker 已不在的，启动时结算并归还。
+  没有空槽时任务留在 pending 队列，**有槽归还时立即派发**，不等调度 tick。
+
+**分支**
+
+- job 的集成分支 `cluster/<job 前 8 位>`，从项目的 `baseBranch`（默认 `origin/HEAD`，没有就取项目检出当前分支）切出。
+- 任务分支 `cluster/<job 前 8 位>-<task 前 8 位>`，从集成分支当前最新提交切出。不能写成 `cluster/<job>/<task>`：
+  git 把 ref 存成路径，一个分支不能同时是另一批分支的目录。
+- 任务分支合入后保留，方便逐个 child 看 diff。
+
+**结算**
+
+`hub_report(completed)` 到达时 worker 进程还活着，还可能继续提交，所以结算等进程退出。`finalizeTask` 看到任务持有槽且
+worker 还在时只落库，退出时再走一次；这之前 `hub_wait` 不醒，job 计数不动。结算依次：
+
+1. `git status --porcelain` 非空就把文件列表写进任务结果（`output` 和 `diffSummary`），这些改动不进分支，随槽位重置丢失。
+2. 任务 `completed` 且分支有新提交时合入集成分支：能快进就快进，否则 `git merge-tree --write-tree` 算出结果、
+   `commit-tree` 生成合并提交、`update-ref` 移动分支。合入不碰任何 worktree，所以**没有 worktree 持有集成分支**，
+   owner 可以直接检出它；冲突时也没有东西要清理。需要 git 2.38 以上。同一集成分支的合入串行。
+3. 冲突时任务转 `blocked`，`error` 写冲突文件和 git 的说明，发 `task_blocked` 事件；任务分支原样保留，planner 可以 spawn
+   一个 executor 在自己的分支上 `git merge` 它来解决。
+4. 槽位 `checkout -f --detach` + `clean -fd` 后归还。清不干净的槽直接删掉，下次租用时重建。
+
+owner 检出集成分支时用 `git switch --detach cluster/<job>`：`update-ref` 不更新工作区，停在这条分支上的检出会在下次合入后
+显示反向的改动。
+
+**发布**
+
+项目可配 `publish`：每次合入成功后，在 `<stateDir>/work/<project>/publish` 里运行（detached 到集成分支最新提交，lockfile 变化时
+同样安装）。它不占槽、不阻塞结算，同项目串行。日志 `<stateDir>/assignments/<taskId>.publish.log`，结果记为
+`task_published` / `task_publish_failed` 事件。
+
+**清理**
+
+`bun run cluster:gc`（`--dry-run` 只列出）删除 `<stateDir>/work` 下池不认领的目录：超出配置大小的槽、已注销项目的目录。
+被租用的槽和池内的空闲槽都保留，可以在 daemon 运行时执行。
+
 ## 5. 配置
 
 ### 5.1 配置文件
@@ -731,9 +784,15 @@ CREATE TABLE cluster_tasks (
   error TEXT,
   filesModified TEXT,                      -- JSON array
   diffSummary TEXT,                        -- JSON: { additions, deletions }
-  metadata TEXT                            -- JSON
+  metadata TEXT,                           -- JSON
+  branch TEXT,                             -- 任务自己的分支；跑在项目检出里的任务没有
+  worktreePath TEXT,                       -- worker 所在的槽
+  mergedAt TEXT                            -- 合入集成分支的时间
 );
 ```
+
+`cluster_jobs` 另有 `integrationBranch`。槽位状态在 `cluster_worktree_slots`（`project`、`slot`、`kind`、`path`、`taskId`、`leasedAt`、
+`lockHash`），`taskId` 非空即被租用，`lockHash` 是这个槽上次安装时的 lockfile 哈希。见 §4.7。
 
 #### `cluster_events`
 
@@ -794,12 +853,12 @@ CREATE TABLE cluster_help_requests (
 ### 7.1 端点列表
 
 ```
-GET  /api/cluster/status           → 集群总览
+GET  /api/cluster/status           → 集群总览，含 `worktrees`：每项目的池大小和被租用的槽
 GET  /api/cluster/workers          → worker 列表和状态
 GET  /api/cluster/jobs             → job 列表（分页、过滤）
-GET  /api/cluster/jobs/:id         → 单个 job 详情
+GET  /api/cluster/jobs/:id         → 单个 job 详情，含 `integrationBranch`
 GET  /api/cluster/tasks            → task 列表（分页、过滤）
-GET  /api/cluster/tasks/:id        → 单个 task 详情 + 完整日志
+GET  /api/cluster/tasks/:id        → 单个 task 详情 + 完整日志，含 `branch` / `worktreePath` / `mergedAt`
 GET  /api/cluster/tasks/:id/events → 该 task 的事件流
 GET  /api/cluster/events           → 全局事件流（分页）
 GET  /api/cluster/locks            → 当前活跃的文件锁

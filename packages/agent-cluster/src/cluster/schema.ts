@@ -110,6 +110,17 @@ export const CLUSTER_TABLE_STATEMENTS: readonly string[] = [
   read INTEGER NOT NULL DEFAULT 0
   )`,
   `CREATE INDEX IF NOT EXISTS idx_cluster_messages_target ON cluster_messages(targetWorkerId, read)`,
+  `CREATE TABLE IF NOT EXISTS cluster_worktree_slots (
+  project TEXT NOT NULL,
+  slot TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  path TEXT NOT NULL,
+  taskId TEXT,
+  leasedAt TEXT,
+  lockHash TEXT,
+  PRIMARY KEY (project, slot)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_cluster_worktree_slots_task ON cluster_worktree_slots(taskId)`,
 ];
 
 export function createClusterTables(db: Database): void {

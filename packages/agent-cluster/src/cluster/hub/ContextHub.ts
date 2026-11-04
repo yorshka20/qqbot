@@ -135,6 +135,8 @@ export interface SchedulerBridge {
     template: string;
   }): Promise<TaskRecord | null>;
   findTask(taskId: string): TaskRecord | undefined;
+  /** A task has ended and its branch, if any, has landed: its status will not change again. */
+  isTaskSettled(taskId: string): boolean;
 }
 
 /**
@@ -649,14 +651,14 @@ export class ContextHub {
       jobId: parent.jobId,
       template: input.template,
       description: input.description,
-      status: child.status === 'running' ? 'running' : 'queued',
+      status: child.status === 'pending' ? 'queued' : 'running',
     });
 
     return {
       childTaskId: child.id,
-      // tryDispatch sets status='running' on successful immediate spawn,
-      // leaves it as 'pending' if the pool was full.
-      status: child.status === 'running' ? 'running' : 'queued',
+      // tryDispatch leaves status 'pending' when no worker or slot was free; anything else
+      // means a worker is on its way, even if its slot is still being prepared.
+      status: child.status === 'pending' ? 'queued' : 'running',
     };
   }
 
@@ -697,6 +699,8 @@ export class ContextHub {
       error: target.error,
       startedAt: target.startedAt,
       completedAt: target.completedAt,
+      branch: target.branch,
+      mergedAt: target.mergedAt,
     };
   }
 
@@ -735,8 +739,7 @@ export class ContextHub {
           return [];
         }
       });
-    const settled = (snapshot: HubQueryTaskOutput) =>
-      snapshot.status === 'completed' || snapshot.status === 'failed' || snapshot.status === 'cancelled';
+    const settled = (snapshot: HubQueryTaskOutput) => this.schedulerBridge?.isTaskSettled(snapshot.taskId) === true;
 
     // Already something to do: answer at once.
     if (snapshots().some(settled)) {
@@ -777,6 +780,12 @@ export class ContextHub {
   async handleWaitTask(workerId: string, input: HubWaitTaskInput): Promise<HubQueryTaskOutput> {
     await this.handleWait(workerId, { tasks: [input.taskId], timeoutMs: input.timeoutMs });
     return this.handleQueryTask(workerId, { taskId: input.taskId });
+  }
+
+  /** Something happened to a task outside any worker's report: a merge, a conflict, a publish. */
+  recordTaskEvent(type: ClusterEventType, task: TaskRecord, data: Record<string, unknown>): void {
+    this.eventLog.append(type, task.workerId ?? 'cluster', data, { jobId: task.jobId, taskId: task.id });
+    this.broadcastSSE('task_event', { type, taskId: task.id, jobId: task.jobId, ...data });
   }
 
   /** A task reached a terminal status (the scheduler says so): wake whoever waits on it. */
@@ -1127,6 +1136,12 @@ export class ContextHub {
         return `任务失败: ${data.summary || ''}`;
       case 'task_blocked':
         return `阻塞: ${data.summary || ''}`;
+      case 'task_merged':
+        return `已合入 ${data.integrationBranch || ''}`;
+      case 'task_published':
+        return `已发布: ${data.command || ''}`;
+      case 'task_publish_failed':
+        return `发布失败: ${data.error || ''}`;
       case 'lock_acquired':
         return `锁定文件: ${(data.files as string[] | undefined)?.join(', ') || data.file || ''}`;
       case 'lock_released':

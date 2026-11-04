@@ -18,6 +18,9 @@ export type ClusterEventType =
   | 'task_completed'
   | 'task_failed'
   | 'task_blocked'
+  | 'task_merged'
+  | 'task_published'
+  | 'task_publish_failed'
   | 'worker_progress'
   | 'directive'
   | 'answer'
@@ -45,6 +48,25 @@ export interface ClusterStatus {
     currentTaskDescription?: string;
     uptime: number;
   }>;
+  worktrees: ClusterWorktreePool[];
+}
+
+/** One project's worktree pool. Only slots in use are listed; `size` is what the pool may grow to. */
+export interface ClusterWorktreePool {
+  project: string;
+  /** Executor slots. */
+  size: number;
+  /** Planner slots, separate so a waiting planner never holds a slot its children need. */
+  plannerSize: number;
+  leased: ClusterWorktreeLease[];
+}
+
+export interface ClusterWorktreeLease {
+  slot: string;
+  kind: 'executor' | 'planner';
+  path: string;
+  taskId: string;
+  leasedAt: string;
 }
 
 /** `GET /api/cluster/status` — answers whether or not the cluster is started. */
@@ -115,6 +137,8 @@ export interface ClusterJob {
   metadata?: string;
   /** The ticket that dispatched this job, when it came from one. */
   ticketId?: string;
+  /** Branch the job's finished tasks merge into, where the owner accepts the work. */
+  integrationBranch?: string;
 }
 
 export interface ClusterTask {
@@ -151,6 +175,12 @@ export interface ClusterTask {
   model?: string;
   /** Token usage the worker's CLI reported; cumulative while running, the CLI's totals once ended. */
   usage?: ClusterTaskUsage;
+  /** The task's own branch; unset on a task that ran in the project checkout. */
+  branch?: string;
+  /** The worktree slot the worker ran in. */
+  worktreePath?: string;
+  /** When the task's branch landed on the job's integration branch. */
+  mergedAt?: string;
   /** Length of the whole stdout buffer; set only by the job-detail route. */
   outputBytes?: number;
   /** True when `output` is a tail slice rather than the whole buffer. */

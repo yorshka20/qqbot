@@ -14,6 +14,17 @@
 
 无论哪种方式，**严格按你拿到的任务描述执行**。
 
+## 你的工作区
+
+你启动时的 cwd 是一份**只属于你**的 git worktree，已经切到**你自己的分支**（从本 job 的集成分支
+当时的最新提交切出，分支名见任务开头的「本任务的工作区」）。同一项目的其他 executor 此刻可能正在
+各自的 worktree 里并行工作，你看不到他们没提交的改动，他们也看不到你的。
+
+- **所有改动都在 cwd 里做，提交到当前分支。** 不切换到别的分支，不碰别的 worktree，不去项目主检出里改东西。
+- **不要 `git push`，不要自己合并到集成分支或主分支。** 你退出后 daemon 会把你的分支合入集成分支。
+- **没提交的改动会丢。** 你退出后这个 worktree 会被重置并交给下一个任务；daemon 会在结果里报出没提交的文件，但内容不保留。
+- 依赖已经装好（`node_modules` 在这份 worktree 里复用），不需要自己 `bun install`，除非你改了 lockfile。
+
 ## 工作流程
 
 ### 1. 理解任务
@@ -41,9 +52,12 @@
 hub_claim({
   taskId: <你的 CLUSTER_TASK_ID>,
   intent: "一句话描述你要做什么",
-  files: ["相对路径或绝对路径", ...]
+  files: ["相对仓库根的路径", ...]
 })
 ```
+
+路径一律写**相对仓库根**的：每个 worker 的绝对路径都不同，写绝对路径 hub 就认不出两个人在改同一个文件。
+claim 的作用是提前避开合并冲突：改了同一文件的两个分支，后合入的那个会被标 `blocked`。
 
 如果 `granted: false`：
 1. **先做不冲突的部分**（claim 无冲突的文件子集）
@@ -131,8 +145,8 @@ hub_claim({
 
 ## 硬性约束
 
-- **不 claim 直接改文件 = 违规**。集群里可能有其他 worker 在改同一个
-  代码库，不 claim 会导致冲突。
+- **不 claim 直接改文件 = 违规**。其他 worker 可能在各自的分支上改同一个
+  文件，不 claim 的后果是你的分支合不进集成分支。
 - **长时间不 report = 被 kill**。超过 8 分钟没有 `hub_report(working)`，
   你会被判定失联，锁被回收，task 被标 timeout。
 - **忽略 directive = 违规**。如果 `hub_sync` 返回 directive 消息，那是
@@ -147,7 +161,7 @@ hub_claim({
 
 ## 完成前的验证门
 
-> **铁律：没有新鲜的验证证据 + 没有 git 落盘，就不能 `hub_report(completed)`。**
+> **铁律：没有新鲜的验证证据 + 没有 git commit，就不能 `hub_report(completed)`。**
 
 在准备报告 completed 之前，对照验收标准**这次就跑一遍**，不要靠上一次
 的记忆或"理论上应该通过"。流程：
@@ -160,14 +174,13 @@ hub_claim({
 5. **Git 落盘**（**强约束，缺一不可**）：
    - 把本任务涉及的、本仓库 tracked 的改动 `git add` 到 staging（不要 `-A`，按文件名加，避免误带 `.claude-*` / `.env` / 临时文件）
    - 按项目惯例 `git commit`（重构 vs 新功能可拆 commit；commit message 末尾带 `Co-Authored-By:` trailer，参照最近的 git log）
-   - `git push` 到当前分支的远端（用户 pull 才能拿到你的工作）
+   - **先 commit，再 `hub_report(completed)`**：daemon 只合入已提交的内容，不要 `git push`
    - 跑完后 `git status` 必须**洁净**（无未提交改动、无未追踪非临时文件），并把最终 commit hash 写进 hub_report 的 summary
    - 如果 ticket body 含 "## 交付与文档维护"（或同义的收尾区块）的 checkbox，**全部勾完**（除显式标 optional 的）才算这步完成
-6. **才能声明** — 上面 5 步全部确认过了，才能在 summary 里写"已通过 XXX、commit `<hash>` 已推送"
+6. **才能声明** — 上面 5 步全部确认过了，才能在 summary 里写"已通过 XXX、commit `<hash>`"
 
 **跳过任何一步 = 撒谎，不是完成。** 跑不了的命令（环境缺失等）就
-`hub_ask`，不要默默跳过然后报 completed。**git push 失败不是"环境问题"**——
-push 失败就 `hub_ask` 升级，不能 commit 完不 push 就声明 completed。
+`hub_ask`，不要默默跳过然后报 completed。
 
 ## 常见合理化借口 vs 现实
 
@@ -181,9 +194,9 @@ Agent 在压力下会"合理化"跳过步骤。下面是 executor 最常见的�
 | "typecheck 过了就等于完事" | typecheck ≠ smoke-test ≠ lint ≠ test。ticket 里要的每一项都得跑 |
 | "验收命令里这条我跑不了，跳过算了" | 跑不了就 `hub_ask`，不能默默跳过后说 completed |
 | "ticket 里的文档/收尾后面再补" | 后面就是忘。验收里写明的**仓库内**收尾当场做；本机 `.claude-*` 笔记不能代替验收项 |
-| "代码改完跑过测试就 OK，commit 让用户来" | **错。** 验证门第 5 步明确要求 git add + commit + push。working tree 留改动 ≠ 完成。用户视角看到的是"worker 没交付"，job 自报 completed 是欺骗 |
+| "代码改完跑过测试就 OK，commit 让用户来" | **错。** 验证门第 5 步明确要求 git add + commit。没提交的改动在你退出后就没了，用户视角看到的是"worker 没交付"，job 自报 completed 是欺骗 |
 | "我不知道用什么 commit message 格式" | 按 ticket 项目最近 git log 的格式照抄；不确定就在 summary 里说明你用的格式让 planner 审。不要因为"格式不知道"就不 commit |
-| "push 被 reject 了，先放着等用户解决" | push 被 reject = `hub_ask` 升级（不是 working tree 留下改动报 completed）。常见原因：远端有新 commit 需要 pull / branch 保护规则 / 凭据失效 |
+| "别人的改动我这儿看不到，切到集成分支看看" | 不要切分支。要看已合入的内容用 `git show <集成分支>:<路径>` / `git log <集成分支>`，都不需要离开当前分支 |
 | "ticket 没要求，但顺手改一下更好" | 这是违反"不扩大范围"硬性约束。写进 summary 建议后续处理，不要自己动手 |
 | "planner 给的路径看起来旧了，我猜应该是 X" | 别猜。`hub_ask` 确认一次比改错方向 3 小时便宜 |
 | "已经 claim 过一次，动其他文件不用再 claim" | claim 是按文件算的，动没 claim 的文件就是违规 |

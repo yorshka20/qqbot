@@ -6,12 +6,21 @@
 
 import type { Database } from 'bun:sqlite';
 import { logger, randomUUID } from '@qqbot/shared';
-import type { ProjectRegistry } from '../codingAgent/ProjectRegistry';
+import type { ProjectEntry, ProjectRegistry } from '../codingAgent/ProjectRegistry';
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { TaskSource } from './sources/TaskSource';
-import type { JobRecord, JobStatus, TaskCandidate, TaskRecord, TaskStatus } from './types';
+import {
+  isTerminalTaskStatus,
+  type JobRecord,
+  type JobStatus,
+  type TaskCandidate,
+  type TaskRecord,
+  type TaskStatus,
+} from './types';
 import type { WorkerPool } from './WorkerPool';
+import type { TaskWorkspaces } from './workspace/TaskWorkspaces';
+import type { SlotLease } from './workspace/WorktreePool';
 
 export class ClusterScheduler {
   private running = false;
@@ -27,6 +36,10 @@ export class ClusterScheduler {
    */
   private warnedMissingProjects = new Set<string>();
   private jobCompletedCallback: ((job: JobRecord, tasks: TaskRecord[]) => void) | null = null;
+  /** Tasks whose worker is gone and whose branch is landing, by task id. */
+  private settling = new Map<string, Promise<void>>();
+  private dispatchRunning = false;
+  private dispatchRequested = false;
 
   constructor(
     private config: ClusterConfig,
@@ -34,6 +47,7 @@ export class ClusterScheduler {
     private workerPool: WorkerPool,
     private db: Database,
     private projectRegistry: ProjectRegistry,
+    private workspaces: TaskWorkspaces,
   ) {}
 
   /**
@@ -65,6 +79,9 @@ export class ClusterScheduler {
     // outlive the scheduler.
     this.restoreRecentFromDb();
     this.adoptRunningTasks();
+    this.restoreQueuedChildren();
+    await this.releaseOrphanedSlots();
+    void this.dispatchPendingTasks();
 
     logger.info(`[ClusterScheduler] Started (interval: ${this.config.schedulingInterval}ms)`);
     this.scheduleNextRun();
@@ -117,6 +134,17 @@ export class ClusterScheduler {
     // Always persist — allows the post-exit code path to refresh error/diffSummary
     // after hub_report fired first. Stdout is never written to SQLite.
     this.persistTask(task);
+
+    // A task in a slot is not over at its hub_report: the worker runs on until it exits and may
+    // still commit, and the branch has yet to land, which can end the task as `blocked` instead.
+    // So everything below waits for the exit, which brings the task back here.
+    if (this.workspaces.holdsSlot(task.id)) {
+      if (!task.workerId || !this.workerPool.isWorkerLive(task.workerId)) {
+        this.settleWorkspace(task);
+      }
+      return;
+    }
+
     // Whoever blocks in hub_wait on this task (its planner) wakes now, not on a poll.
     this.hub.taskSettled(task.id);
 
@@ -136,7 +164,7 @@ export class ClusterScheduler {
     if (job && !task.parentTaskId) {
       if (task.status === 'completed') {
         job.tasksCompleted += 1;
-      } else if (task.status === 'failed' || task.status === 'cancelled') {
+      } else if (isTerminalTaskStatus(task.status)) {
         job.tasksFailed += 1;
       }
       const totalDone = job.tasksCompleted + job.tasksFailed;
@@ -171,6 +199,27 @@ export class ClusterScheduler {
     });
   }
 
+  private settleWorkspace(task: TaskRecord): void {
+    if (this.settling.has(task.id)) {
+      return;
+    }
+    const settled = this.workspaces
+      .settle(task, this.jobs.get(task.jobId) ?? this.resolveJob(task.jobId))
+      .catch((err) => logger.error(`[ClusterScheduler] Settling the workspace of task ${task.id} failed:`, err))
+      .then(() => {
+        this.settling.delete(task.id);
+        this.finalizeTask(task);
+        return this.dispatchPendingTasks();
+      });
+    this.settling.set(task.id, settled);
+  }
+
+  /** The task has ended and nothing about it can change any more. */
+  isTaskSettled(taskId: string): boolean {
+    const task = this.findTask(taskId);
+    return task !== undefined && isTerminalTaskStatus(task.status) && !this.workspaces.holdsSlot(taskId);
+  }
+
   /**
    * Operator-initiated cancel of a single task. Unlike cascade-kill (which
    * only fires as a side effect of a parent task terminating), this is the
@@ -189,7 +238,7 @@ export class ClusterScheduler {
     if (!task) {
       return { ok: false, code: 'not_found' };
     }
-    if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
+    if (isTerminalTaskStatus(task.status)) {
       return { ok: false, code: 'already_terminal', status: task.status };
     }
 
@@ -363,6 +412,11 @@ export class ClusterScheduler {
     logger.info('[ClusterScheduler] Stopped');
   }
 
+  /** Wait for branches that are landing. Workers killed on the way down get here after `stop()`, so this comes last. */
+  async waitForSettling(): Promise<void> {
+    await Promise.allSettled(this.settling.values());
+  }
+
   /**
    * Manually submit a task. Creates a one-off job + task and immediately
    * tries to dispatch a worker for it (without waiting for the next
@@ -529,10 +583,7 @@ export class ClusterScheduler {
    * `pending`) and false is returned — the caller decides whether to
    * retry on the next tick.
    */
-  private async tryDispatch(
-    task: TaskRecord,
-    projectInfo: { alias: string; path: string; type: string },
-  ): Promise<boolean> {
+  private async tryDispatch(task: TaskRecord, projectInfo: ProjectEntry): Promise<boolean> {
     // Template selection precedence:
     //   1. task.workerTemplate (pre-stamped by submitTask via the WebUI/API
     //      override or by a previous dispatch attempt)
@@ -564,16 +615,74 @@ export class ClusterScheduler {
     // Check both global and per-template concurrency limits before spawning.
     if (!this.workerPool.canSpawnMore(templateName)) return false;
 
-    const worker = await this.workerPool.spawnWorker(templateName, task.project, projectInfo.path, task);
+    const lease = this.claimWorkspace(task, templateName, projectInfo);
+    if (lease === 'busy') return false;
+
+    // Everything up to spawnWorker's registration of the worker runs synchronously, so a
+    // concurrent dispatch sees this task as taken and counts its worker.
+    task.status = 'claimed';
+    task.claimedAt = new Date().toISOString();
+    task.workerTemplate = templateName;
+    this.persistTask(task);
+
+    const spawned = this.spawnTaskWorker(task, templateName, projectInfo, lease);
+    if (lease === null) return spawned;
+    // Preparing a slot can include an install that takes minutes; hub_spawn and POST /jobs
+    // answer now, and a failure reaches the task through the spawn-failure path.
+    void spawned;
+    return true;
+  }
+
+  /** The slot this task runs in: null when it runs in the project checkout, `busy` when it must wait for one. */
+  private claimWorkspace(task: TaskRecord, templateName: string, projectInfo: ProjectEntry): SlotLease | 'busy' | null {
+    // A planner started before worktree pools existed expects its children in the checkout it
+    // reads; its job stays there until it settles.
+    const parent = task.parentTaskId ? this.findTask(task.parentTaskId) : undefined;
+    if (parent && !parent.worktreePath) return null;
+
+    const kind = this.config.workerTemplates[templateName]?.role === 'planner' ? 'planner' : 'executor';
+    const claim = this.workspaces.claim(task, projectInfo, kind);
+    return claim === 'unpooled' ? null : claim;
+  }
+
+  private async spawnTaskWorker(
+    task: TaskRecord,
+    templateName: string,
+    projectInfo: ProjectEntry,
+    lease: SlotLease | null,
+  ): Promise<boolean> {
+    const worker = await this.workerPool.spawnWorker(
+      templateName,
+      task.project,
+      projectInfo.path,
+      task,
+      lease ? () => this.prepareWorkspace(task, projectInfo, lease) : undefined,
+    );
     if (worker) {
-      task.status = 'running';
-      task.workerId = worker.id;
-      task.workerTemplate = templateName;
+      task.status = isTerminalTaskStatus(task.status) ? task.status : 'running';
       task.startedAt = new Date().toISOString();
       this.persistTask(task);
       return true;
     }
+    // Refused before it started; a failure while starting already ended the task.
+    if (task.status === 'claimed') {
+      task.status = 'pending';
+      task.claimedAt = undefined;
+      this.persistTask(task);
+      if (lease) await this.workspaces.release(lease);
+    }
     return false;
+  }
+
+  private async prepareWorkspace(task: TaskRecord, projectInfo: ProjectEntry, lease: SlotLease) {
+    const job = this.jobs.get(task.jobId) ?? this.resolveJob(task.jobId);
+    if (!job) {
+      throw new Error(`Job ${task.jobId} of task ${task.id} not found`);
+    }
+    const workspace = await this.workspaces.prepare(task, job, projectInfo, lease);
+    this.persistJob(job);
+    this.persistTask(task);
+    return workspace;
   }
 
   /**
@@ -654,20 +763,7 @@ export class ClusterScheduler {
       if (!row) {
         return undefined;
       }
-      return {
-        id: row.id as string,
-        project: row.project as string,
-        description: row.description as string,
-        status: row.status as JobRecord['status'],
-        createdAt: row.createdAt as string,
-        startedAt: (row.startedAt as string | null) ?? undefined,
-        completedAt: (row.completedAt as string | null) ?? undefined,
-        taskCount: Number(row.taskCount),
-        tasksCompleted: Number(row.tasksCompleted),
-        tasksFailed: Number(row.tasksFailed),
-        metadata: (row.metadata as string | null) ?? undefined,
-        ticketId: (row.ticketId as string | null) ?? undefined,
-      };
+      return this.rowToJob(row);
     } catch (err) {
       logger.warn(`[ClusterScheduler] resolveJob DB lookup failed for ${jobId}:`, err);
       return undefined;
@@ -764,13 +860,7 @@ export class ClusterScheduler {
 
     // 5. Re-attempt any pending tasks from prior submitTask() calls that
     //    couldn't dispatch immediately because the pool was full.
-    for (const task of this.activeTasks.values()) {
-      if (task.status !== 'pending') continue;
-      if (!this.workerPool.canSpawnMore()) break;
-      const projectInfo = this.projectRegistry.resolve(task.project);
-      if (!projectInfo) continue;
-      await this.tryDispatch(task, projectInfo);
-    }
+    await this.dispatchPendingTasks();
 
     // 6. Health check — two-phase: nudge first, kill only after grace period
     const { nudge, kill } = this.workerPool.healthCheck();
@@ -780,6 +870,34 @@ export class ClusterScheduler {
     for (const workerId of kill) {
       logger.warn(`[ClusterScheduler] Killing unresponsive worker (nudge ignored): ${workerId}`);
       await this.workerPool.killWorker(workerId);
+    }
+  }
+
+  /**
+   * Give waiting tasks a worker. Runs whenever capacity may have appeared: a slot was freed, or
+   * the scheduling tick. A call that arrives during a pass asks for one more pass, so nothing
+   * freed meanwhile is missed.
+   */
+  private async dispatchPendingTasks(): Promise<void> {
+    if (this.dispatchRunning) {
+      this.dispatchRequested = true;
+      return;
+    }
+    this.dispatchRunning = true;
+    try {
+      do {
+        this.dispatchRequested = false;
+        if (!this.running || this.workerPool.isPaused()) return;
+        for (const task of Array.from(this.activeTasks.values())) {
+          if (task.status !== 'pending') continue;
+          if (!this.workerPool.canSpawnMore()) break;
+          const projectInfo = this.projectRegistry.resolve(task.project);
+          if (!projectInfo) continue;
+          await this.tryDispatch(task, projectInfo);
+        }
+      } while (this.dispatchRequested);
+    } finally {
+      this.dispatchRunning = false;
     }
   }
 
@@ -879,8 +997,8 @@ export class ClusterScheduler {
       this.db
         .query(
           `INSERT OR REPLACE INTO cluster_jobs
-         (id, project, description, status, createdAt, startedAt, completedAt, taskCount, tasksCompleted, tasksFailed, metadata, ticketId)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, project, description, status, createdAt, startedAt, completedAt, taskCount, tasksCompleted, tasksFailed, metadata, ticketId, integrationBranch)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           job.id,
@@ -895,6 +1013,7 @@ export class ClusterScheduler {
           job.tasksFailed,
           job.metadata ?? null,
           job.ticketId ?? null,
+          job.integrationBranch ?? null,
         );
     } catch (err) {
       logger.error('[ClusterScheduler] Failed to persist job:', err);
@@ -912,8 +1031,9 @@ export class ClusterScheduler {
           `INSERT OR REPLACE INTO cluster_tasks
          (id, jobId, project, description, status, workerId, workerTemplate, source,
           createdAt, claimedAt, startedAt, completedAt, output, error, filesModified, diffSummary, metadata, parentTaskId,
-          workerPid, workerStartedAt, logPath, sessionId, acknowledgedAt, model, usage)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          workerPid, workerStartedAt, logPath, sessionId, acknowledgedAt, model, usage,
+          branch, worktreePath, mergedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           task.id,
@@ -941,6 +1061,9 @@ export class ClusterScheduler {
           task.acknowledgedAt ?? null,
           task.model ?? null,
           task.usage ? JSON.stringify(task.usage) : null,
+          task.branch ?? null,
+          task.worktreePath ?? null,
+          task.mergedAt ?? null,
         );
     } catch (err) {
       logger.error('[ClusterScheduler] Failed to persist task:', err);
@@ -1044,21 +1167,7 @@ export class ClusterScheduler {
       for (const row of rows) {
         const id = row.id as string;
         if (this.jobs.has(id)) continue; // already in memory (shouldn't happen on fresh start)
-        const job: JobRecord = {
-          id,
-          project: row.project as string,
-          description: row.description as string,
-          status: row.status as JobRecord['status'],
-          createdAt: row.createdAt as string,
-          startedAt: (row.startedAt as string | null) ?? undefined,
-          completedAt: (row.completedAt as string | null) ?? undefined,
-          taskCount: Number(row.taskCount),
-          tasksCompleted: Number(row.tasksCompleted),
-          tasksFailed: Number(row.tasksFailed),
-          metadata: (row.metadata as string | null) ?? undefined,
-          ticketId: (row.ticketId as string | null) ?? undefined,
-        };
-        this.jobs.set(id, job);
+        this.jobs.set(id, this.rowToJob(row));
         restored++;
       }
       if (restored > 0) {
@@ -1072,12 +1181,22 @@ export class ClusterScheduler {
   /**
    * Re-attach to the workers an earlier scheduler process started. A task whose worker is
    * gone ends as failed here, with whatever hub_report left in the DB kept intact.
+   *
+   * A task still holding a slot is picked up whatever its status: it may have reported
+   * `completed` with its worker still running, or the daemon may have stopped before its
+   * branch landed. Either way, losing it would leak the slot and drop the merge. A `claimed`
+   * task with no pid was stopped mid-preparation and has no worker to adopt.
    */
   private adoptRunningTasks(): void {
     let rows: Array<Record<string, unknown>>;
     try {
       rows = this.db
-        .query(`SELECT * FROM cluster_tasks WHERE status IN ('running', 'claimed') AND workerPid IS NOT NULL`)
+        .query(
+          `SELECT * FROM cluster_tasks
+           WHERE (status = 'running' AND workerPid IS NOT NULL)
+              OR status = 'claimed'
+              OR id IN (SELECT taskId FROM cluster_worktree_slots WHERE taskId IS NOT NULL)`,
+        )
         .all() as Array<Record<string, unknown>>;
     } catch (err) {
       logger.warn('[ClusterScheduler] adoptRunningTasks query failed (non-fatal):', err);
@@ -1095,13 +1214,40 @@ export class ClusterScheduler {
         adopted++;
         continue;
       }
-      task.status = 'failed';
-      task.error = 'Worker process not found after scheduler restart';
-      task.completedAt = new Date().toISOString();
+      if (!isTerminalTaskStatus(task.status)) {
+        task.status = 'failed';
+        task.error = 'Worker process not found after scheduler restart';
+        task.completedAt = new Date().toISOString();
+      }
       this.finalizeTask(task);
     }
     if (rows.length > 0) {
       logger.info(`[ClusterScheduler] Adopted ${adopted} running worker(s); ${rows.length - adopted} ended as failed`);
+    }
+  }
+
+  /** A child still waiting for a slot keeps waiting across a restart, or its planner would wait forever. */
+  private restoreQueuedChildren(): void {
+    const parents = Array.from(this.activeTasks.keys());
+    if (parents.length === 0) return;
+    const rows = this.db
+      .query(
+        `SELECT * FROM cluster_tasks WHERE status = 'pending' AND parentTaskId IN (${parents.map(() => '?').join(', ')})`,
+      )
+      .all(...parents) as Array<Record<string, unknown>>;
+    for (const row of rows) {
+      const task = this.rowToTask(row);
+      this.activeTasks.set(task.id, task);
+    }
+  }
+
+  /** A lease whose task the database no longer knows has no one left to return it. */
+  private async releaseOrphanedSlots(): Promise<void> {
+    for (const lease of this.workspaces.leases()) {
+      if (!this.findTask(lease.taskId)) {
+        logger.warn(`[ClusterScheduler] Releasing slot ${lease.path}: task ${lease.taskId} is unknown`);
+        await this.workspaces.release(lease);
+      }
     }
   }
 
@@ -1119,6 +1265,7 @@ export class ClusterScheduler {
       tasksFailed: Number(row.tasksFailed),
       metadata: (row.metadata as string | null) ?? undefined,
       ticketId: (row.ticketId as string | null) ?? undefined,
+      integrationBranch: (row.integrationBranch as string | null) ?? undefined,
     };
   }
 
@@ -1149,6 +1296,9 @@ export class ClusterScheduler {
       acknowledgedAt: (row.acknowledgedAt as string | null) ?? undefined,
       model: (row.model as string | null) ?? undefined,
       usage: parseUsage(row.usage),
+      branch: (row.branch as string | null) ?? undefined,
+      worktreePath: (row.worktreePath as string | null) ?? undefined,
+      mergedAt: (row.mergedAt as string | null) ?? undefined,
     };
   }
 
