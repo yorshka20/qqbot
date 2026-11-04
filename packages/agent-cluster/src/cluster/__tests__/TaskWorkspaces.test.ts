@@ -38,6 +38,7 @@ describe('TaskWorkspaces', () => {
       taskCount: 1,
       tasksCompleted: 0,
       tasksFailed: 0,
+      planning: 'interactive',
     };
   }
 
@@ -246,7 +247,13 @@ describe('TaskWorkspaces', () => {
     expect(planner).toMatchObject({ mode: 'pooled', kind: 'planner', integrationBranch: INTEGRATION });
     expect(planner.branch).toMatch(/^cluster\/aaaaaaaa-33333333$/);
     expect(task.branch).toBeDefined();
-    expect(workspaces.unpooled(box.entry, 'executor')).toEqual({ cwd: box.repo, env: {}, mode: 'shared', kind: 'executor' });
+    expect(workspaces.unpooled(box.entry, 'executor', job)).toEqual({
+      cwd: box.repo,
+      env: { CLUSTER_PLANNING: 'interactive' },
+      mode: 'shared',
+      kind: 'executor',
+      planning: 'interactive',
+    });
   });
 
   test('stop ends a publish that is still running instead of leaving it behind', async () => {

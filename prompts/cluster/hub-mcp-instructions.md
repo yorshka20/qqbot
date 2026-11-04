@@ -9,6 +9,7 @@
 | `hub_report` | 汇报进度 / 终态 | `status=working` 时 **必须带** `nextSteps`；超 8 分钟不 report = 被 kill |
 | `hub_wait` | 阻塞到：你关注的子任务结束 / 有消息或答案给你 / 超时（最长 4 分钟） | **要等就用它**，hub 在事件发生时叫醒你；禁止 `sleep` 或定时轮询 |
 | `hub_ask` | 升级至人类或 planner 决策 | 立即返回 `askId`；先做能做的，需要答案时 `hub_wait` 等它 |
+| `hub_say` | 在本任务的对话里对 owner 说一句：方案摘要、对 directive 的回应、一行进展 | 不改状态（那是 `hub_report`），不提问（那是 `hub_ask`）；短 |
 | `hub_message` | 向其他 worker 发送消息 / 广播 | 少用；大多数协调走 `hub_sync` + `hub_claim` |
 
 ## Planner 专属工具（executor 调用会被拒绝）

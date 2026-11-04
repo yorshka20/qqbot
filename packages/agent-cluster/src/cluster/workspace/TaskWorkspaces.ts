@@ -94,17 +94,20 @@ export class TaskWorkspaces {
         CLUSTER_TASK_BRANCH: branch,
         CLUSTER_INTEGRATION_BRANCH: integrationBranch,
         CLUSTER_WORKTREE: lease.path,
+        CLUSTER_PLANNING: job.planning,
       },
       mode: 'pooled',
       kind: lease.kind,
       branch,
       integrationBranch,
+      planning: job.planning,
     };
   }
 
   /** The workspace of a task that runs in the project checkout itself: no slot, no branch of its own, no merge. */
-  unpooled(entry: ProjectEntry, kind: SlotKind): WorkerWorkspace {
-    return { cwd: entry.path, env: {}, mode: 'shared', kind };
+  unpooled(entry: ProjectEntry, kind: SlotKind, job: JobRecord | undefined): WorkerWorkspace {
+    const planning = job?.planning ?? 'auto';
+    return { cwd: entry.path, env: { CLUSTER_PLANNING: planning }, mode: 'shared', kind, planning };
   }
 
   /** End the publish commands still running; a build is derived state the next merge rebuilds. */

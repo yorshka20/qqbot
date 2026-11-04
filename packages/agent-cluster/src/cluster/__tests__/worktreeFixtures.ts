@@ -29,7 +29,6 @@ export function openClusterDb(path = ':memory:'): Database {
   ]) {
     db.run(`ALTER TABLE cluster_tasks ADD COLUMN ${column}`);
   }
-  db.run('ALTER TABLE cluster_jobs ADD COLUMN integrationBranch TEXT');
   return db;
 }
 

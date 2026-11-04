@@ -36,6 +36,11 @@ export function renderPrompt(template: string, vars: Record<string, string | und
   return template.replace(/\{\{([A-Z_]+)\}\}/g, (token, key: string) => vars[key] ?? token);
 }
 
+/** The planner's working mode; executors have none. */
+export function planningPromptName(workspace: WorkerWorkspace): string | null {
+  return workspace.kind === 'planner' ? `planning-${workspace.planning}.md` : null;
+}
+
 export function workspacePromptName(workspace: WorkerWorkspace): string {
   return `workspace-${workspace.mode}-${workspace.kind}.md`;
 }

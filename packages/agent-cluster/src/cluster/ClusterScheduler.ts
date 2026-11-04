@@ -14,6 +14,7 @@ import {
   isTerminalTaskStatus,
   type JobRecord,
   type JobStatus,
+  type PlanningMode,
   type TaskCandidate,
   type TaskRecord,
   type TaskStatus,
@@ -435,7 +436,7 @@ export class ClusterScheduler {
   async submitTask(
     project: string,
     description: string,
-    options?: { workerTemplate?: string; requirePlannerRole?: boolean; ticketId?: string },
+    options?: { workerTemplate?: string; requirePlannerRole?: boolean; ticketId?: string; planning?: PlanningMode },
   ): Promise<TaskRecord | null> {
     const projectInfo = this.projectRegistry.resolve(project);
     if (!projectInfo) {
@@ -522,6 +523,7 @@ export class ClusterScheduler {
       status: 'pending',
       createdAt: new Date().toISOString(),
       taskCount: 1,
+      planning: options?.planning ?? 'interactive',
       tasksCompleted: 0,
       tasksFailed: 0,
       ticketId: options?.ticketId,
@@ -644,6 +646,10 @@ export class ClusterScheduler {
     return claim === 'unpooled' ? null : claim;
   }
 
+  private jobOf(task: TaskRecord): JobRecord | undefined {
+    return this.jobs.get(task.jobId) ?? this.resolveJob(task.jobId);
+  }
+
   private slotKind(templateName: string): SlotKind {
     return this.config.workerTemplates[templateName]?.role === 'planner' ? 'planner' : 'executor';
   }
@@ -661,7 +667,7 @@ export class ClusterScheduler {
       task,
       lease
         ? () => this.prepareWorkspace(task, projectInfo, lease)
-        : async () => this.workspaces.unpooled(projectInfo, this.slotKind(templateName)),
+        : async () => this.workspaces.unpooled(projectInfo, this.slotKind(templateName), this.jobOf(task)),
     );
     if (worker) {
       task.status = isTerminalTaskStatus(task.status) ? task.status : 'running';
@@ -853,6 +859,7 @@ export class ClusterScheduler {
         createdAt: new Date().toISOString(),
         startedAt: new Date().toISOString(),
         taskCount: 1,
+        planning: 'auto',
         tasksCompleted: 0,
         tasksFailed: 0,
       };
@@ -1002,8 +1009,8 @@ export class ClusterScheduler {
       this.db
         .query(
           `INSERT OR REPLACE INTO cluster_jobs
-         (id, project, description, status, createdAt, startedAt, completedAt, taskCount, tasksCompleted, tasksFailed, metadata, ticketId, integrationBranch)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, project, description, status, createdAt, startedAt, completedAt, taskCount, tasksCompleted, tasksFailed, metadata, ticketId, integrationBranch, planning)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           job.id,
@@ -1019,6 +1026,7 @@ export class ClusterScheduler {
           job.metadata ?? null,
           job.ticketId ?? null,
           job.integrationBranch ?? null,
+          job.planning,
         );
     } catch (err) {
       logger.error('[ClusterScheduler] Failed to persist job:', err);
@@ -1271,6 +1279,7 @@ export class ClusterScheduler {
       metadata: (row.metadata as string | null) ?? undefined,
       ticketId: (row.ticketId as string | null) ?? undefined,
       integrationBranch: (row.integrationBranch as string | null) ?? undefined,
+      planning: (row.planning as PlanningMode | null) ?? 'auto',
     };
   }
 

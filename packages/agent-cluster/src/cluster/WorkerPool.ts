@@ -17,7 +17,13 @@ import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
 import type { ClusterConfig, WorkerBackendType } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import { LogTail } from './LogTail';
-import { loadClusterPrompt, renderPrompt, workspacePromptName, workspacePromptVars } from './prompts';
+import {
+  loadClusterPrompt,
+  planningPromptName,
+  renderPrompt,
+  workspacePromptName,
+  workspacePromptVars,
+} from './prompts';
 import {
   type ClusterStatus,
   isTerminalTaskStatus,

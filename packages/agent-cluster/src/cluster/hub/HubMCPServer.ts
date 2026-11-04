@@ -32,6 +32,7 @@ import type {
   HubMessageInput,
   HubQueryTaskInput,
   HubReportInput,
+  HubSayInput,
   HubSpawnInput,
   HubWaitInput,
   HubWaitTaskInput,
@@ -255,6 +256,21 @@ export class HubMCPServer {
         ),
     );
 
+    // hub_say
+    register(
+      'hub_say',
+      {
+        description:
+          "Say something to the owner in your task's conversation: a plan summary, a proposal, the answer to a " +
+          'directive, a one-line status. It changes no status (that is hub_report) and asks no question that ' +
+          'needs an answer (that is hub_ask).',
+        inputSchema: {
+          text: z.string().describe('What to say, written for the owner. Markdown is fine; keep it short.'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_say', extra, (workerId) => this.hub.handleSay(workerId, args as unknown as HubSayInput)),
+    );
     // hub_dispatch — planner-only (legacy Phase 2)
     register(
       'hub_dispatch',

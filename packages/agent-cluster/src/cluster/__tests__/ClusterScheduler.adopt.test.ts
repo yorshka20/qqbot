@@ -50,7 +50,8 @@ function openDb(): Database {
     tasksFailed INTEGER DEFAULT 0,
     metadata TEXT,
     ticketId TEXT,
-    integrationBranch TEXT
+    integrationBranch TEXT,
+    planning TEXT
   )`);
   db.run(`CREATE TABLE cluster_tasks (
     id TEXT PRIMARY KEY,
@@ -199,6 +200,7 @@ describe('ClusterScheduler.adoptRunningTasks', () => {
       taskCount: 1,
       tasksCompleted: 0,
       tasksFailed: 0,
+      planning: 'auto',
     };
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { loadClusterPrompt, renderPrompt, workspacePromptName, workspacePromptVars } from '../prompts';
+import { loadClusterPrompt, planningPromptName, renderPrompt, workspacePromptName, workspacePromptVars } from '../prompts';
 import type { WorkerWorkspace } from '../types';
 
 const pooledPlanner: WorkerWorkspace = {
@@ -9,6 +9,7 @@ const pooledPlanner: WorkerWorkspace = {
   kind: 'planner',
   branch: 'cluster/aaaaaaaa-33333333',
   integrationBranch: 'cluster/aaaaaaaa',
+  planning: 'interactive',
 };
 
 describe('cluster prompt files', () => {
@@ -28,11 +29,20 @@ describe('cluster prompt files', () => {
   test('the pooled planner note names the integration branch; the shared one has none', async () => {
     const pooled = renderPrompt(await loadClusterPrompt(workspacePromptName(pooledPlanner), '/x'), workspacePromptVars(pooledPlanner));
     expect(pooled).toContain('cluster/aaaaaaaa');
-    const shared: WorkerWorkspace = { cwd: '/repo', env: {}, mode: 'shared', kind: 'planner' };
+    const shared: WorkerWorkspace = { cwd: '/repo', env: {}, mode: 'shared', kind: 'planner', planning: 'auto' };
     expect(renderPrompt(await loadClusterPrompt(workspacePromptName(shared), '/x'), workspacePromptVars(shared))).not.toContain('{{');
   });
 
   test('an unknown token is left in place so it is visible', () => {
     expect(renderPrompt('a {{MISSING}} b', {})).toBe('a {{MISSING}} b');
+  });
+
+  test('both planning modes have a planner note, and executors get none', async () => {
+    for (const planning of ['interactive', 'auto'] as const) {
+      const name = planningPromptName({ ...pooledPlanner, planning });
+      expect(name).toBe(`planning-${planning}.md`);
+      expect((await loadClusterPrompt(name as string, '/x')).length).toBeGreaterThan(0);
+    }
+    expect(planningPromptName({ ...pooledPlanner, kind: 'executor' })).toBeNull();
   });
 });

@@ -23,6 +23,7 @@ export type ClusterEventType =
   | 'task_publish_failed'
   | 'worker_progress'
   | 'directive'
+  | 'worker_message'
   | 'answer'
   | 'lock_released'
   | 'lock_acquired'
@@ -139,6 +140,7 @@ export interface ClusterJob {
   ticketId?: string;
   /** Branch the job's finished tasks merge into, where the owner accepts the work. */
   integrationBranch?: string;
+  planning?: 'interactive' | 'auto';
 }
 
 export interface ClusterTask {
@@ -300,6 +302,8 @@ export interface ClusterJobSubmitBody {
   requirePlannerRole?: boolean;
   /** Ticket to write the job's result back to. */
   ticketId?: string;
+  /** Default `interactive`: the planner confirms its plan with the owner before spawning. */
+  planning?: 'interactive' | 'auto';
 }
 
 /** `POST /api/cluster/{tasks,jobs}/:id/kill` */
