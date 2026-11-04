@@ -1,5 +1,10 @@
-import { useEffect, useRef } from 'react';
-import { type ClusterStreamListener, subscribeClusterStream } from './clusterStream';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
+import {
+  type ClusterStreamListener,
+  isClusterStreamConnected,
+  subscribeClusterStream,
+  subscribeClusterStreamConnection,
+} from './clusterStream';
 
 const MIN_REFRESH_INTERVAL_MS = 1000;
 
@@ -13,6 +18,10 @@ export function useClusterStream(listener: ClusterStreamListener, enabled = true
     }
     return subscribeClusterStream((event, data) => latest.current(event, data));
   }, [enabled]);
+}
+
+export function useClusterStreamConnected(): boolean {
+  return useSyncExternalStore(subscribeClusterStreamConnection, isClusterStreamConnected);
 }
 
 /**

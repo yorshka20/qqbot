@@ -10,12 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
     "@qqbot/api-types": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.15",
-    "@radix-ui/react-select": "^2.2.6",
-    "@tailwindcss/typography": "^0.5.19",
     "lucide-react": "^0.577.0",
-    "marked": "^17.0.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

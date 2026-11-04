@@ -6,7 +6,28 @@ const RECONNECT_DELAY_MS = 5000;
 export type ClusterStreamListener = (event: string, data: unknown) => void;
 
 const listeners = new Set<ClusterStreamListener>();
+const connectionListeners = new Set<() => void>();
 let connection: AbortController | null = null;
+let connected = false;
+
+function setConnected(next: boolean): void {
+  if (connected === next) {
+    return;
+  }
+  connected = next;
+  for (const listener of connectionListeners) {
+    listener();
+  }
+}
+
+export function isClusterStreamConnected(): boolean {
+  return connected;
+}
+
+export function subscribeClusterStreamConnection(listener: () => void): () => void {
+  connectionListeners.add(listener);
+  return () => connectionListeners.delete(listener);
+}
 
 function dispatch(event: string, raw: string): void {
   let data: unknown;
@@ -57,11 +78,13 @@ async function run(signal: AbortSignal): Promise<void> {
         return;
       }
       if (res.ok && res.body) {
+        setConnected(true);
         await readEvents(res.body);
       }
     } catch {
       // A dropped connection and a daemon that is down both end here; the loop reconnects.
     }
+    setConnected(false);
     await waitToReconnect(signal);
   }
 }
@@ -82,6 +105,7 @@ export function subscribeClusterStream(listener: ClusterStreamListener): () => v
     if (listeners.size === 0) {
       connection?.abort();
       connection = null;
+      setConnected(false);
     }
   };
 }
