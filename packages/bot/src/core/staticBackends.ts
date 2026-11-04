@@ -9,7 +9,6 @@
  */
 
 import '@/integrations/agent-cluster/ClusterAPIBackend';
-import '@/integrations/agent-cluster/TicketBackend';
 import '@/lan/host/LanAPIBackend';
 import '@/memory/MemoryStatusBackend';
 import '@/persona/PersonaBackend';

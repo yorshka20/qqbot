@@ -17,7 +17,7 @@ import {
   type SessionProviderConfig,
 } from './types/ai';
 import type { BilibiliConfig, BilibiliLiveConfig } from './types/bilibili';
-import type { BotSelfConfig, FileReadServiceConfig, StaticServerConfig } from './types/bot';
+import type { BotSelfConfig, ClusterClientConfig, FileReadServiceConfig, StaticServerConfig } from './types/bot';
 import type { CardRenderConfig } from './types/cardRender';
 import type { DatabaseConfig } from './types/database';
 import type { DocsPreviewConfig } from './types/docsPreview';
@@ -96,6 +96,8 @@ export interface BotConfig {
   vkbContextEngine?: VKBContextEngineConfig;
   projectRegistry?: ProjectRegistryConfig;
   cluster?: Record<string, unknown>;
+  /** The cluster daemon the bot talks to; without it every cluster feature answers "not configured". */
+  clusterClient?: ClusterClientConfig;
   /**
    * Tickets storage (file-based). When absent, falls back to
    * `<repoRoot>/tickets` for backwards compatibility. See `TicketsConfig`
@@ -523,6 +525,10 @@ export class Config {
 
   getClusterConfig(): Record<string, unknown> | undefined {
     return this.config.cluster;
+  }
+
+  getClusterClientConfig(): ClusterClientConfig | undefined {
+    return this.config.clusterClient;
   }
 
   getAvatarConfig(): Record<string, unknown> | undefined {

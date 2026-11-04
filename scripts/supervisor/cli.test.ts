@@ -5,24 +5,60 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { APP_NAMES, appByName, BOT_APP, CLUSTER_APP } from './app';
 import { COMMANDS, localNetworkWarning, parseCliArgs, UsageError } from './cli';
 import { createState, mayBeRunning, readState } from './client';
 import { controlHandler } from './control';
 import type { BotStatus } from './Supervisor';
 
 describe('parseCliArgs', () => {
-  it('accepts every command, with --lines / -n', () => {
+  it('accepts every command, with --lines / -n, for the bot by default', () => {
     for (const command of COMMANDS) {
-      expect(parseCliArgs([command])).toEqual({ command, lines: 50 });
+      expect(parseCliArgs([command])).toEqual({ command, lines: 50, app: 'bot' });
     }
-    expect(parseCliArgs(['logs', '--lines', '200'])).toEqual({ command: 'logs', lines: 200 });
-    expect(parseCliArgs(['logs', '-n', '0'])).toEqual({ command: 'logs', lines: 0 });
+    expect(parseCliArgs(['logs', '--lines', '200'])).toEqual({ command: 'logs', lines: 200, app: 'bot' });
+    expect(parseCliArgs(['logs', '-n', '0'])).toEqual({ command: 'logs', lines: 0, app: 'bot' });
   });
 
-  it('refuses a missing, unknown or extra command, an unknown option and a bad count', () => {
-    for (const argv of [[], ['reload'], ['start', 'stop'], ['status', '--force'], ['logs', '-n', 'x'], ['logs', '-n', '-3']]) {
+  it('picks the app with --app, before or after the command', () => {
+    expect(parseCliArgs(['--app', 'cluster', 'start'])).toEqual({ command: 'start', lines: 50, app: 'cluster' });
+    expect(parseCliArgs(['status', '--app', 'cluster'])).toEqual({ command: 'status', lines: 50, app: 'cluster' });
+    expect(parseCliArgs(['--app', 'bot', 'stop'])).toEqual({ command: 'stop', lines: 50, app: 'bot' });
+  });
+
+  it('refuses a missing, unknown or extra command, an unknown option, a bad count and an unknown app', () => {
+    for (const argv of [
+      [],
+      ['reload'],
+      ['start', 'stop'],
+      ['status', '--force'],
+      ['logs', '-n', 'x'],
+      ['logs', '-n', '-3'],
+      ['--app', 'webui', 'start'],
+      ['--app', 'start'],
+    ]) {
       expect(() => parseCliArgs(argv)).toThrow(UsageError);
     }
+  });
+});
+
+describe('apps', () => {
+  it('defines the bot and the cluster daemon, each with files of its own', () => {
+    expect(APP_NAMES).toEqual(['bot', 'cluster']);
+    expect(appByName('bot')).toBe(BOT_APP);
+    expect(appByName('cluster')).toBe(CLUSTER_APP);
+    expect(() => appByName('webui')).toThrow('unknown app');
+    expect(CLUSTER_APP.files.dir).not.toBe(BOT_APP.files.dir);
+    expect(CLUSTER_APP.files.state).not.toBe(BOT_APP.files.state);
+    expect(CLUSTER_APP.cmd[1]).toBe('packages/agent-cluster/src/daemon/main.ts');
+    expect(CLUSTER_APP.stopTimeoutMs).toBe(30_000);
+  });
+
+  it('captures the daemon output in full and silences the bot console, both supervised', () => {
+    expect(BOT_APP.env.NO_CONSOLE_LOG).toBe('1');
+    expect(CLUSTER_APP.env.NO_CONSOLE_LOG).toBeUndefined();
+    expect(BOT_APP.env.QQBOT_SUPERVISED).toBe('1');
+    expect(CLUSTER_APP.env.QQBOT_SUPERVISED).toBe('1');
   });
 });
 

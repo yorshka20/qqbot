@@ -14,6 +14,7 @@ import { AuditEventStore } from '@/conversation/audit/AuditEventStore';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import { ClusterClient } from '@/integrations/agent-cluster/ClusterClient';
 import { DefaultPermissionChecker } from '@/permission';
 import { createTTSManager } from '@/services/tts/createTTSManager';
 import { createToolManager } from '@/tools/createToolManager';
@@ -36,6 +37,10 @@ export function registerProviders(config: Config, apiClient: APIClient): void {
   );
 
   container.registerAlias(DITokens.PERMISSION_CHECKER, DefaultPermissionChecker);
+  // Config-gated: consumers check `isRegistered(DITokens.CLUSTER_CLIENT)` before resolving.
+  if (config.getClusterClientConfig()) {
+    container.registerAlias(DITokens.CLUSTER_CLIENT, ClusterClient);
+  }
   // Undecorated on purpose: its options parameter exists for tests, and tsyringe builds a
   // class without constructor metadata by calling it with no arguments.
   container.registerSingleton(DITokens.AUDIT_EVENT_STORE, AuditEventStore);

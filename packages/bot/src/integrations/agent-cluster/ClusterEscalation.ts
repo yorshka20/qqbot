@@ -1,69 +1,123 @@
-import type { ClusterManager } from '@qqbot/agent-cluster';
+import type { ClusterHelpRequest } from '@qqbot/api-types';
 import { logger } from '@qqbot/shared';
-import type { MessageAPI } from '@/api/methods/MessageAPI';
-import type { Bot } from '@/core/Bot';
-import { getContainer } from '@/core/DIContainer';
+import { inject, singleton } from 'tsyringe';
+import { MessageAPI } from '@/api/methods/MessageAPI';
+import type { Config, ProtocolName } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import type { PermissionChecker } from '@/permission';
+import type { ClusterClient } from './ClusterClient';
+
+const TAG = '[ClusterEscalation]';
+
+interface OwnerTarget {
+  ownerId: string;
+  protocol: ProtocolName;
+}
 
 /**
- * Wire the cluster's human-escalation mechanism to QQ private messages.
+ * Routes the cluster's human-escalation requests (`hub_ask`) to the bot owner as QQ private
+ * messages. The owner answers with `/cluster ask answer <id> <text>`.
  *
- * When a worker fires a hub_ask request, this routes it to the bot owner via
- * a QQ private message. The owner can reply with `/cluster ask answer <id> <text>`.
- *
- * Placed here (instead of inside ClusterManager's constructor) so the cluster
- * module stays free of any QQ/MessageAPI imports — keeping the option of running
- * cluster headless or behind WebUI only.
+ * The daemon's SSE stream announces each new request (`help_request`), but the pending list is
+ * the source of truth: every announcement and every (re)connection reconciles against
+ * `GET /api/cluster/help`, so a request raised while the bot was disconnected is still
+ * delivered, and each one is delivered once.
  */
-export async function wireClusterEscalation(
-  clusterManager: ClusterManager,
-  config: ReturnType<Bot['getConfig']>,
-): Promise<void> {
-  try {
-    const { MessageAPI } = await import('@/api/methods/MessageAPI');
-    // container-lookup: startup wiring step called from bootstrap
-    const container = getContainer();
-    const messageAPI = container.resolve<InstanceType<typeof MessageAPI>>(MessageAPI);
-    const enabledProtocols = config.getEnabledProtocols();
-    const preferredProtocol = enabledProtocols[0]?.name;
-    const ownerId = container.resolve<PermissionChecker>(DITokens.PERMISSION_CHECKER).getOwnerId(preferredProtocol);
+@singleton()
+export class ClusterEscalation {
+  private abort: AbortController | null = null;
+  private readonly notified = new Set<string>();
 
-    if (!ownerId || !preferredProtocol) {
-      logger.warn(
-        `[ClusterEscalation] Not wired — bot.owner=${ownerId || 'missing'} preferredProtocol=${preferredProtocol || 'missing'}`,
-      );
+  constructor(
+    @inject(DITokens.CLUSTER_CLIENT) private readonly client: ClusterClient,
+    @inject(MessageAPI) private readonly messageAPI: MessageAPI,
+    @inject(DITokens.PERMISSION_CHECKER) private readonly permissionChecker: PermissionChecker,
+    @inject(DITokens.CONFIG) private readonly config: Config,
+  ) {}
+
+  start(): void {
+    if (this.abort) {
       return;
     }
-
-    clusterManager.attachEscalationNotifier(async (request) => {
-      const lines = [
-        `[Cluster] Worker ${request.workerId} 请求帮助`,
-        `类型: ${request.type}`,
-        `askId: ${request.id}`,
-        '',
-        `问题: ${request.question}`,
-      ];
-      if (request.context) {
-        lines.push('', `上下文: ${request.context}`);
-      }
-      if (request.options?.length) {
-        lines.push('', '选项:');
-        request.options.forEach((opt, i) => {
-          lines.push(`  ${i + 1}. ${opt}`);
-        });
-      }
-      lines.push('', `回复: /cluster ask answer ${request.id} <你的答复>`);
-      try {
-        await messageAPI.sendPrivateMessage(ownerId, lines.join('\n'), preferredProtocol);
-      } catch (err) {
-        logger.error(
-          `[ClusterEscalation] Failed to send escalation notification to owner ${ownerId} via ${preferredProtocol}:`,
-          err,
-        );
-      }
-    });
-  } catch (err) {
-    logger.warn('[ClusterEscalation] Failed to wire escalation notifier (non-fatal):', err);
+    const target = this.ownerTarget();
+    if (!target) {
+      return;
+    }
+    const abort = new AbortController();
+    this.abort = abort;
+    void this.client.events(
+      (event) => {
+        if (event.event === 'help_request') {
+          void this.syncPending(target);
+        }
+      },
+      abort.signal,
+      () => void this.syncPending(target),
+    );
+    logger.info(`${TAG} forwarding cluster help requests to owner ${target.ownerId} via ${target.protocol}`);
   }
+
+  stop(): void {
+    this.abort?.abort();
+    this.abort = null;
+  }
+
+  private ownerTarget(): OwnerTarget | null {
+    const protocol = this.config.getEnabledProtocols()[0]?.name;
+    const ownerId = this.permissionChecker.getOwnerId(protocol);
+    if (!ownerId || !protocol) {
+      logger.warn(`${TAG} not started — bot.owner=${ownerId || 'missing'} protocol=${protocol || 'missing'}`);
+      return null;
+    }
+    return { ownerId, protocol };
+  }
+
+  private async syncPending(target: OwnerTarget): Promise<void> {
+    let pending: ClusterHelpRequest[];
+    try {
+      pending = await this.client.getPendingHelpRequests();
+    } catch (err) {
+      logger.warn(`${TAG} could not list pending help requests:`, err);
+      return;
+    }
+    const pendingIds = new Set(pending.map((r) => r.id));
+    for (const id of this.notified) {
+      if (!pendingIds.has(id)) {
+        this.notified.delete(id);
+      }
+    }
+    for (const request of pending) {
+      if (this.notified.has(request.id)) {
+        continue;
+      }
+      this.notified.add(request.id);
+      try {
+        await this.messageAPI.sendPrivateMessage(target.ownerId, renderHelpRequest(request), target.protocol);
+      } catch (err) {
+        this.notified.delete(request.id);
+        logger.error(`${TAG} failed to notify owner ${target.ownerId} via ${target.protocol}:`, err);
+      }
+    }
+  }
+}
+
+function renderHelpRequest(request: ClusterHelpRequest): string {
+  const lines = [
+    `[Cluster] Worker ${request.workerId} 请求帮助`,
+    `类型: ${request.type}`,
+    `askId: ${request.id}`,
+    '',
+    `问题: ${request.question}`,
+  ];
+  if (request.context) {
+    lines.push('', `上下文: ${request.context}`);
+  }
+  if (request.options?.length) {
+    lines.push('', '选项:');
+    request.options.forEach((opt, i) => {
+      lines.push(`  ${i + 1}. ${opt}`);
+    });
+  }
+  lines.push('', `回复: /cluster ask answer ${request.id} <你的答复>`);
+  return lines.join('\n');
 }

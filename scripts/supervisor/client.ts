@@ -123,7 +123,7 @@ export async function connectSupervisor(files: SupervisorFiles): Promise<Supervi
 export async function launchSupervisor(app: AppDefinition): Promise<SupervisorClient> {
   mkdirSync(app.files.dir, { recursive: true });
   const output = openSync(app.files.log, 'a');
-  const daemon = spawn(process.execPath, [DAEMON], {
+  const daemon = spawn(process.execPath, [DAEMON, '--app', app.name], {
     cwd: app.cwd,
     detached: true,
     stdio: ['ignore', output, output],

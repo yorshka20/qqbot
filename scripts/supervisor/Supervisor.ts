@@ -154,12 +154,12 @@ export class Supervisor {
     this.child = child;
     this.childStartedAt = Date.now();
     this.starts += 1;
-    this.log(`bot started (pid ${child.pid}, start #${this.starts})`);
+    this.log(`${this.app.name} started (pid ${child.pid}, start #${this.starts})`);
     child.on('message', (message) => this.onMessage(message as BotToSupervisor));
     child.on('exit', (code, signal) => this.onExit(child, code, signal));
     // A failed spawn may report only `error`, never `exit`.
     child.on('error', (error) => {
-      this.log(`bot process error: ${error.message}`);
+      this.log(`${this.app.name} process error: ${error.message}`);
       if (child.pid === undefined) {
         this.onExit(child, null, null);
       }
@@ -176,7 +176,7 @@ export class Supervisor {
     }
     const uptimeMs = Date.now() - this.childStartedAt;
     this.lastExit = { code, signal, at: new Date().toISOString(), uptimeMs };
-    this.log(`bot exited (code ${code}, signal ${signal}) after ${Math.round(uptimeMs / 1000)}s`);
+    this.log(`${this.app.name} exited (code ${code}, signal ${signal}) after ${Math.round(uptimeMs / 1000)}s`);
     if (child === this.stoppingChild || this.held || this.closed) {
       return;
     }
@@ -213,11 +213,11 @@ export class Supervisor {
     try {
       child.send(shutdown, (error) => {
         if (error) {
-          this.log(`could not ask the bot to shut down: ${error.message}`);
+          this.log(`could not ask the ${this.app.name} to shut down: ${error.message}`);
         }
       });
     } catch (error) {
-      this.log(`could not ask the bot to shut down: ${(error as Error).message}`);
+      this.log(`could not ask the ${this.app.name} to shut down: ${(error as Error).message}`);
     }
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timedOut = await Promise.race([
@@ -228,7 +228,7 @@ export class Supervisor {
     ]);
     clearTimeout(timer);
     if (timedOut && child.pid !== undefined) {
-      this.log(`bot did not exit within ${this.app.stopTimeoutMs / 1000}s; killing it`);
+      this.log(`${this.app.name} did not exit within ${this.app.stopTimeoutMs / 1000}s; killing it`);
       killTree(child.pid);
       await exited;
     }
@@ -237,10 +237,10 @@ export class Supervisor {
 
   private onMessage(message: BotToSupervisor): void {
     if (message.type === 'restart') {
-      this.log('the bot asked for a restart');
+      this.log(`the ${this.app.name} asked for a restart`);
       void this.restart();
     } else if (message.type === 'deploy') {
-      this.log('the bot asked for a deploy');
+      this.log(`the ${this.app.name} asked for a deploy`);
       this.runDeploy();
     }
   }

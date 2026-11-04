@@ -1,15 +1,14 @@
 // RepeatingTicketDispatchHandler — daily batch: every N minutes for M rounds, dispatch at most one
 // `ready` cluster ticket per round (same semantics as WebUI dispatch). After the rounds, reports
-// job outcomes for tickets that were dispatched in this run.
+// job outcomes for tickets that were dispatched in this run. Tickets and jobs live in the cluster
+// daemon and are read and written over its HTTP API.
 
-import { readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import type { ClusterConfig, ClusterManager, JobRecord } from '@qqbot/agent-cluster';
-import { findTicketDir, iterateAllTickets, parseMarkdownTicket, serializeTicket } from '@qqbot/agent-cluster';
+import type { ClusterJob, ClusterTemplatesResponse, TicketFrontmatter } from '@qqbot/api-types';
 import { logger } from '@qqbot/shared';
 import { injectable } from 'tsyringe';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import type { ClusterClient } from '@/integrations/agent-cluster/ClusterClient';
 import type { ActionHandler, ActionHandlerContext } from '../ActionHandlerRegistry';
 
 const TAG = '[RepeatingTicketDispatchHandler]';
@@ -19,12 +18,6 @@ interface HandlerParams {
   repeat?: number;
   /** Minutes between round 2..N and round 1 (default: 30) */
   intervalMinutes?: number;
-}
-
-interface ParsedTicketFile {
-  id: string;
-  frontmatter: ReturnType<typeof parseMarkdownTicket>['frontmatter'];
-  body: string;
 }
 
 interface RoundDispatch {
@@ -39,7 +32,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function buildClusterDescription(body: string, fm: ParsedTicketFile['frontmatter']): string {
+function buildClusterDescription(body: string, fm: TicketFrontmatter): string {
   const parts: string[] = ['---'];
   if (fm.estimatedComplexity) {
     parts.push(`estimatedComplexity: ${fm.estimatedComplexity}`);
@@ -52,50 +45,20 @@ function buildClusterDescription(body: string, fm: ParsedTicketFile['frontmatter
   return parts.join('\n');
 }
 
-function isPlannerTemplate(config: ClusterConfig, templateName: string | undefined): boolean {
+function isPlannerTemplate(templates: ClusterTemplatesResponse, templateName: string | undefined): boolean {
   const name = templateName?.trim();
   if (!name) {
     return false;
   }
-  return config.workerTemplates[name]?.role === 'planner';
+  return templates.templates.some((t) => t.name === name && t.role === 'planner');
 }
 
-async function writeTicketFile(ticketsDir: string, ticket: ParsedTicketFile): Promise<void> {
-  const dir = findTicketDir(ticketsDir, ticket.id);
-  if (!dir) {
-    throw new Error(`ticket dir not found for ${ticket.id}`);
-  }
-  const content = serializeTicket({
-    id: ticket.id,
-    frontmatter: ticket.frontmatter,
-    body: ticket.body,
-  });
-  await writeFile(join(dir, 'ticket.md'), content, 'utf-8');
+/** `ready` tickets that name a project, oldest id first. */
+function readyWithProject(tickets: TicketFrontmatter[]): TicketFrontmatter[] {
+  return tickets.filter((t) => t.status === 'ready' && t.project?.trim()).sort((a, b) => a.id.localeCompare(b.id));
 }
 
-async function listReadyWithProject(ticketsDir: string): Promise<ParsedTicketFile[]> {
-  const ready: ParsedTicketFile[] = [];
-  for (const { id, ticketDir } of iterateAllTickets(ticketsDir)) {
-    try {
-      const raw = await readFile(join(ticketDir, 'ticket.md'), 'utf-8');
-      const { frontmatter, body } = parseMarkdownTicket(raw);
-      if (frontmatter.status !== 'ready') {
-        continue;
-      }
-      const project = frontmatter.project?.trim();
-      if (!project) {
-        continue;
-      }
-      ready.push({ id, frontmatter: { ...frontmatter, id }, body });
-    } catch (err) {
-      logger.warn(`${TAG} skip ${ticketDir}:`, err);
-    }
-  }
-  ready.sort((a, b) => a.id.localeCompare(b.id));
-  return ready;
-}
-
-function jobOutcomeLine(job: JobRecord | undefined): string {
+function jobOutcomeLine(job: ClusterJob | null): string {
   if (!job) {
     return 'job unknown (not in scheduler)';
   }
@@ -111,81 +74,66 @@ export class RepeatingTicketDispatchHandler implements ActionHandler {
     const repeat = params.repeat ?? 5;
     const intervalMinutes = params.intervalMinutes ?? 30;
 
-    let cluster: ClusterManager;
-    try {
-      // container-lookup: optional-service the cluster exists only when cluster.enabled
-      cluster = getContainer().resolve<ClusterManager>(DITokens.CLUSTER_MANAGER);
-    } catch {
-      logger.error(`${TAG} ClusterManager not registered`);
-      return '❌ repeating_ticket_dispatch: Agent Cluster 未启用（config/cluster）';
+    // container-lookup: optional-service the cluster client exists only when clusterClient is configured
+    const container = getContainer();
+    if (!container.isRegistered(DITokens.CLUSTER_CLIENT)) {
+      logger.error(`${TAG} cluster client not configured`);
+      return '❌ repeating_ticket_dispatch: cluster 未配置（config.clusterClient）';
     }
-
-    const ticketsDir = cluster.getTicketsDir();
-    const clusterConfig = cluster.getConfig();
-    const scheduler = cluster.getScheduler();
+    const cluster = container.resolve<ClusterClient>(DITokens.CLUSTER_CLIENT);
 
     const rounds: RoundDispatch[] = [];
     const start = Date.now();
 
-    logger.info(`${TAG} Starting: repeat=${repeat}, interval=${intervalMinutes}min, ticketsDir=${ticketsDir}`);
+    logger.info(`${TAG} Starting: repeat=${repeat}, interval=${intervalMinutes}min, daemon=${cluster.url}`);
 
     for (let round = 1; round <= repeat; round++) {
       if (round > 1) {
         await sleep(intervalMinutes * 60 * 1000);
       }
 
-      const readyList = await listReadyWithProject(ticketsDir);
-      if (readyList.length === 0) {
+      let summary: TicketFrontmatter | undefined;
+      try {
+        summary = readyWithProject(await cluster.listTickets())[0];
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        rounds.push({ round, error: msg });
+        logger.error(`${TAG} Round ${round}/${repeat}: listing tickets failed:`, err);
+        continue;
+      }
+      if (!summary) {
         rounds.push({ round, skipReason: 'no ready ticket with project' });
         logger.info(`${TAG} Round ${round}/${repeat}: no ready tickets`);
         continue;
       }
 
-      const ticket = readyList[0];
-      const project = ticket.frontmatter.project?.trim();
-      if (!project) {
-        rounds.push({ round, ticketId: ticket.id, error: 'project missing on ready ticket' });
-        continue;
-      }
-      const tpl = ticket.frontmatter.template?.trim();
-      const requirePlanner = isPlannerTemplate(clusterConfig, tpl);
-
-      const description = buildClusterDescription(ticket.body, ticket.frontmatter);
-
       try {
+        const ticket = await cluster.getTicket(summary.id);
+        if (!ticket) {
+          throw new Error('ticket disappeared between listing and reading');
+        }
+        const project = ticket.frontmatter.project?.trim();
+        if (!project) {
+          rounds.push({ round, ticketId: ticket.id, error: 'project missing on ready ticket' });
+          continue;
+        }
+        const tpl = ticket.frontmatter.template?.trim();
+        const requirePlanner = isPlannerTemplate(await cluster.getTemplates(), tpl);
+        const description = buildClusterDescription(ticket.body, ticket.frontmatter);
+
         const task = await cluster.submitTask(project, description, {
           workerTemplate: tpl || undefined,
           requirePlannerRole: requirePlanner ? true : undefined,
           ticketId: ticket.id,
         });
 
-        if (!task) {
-          const msg = `submitTask returned null (project/template/scheduler rejected)`;
-          rounds.push({ round, ticketId: ticket.id, error: msg });
-          logger.warn(`${TAG} Round ${round}/${repeat}: ${msg}`);
-          continue;
-        }
+        await cluster.updateTicket(ticket.id, { status: 'dispatched', dispatchedJobId: task.jobId, project });
 
-        const jobId = task.jobId;
-        const now = new Date().toISOString();
-        const updated: ParsedTicketFile = {
-          id: ticket.id,
-          frontmatter: {
-            ...ticket.frontmatter,
-            status: 'dispatched',
-            dispatchedJobId: jobId,
-            project,
-            updated: now,
-          },
-          body: ticket.body,
-        };
-        await writeTicketFile(ticketsDir, updated);
-
-        rounds.push({ round, ticketId: ticket.id, jobId });
-        logger.info(`${TAG} Round ${round}/${repeat}: dispatched ${ticket.id} → job ${jobId}`);
+        rounds.push({ round, ticketId: ticket.id, jobId: task.jobId });
+        logger.info(`${TAG} Round ${round}/${repeat}: dispatched ${ticket.id} → job ${task.jobId}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        rounds.push({ round, ticketId: ticket.id, error: msg });
+        rounds.push({ round, ticketId: summary.id, error: msg });
         logger.error(`${TAG} Round ${round}/${repeat}: dispatch failed:`, err);
       }
     }
@@ -211,7 +159,10 @@ export class RepeatingTicketDispatchHandler implements ActionHandler {
         continue;
       }
       if (r.jobId && r.ticketId) {
-        const job = scheduler.resolveJob(r.jobId);
+        const job = await cluster.getJob(r.jobId).catch((err) => {
+          logger.warn(`${TAG} could not read job ${r.jobId}:`, err);
+          return null;
+        });
         const out = jobOutcomeLine(job);
         lines.push(`- 第 ${r.round} 轮: ${r.ticketId} → job ${r.jobId} (${out})`);
         if (job?.status === 'completed') {

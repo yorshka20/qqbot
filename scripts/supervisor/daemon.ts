@@ -1,15 +1,20 @@
-// The supervisor process. `bun run start` launches it in the background, in a session of its own,
-// with its output appended to logs/supervisor/supervisor.log. It runs the bot through Supervisor and
-// takes commands on 127.0.0.1 (control.ts); it stops on `bun run stop`, SIGTERM or SIGINT.
+// The supervisor process. `bun run start` (or `bun run cluster:start`) launches it in the
+// background, in a session of its own, with its output appended to its app's supervisor.log. It
+// runs that app through Supervisor and takes commands on 127.0.0.1 (control.ts); it stops on
+// `bun run stop`, SIGTERM or SIGINT.
+//
+// Usage: bun run scripts/supervisor/daemon.ts [--app bot|cluster]
 
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync } from 'node:fs';
-import { BOT_APP } from './app';
+import { parseArgs } from 'node:util';
+import { appByName } from './app';
 import { connectSupervisor, createState } from './client';
 import { controlHandler } from './control';
 import { Supervisor } from './Supervisor';
 
-const app = BOT_APP;
+const { values } = parseArgs({ args: process.argv.slice(2), options: { app: { type: 'string', default: 'bot' } } });
+const app = appByName(values.app);
 const log = (line: string) => console.log(`[${new Date().toISOString()}] ${line}`);
 
 mkdirSync(app.files.dir, { recursive: true });
@@ -34,7 +39,7 @@ async function stop(reason: string): Promise<void> {
     return;
   }
   finishing = true;
-  log(`${reason}; stopping the bot`);
+  log(`${reason}; stopping the ${app.name}`);
   await supervisor.close();
   finish();
 }
@@ -42,7 +47,7 @@ async function stop(reason: string): Promise<void> {
 const server = Bun.serve({
   hostname: '127.0.0.1',
   port: 0,
-  // A restart or stop answers only once the bot has exited, which can take the whole stop timeout.
+  // A restart or stop answers only once the app has exited, which can take the whole stop timeout.
   idleTimeout: 120,
   fetch: controlHandler(supervisor, token, () => {
     finishing = true;
@@ -60,7 +65,7 @@ try {
   log(`could not claim ${app.files.state} (${(error as Error).message}); another supervisor is starting; exiting`);
   process.exit(1);
 }
-log(`supervisor started (pid ${process.pid}, control 127.0.0.1:${port})`);
+log(`supervisor started for ${app.name} (pid ${process.pid}, control 127.0.0.1:${port})`);
 supervisor.start();
 
 process.on('SIGTERM', () => void stop('SIGTERM'));

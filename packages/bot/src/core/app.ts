@@ -11,6 +11,7 @@ import { killAllMcpChildren } from '@qqbot/retrieval';
 import { logger } from '@qqbot/shared';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { CodingAgentInitializer } from '@/integrations/agent-cluster';
+import { ClusterEscalation } from '@/integrations/agent-cluster/ClusterEscalation';
 import { AvatarIdleTrigger } from '@/integrations/avatar/services/AvatarIdleTrigger';
 import { initLanRelay } from '@/lan';
 import { MemoryIndexSync } from '@/memory/storage/MemoryIndexSync';
@@ -66,7 +67,6 @@ async function connect(bootstrap: BootstrapResult, pluginManager: PluginManager)
   const {
     bot,
     codingAgentService,
-    clusterManager,
     conversationComponents,
     eventRouter,
     retrievalService,
@@ -138,14 +138,12 @@ async function connect(bootstrap: BootstrapResult, pluginManager: PluginManager)
     }
   }
 
-  // Start Agent Cluster (non-fatal)
-  if (clusterManager) {
-    try {
-      await clusterManager.start();
-    } catch (error) {
-      logger.warn('[App] Agent Cluster failed to start (non-fatal):', error);
-    }
-  }
+  // Follow the cluster daemon's events (owner escalation); it reconnects on its own, so an
+  // offline daemon is not a startup failure.
+  const clusterEscalation = getContainer().isRegistered(DITokens.CLUSTER_CLIENT)
+    ? getContainer().resolve(ClusterEscalation)
+    : null;
+  clusterEscalation?.start();
 
   // Warm TTS models so the first real utterance doesn't pay cold-start latency.
   getContainer().resolve<TTSManager>(DITokens.TTS_MANAGER).warmup();
@@ -166,9 +164,7 @@ async function connect(bootstrap: BootstrapResult, pluginManager: PluginManager)
     if (avatarService) {
       await avatarService.stop();
     }
-    if (clusterManager) {
-      await clusterManager.stop();
-    }
+    clusterEscalation?.stop();
     await lanRelayHandle.stop();
     await CodingAgentInitializer.stop(codingAgentService);
     await bot.stop();
