@@ -70,7 +70,9 @@ function openDb(): Database {
     workerPid INTEGER,
     workerStartedAt TEXT,
     logPath TEXT,
-    sessionId TEXT
+    sessionId TEXT,
+    acknowledgedAt TEXT,
+    model TEXT
   )`);
   return db;
 }

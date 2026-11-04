@@ -85,6 +85,18 @@ interface Followed {
   finalized: boolean;
 }
 
+/** The model a template pins: its `--model` argument, else the model env var its backend reads. */
+export function templateModel(template: { args: string[]; env?: Record<string, string> }): string | undefined {
+  const args = template.args;
+  const idx = args.indexOf('--model');
+  if (idx !== -1 && args[idx + 1]) return args[idx + 1];
+  const inline = args.find((a) => a.startsWith('--model='))?.slice('--model='.length);
+  if (inline) return inline;
+  const m = args.indexOf('-m');
+  if (m !== -1 && args[m + 1]) return args[m + 1];
+  return template.env?.ANTHROPIC_MODEL ?? template.env?.GEMINI_MODEL ?? template.env?.CODEX_MODEL;
+}
+
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -363,6 +375,7 @@ export class WorkerPool {
       task.workerStartedAt = new Date().toISOString();
       task.logPath = workerInstance.logPath;
       if (launch.sessionId) task.sessionId = launch.sessionId;
+      task.model = templateModel(template);
 
       this.follow(workerInstance, backend, launch.cleanup);
       child.on('exit', (code) => void this.finalize(workerInstance, code));
@@ -655,6 +668,7 @@ export class WorkerPool {
     const task = worker.currentTask;
     const logPath = worker.logPath ?? this.outPath(task?.id ?? worker.id);
     let lastProgress = 0;
+    let modelConfirmed = false;
     const tail = new LogTail(
       logPath,
       (line) => {
@@ -663,6 +677,16 @@ export class WorkerPool {
           if (sessionId) {
             task.sessionId = sessionId;
             this.taskUpdatedCallback?.(task);
+          }
+        }
+        if (task && backend.modelFrom && !modelConfirmed) {
+          const model = backend.modelFrom(line);
+          if (model) {
+            modelConfirmed = true;
+            if (task.model !== model) {
+              task.model = model;
+              this.taskUpdatedCallback?.(task);
+            }
           }
         }
       },

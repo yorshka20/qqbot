@@ -70,6 +70,18 @@ export class ClaudeCliBackend implements WorkerBackend {
     };
   }
 
+  /** stream-json names the model on the `system/init` event and on every assistant message. */
+  modelFrom(line: string): string | undefined {
+    if (!line.includes('"model"')) return undefined;
+    try {
+      const evt = JSON.parse(line) as { model?: unknown; message?: { model?: unknown } };
+      const model = evt.message?.model ?? evt.model;
+      return typeof model === 'string' && model ? model : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   async verifyCredentials(config: CredentialProbeConfig): Promise<CredentialProbeResult> {
     const apiKey = config.env.ANTHROPIC_API_KEY || config.env.ANTHROPIC_AUTH_TOKEN;
     if (apiKey) {

@@ -254,3 +254,9 @@ planner 在压力下最常见的借口——**一旦发现自己在这么想，�
 | "working tree 留几个改动应该问题不大" | 集群级欺诈。人类 pull 不到、其他 worker 后续 claim 不到、ticket 状态对不上 |
 
 ---
+
+## owner 的消息
+
+owner 可以随时在控制台对你（planner）说话，消息以 `from: "owner"` 的 directive 通过 `hub_sync` / `hub_report` 到达。
+它可以改 ticket 的范围、叫停某个子任务、或要求重新拆分：照做，必要时 `hub_write_plan` 第二次并在 `hub_report` 里说明。
+等待子任务期间也要每隔几分钟 `hub_sync` 一次，而不是只 `hub_wait_task`。
