@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterEventEntry, ClusterEventType, ClusterTask } from '@qqbot/api-types';
-import { buildTimeline, foldTimeline, rulerGap, type TimelineNode } from './timeline';
+import { buildTimeline, foldTimeline, rulerGap, rulerMinutesLabel, type TimelineNode } from './timeline';
 
 const T0 = Date.parse('2026-11-04T12:00:00Z');
 const MIN = 60_000;
@@ -46,6 +46,12 @@ describe('rulerGap', () => {
 
   test('clock skew never draws a negative gap', () => {
     expect(rulerGap(T0, T0 - MIN)).toEqual({ ticks: 0, foldedMinutes: null });
+  });
+});
+
+describe('rulerMinutesLabel', () => {
+  test('reads a tick count back as a minute label', () => {
+    expect(rulerMinutesLabel(3)).toBe('3 分钟');
   });
 });
 

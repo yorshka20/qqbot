@@ -160,6 +160,11 @@ export function rulerGap(fromMs: number, toMsValue: number): RulerGap {
   return minutes > MAX_RULER_MINUTES ? { ticks: 0, foldedMinutes: minutes } : { ticks: minutes, foldedMinutes: null };
 }
 
+/** The ruler's tick count read back as a label, e.g. "3 分钟". */
+export function rulerMinutesLabel(ticks: number): string {
+  return `${ticks} 分钟`;
+}
+
 export type TimelineItem = { fold: false; node: TimelineNode } | { fold: true; id: string; count: number };
 
 const HEAD_NODES = 2;
