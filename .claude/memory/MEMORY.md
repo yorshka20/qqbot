@@ -14,6 +14,8 @@ Accumulated user preferences and project facts for this repo, one file per entry
 - [feedback_no_os_service_integration.md](feedback_no_os_service_integration.md) — 进程守护留在 Bun/Node 生态内（scripts/supervisor），不装 launchd/systemd/Windows 服务
 - [feedback_config_example_sync.md](feedback_config_example_sync.md) — config.d/<topic>.jsonc 是运行时真相，example 是参考文档，两边同改
 
+- [feedback_console_ia_and_dispatch.md](feedback_console_ia_and_dispatch.md) — cluster 控制台：Claude-app 式两级导航（收件箱 + 对话），设置等是二级；反馈先进规格再派一张 ticket，不给 planner 补消息，验收 owner 做
+
 ## Code-shape corrections
 
 - [feedback_no_defensive_optionals.md](feedback_no_defensive_optionals.md) — 上游保证有值就别做可选参数 + 条件 fallback
