@@ -216,4 +216,56 @@ describe('TaskWorkspaces', () => {
     expect(await git(box.repo, ['rev-parse', INTEGRATION])).toBe(head);
     expect(String(events.find((e) => e.type === 'task_publish_failed')?.data.error)).toContain('exited with 7');
   });
+
+  test('a merge is refused while the integration branch is checked out somewhere, and the task says where', async () => {
+    const a = await start('11111111');
+    await commitFile(a.cwd, 'a.txt', 'a\n', 'task a');
+    await finish(a.task);
+    const tip = await git(box.repo, ['rev-parse', INTEGRATION]);
+    const review = join(box.repo, '..', 'review');
+    await git(box.repo, ['worktree', 'add', '-q', review, INTEGRATION]);
+
+    const b = await start('22222222');
+    await commitFile(b.cwd, 'b.txt', 'b\n', 'task b');
+    await finish(b.task);
+
+    expect(b.task.status).toBe('blocked');
+    expect(b.task.error).toContain('checked out in');
+    expect(b.task.error).toContain('review');
+    expect(await git(box.repo, ['rev-parse', INTEGRATION])).toBe(tip);
+    expect(await git(review, ['rev-parse', 'HEAD'])).toBe(tip);
+    expect(workspaces.holdsSlot(b.task.id)).toBe(false);
+  });
+
+  test('the workspace note matches the mode and the role', async () => {
+    const { task } = await start('11111111');
+    const lease = workspaces.claim(makeTask('33333333'), box.entry, 'planner');
+    if (lease === 'busy' || lease === 'unpooled') throw new Error(`no planner slot: ${lease}`);
+    const planner = await workspaces.prepare(makeTask('33333333'), job, box.entry, lease);
+
+    expect(planner.promptNote).toContain('并行 spawn');
+    expect(planner.promptNote).toContain('mergedAt');
+    expect(planner.promptNote).toContain(INTEGRATION);
+    expect(task.branch).toBeDefined();
+
+    const executor = workspaces.unpooled(box.entry, 'executor');
+    expect(executor.cwd).toBe(box.repo);
+    expect(executor.promptNote).toContain('不是');
+    expect(executor.promptNote).not.toContain('集成分支会');
+    expect(workspaces.unpooled(box.entry, 'planner').promptNote).toContain('串行');
+  });
+
+  test('stop ends a publish that is still running instead of leaving it behind', async () => {
+    await setUp({ publish: 'sleep 30' });
+    const { task, cwd } = await start('11111111');
+    await commitFile(cwd, 'a.txt', 'a\n', 'task a');
+    await finish(task);
+    await waitFor(() => existsSync(join(box.stateDir, 'assignments', `${task.id}.publish.log`)), 8000, 'publish started');
+
+    const started = Date.now();
+    await workspaces.stop();
+
+    expect(Date.now() - started).toBeLessThan(5000);
+    await waitFor(() => events.some((e) => e.type === 'task_publish_failed'), 3000, 'publish ended');
+  });
 });

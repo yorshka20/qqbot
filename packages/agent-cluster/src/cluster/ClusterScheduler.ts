@@ -20,7 +20,7 @@ import {
 } from './types';
 import type { WorkerPool } from './WorkerPool';
 import type { TaskWorkspaces } from './workspace/TaskWorkspaces';
-import type { SlotLease } from './workspace/WorktreePool';
+import type { SlotKind, SlotLease } from './workspace/WorktreePool';
 
 export class ClusterScheduler {
   private running = false;
@@ -640,9 +640,12 @@ export class ClusterScheduler {
     const parent = task.parentTaskId ? this.findTask(task.parentTaskId) : undefined;
     if (parent && !parent.worktreePath) return null;
 
-    const kind = this.config.workerTemplates[templateName]?.role === 'planner' ? 'planner' : 'executor';
-    const claim = this.workspaces.claim(task, projectInfo, kind);
+    const claim = this.workspaces.claim(task, projectInfo, this.slotKind(templateName));
     return claim === 'unpooled' ? null : claim;
+  }
+
+  private slotKind(templateName: string): SlotKind {
+    return this.config.workerTemplates[templateName]?.role === 'planner' ? 'planner' : 'executor';
   }
 
   private async spawnTaskWorker(
@@ -656,7 +659,9 @@ export class ClusterScheduler {
       task.project,
       projectInfo.path,
       task,
-      lease ? () => this.prepareWorkspace(task, projectInfo, lease) : undefined,
+      lease
+        ? () => this.prepareWorkspace(task, projectInfo, lease)
+        : async () => this.workspaces.unpooled(projectInfo, this.slotKind(templateName)),
     );
     if (worker) {
       task.status = isTerminalTaskStatus(task.status) ? task.status : 'running';

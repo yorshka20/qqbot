@@ -16,14 +16,9 @@
 
 ## 你的工作区
 
-你启动时的 cwd 是一份**只属于你**的 git worktree，已经切到**你自己的分支**（从本 job 的集成分支
-当时的最新提交切出，分支名见任务开头的「本任务的工作区」）。同一项目的其他 executor 此刻可能正在
-各自的 worktree 里并行工作，你看不到他们没提交的改动，他们也看不到你的。
-
-- **所有改动都在 cwd 里做，提交到当前分支。** 不切换到别的分支，不碰别的 worktree，不去项目主检出里改东西。
-- **不要 `git push`，不要自己合并到集成分支或主分支。** 你退出后 daemon 会把你的分支合入集成分支。
-- **没提交的改动会丢。** 你退出后这个 worktree 会被重置并交给下一个任务；daemon 会在结果里报出没提交的文件，但内容不保留。
-- 依赖已经装好（`node_modules` 在这份 worktree 里复用），不需要自己 `bun install`，除非你改了 lockfile。
+任务开头的「本任务的工作区」由 daemon 按你**实际所在的环境**生成：你的 cwd 是专属 worktree 还是项目检出、
+在哪条分支上、改动怎么交付（daemon 合入还是留在检出里）。**以它为准**，本文下面说"提交"时都指它描述的那条路。
+无论哪种环境：不切分支、不碰别的目录、不 `git push`、改文件前 `hub_claim`。
 
 ## 工作流程
 
@@ -174,7 +169,7 @@ claim 的作用是提前避开合并冲突：改了同一文件的两个分支�
 5. **Git 落盘**（**强约束，缺一不可**）：
    - 把本任务涉及的、本仓库 tracked 的改动 `git add` 到 staging（不要 `-A`，按文件名加，避免误带 `.claude-*` / `.env` / 临时文件）
    - 按项目惯例 `git commit`（重构 vs 新功能可拆 commit；commit message 末尾带 `Co-Authored-By:` trailer，参照最近的 git log）
-   - **先 commit，再 `hub_report(completed)`**：daemon 只合入已提交的内容，不要 `git push`
+   - **先 commit，再 `hub_report(completed)`**：没提交的内容不算交付；是否由 daemon 合入见「本任务的工作区」，一律不要 `git push`
    - 跑完后 `git status` 必须**洁净**（无未提交改动、无未追踪非临时文件），并把最终 commit hash 写进 hub_report 的 summary
    - 如果 ticket body 含 "## 交付与文档维护"（或同义的收尾区块）的 checkbox，**全部勾完**（除显式标 optional 的）才算这步完成
 6. **才能声明** — 上面 5 步全部确认过了，才能在 summary 里写"已通过 XXX、commit `<hash>`"
@@ -196,7 +191,7 @@ Agent 在压力下会"合理化"跳过步骤。下面是 executor 最常见的�
 | "ticket 里的文档/收尾后面再补" | 后面就是忘。验收里写明的**仓库内**收尾当场做；本机 `.claude-*` 笔记不能代替验收项 |
 | "代码改完跑过测试就 OK，commit 让用户来" | **错。** 验证门第 5 步明确要求 git add + commit。没提交的改动在你退出后就没了，用户视角看到的是"worker 没交付"，job 自报 completed 是欺骗 |
 | "我不知道用什么 commit message 格式" | 按 ticket 项目最近 git log 的格式照抄；不确定就在 summary 里说明你用的格式让 planner 审。不要因为"格式不知道"就不 commit |
-| "别人的改动我这儿看不到，切到集成分支看看" | 不要切分支。要看已合入的内容用 `git show <集成分支>:<路径>` / `git log <集成分支>`，都不需要离开当前分支 |
+| "别人的改动我这儿看不到，切个分支看看" | 不要切分支。看别的分支用 `git show <分支>:<路径>` / `git log <分支>`，都不需要离开当前分支 |
 | "ticket 没要求，但顺手改一下更好" | 这是违反"不扩大范围"硬性约束。写进 summary 建议后续处理，不要自己动手 |
 | "planner 给的路径看起来旧了，我猜应该是 X" | 别猜。`hub_ask` 确认一次比改错方向 3 小时便宜 |
 | "已经 claim 过一次，动其他文件不用再 claim" | claim 是按文件算的，动没 claim 的文件就是违规 |

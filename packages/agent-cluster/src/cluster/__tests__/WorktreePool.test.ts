@@ -196,4 +196,33 @@ describe('WorktreePool', () => {
       },
     ]);
   });
+
+  test('a slot rebuilt after its directory went missing installs again', async () => {
+    await setUp({ install: 'echo run >> ../install-count; mkdir -p node_modules' });
+    writeFileSync(join(box.repo, 'bun.lock'), 'v1\n');
+    await git(box.repo, ['add', 'bun.lock']);
+    await git(box.repo, ['commit', '-qm', 'lock v1']);
+    const runs = () => readFileSync(join(box.stateDir, 'work', PROJECT, 'install-count'), 'utf8').trim().split('\n').length;
+
+    const first = leaseOrThrow('executor', 'task-1');
+    await pool.prepare(first, box.entry, 'b1', 'master');
+    expect(runs()).toBe(1);
+    await pool.release(first);
+    rmSync(first.path, { recursive: true, force: true });
+
+    const second = leaseOrThrow('executor', 'task-2');
+    await pool.prepare(second, box.entry, 'b2', 'master');
+    expect(runs()).toBe(2);
+    expect(existsSync(join(second.path, 'node_modules'))).toBe(true);
+  });
+
+  test('gc ignores files beside the slots', async () => {
+    const slot = leaseOrThrow('executor', 'task-1');
+    await pool.prepare(slot, box.entry, 'b1', 'master');
+    writeFileSync(join(box.stateDir, 'work', '.DS_Store'), '');
+    writeFileSync(join(box.stateDir, 'work', PROJECT, '.DS_Store'), '');
+
+    expect(await pool.gc()).toEqual([]);
+    expect(existsSync(slot.path)).toBe(true);
+  });
 });

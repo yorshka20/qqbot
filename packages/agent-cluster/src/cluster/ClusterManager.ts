@@ -31,6 +31,7 @@ export class ClusterManager {
   private hub: ContextHub;
   private workerPool: WorkerPool;
   private worktrees: WorktreePool;
+  private workspaces: TaskWorkspaces;
   private scheduler: ClusterScheduler;
   private plannerService: PlannerService;
   private queueSources = new Map<string, QueueSource>();
@@ -60,14 +61,8 @@ export class ClusterManager {
     this.hub = new ContextHub(config, db, ticketsDir);
     this.workerPool = new WorkerPool(config, this.hub);
     this.worktrees = new WorktreePool(config, db, projectRegistry);
-    this.scheduler = new ClusterScheduler(
-      config,
-      this.hub,
-      this.workerPool,
-      db,
-      projectRegistry,
-      new TaskWorkspaces(config, this.hub, this.worktrees, projectRegistry),
-    );
+    this.workspaces = new TaskWorkspaces(config, this.hub, this.worktrees, projectRegistry);
+    this.scheduler = new ClusterScheduler(config, this.hub, this.workerPool, db, projectRegistry, this.workspaces);
     this.plannerService = new PlannerService(config, this.hub, this.workerPool);
 
     // Wire dispatch callback
@@ -226,6 +221,7 @@ export class ClusterManager {
     await this.scheduler.stop();
     await this.workerPool.stop(options);
     await this.scheduler.waitForSettling();
+    await this.workspaces.stop();
     await this.hub.stop();
 
     this.started = false;

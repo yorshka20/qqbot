@@ -16,7 +16,17 @@
 import type { Database } from 'bun:sqlite';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { logger } from '@qqbot/shared';
 import type { ProjectEntry, ProjectRegistry } from '../../codingAgent/ProjectRegistry';
@@ -51,22 +61,50 @@ const LOCKFILES = ['bun.lock', 'bun.lockb', 'package-lock.json', 'pnpm-lock.yaml
 const DEFAULT_INSTALL: Partial<Record<ProjectEntry['type'], string>> = { bun: 'bun install', node: 'npm install' };
 
 /**
- * Run a shell command with its output on `logPath`, ending it if it outlives the timeout.
- * Throws on failure with the tail of the log, which is what a person needs to see.
+ * Run a shell command with its output on `logPath`, ending it if it outlives the timeout or
+ * `signal` aborts. The command gets its own process group so the kill reaches what the shell
+ * started, not only the shell. Throws on failure with the tail of the log, which is what a
+ * person needs to see.
  */
-export async function runLoggedCommand(command: string, cwd: string, logPath: string): Promise<void> {
+export async function runLoggedCommand(
+  command: string,
+  cwd: string,
+  logPath: string,
+  signal?: AbortSignal,
+): Promise<void> {
   mkdirSync(dirname(logPath), { recursive: true });
   const log = openSync(logPath, 'a');
   try {
     const code = await new Promise<number | null>((resolve, reject) => {
-      const child = spawn(command, { cwd, shell: true, stdio: ['ignore', log, log], windowsHide: true });
-      const timer = setTimeout(() => child.kill('SIGKILL'), COMMAND_TIMEOUT_MS);
-      child.once('error', (err) => {
+      const child = spawn(command, {
+        cwd,
+        shell: true,
+        stdio: ['ignore', log, log],
+        windowsHide: true,
+        detached: true,
+      });
+      const killGroup = (sig: NodeJS.Signals) => {
+        if (child.pid) {
+          try {
+            process.kill(-child.pid, sig);
+          } catch {
+            child.kill(sig);
+          }
+        }
+      };
+      const timer = setTimeout(() => killGroup('SIGKILL'), COMMAND_TIMEOUT_MS);
+      const onAbort = () => killGroup('SIGTERM');
+      signal?.addEventListener('abort', onAbort, { once: true });
+      const done = () => {
         clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+      };
+      child.once('error', (err) => {
+        done();
         reject(err);
       });
       child.once('exit', (exitCode) => {
-        clearTimeout(timer);
+        done();
         resolve(exitCode);
       });
     });
@@ -275,10 +313,13 @@ export class WorktreePool {
     const removed: string[] = [];
     for (const project of readdirSync(this.workRoot)) {
       const projectDir = join(this.workRoot, project);
+      if (!statSync(projectDir).isDirectory()) {
+        continue;
+      }
       const entry = entries.get(project);
       for (const name of readdirSync(projectDir)) {
         const path = join(projectDir, name);
-        if (claimed.has(path)) {
+        if (!statSync(path).isDirectory() || claimed.has(path)) {
           continue;
         }
         removed.push(path);
@@ -327,6 +368,8 @@ export class WorktreePool {
       return;
     }
     rmSync(path, { recursive: true, force: true });
+    // Whatever was installed went with the directory; the next prepare must install again.
+    this.db.query('UPDATE cluster_worktree_slots SET lockHash = NULL WHERE path = ?').run(path);
     mkdirSync(dirname(path), { recursive: true });
     await git(entry.path, ['worktree', 'prune']);
     await git(entry.path, ['worktree', 'add', '--detach', path]);

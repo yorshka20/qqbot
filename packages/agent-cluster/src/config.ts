@@ -13,7 +13,8 @@ export interface ProjectRegistryConfig {
     description?: string;
     promptTemplateKey?: string;
     // Worktree slots for this project's executors (default: its effective executor
-    // concurrency). 0 keeps every worker in `path`, one at a time in practice.
+    // concurrency). 0 keeps every worker in `path`; they then share one checkout and one
+    // git index, so keep that project's concurrency at 1.
     worktrees?: number;
     // Branch a job's integration branch is cut from (default: the repo's default branch)
     baseBranch?: string;
