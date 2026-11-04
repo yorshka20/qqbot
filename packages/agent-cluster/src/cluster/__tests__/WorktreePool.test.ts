@@ -166,9 +166,9 @@ describe('WorktreePool', () => {
     await pool.prepare(idle, box.entry, 'b2', 'master');
     await pool.release(idle);
 
-    const beyondPool = join(box.worktreeRoot, PROJECT, 'wt-stray');
+    const beyondPool = join(box.worktreeRoot, PROJECT, 'wt-0badc0de');
     await git(box.repo, ['worktree', 'add', '-q', '--detach', beyondPool]);
-    const unknownProject = join(box.worktreeRoot, 'gone', 'wt-stray');
+    const unknownProject = join(box.worktreeRoot, 'gone', 'wt-0badc0de');
     mkdirSync(unknownProject, { recursive: true });
 
     expect((await pool.gc({ dryRun: true })).sort()).toEqual([beyondPool, unknownProject].sort());
@@ -179,7 +179,18 @@ describe('WorktreePool', () => {
     expect(existsSync(join(box.worktreeRoot, 'gone'))).toBe(false);
     expect(existsSync(kept.path)).toBe(true);
     expect(existsSync(idle.path)).toBe(true);
-    expect(await git(box.repo, ['worktree', 'list'])).not.toContain('wt-stray');
+    expect(await git(box.repo, ['worktree', 'list'])).not.toContain('wt-0badc0de');
+  });
+
+  test('gc leaves directories that are not slot names alone, wherever the root points', async () => {
+    const notes = join(box.worktreeRoot, PROJECT, 'notes');
+    mkdirSync(join(notes, 'src'), { recursive: true });
+    const foreign = join(box.worktreeRoot, 'other-project', 'src');
+    mkdirSync(foreign, { recursive: true });
+
+    expect(await pool.gc()).toEqual([]);
+    expect(existsSync(notes)).toBe(true);
+    expect(existsSync(foreign)).toBe(true);
   });
 
   test('gc removes free slots beyond a pool that shrank', async () => {

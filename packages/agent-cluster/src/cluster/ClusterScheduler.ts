@@ -189,6 +189,12 @@ export class ClusterScheduler {
     // as "in progress" via filterActionable().
     this.activeTasks.delete(task.id);
 
+    // Here, not at the dependant's next dispatch attempt: a full or paused pool never reaches
+    // that, and its planner would wait on a child that can never start.
+    if (task.status !== 'completed') {
+      this.cancelDependants(task);
+    }
+
     // Phase 3 cascade-kill: if the task we just terminated has live
     // children, kill them. This happens whenever a planner exits (success
     // or failure) — we don't want orphan executors continuing to run after
@@ -212,7 +218,9 @@ export class ClusterScheduler {
       return;
     }
     const settled = this.workspaces
-      .settle(task, this.jobs.get(task.jobId) ?? this.resolveJob(task.jobId))
+      .settle(task, this.jobs.get(task.jobId) ?? this.resolveJob(task.jobId), () =>
+        this.unsettledTasksOf(task.jobId, task.id),
+      )
       .catch((err) => logger.error(`[ClusterScheduler] Settling the workspace of task ${task.id} failed:`, err))
       .then(() => {
         this.settling.delete(task.id);
@@ -220,6 +228,13 @@ export class ClusterScheduler {
         return this.dispatchPendingTasks();
       });
     this.settling.set(task.id, settled);
+  }
+
+  /** The job's other tasks that have not ended, or whose work has not landed yet. */
+  private unsettledTasksOf(jobId: string, except: string): string[] {
+    return this.getActiveTasks()
+      .filter((t) => t.jobId === jobId && t.id !== except && !this.isTaskSettled(t.id))
+      .map((t) => t.id);
   }
 
   /** The task has ended and nothing about it can change any more. */
@@ -664,16 +679,33 @@ export class ClusterScheduler {
   private dependenciesLanded(task: TaskRecord): boolean {
     for (const dependencyId of this.hub.taskDependencies(task.id)) {
       if (!this.isTaskSettled(dependencyId)) return false;
-      const status = this.findTask(dependencyId)?.status;
-      if (status !== 'completed') {
-        task.status = 'cancelled';
-        task.error = `Not started: dependency ${dependencyId} ended ${status}`;
-        task.completedAt = new Date().toISOString();
-        this.finalizeTask(task);
+      const dependency = this.findTask(dependencyId);
+      if (dependency && dependency.status !== 'completed') {
+        this.cancelDependant(task, dependency);
         return false;
       }
     }
     return true;
+  }
+
+  /** The job's queued tasks that depend on one that ended without landing. */
+  private cancelDependants(ended: TaskRecord): void {
+    for (const task of this.getActiveTasks()) {
+      if (
+        task.status === 'pending' &&
+        task.jobId === ended.jobId &&
+        this.hub.taskDependencies(task.id).includes(ended.id)
+      ) {
+        this.cancelDependant(task, ended);
+      }
+    }
+  }
+
+  private cancelDependant(task: TaskRecord, dependency: TaskRecord): void {
+    task.status = 'cancelled';
+    task.error = `Not started: dependency ${dependency.id} ended ${dependency.status}`;
+    task.completedAt = new Date().toISOString();
+    this.finalizeTask(task);
   }
 
   /** The slot this task runs in: null when it runs in the project checkout, `busy` when it must wait for one. */

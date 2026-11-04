@@ -4,12 +4,25 @@
  * over the repo default.
  */
 
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { getRepoRoot, logger } from '@qqbot/shared';
 import type { WorkerWorkspace } from './types';
 
 const cache = new Map<string, string>();
+
+/** The repo's own copy of a prompt, read once: for text the hub composes inside a synchronous tool call. */
+export function readClusterPrompt(name: string): string {
+  const path = resolvePath(getRepoRoot(), `prompts/cluster/${name}`);
+  const cached = cache.get(path);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const content = readFileSync(path, 'utf-8');
+  cache.set(path, content);
+  return content;
+}
 
 export async function loadClusterPrompt(name: string, projectPath: string): Promise<string> {
   const relativePath = `prompts/cluster/${name}`;

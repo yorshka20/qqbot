@@ -326,8 +326,10 @@ export class WorktreePool {
       for (const name of readdirSync(projectDir)) {
         const path = join(projectDir, name);
         // Asked per directory, and after listing it: a lease writes its row before its worktree
-        // exists, so a directory with no row now is not one a dispatch is creating.
-        if (statSync(path).isDirectory() && !removed.includes(path) && !this.hasSlot(path)) {
+        // exists, so a directory with no row now is not one a dispatch is creating. Only the
+        // pool's own names go: the root is configurable, and a root pointed at the wrong place
+        // must not cost its owner anything the pool did not create.
+        if (statSync(path).isDirectory() && SLOT_NAME.test(name) && !removed.includes(path) && !this.hasSlot(path)) {
           await remove(path, entries.get(project));
         }
       }
@@ -426,6 +428,8 @@ export class WorktreePool {
       .run(lockHash, project, slot);
   }
 }
+
+const SLOT_NAME = /^wt-[0-9a-f]{8}$/;
 
 function newSlotName(): string {
   return `wt-${randomBytes(4).toString('hex')}`;

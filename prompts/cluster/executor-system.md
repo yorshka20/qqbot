@@ -100,7 +100,7 @@ hub_subscribe({
   这种依赖在你启动前已经合入，改动就在你的分支上，不用再合并。
 - 事件通过 `hub_wait`（`reason: "event"`）和 `hub_sync` 到达，形如 `{ kind, taskId, branch?, summary, files? }`。
   能做的先做，要用到兄弟的成果时再 `hub_wait`。
-- **收到依赖的 `task_merged` 后**：先提交手头的改动，再 `git merge <集成分支>` 把它拉进你的任务分支（快进或合并提交，
+- **收到依赖的 `task_merged` 后**（启动时 `hub_sync` 补投的那条除外，那些改动已经在你的分支上）：先提交手头的改动，再 `git merge <集成分支>` 把它拉进你的任务分支（快进或合并提交，
   **绝不 rebase**），确认 `files` 里的改动和你的假设一致，再继续。合并冲突就地解决，解决不了 `hub_ask`。
 - **收到依赖的 `task_failed` / `task_blocked`**：你要的东西不会来了。能绕开就继续，绕不开就 `hub_report(blocked)` 写清楚等谁，不要空等。
 - **`hub_message` 只用来告诉兄弟一件具体事实**：事件带不出来、对方不知道就会做错的事（例如"字段定名为 `tag_id`"）。

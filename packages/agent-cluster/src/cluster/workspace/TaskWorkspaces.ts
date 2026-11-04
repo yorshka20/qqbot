@@ -12,6 +12,7 @@
  * branch usually is, fast-forwards in its worktree, which also keeps that worktree's files in step.
  */
 
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logger } from '@qqbot/shared';
 import type { ProjectEntry, ProjectRegistry } from '../../codingAgent/ProjectRegistry';
@@ -35,6 +36,14 @@ type MergeOutcome =
   | { kind: 'empty' }
   | { kind: 'conflict'; detail: string }
   | { kind: 'refused'; worktree: string; detail: string };
+
+type LandOutcome = MergeOutcome | { kind: 'unsettled'; tasks: string[] };
+
+/** A worktree with the branch checked out, or one whose rebase will write the branch back when it ends. */
+interface BranchHolder {
+  path: string;
+  rebasing: boolean;
+}
 
 export function integrationBranchName(jobId: string): string {
   return `cluster/${jobId.slice(0, 8)}`;
@@ -125,9 +134,10 @@ export class TaskWorkspaces {
   /**
    * The worker is gone: report what it left uncommitted, land its branch if it succeeded, land
    * the job if this was its root task, and free the slot. A task whose work cannot land ends
-   * `blocked`, with the reason in `error`.
+   * `blocked`, with the reason in `error`. `unsettled` names the job's other tasks still running
+   * or landing: a root task does not land the job over them.
    */
-  async settle(task: TaskRecord, job: JobRecord | undefined): Promise<void> {
+  async settle(task: TaskRecord, job: JobRecord | undefined, unsettled: () => string[]): Promise<void> {
     const lease = this.pool.leaseOf(task.id);
     if (!lease) {
       return;
@@ -140,7 +150,7 @@ export class TaskWorkspaces {
         if (await this.land(task, job.integrationBranch, entry)) {
           published = job.integrationBranch;
         }
-        if (task.status === 'completed' && !task.parentTaskId && (await this.landJob(task, job, entry))) {
+        if (task.status === 'completed' && !task.parentTaskId && (await this.landJob(task, job, entry, unsettled))) {
           published = job.baseBranch;
         }
       }
@@ -202,15 +212,33 @@ export class TaskWorkspaces {
   }
 
   /**
-   * The last step of a job: its integration branch onto the base branch. One queue per branch
-   * name, because two projects can be worktrees of one repository and share the base branch.
+   * The last step of a job: its integration branch onto the base branch. Behind the integration
+   * branch's queue, so a child's merge still in flight lands first, and then behind the base
+   * branch's, which two projects that are worktrees of one repository can share.
    */
-  private async landJob(task: TaskRecord, job: JobRecord, entry: ProjectEntry): Promise<boolean> {
+  private async landJob(
+    task: TaskRecord,
+    job: JobRecord,
+    entry: ProjectEntry,
+    unsettled: () => string[],
+  ): Promise<boolean> {
     const from = job.integrationBranch as string;
     const onto = job.baseBranch as string;
-    const outcome = await this.enqueue(`base:${onto}`, () => merge(entry.path, from, onto));
+    const outcome = await this.enqueue<LandOutcome>(from, () => {
+      const open = unsettled();
+      if (open.length > 0) {
+        return Promise.resolve({ kind: 'unsettled', tasks: open });
+      }
+      return this.enqueue(`base:${onto}`, () => merge(entry.path, from, onto));
+    });
     switch (outcome.kind) {
       case 'empty':
+        return false;
+      case 'unsettled':
+        this.block(
+          task,
+          `Cannot land ${from} on ${onto}: tasks of this job have not ended: ${outcome.tasks.join(', ')}`,
+        );
         return false;
       case 'conflict':
         this.block(task, `Merge conflict landing ${from} on ${onto}:\n${outcome.detail}`);
@@ -318,11 +346,16 @@ async function merge(repo: string, branch: string, target: string): Promise<Merg
   // `update-ref` would move a checked-out branch under its worktree's index and files. `head`
   // descends from `ours`, so `--ff-only` is the same move made through that worktree; git refuses
   // it, and changes nothing, when uncommitted work there overlaps the merge.
-  const worktree = await worktreeHolding(repo, target);
-  if (worktree) {
-    const moved = await runGit(worktree, ['merge', '--ff-only', head]);
+  const holder = await worktreeHolding(repo, target);
+  if (holder?.rebasing) {
+    return { kind: 'refused', worktree: holder.path, detail: `a rebase of ${target} is in progress there` };
+  }
+  if (holder) {
+    // `--no-autostash`: with `merge.autostash` set, git would stash overlapping work, merge and pop
+    // it with conflict markers, and this would still report `merged`.
+    const moved = await runGit(holder.path, ['merge', '--ff-only', '--no-autostash', head]);
     if (moved.code !== 0) {
-      return { kind: 'refused', worktree, detail: (moved.stderr || moved.stdout).trim() };
+      return { kind: 'refused', worktree: holder.path, detail: (moved.stderr || moved.stdout).trim() };
     }
   } else {
     await git(repo, ['update-ref', `refs/heads/${target}`, head, ours]);
@@ -334,12 +367,34 @@ function refusalReason(from: string, onto: string, refused: { worktree: string; 
   return `Cannot land ${from} on ${onto}: the checkout in ${refused.worktree} refused it.\n${refused.detail}`;
 }
 
-/** The worktree that has `branch` checked out, if any (`git worktree list --porcelain` blocks). */
-async function worktreeHolding(repo: string, branch: string): Promise<string | null> {
+/**
+ * The worktree that has `branch` checked out, if any (`git worktree list --porcelain` blocks). A
+ * worktree rebasing the branch is detached while it does, and writes the branch back when it ends,
+ * so it holds the branch just the same.
+ */
+async function worktreeHolding(repo: string, branch: string): Promise<BranchHolder | null> {
   const list = await git(repo, ['worktree', 'list', '--porcelain']);
   for (const block of list.split('\n\n')) {
-    if (block.split('\n').includes(`branch refs/heads/${branch}`)) {
-      return block.match(/^worktree (.+)$/m)?.[1] ?? repo;
+    const lines = block.split('\n');
+    const path = block.match(/^worktree (.+)$/m)?.[1] ?? repo;
+    if (lines.includes(`branch refs/heads/${branch}`)) {
+      return { path, rebasing: false };
+    }
+    if (lines.includes('detached') && (await rebasingBranch(path)) === `refs/heads/${branch}`) {
+      return { path, rebasing: true };
+    }
+  }
+  return null;
+}
+
+/** The ref a rebase under way in this worktree will move when it finishes (`head-name`, per git-rebase). */
+async function rebasingBranch(worktree: string): Promise<string | null> {
+  const gitDir = await git(worktree, ['rev-parse', '--absolute-git-dir']);
+  for (const state of ['rebase-merge', 'rebase-apply']) {
+    try {
+      return (await readFile(join(gitDir, state, 'head-name'), 'utf8')).trim();
+    } catch {
+      // not rebasing this way
     }
   }
   return null;

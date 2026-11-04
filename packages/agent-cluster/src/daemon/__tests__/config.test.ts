@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getRepoRoot } from '@qqbot/shared';
 import { loadClusterDaemonConfig, parseClusterDaemonConfig } from '../config';
@@ -42,6 +42,14 @@ describe('parseClusterDaemonConfig', () => {
     ).toThrow(/http\.port/);
     expect(() => parseClusterDaemonConfig({ ...minimal, codingAgent: {} })).toThrow(/projectRegistry/);
     expect(() => parseClusterDaemonConfig({ cluster: minimal.cluster })).toThrow(/clusterDaemon/);
+  });
+
+  test('worktreeRoot expands ~ and must be absolute', () => {
+    const withRoot = (worktreeRoot: string) =>
+      parseClusterDaemonConfig({ ...minimal, clusterDaemon: { ...minimal.clusterDaemon, worktreeRoot } });
+    expect(withRoot('~/wt').cluster.worktreeRoot).toBe(join(homedir(), 'wt'));
+    expect(withRoot('/abs/wt').cluster.worktreeRoot).toBe('/abs/wt');
+    expect(() => withRoot('data/wt')).toThrow(/worktreeRoot/);
   });
 });
 

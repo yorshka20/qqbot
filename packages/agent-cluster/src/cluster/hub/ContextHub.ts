@@ -38,6 +38,7 @@ import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
 import type { ClusterConfig } from '../config';
+import { readClusterPrompt, renderPrompt } from '../prompts';
 import { bucketForProject, findTicketDir, ticketDirForCreate } from '../tickets/storage';
 import type {
   ClusterEventType,
@@ -363,6 +364,7 @@ export class ContextHub {
     if (taskId) {
       this.dropSubscriptions(taskId);
     }
+    this.messageBox.discard(workerId);
     this.workerRegistry.markExited(workerId);
     this.eventLog.append('worker_left', workerId, {});
     this.broadcastSSE('worker_status', { workerId, status: 'exited' });
@@ -423,7 +425,15 @@ export class ContextHub {
 
   handleClaim(workerId: string, input: HubClaimInput): HubClaimOutput {
     this.workerRegistry.touch(workerId);
-    this.workerRegistry.setTask(workerId, input.taskId);
+    // The daemon binds a worker to its task when it starts it. A claim naming another task would
+    // move the worker's subscriptions, questions and locks onto a task it does not run.
+    const bound = this.workerRegistry.get(workerId)?.lastBoundTaskId;
+    if (bound && bound !== input.taskId) {
+      throw new Error(`hub_claim: task ${input.taskId} is not yours; you run task ${bound}`);
+    }
+    if (!bound) {
+      this.bindWorker(workerId, input.taskId);
+    }
 
     const result = this.lockManager.tryAcquire(input.files, workerId, input.taskId);
 
@@ -596,15 +606,15 @@ export class ContextHub {
     // well, because it often knows the answer; an escalation is meant for the owner alone.
     const planner = input.type === 'escalation' ? undefined : this.plannerOf(reg?.currentTaskId);
     if (planner) {
-      const options = input.options?.length ? `\n选项：${input.options.join(' / ')}` : '';
-      const context = input.context ? `\n背景：${input.context}` : '';
-      this.messageBox.send(
-        planner,
-        workerId,
-        `child ${reg?.currentTaskId} 提问（askId ${askId}，${input.type}）：${input.question}${options}${context}`,
-        'message',
-        'warning',
-      );
+      const relay = renderPrompt(readClusterPrompt('ask-relay.md'), {
+        TASK_ID: reg?.currentTaskId,
+        ASK_ID: askId,
+        TYPE: input.type,
+        QUESTION: input.question,
+        OPTIONS: input.options?.join(' / ') ?? '',
+        CONTEXT: input.context ?? '',
+      });
+      this.messageBox.send(planner, workerId, relay.trim(), 'message', 'warning');
     } else {
       this.askListener?.(helpRequest);
     }
@@ -655,6 +665,11 @@ export class ContextHub {
       }
     } else {
       const sibling = this.schedulerBridge?.findTask(input.to);
+      const targetJob = sibling?.jobId ?? this.workerRegistry.getJobId(input.to);
+      const ownJob = this.workerRegistry.getJobId(workerId);
+      if (targetJob && ownJob && targetJob !== ownJob) {
+        throw new Error(`hub_message: ${input.to} is not in your job`);
+      }
       const address = sibling ? (sibling.workerId ?? taskInbox(sibling.id)) : input.to;
       this.messageBox.send(address, workerId, input.content, 'message', input.priority);
     }

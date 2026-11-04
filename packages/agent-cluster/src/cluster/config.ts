@@ -3,8 +3,8 @@
  */
 
 import { homedir, hostname } from 'node:os';
-import { join } from 'node:path';
-import { fromRepoRoot, parseDuration, resolveFromRepoRoot } from '@qqbot/shared';
+import { isAbsolute, join } from 'node:path';
+import { ConfigError, fromRepoRoot, parseDuration, resolveFromRepoRoot } from '@qqbot/shared';
 
 export interface ClusterConfig {
   enabled: boolean;
@@ -258,10 +258,7 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
       typeof r.stateDir === 'string' && r.stateDir.trim()
         ? resolveFromRepoRoot(r.stateDir.trim())
         : fromRepoRoot('data', 'cluster'),
-    worktreeRoot:
-      typeof r.worktreeRoot === 'string' && r.worktreeRoot.trim()
-        ? resolveFromRepoRoot(r.worktreeRoot.trim())
-        : join(homedir(), '.qqbot', 'worktrees'),
+    worktreeRoot: worktreeRootFrom(r.worktreeRoot),
     schedulingInterval:
       typeof r.schedulingInterval === 'string'
         ? parseDuration(r.schedulingInterval)
@@ -291,4 +288,16 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
           : (healthCheckRaw.probeTimeout as number) || 10_000,
     },
   };
+}
+
+/** `~` is expanded; a relative value would resolve inside the repo, the one place the root must not be. */
+function worktreeRootFrom(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return join(homedir(), '.qqbot', 'worktrees');
+  }
+  const value = raw.trim().replace(/^~(?=$|\/)/, homedir());
+  if (!isAbsolute(value)) {
+    throw new ConfigError(`cluster.worktreeRoot must be an absolute path or start with "~", got "${raw}"`);
+  }
+  return value;
 }

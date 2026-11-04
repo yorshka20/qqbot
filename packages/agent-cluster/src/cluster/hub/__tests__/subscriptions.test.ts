@@ -478,3 +478,33 @@ describe('over the MCP transport', () => {
     expect(received).toEqual({ tasks: ['a'], files: [], branch: true });
   });
 });
+
+describe('a worker stays bound to its task', () => {
+  test('hub_claim for another task is refused and locks nothing', () => {
+    addTask('a');
+    addTask('b');
+    expect(() => hub.handleClaim('worker-a', { taskId: 'b', intent: 'edit', files: ['src/x.ts'] })).toThrow(
+      /not yours/,
+    );
+    expect(hub.workerRegistry.get('worker-a')?.currentTaskId).toBe('a');
+    expect(hub.handleClaim('worker-b', { taskId: 'b', intent: 'edit', files: ['src/x.ts'] }).granted).toBe(true);
+  });
+
+  test('hub_message cannot reach a task or worker of another job', () => {
+    addTask('a');
+    addTask('stranger', { jobId: 'job-2' });
+    const message = { content: 'fact', priority: 'info' as const };
+    expect(() => hub.handleMessage('worker-a', { to: 'stranger', ...message })).toThrow(/not in your job/);
+    expect(() => hub.handleMessage('worker-a', { to: 'worker-stranger', ...message })).toThrow(/not in your job/);
+    expect(hub.messageBox.getUnreadCount('worker-stranger')).toBe(0);
+  });
+
+  test('what a worker never read goes with it', () => {
+    addTask('a');
+    addTask('b');
+    hub.handleMessage('worker-a', { to: 'b', content: 'fact', priority: 'info' });
+    expect(hub.messageBox.getUnreadCount('worker-b')).toBe(1);
+    hub.workerExited('worker-b');
+    expect(hub.messageBox.getUnreadCount('worker-b')).toBe(0);
+  });
+});

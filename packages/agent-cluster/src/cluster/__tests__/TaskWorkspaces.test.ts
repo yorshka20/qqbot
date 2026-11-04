@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { git } from '../git';
 import type { ContextHub } from '../hub/ContextHub';
@@ -78,7 +78,7 @@ describe('TaskWorkspaces', () => {
 
   async function finish(task: TaskRecord): Promise<void> {
     task.status = 'completed';
-    await workspaces.settle(task, job);
+    await workspaces.settle(task, job, () => []);
   }
 
   beforeEach(() => setUp());
@@ -178,7 +178,7 @@ describe('TaskWorkspaces', () => {
     const tip = await git(box.repo, ['rev-parse', INTEGRATION]);
     await commitFile(cwd, 'a.txt', 'a\n', 'half done');
     task.status = 'failed';
-    await workspaces.settle(task, job);
+    await workspaces.settle(task, job, () => []);
     expect(task.mergedAt).toBeUndefined();
     expect(await git(box.repo, ['rev-parse', INTEGRATION])).toBe(tip);
   });
@@ -201,7 +201,7 @@ describe('TaskWorkspaces', () => {
   test('settling a task that holds no slot does nothing', async () => {
     const task = makeTask('33333333');
     task.status = 'completed';
-    await workspaces.settle(task, job);
+    await workspaces.settle(task, job, () => []);
     expect(task.status).toBe('completed');
     expect(events).toEqual([]);
   });
@@ -338,10 +338,45 @@ describe('TaskWorkspaces', () => {
     const root = await startRoot('22222222');
 
     root.task.status = 'failed';
-    await workspaces.settle(root.task, job);
+    await workspaces.settle(root.task, job, () => []);
 
     expect(job.landedAt).toBeUndefined();
     expect(await git(box.repo, ['rev-parse', 'master'])).toBe(base);
+  });
+
+  test('a root task does not land the job while another task of the job has not ended', async () => {
+    const base = await git(box.repo, ['rev-parse', 'master']);
+    const child = await start('11111111');
+    await commitFile(child.cwd, 'a.txt', 'a\n', 'task a');
+    await finish(child.task);
+    const root = await startRoot('22222222');
+    root.task.status = 'completed';
+
+    await workspaces.settle(root.task, job, () => ['33333333-0000-0000-0000-000000000000']);
+
+    expect(root.task.status as string).toBe('blocked');
+    expect(root.task.error).toContain('33333333');
+    expect(job.landedAt).toBeUndefined();
+    expect(await git(box.repo, ['rev-parse', 'master'])).toBe(base);
+    expect(await git(box.repo, ['rev-parse', INTEGRATION])).not.toBe(base);
+  });
+
+  test('a rebase of the base branch in its checkout stops the landing and is left alone', async () => {
+    const { task, cwd } = await startRoot('22222222');
+    await commitFile(cwd, 'a.txt', 'a\n', 'task a');
+    const base = await git(box.repo, ['rev-parse', 'master']);
+    await git(box.repo, ['checkout', '-q', '--detach']);
+    const rebase = join(await git(box.repo, ['rev-parse', '--absolute-git-dir']), 'rebase-merge');
+    mkdirSync(rebase, { recursive: true });
+    writeFileSync(join(rebase, 'head-name'), 'refs/heads/master\n');
+
+    await finish(task);
+
+    expect(task.status).toBe('blocked');
+    expect(task.error).toContain('rebase');
+    expect(job.landedAt).toBeUndefined();
+    expect(await git(box.repo, ['rev-parse', 'master'])).toBe(base);
+    rmSync(rebase, { recursive: true, force: true });
   });
 
   test('publish runs again on the base branch once the job landed', async () => {
