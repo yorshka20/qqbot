@@ -122,7 +122,6 @@ worker 的行为规则必须满足两个约束：
       你不需要手动释放锁——hub_report 终态时自动释放。
 
 输入:
-  taskId: string             // 调度器分配的任务 ID
   intent: string             // 一句话描述你要做什么
   files: string[]            // 你预计会修改的文件路径列表
 
