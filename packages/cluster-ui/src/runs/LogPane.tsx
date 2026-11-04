@@ -92,7 +92,7 @@ export function LogPane({ taskId, live, logPath }: { taskId: string; live: boole
   const raw = useOutput(taskId);
   const lines = logLines(raw);
   const entries = useMemo(() => parseTranscript(raw), [raw]);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [following, setFollowing] = useState(true);
   const [full, setFull] = useState(false);
   const [rawView, setRawView] = useState(false);
@@ -180,7 +180,7 @@ export function LogPane({ taskId, live, logPath }: { taskId: string; live: boole
           <button
             type="button"
             onClick={() => setRawView(!rawView)}
-            className="shrink-0 rounded-ui px-1.5 py-0.5 text-13 opacity-70 hover:bg-white/10 hover:opacity-100"
+            className="shrink-0 rounded-ui px-1.5 py-0.5 text-13 opacity-70 hover:bg-log-ink/10 hover:opacity-100"
           >
             {rawView ? '可读' : '原始'}
           </button>
@@ -189,7 +189,7 @@ export function LogPane({ taskId, live, logPath }: { taskId: string; live: boole
           type="button"
           onClick={toggleFull}
           title={full ? '退出全屏' : '全屏'}
-          className="shrink-0 rounded-ui p-1 opacity-70 hover:bg-white/10 hover:opacity-100"
+          className="shrink-0 rounded-ui p-1 opacity-70 hover:bg-log-ink/10 hover:opacity-100"
         >
           {full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
         </button>
@@ -198,7 +198,7 @@ export function LogPane({ taskId, live, logPath }: { taskId: string; live: boole
         <div className={bodyClass}>
           {empty ? (
             <p className="px-3 py-3 text-13 opacity-70">
-              {live ? '还没有输出。' : '输出已不在内存里。'}
+              {live ? '还没有输出。' : 'daemon 只在内存里保留 stdout，这条运行的输出读不到了。'}
               {!live && logPath && <span className="font-mono break-all"> 完整日志在 {logPath}</span>}
             </p>
           ) : (

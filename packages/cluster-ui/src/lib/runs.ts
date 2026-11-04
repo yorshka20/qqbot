@@ -1,6 +1,27 @@
-import type { ClusterHelpRequest, ClusterTask, ClusterWorkerRegistration } from '@qqbot/api-types';
+import type {
+  ClusterHelpRequest,
+  ClusterTask,
+  ClusterTemplatesResponse,
+  ClusterWorkerRegistration,
+  TicketCreateBody,
+} from '@qqbot/api-types';
 import { isLive, type Stage, stageOf, stageRank } from './stage';
 import { toMs } from './time';
+import { inWindow, type RunWindow } from './window';
+
+export type RunView = 'chat' | 'log' | 'result';
+
+export const RUN_VIEWS: readonly RunView[] = ['chat', 'log', 'result'];
+
+export const RUN_VIEW_LABEL: Record<RunView, string> = {
+  chat: '对话',
+  log: '日志',
+  result: '结果',
+};
+
+export function parseRunView(value: string | null | undefined): RunView | null {
+  return RUN_VIEWS.find((view) => view === value) ?? null;
+}
 
 export interface Run {
   task: ClusterTask;
@@ -170,6 +191,124 @@ export function orderRunsAsTree(runs: Run[]): RunTreeRow[] {
   return rows;
 }
 
+export type RunSectionKey = 'attention' | 'running' | 'queued' | 'ended';
+
+export const RUN_SECTION_LABEL: Record<RunSectionKey, string> = {
+  attention: '需要你',
+  running: '在跑',
+  queued: '排队',
+  ended: '已结束',
+};
+
+export interface RunSection {
+  key: RunSectionKey;
+  rows: RunTreeRow[];
+}
+
+const SECTION_ORDER: RunSectionKey[] = ['attention', 'running', 'queued', 'ended'];
+
+const SECTION_RANK: Record<RunSectionKey, number> = {
+  attention: 0,
+  running: 1,
+  queued: 2,
+  ended: 3,
+};
+
+const SECTION_OF_STAGE: Record<Stage, RunSectionKey> = {
+  asking: 'attention',
+  failed: 'attention',
+  blocked: 'attention',
+  review: 'attention',
+  running: 'running',
+  queued: 'queued',
+  done: 'ended',
+  cancelled: 'ended',
+};
+
+function familyRoot(run: Run, byId: ReadonlyMap<string, Run>): Run {
+  const seen = new Set<string>();
+  let current = run;
+  while (current.task.parentTaskId && byId.has(current.task.parentTaskId)) {
+    if (seen.has(current.task.id)) {
+      break;
+    }
+    seen.add(current.task.id);
+    const parent = byId.get(current.task.parentTaskId);
+    if (!parent) {
+      break;
+    }
+    current = parent;
+  }
+  return current;
+}
+
+/**
+ * The runs split into four sections, and one family — a root and every run under it — lands in a
+ * single section: the earliest one any member needs, so a planner's child never leaves its parent
+ * behind. Only the ended section is bounded by the window.
+ */
+export function groupRunSections(runs: Run[], opts: { now: number; window: RunWindow }): RunSection[] {
+  const byId = new Map(runs.map((run) => [run.task.id, run]));
+  const families = new Map<string, Run[]>();
+  for (const run of runs) {
+    const rootId = familyRoot(run, byId).task.id;
+    families.set(rootId, [...(families.get(rootId) ?? []), run]);
+  }
+
+  const buckets: Record<RunSectionKey, Run[]> = { attention: [], running: [], queued: [], ended: [] };
+  for (const family of families.values()) {
+    let key: RunSectionKey = 'ended';
+    for (const run of family) {
+      const section = SECTION_OF_STAGE[run.stage];
+      if (SECTION_RANK[section] < SECTION_RANK[key]) {
+        key = section;
+      }
+    }
+    if (key === 'ended' && !family.some((run) => inWindow(run, opts.window, opts.now))) {
+      continue;
+    }
+    buckets[key].push(...family);
+  }
+
+  const sections: RunSection[] = [];
+  for (const key of SECTION_ORDER) {
+    if (buckets[key].length > 0) {
+      sections.push({ key, rows: orderRunsAsTree(buckets[key]) });
+    }
+  }
+  return sections;
+}
+
+export interface RunTimes {
+  startedAt: number | null;
+  endedAt: number | null;
+  durationMs: number | null;
+}
+
+export function runTimes(task: ClusterTask, exitedAt: number | undefined, now: number): RunTimes {
+  const startedAt = toMs(task.workerStartedAt) ?? toMs(task.startedAt);
+  const endedAt = toMs(task.completedAt) ?? exitedAt ?? null;
+  const durationMs = startedAt === null ? null : (endedAt ?? now) - startedAt;
+  return { startedAt, endedAt, durationMs };
+}
+
+/** The template a run will use: the one chosen, else the project's default (the empty choice means "auto"). */
+export function resolveTemplate(
+  input: { project: string; template?: string },
+  templates: Pick<ClusterTemplatesResponse, 'projectDefaults'> | null,
+): string | undefined {
+  return input.template || templates?.projectDefaults[input.project] || undefined;
+}
+
+/** A planner that was dispatched without a ticket has nowhere to write its plan and result back. */
+export function needsPlannerTicket(role: string | undefined, ticketId: string | undefined): boolean {
+  return role === 'planner' && !ticketId;
+}
+
+export function plannerTicketDraft(description: string, project: string, template: string): TicketCreateBody {
+  return { title: runTitle(description), status: 'ready', project, template, body: description };
+}
+
 /**
  * What the composer opens with: the remembered project if it still exists, else the configured
  * default; the remembered template only follows a remembered project that hit.
@@ -197,5 +336,25 @@ export function parseFiles(filesModified: string | undefined): string[] {
     return Array.isArray(parsed) ? parsed.map(String) : [filesModified];
   } catch {
     return [filesModified];
+  }
+}
+
+export interface MessageAvailability {
+  enabled: boolean;
+  hint: string;
+}
+
+export const MESSAGE_ENABLED_HINT = 'worker 下一次调用 hub 时收到这条消息。';
+
+/** A message reaches a worker only while one is running the task. */
+export function messageAvailability(task: Pick<ClusterTask, 'status'>): MessageAvailability {
+  switch (task.status) {
+    case 'running':
+      return { enabled: true, hint: MESSAGE_ENABLED_HINT };
+    case 'pending':
+    case 'claimed':
+      return { enabled: false, hint: '运行还没开始，worker 启动后才能发消息。' };
+    default:
+      return { enabled: false, hint: '运行已结束，重新提交或续跑。' };
   }
 }

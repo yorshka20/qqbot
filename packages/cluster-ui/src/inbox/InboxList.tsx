@@ -14,7 +14,7 @@ import { useInbox } from './useInbox';
 
 function itemHref(item: InboxItem): string {
   const runId = item.kind === 'ask' ? (item.run?.task.id ?? null) : item.run.task.id;
-  return routeHref({ section: 'inbox', runId });
+  return routeHref({ section: 'inbox', runId, view: 'chat' });
 }
 
 const ARCHIVE_LABEL: Record<ArchiveItem['kind'], string> = {
@@ -23,10 +23,14 @@ const ARCHIVE_LABEL: Record<ArchiveItem['kind'], string> = {
   review: '结果已看',
 };
 
+function archiveTaskId(item: ArchiveItem): string | null {
+  return item.taskId ?? item.run?.task.id ?? null;
+}
+
 function ArchiveRow({ item, selected, now }: { item: ArchiveItem; selected: boolean; now: number }) {
   return (
     <a
-      href={routeHref({ section: 'inbox', runId: item.run.task.id })}
+      href={routeHref({ section: 'inbox', runId: archiveTaskId(item), view: 'chat' })}
       className="relative block border-b border-line/60 px-4 py-2 pl-5 hover:bg-surface-2/50"
     >
       <StatusBar tone="muted" active={selected} />
@@ -34,11 +38,12 @@ function ArchiveRow({ item, selected, now }: { item: ArchiveItem; selected: bool
         <span className="shrink-0 text-13 text-ink-muted">
           {formatClock(item.at, now)} · {ARCHIVE_LABEL[item.kind]}
         </span>
-        <span className="min-w-0 flex-1 truncate text-15">{item.run.title}</span>
+        <span className="min-w-0 flex-1 truncate text-15">{item.title}</span>
       </div>
       {item.help && (
         <p className="line-clamp-2 text-14 text-ink-muted">
           问：{item.help.question} / 答：{item.help.answer}
+          {item.answeredBy && ` / 回答人：${item.answeredBy}`}
         </p>
       )}
     </a>
@@ -46,7 +51,7 @@ function ArchiveRow({ item, selected, now }: { item: ArchiveItem; selected: bool
 }
 
 function Archive({ archive, runId, now }: { archive: ArchiveItem[]; runId: string | null; now: number }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const groups = groupInboxByDay(
     archive.map((item) => ({ item, since: item.at })),
     now,
@@ -68,7 +73,7 @@ function Archive({ archive, runId, now }: { archive: ArchiveItem[]; runId: strin
           <div key={group.label}>
             <div className="px-4 py-1.5 text-12 font-medium text-ink-muted">{group.label}</div>
             {group.items.map(({ item }) => (
-              <ArchiveRow key={item.id} item={item} selected={item.run.task.id === runId} now={now} />
+              <ArchiveRow key={item.id} item={item} selected={archiveTaskId(item) === runId} now={now} />
             ))}
           </div>
         ))}
@@ -102,7 +107,10 @@ export function InboxList({ route }: { route: Route }) {
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!loaded && <SkeletonRows rows={3} />}
-        {loaded && items.length === 0 && (
+        {loaded && items.length === 0 && archive.length === 0 && (
+          <p className="px-4 py-6 text-15 text-ink-muted">没有需要你的事。</p>
+        )}
+        {loaded && items.length === 0 && archive.length > 0 && (
           <EmptyState title="没有需要你的事。" hint="有 agent 提问、失败或交付时，这里会出现一条。" />
         )}
         {loaded &&

@@ -54,9 +54,9 @@ function FailedActions({ item }: { item: Extract<InboxItem, { kind: 'failed' }> 
     setBusy(true);
     setError(null);
     try {
-      const task = await retryRun(item.run, templates);
+      const { task, createdTicketId } = await retryRun(item.run, templates);
       await refresh();
-      navigate(routeHref({ section: 'runs', runId: task.id }));
+      navigate(routeHref({ section: 'runs', runId: task.id, createdTicket: createdTicketId }));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(false);

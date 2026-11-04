@@ -80,9 +80,13 @@ export function answersOf(history: ClusterHelpRequest[]): Map<string, string> {
 export interface ArchiveItem {
   kind: 'answered' | 'failed' | 'review';
   id: string;
-  run: Run;
+  /** Absent for a question whose run is no longer among the loaded runs. */
+  run?: Run;
+  taskId?: string;
+  title: string;
   /** The answered question, when `kind === 'answered'`. */
   help?: ClusterHelpRequest;
+  answeredBy?: string;
   /** When it was handled: answeredAt / acknowledgedAt. */
   at: number;
 }
@@ -93,16 +97,20 @@ export function buildInboxArchive(runs: Run[], history: ClusterHelpRequest[]): A
   const items: ArchiveItem[] = [];
 
   for (const request of history) {
-    const run = request.taskId ? runById.get(request.taskId) : undefined;
-    if (run && request.status !== 'pending' && request.answer !== undefined) {
-      items.push({
-        kind: 'answered',
-        id: `answered:${request.id}`,
-        run,
-        help: request,
-        at: toMs(request.answeredAt) ?? toMs(request.createdAt) ?? 0,
-      });
+    if (request.status === 'pending' || request.answer === undefined) {
+      continue;
     }
+    const run = request.taskId ? runById.get(request.taskId) : undefined;
+    items.push({
+      kind: 'answered',
+      id: `answered:${request.id}`,
+      run,
+      taskId: request.taskId,
+      title: run?.title ?? request.question,
+      help: request,
+      answeredBy: request.answeredBy,
+      at: toMs(request.answeredAt) ?? toMs(request.createdAt) ?? 0,
+    });
   }
 
   for (const run of runs) {
@@ -110,10 +118,10 @@ export function buildInboxArchive(runs: Run[], history: ClusterHelpRequest[]): A
     if (at === null) {
       continue;
     }
-    if (run.stage === 'failed' || run.stage === 'blocked') {
-      items.push({ kind: 'failed', id: `failed:${run.task.id}`, run, at });
+    if (run.stage === 'failed' || run.stage === 'blocked' || run.stage === 'cancelled') {
+      items.push({ kind: 'failed', id: `failed:${run.task.id}`, run, taskId: run.task.id, title: run.title, at });
     } else if (run.stage === 'done' && run.task.status === 'completed') {
-      items.push({ kind: 'review', id: `review:${run.task.id}`, run, at });
+      items.push({ kind: 'review', id: `review:${run.task.id}`, run, taskId: run.task.id, title: run.title, at });
     }
   }
 

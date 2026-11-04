@@ -1,5 +1,10 @@
-/** What only this browser knows: the composer's last choice. */
+import { parseRunView, type RunView } from './runs';
+import type { RunWindow } from './window';
+
+/** What only this browser knows: the composer's last choice, the run tab, the overview controls. */
 const COMPOSER_KEY = 'cluster-ui.composer';
+const RUN_VIEW_KEY = 'cluster-ui.run-view';
+const OVERVIEW_KEY = 'cluster-ui.overview';
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -30,4 +35,29 @@ export function readComposerChoice(): ComposerChoice {
 
 export function rememberComposerChoice(choice: ComposerChoice): void {
   write(COMPOSER_KEY, choice);
+}
+
+export function readRunView(): RunView {
+  return parseRunView(read<string | null>(RUN_VIEW_KEY, null)) ?? 'chat';
+}
+
+export function rememberRunView(view: RunView): void {
+  write(RUN_VIEW_KEY, view);
+}
+
+export interface OverviewChoice {
+  window: RunWindow;
+  liveOnly: boolean;
+}
+
+const DEFAULT_OVERVIEW: OverviewChoice = { window: '24h', liveOnly: false };
+
+export function readOverviewChoice(): OverviewChoice {
+  const saved = read<Partial<OverviewChoice>>(OVERVIEW_KEY, {});
+  const window = saved.window === '24h' || saved.window === '7d' || saved.window === 'all' ? saved.window : null;
+  return { window: window ?? DEFAULT_OVERVIEW.window, liveOnly: saved.liveOnly === true };
+}
+
+export function rememberOverviewChoice(choice: OverviewChoice): void {
+  write(OVERVIEW_KEY, choice);
 }

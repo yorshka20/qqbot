@@ -21,11 +21,14 @@ import type {
   ClusterTaskAcknowledgedResponse,
   ClusterTaskCancelledResponse,
   ClusterTaskDetail,
+  ClusterTaskMessagedResponse,
   ClusterTemplatesResponse,
+  ClusterWorkerHistoryResponse,
   ClusterWorkerKilledResponse,
   EnrichedWorkerRegistration,
   ProjectsResponse,
   Ticket,
+  TicketCreateBody,
   TicketFrontmatter,
   TicketResultFileResponse,
   TicketResultsResponse,
@@ -168,6 +171,11 @@ export function killClusterTask(taskId: string, reason?: string): Promise<Cluste
   return post('Kill task', `${CLUSTER}/tasks/${id(taskId)}/kill`, { reason });
 }
 
+/** A message to a running task's worker; the route refuses (409) a task that has no live worker. */
+export function sendClusterTaskMessage(taskId: string, text: string): Promise<ClusterTaskMessagedResponse> {
+  return post('Send task message', `${CLUSTER}/tasks/${id(taskId)}/messages`, { text });
+}
+
 export function answerClusterHelpRequest(
   askId: string,
   input: ClusterHelpAnswerBody,
@@ -184,6 +192,14 @@ export function listClusterHistoryJobs(opts?: {
   return request('List cluster history jobs', `${CLUSTER}/history/jobs${query({ ...opts })}`);
 }
 
+export function listClusterHistoryWorkers(opts?: {
+  limit?: number;
+  offset?: number;
+  project?: string;
+}): Promise<ClusterWorkerHistoryResponse> {
+  return request('List cluster history workers', `${CLUSTER}/history/workers${query({ ...opts })}`);
+}
+
 // ── Tickets ──
 
 export async function listTickets(): Promise<TicketFrontmatter[]> {
@@ -193,6 +209,10 @@ export async function listTickets(): Promise<TicketFrontmatter[]> {
 
 export function getTicket(ticketId: string): Promise<Ticket> {
   return request('Get ticket', `${TICKETS}/${id(ticketId)}`);
+}
+
+export function createTicket(body: TicketCreateBody): Promise<Ticket> {
+  return post('Create ticket', TICKETS, body);
 }
 
 /** An undefined field is preserved; `null` clears a nullable one. */

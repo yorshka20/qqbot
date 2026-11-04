@@ -1,6 +1,7 @@
 import type { ClusterLock, ClusterWorkerRegistration } from '@qqbot/api-types';
 import type { Run } from './runs';
 import { isLive, STAGE_TONE, type Tone } from './stage';
+import { inWindow, type RunWindow } from './window';
 
 export type WorkerState = 'working' | 'asking' | 'failed' | 'idle' | 'exited';
 
@@ -72,18 +73,22 @@ export interface RunBranch {
   children: RunBranch[];
 }
 
-/** What belongs on the map: the live runs, and what still waits in the inbox for the owner. */
-function onMap(run: Run): boolean {
-  if (isLive(run.task)) {
-    return true;
-  }
-  return (
-    (run.stage === 'failed' || run.stage === 'blocked' || run.stage === 'review') &&
-    run.task.acknowledgedAt === undefined
-  );
+export interface BranchOptions {
+  window: RunWindow;
+  /** Keep only what is happening now: a live run, or one waiting on an answer. */
+  liveOnly: boolean;
+  now: number;
 }
 
-export function buildBranches(runs: Run[], workers: ClusterWorkerRegistration[]): ProjectBranch[] {
+/** What belongs on the map: the live runs, and whatever falls inside the chosen time window. */
+function onMap(run: Run, opts: BranchOptions): boolean {
+  if (opts.liveOnly) {
+    return isLive(run.task) || run.stage === 'asking';
+  }
+  return inWindow(run, opts.window, opts.now);
+}
+
+export function buildBranches(runs: Run[], workers: ClusterWorkerRegistration[], opts: BranchOptions): ProjectBranch[] {
   const byId = new Map(runs.map((r) => [r.task.id, r]));
   const childrenOf = new Map<string, Run[]>();
   for (const run of runs) {
@@ -93,9 +98,10 @@ export function buildBranches(runs: Run[], workers: ClusterWorkerRegistration[])
     }
   }
 
+  // A parent kept only because a child is on the map still draws; a run that belongs leaves with its subtree.
   const branch = (run: Run): RunBranch | null => {
     const children = (childrenOf.get(run.task.id) ?? []).flatMap((c) => branch(c) ?? []);
-    return onMap(run) || children.length > 0 ? { run, children } : null;
+    return onMap(run, opts) || children.length > 0 ? { run, children } : null;
   };
 
   const projects = new Map<string, ProjectBranch>();
@@ -143,11 +149,11 @@ export function workerState(run: Run | undefined): WorkerState {
 }
 
 const PROJECT_W = 132;
-const RUN_W = 264;
-const WORKER_W = 312;
+const RUN_W = 280;
+const WORKER_W = 328;
 const COLUMN_GAP = 48;
-const RUN_H = 84;
-const WORKER_H = 124;
+const RUN_H = 136;
+const WORKER_H = 184;
 const ROW_GAP = 16;
 const BAND_PAD = 8;
 const CORNER_RADIUS = 6;

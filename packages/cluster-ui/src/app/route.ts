@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { parseRunView, type RunView } from '../lib/runs';
 import { STAGE_LABEL, type Stage } from '../lib/stage';
 
 export const SECTIONS = ['inbox', 'overview', 'runs', 'projects', 'workers', 'settings'] as const;
@@ -14,6 +15,9 @@ export interface Route {
   stage: Stage | null;
   ticket: string | null;
   ticketFile: string | null;
+  view: RunView | null;
+  /** A ticket the composer made for a planner run, shown on the run it started. */
+  createdTicket: string | null;
 }
 
 export const NO_FILTERS = {
@@ -24,6 +28,8 @@ export const NO_FILTERS = {
   stage: null,
   ticket: null,
   ticketFile: null,
+  view: null,
+  createdTicket: null,
 } satisfies Omit<Route, 'section'>;
 
 function parseStage(value: string | null): Stage | null {
@@ -43,11 +49,16 @@ export function parseRoute(hash: string): Route {
     stage: parseStage(params.get('stage')),
     ticket: params.get('ticket'),
     ticketFile: params.get('file'),
+    view: parseRunView(params.get('view')),
+    createdTicket: params.get('created'),
   };
 }
 
 export function routeHref(route: Partial<Route> & Pick<Route, 'section'>): string {
-  const { section, runId, pin, composing, project, stage, ticket, ticketFile } = { ...NO_FILTERS, ...route };
+  const { section, runId, pin, composing, project, stage, ticket, ticketFile, view, createdTicket } = {
+    ...NO_FILTERS,
+    ...route,
+  };
   const params = new URLSearchParams();
   if (pin) {
     params.set('pin', pin);
@@ -66,6 +77,12 @@ export function routeHref(route: Partial<Route> & Pick<Route, 'section'>): strin
   }
   if (ticketFile) {
     params.set('file', ticketFile);
+  }
+  if (view) {
+    params.set('view', view);
+  }
+  if (createdTicket) {
+    params.set('created', createdTicket);
   }
   const path = runId ? `${section}/${encodeURIComponent(runId)}` : section;
   return params.size > 0 ? `#/${path}?${params}` : `#/${path}`;

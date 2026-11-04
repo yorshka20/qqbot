@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterEventEntry, ClusterEventType, ClusterTask } from '@qqbot/api-types';
-import { buildTimeline, foldTimeline, reportStats, rulerGap, rulerMinutesLabel, type TimelineNode } from './timeline';
+import { buildTimeline, foldTimeline, lockedFileCount, reportStats, rulerGap, rulerMinutesLabel, type TimelineNode } from './timeline';
 
 const T0 = Date.parse('2026-11-04T12:00:00Z');
 const MIN = 60_000;
@@ -123,6 +123,23 @@ describe('buildTimeline', () => {
       events: [],
     });
     expect(nodes.at(-1)).toMatchObject({ kind: 'end', state: 'cancelled', summary: '手动终止' });
+  });
+
+  test('a directive reads the text the daemon carries in data.text', () => {
+    const nodes = buildTimeline({ ...base, task: task(), events: [event('directive', 2, { text: '先停下' })] });
+    expect(nodes.find((n) => n.kind === 'note' && n.text.startsWith('指令'))).toMatchObject({ text: '指令 · 先停下' });
+  });
+
+  test('an answer reads data.answer', () => {
+    const nodes = buildTimeline({ ...base, task: task(), events: [event('answer', 2, { answer: '选甲' })] });
+    expect(nodes.find((n) => n.kind === 'note' && n.text.startsWith('回答'))).toMatchObject({ text: '回答 · 选甲' });
+  });
+});
+
+describe('lockedFileCount', () => {
+  test('counts the files an event names, one when it names none', () => {
+    expect(lockedFileCount(event('lock_acquired', 2, { files: ['a', 'b'] }))).toBe(2);
+    expect(lockedFileCount(event('lock_acquired', 2, {}))).toBe(1);
   });
 });
 
