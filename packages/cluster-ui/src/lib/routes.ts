@@ -90,6 +90,7 @@ export interface OverlayState {
   composing: boolean;
   ticket: { id: string; file: string | null } | null;
   log: boolean;
+  created: string | null;
 }
 
 export function parseOverlay(search: string): OverlayState {
@@ -99,6 +100,7 @@ export function parseOverlay(search: string): OverlayState {
     composing: params.get('new') === '1',
     ticket: ticketId ? { id: ticketId, file: params.get('file') } : null,
     log: params.get('log') === '1',
+    created: params.get('created') || null,
   };
 }
 
@@ -106,6 +108,7 @@ export interface OverlayPatch {
   new?: boolean;
   ticket?: { id: string; file?: string } | null;
   log?: boolean;
+  created?: string | null;
 }
 
 /** Applies a patch to the overlay keys and leaves every other parameter alone; returns the new search string ('' or '?…'). */
@@ -133,6 +136,13 @@ export function withOverlay(search: string, patch: OverlayPatch): string {
       params.set('log', '1');
     } else {
       params.delete('log');
+    }
+  }
+  if (patch.created !== undefined) {
+    if (patch.created) {
+      params.set('created', patch.created);
+    } else {
+      params.delete('created');
     }
   }
   const text = params.toString();

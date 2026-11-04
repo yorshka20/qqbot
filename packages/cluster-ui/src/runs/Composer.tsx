@@ -4,11 +4,11 @@ import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 
 import { getTicket, listTickets } from '../api';
 import { useCluster } from '../app/ClusterData';
 import { navigate, type Route, routeHref, withRoute } from '../app/route';
+import { submitRun, ticketDescription } from '../composer/submitRun';
 import { readComposerChoice, rememberComposerChoice } from '../lib/memory';
 import { composerDefaults, needsPlannerTicket, resolveTemplate } from '../lib/runs';
 import { Button } from '../ui/Button';
 import { INPUT_CLASS, Select } from '../ui/Field';
-import { submitRun, ticketDescription } from './submitRun';
 
 const PLACEHOLDER = '修 proactive 卡片在长回复时丢失的问题：先定位 ReplyGenerationService 里截断的那一段，再补测试';
 

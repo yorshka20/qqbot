@@ -76,8 +76,9 @@ describe('overlays', () => {
       composing: true,
       ticket: { id: 'T-1', file: 'plan.md' },
       log: true,
+      created: null,
     });
-    expect(parseOverlay('')).toEqual({ composing: false, ticket: null, log: false });
+    expect(parseOverlay('')).toEqual({ composing: false, ticket: null, log: false, created: null });
   });
 
   test('withOverlay sets and clears keys and keeps the others', () => {
@@ -88,5 +89,12 @@ describe('overlays', () => {
     expect(withOverlay('', { ticket: { id: 'T-1', file: 'a b.md' } })).toBe('?ticket=T-1&file=a+b.md');
     expect(withOverlay('?ticket=T-1&file=x', { ticket: null })).toBe('');
     expect(withOverlay('?ticket=T-1&file=x', { ticket: { id: 'T-2' } })).toBe('?ticket=T-2');
+  });
+
+  test('created round-trips and clears', () => {
+    const search = withOverlay('?tab=chat', { created: 'T-9' });
+    expect(search).toBe('?tab=chat&created=T-9');
+    expect(parseOverlay(search).created).toBe('T-9');
+    expect(withOverlay(search, { created: null })).toBe('?tab=chat');
   });
 });

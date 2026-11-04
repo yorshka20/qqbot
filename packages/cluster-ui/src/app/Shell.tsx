@@ -2,15 +2,17 @@ import { useEffect, useRef } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '../components/ui/sidebar';
 import { TooltipProvider } from '../components/ui/tooltip';
+import { Composer } from '../composer/Composer';
+import { TicketSheet } from '../composer/TicketSheet';
 import { InboxPage } from '../inbox/InboxPage';
 import { readSidebarOpen } from '../lib/memory';
 import { homePath, parentPath, parseAppLocation, settingsPath, withOverlay } from '../lib/routes';
+import { SettingsLayout } from '../settings/SettingsLayout';
 import { TaskPage } from '../task/TaskPage';
 import { AppSidebar } from './AppSidebar';
 import { Banner } from './Banner';
 import { HomePage } from './HomePage';
 import { overlayIsOpen, useKey } from './keys';
-import { Placeholder } from './Placeholder';
 
 function focusWhenRendered(selector: string): void {
   requestAnimationFrame(() => document.querySelector<HTMLElement>(selector)?.focus());
@@ -72,11 +74,13 @@ export function Shell() {
               <Route path="/t/:taskId" element={<TaskPage />} />
               <Route path="/t/:taskId/w/:workerId" element={<TaskPage />} />
               <Route path="/settings" element={<Navigate to={settingsPath()} replace />} />
-              <Route path="/settings/:group" element={<Placeholder />} />
+              <Route path="/settings/:group" element={<SettingsLayout />} />
               <Route path="*" element={<Navigate to={homePath()} replace />} />
             </Routes>
           </main>
         </SidebarInset>
+        <Composer />
+        <TicketSheet />
       </SidebarProvider>
     </TooltipProvider>
   );

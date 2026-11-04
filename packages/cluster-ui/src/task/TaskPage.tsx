@@ -18,6 +18,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../compone
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
+import { retryRun } from '../composer/submitRun';
 import { useIsMobile } from '../hooks/use-mobile';
 import { readDetailOpen, readTaskTab, rememberDetailOpen, rememberTaskTab } from '../lib/memory';
 import { modelDisplayName } from '../lib/model';
@@ -28,7 +29,6 @@ import { isLive, stageOfStatus } from '../lib/stage';
 import { pathOfRun } from '../lib/taskList';
 import { formatClock, formatSpan } from '../lib/time';
 import { useNow } from '../lib/useNow';
-import { retryRun } from '../runs/submitRun';
 import { TopologyTab } from '../topology/TopologyTab';
 import { ConversationStream } from './ConversationStream';
 import { DetailPanel } from './DetailPanel';
@@ -247,6 +247,17 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
               className="underline underline-offset-2"
             >
               父运行 {parentRun?.title ?? task.parentTaskId}
+            </Link>
+          )}
+          {overlay.created && (
+            <Link
+              to={{
+                pathname: location.pathname,
+                search: withOverlay(location.search, { ticket: { id: overlay.created } }),
+              }}
+              className="font-mono text-xs underline underline-offset-2"
+            >
+              已建 ticket {overlay.created}
             </Link>
           )}
           {ticketId && (

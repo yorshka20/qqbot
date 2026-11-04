@@ -5,6 +5,7 @@ import { acknowledgeClusterTask, killClusterTask } from '../api';
 import { useCluster } from '../app/ClusterData';
 import { useKey } from '../app/keys';
 import { navigate, type Route, routeHref, withRoute } from '../app/route';
+import { retryRun } from '../composer/submitRun';
 import { readRunView, rememberRunView } from '../lib/memory';
 import { RUN_VIEW_LABEL, RUN_VIEWS, type Run, type RunView, runTimes, runTitle } from '../lib/runs';
 import { isLive, STAGE_LABEL, STAGE_TONE, stageOfStatus, TONE_TEXT } from '../lib/stage';
@@ -19,7 +20,6 @@ import { LogPane } from './LogPane';
 import { ResultSection } from './ResultSection';
 import { ModelName, RunFactsLine } from './RunFacts';
 import { SessionSection } from './SessionSection';
-import { retryRun } from './submitRun';
 import { useRunDetail } from './useRunDetail';
 
 function Actions({

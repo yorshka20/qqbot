@@ -8,6 +8,7 @@ import { AnswerForm } from '../components/AnswerForm';
 import { Button } from '../components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
 import { Skeleton } from '../components/ui/skeleton';
+import { retryRun } from '../composer/submitRun';
 import { failureReason } from '../lib/conversation';
 import { type ArchiveItem, buildInbox, buildInboxArchive, groupInboxByDay, type InboxItem } from '../lib/inbox';
 import { taskPath } from '../lib/routes';
@@ -17,7 +18,6 @@ import { pathOfRun } from '../lib/taskList';
 import { formatClock, formatWait } from '../lib/time';
 import { useNow } from '../lib/useNow';
 import { cn } from '../lib/utils';
-import { retryRun } from '../runs/submitRun';
 
 const ARCHIVE_LABEL: Record<ArchiveItem['kind'], string> = {
   answered: '已回答',
