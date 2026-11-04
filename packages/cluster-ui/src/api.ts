@@ -11,6 +11,7 @@ import type {
   ClusterHelpAnsweredResponse,
   ClusterHelpRequest,
   ClusterJobHistoryResponse,
+  ClusterJobLandResponse,
   ClusterJobSubmitBody,
   ClusterJobWithDetail,
   ClusterLock,
@@ -22,6 +23,7 @@ import type {
   ClusterTaskCancelledResponse,
   ClusterTaskDetail,
   ClusterTaskMessagedResponse,
+  ClusterTaskOutputResponse,
   ClusterTemplatesResponse,
   ClusterWorkerHistoryResponse,
   ClusterWorkerKilledResponse,
@@ -95,6 +97,16 @@ export function getDaemonHealth(): Promise<ClusterDaemonHealthResponse> {
 
 export function getClusterStatus(): Promise<ClusterStatusResponse> {
   return request('Get cluster status', `${CLUSTER}/status`);
+}
+
+/** Land a finished job on its base branch again. */
+export function landClusterJob(jobId: string): Promise<ClusterJobLandResponse> {
+  return post('Land cluster job', `${CLUSTER}/jobs/${encodeURIComponent(jobId)}/land`);
+}
+
+/** The end of a worker's stdout, which outlives the worker. */
+export function getClusterTaskOutput(taskId: string): Promise<ClusterTaskOutputResponse> {
+  return request('Read cluster task output', `${CLUSTER}/tasks/${encodeURIComponent(taskId)}/output`);
 }
 
 export function startCluster(): Promise<ClusterStartedResponse> {

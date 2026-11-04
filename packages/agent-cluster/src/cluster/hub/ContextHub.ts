@@ -425,17 +425,12 @@ export class ContextHub {
 
   handleClaim(workerId: string, input: HubClaimInput): HubClaimOutput {
     this.workerRegistry.touch(workerId);
-    // The daemon binds a worker to its task when it starts it. A claim naming another task would
-    // move the worker's subscriptions, questions and locks onto a task it does not run.
-    const bound = this.workerRegistry.get(workerId)?.lastBoundTaskId;
-    if (bound && bound !== input.taskId) {
-      throw new Error(`hub_claim: task ${input.taskId} is not yours; you run task ${bound}`);
-    }
-    if (!bound) {
-      this.bindWorker(workerId, input.taskId);
+    const taskId = this.workerRegistry.get(workerId)?.lastBoundTaskId;
+    if (!taskId) {
+      throw new Error('hub_claim: this worker has no task');
     }
 
-    const result = this.lockManager.tryAcquire(input.files, workerId, input.taskId);
+    const result = this.lockManager.tryAcquire(input.files, workerId, taskId);
 
     if (result.granted) {
       this.eventLog.append(
@@ -445,7 +440,7 @@ export class ContextHub {
           intent: input.intent,
           files: input.files,
         },
-        { taskId: input.taskId },
+        { taskId },
       );
     }
 

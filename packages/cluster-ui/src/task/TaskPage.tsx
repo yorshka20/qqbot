@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
-import { acknowledgeClusterTask, killClusterTask } from '../api';
+import { acknowledgeClusterTask, killClusterTask, landClusterJob } from '../api';
 import { useCluster } from '../app/ClusterData';
 import { togglePinned, usePinned } from '../app/pins';
 import { StageBadge } from '../components/StageBadge';
@@ -33,7 +33,8 @@ import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
 import { retryRun } from '../composer/submitRun';
 import { useIsMobile } from '../hooks/use-mobile';
-import { readDetailOpen, readTaskTab, rememberDetailOpen, rememberTaskTab } from '../lib/memory';
+import { deliveryOf } from '../lib/delivery';
+import { readDetailOpen, rememberDetailOpen } from '../lib/memory';
 import { modelDisplayName } from '../lib/model';
 import { useOutput } from '../lib/outputs';
 import { PLANNING_STATE_LABEL, planningState } from '../lib/planning';
@@ -45,6 +46,7 @@ import { formatClock, formatSpan } from '../lib/time';
 import { useNow } from '../lib/useNow';
 import { TopologyTab } from '../topology/TopologyTab';
 import { ConversationStream } from './ConversationStream';
+import { DeliveryLine } from './DeliveryLine';
 import { DetailPanel } from './DetailPanel';
 import { LogView } from './LogView';
 import { MessageComposer } from './MessageComposer';
@@ -117,7 +119,7 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const now = useNow();
-  const { runs, loaded, templates, workerExits, refresh } = useCluster();
+  const { runs, loaded, templates, workerExits, refresh, reloadJob } = useCluster();
   const { task: detail, events, failed: loadFailed } = useTaskDetail(currentId);
   const liveOutput = useOutput(currentId);
   const pinned = usePinned().has(taskId);
@@ -131,7 +133,7 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
   const overlay = parseOverlay(location.search);
 
   const urlTab = new URLSearchParams(location.search).get('tab');
-  const tab: TaskTab = TASK_TABS.find((candidate) => candidate === urlTab) ?? readTaskTab();
+  const tab: TaskTab = TASK_TABS.find((candidate) => candidate === urlTab) ?? 'chat';
 
   const act = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -179,9 +181,9 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
   const rootRun = runs.find((candidate) => candidate.task.id === taskId);
   const ticketId = run?.ticketId;
   const output = liveOutput || task.output || '';
+  const delivery = deliveryOf(run?.job, task);
 
   const chooseTab = (next: TaskTab) => {
-    rememberTaskTab(next);
     const params = new URLSearchParams(location.search);
     params.set('tab', next);
     navigate({ pathname: location.pathname, search: `?${params.toString()}` });
@@ -208,6 +210,17 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
       const { task: next } = await retryRun(run, templates);
       await refresh();
       navigate(taskPath(next.id));
+    });
+  const land = () =>
+    act(async () => {
+      if (!run?.job) {
+        throw new Error('这条运行还没载入，稍后再试。');
+      }
+      const { error: refused } = await landClusterJob(run.job.id);
+      await reloadJob(run.job.id);
+      if (refused) {
+        throw new Error(refused);
+      }
     });
   const kill = () =>
     act(async () => {
@@ -253,7 +266,7 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           <StageBadge stage={stage} />
-          {planning && <Badge variant="outline">{PLANNING_STATE_LABEL[planning]}</Badge>}
+          {live && planning && <Badge variant="outline">{PLANNING_STATE_LABEL[planning]}</Badge>}
           {task.model && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -273,7 +286,7 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
               父运行 {parentRun?.title ?? task.parentTaskId}
             </Link>
           )}
-          {overlay.created && (
+          {overlay.created && !ticketId && (
             <Link
               to={{
                 pathname: location.pathname,
@@ -293,6 +306,7 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
             </Link>
           )}
         </div>
+        {delivery && <DeliveryLine delivery={delivery} busy={busy} onLand={land} />}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {!live && (
             <Button disabled={busy || !run} onClick={retry}>

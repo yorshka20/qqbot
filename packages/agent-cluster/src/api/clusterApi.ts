@@ -19,6 +19,7 @@
  *   - GET  /api/cluster/jobs/:id
  *   - GET  /api/cluster/tasks
  *   - GET  /api/cluster/tasks/:id/events
+ *   - GET  /api/cluster/tasks/:id/output  the end of the worker's stdout file
  *   - GET  /api/cluster/events
  *   - GET  /api/cluster/locks
  *   - GET  /api/cluster/help
@@ -30,6 +31,7 @@
  *   - POST /api/cluster/workers/:id/kill
  *   - POST /api/cluster/tasks/:id/kill
  *   - POST /api/cluster/jobs/:id/kill
+ *   - POST /api/cluster/jobs/:id/land  land a finished job on its base branch again
  *   - POST /api/cluster/tasks/:id/messages  { text, from? } → a directive to the task's running worker
  *   - POST /api/cluster/tasks/:id/acknowledge  a person saw this task; the inbox drops it
  *   - GET  /api/cluster/help?status=all      answered requests too
@@ -44,6 +46,7 @@ import type {
   ClusterJob,
   ClusterJobCancelledResponse,
   ClusterJobHistoryResponse,
+  ClusterJobLandResponse,
   ClusterJobSubmitBody,
   ClusterJobWithDetail,
   ClusterLock,
@@ -56,6 +59,7 @@ import type {
   ClusterTaskDetail,
   ClusterTaskMessageBody,
   ClusterTaskMessagedResponse,
+  ClusterTaskOutputResponse,
   ClusterTemplatesResponse,
   ClusterWorkerHistoryResponse,
   ClusterWorkerKilledResponse,
@@ -73,6 +77,7 @@ import type { ProjectRegistry } from '../codingAgent/ProjectRegistry';
 import { errorResponse, jsonResponse } from './http';
 
 const API_PREFIX = '/api/cluster';
+const OUTPUT_TAIL_BYTES = 256 * 1024;
 
 export class ClusterApi implements HubRoute {
   readonly prefix = API_PREFIX;
@@ -162,7 +167,7 @@ export class ClusterApi implements HubRoute {
     return errorResponse('Method not allowed', 405);
   }
 
-  private handleGet(subPath: string, req: Request): Response {
+  private async handleGet(subPath: string, req: Request): Promise<Response> {
     const url = new URL(req.url);
 
     // ── Always-on routes (work even when cluster is stopped) ──
@@ -278,7 +283,10 @@ export class ClusterApi implements HubRoute {
           const jobId = url.searchParams.get('jobId') || undefined;
           const project = url.searchParams.get('project') || undefined;
           const result = live.getHub().workerRegistry.getWorkersFromDb({ limit, offset, jobId, project });
-          return jsonResponse<ClusterWorkerHistoryResponse>(result);
+          return jsonResponse<ClusterWorkerHistoryResponse>({
+            ...result,
+            items: this.enrichWorkerRegistrations(live, result.items),
+          });
         }
 
         // /jobs/:id/workers — workers for a specific job
@@ -319,6 +327,21 @@ export class ClusterApi implements HubRoute {
             ...task,
             children: children.length > 0 ? children : undefined,
             subscriptions: subscribed ? subscriptions : undefined,
+          });
+        }
+
+        // /tasks/:id/output — the end of the worker's stdout file, which outlives the process
+        const outputMatch = subPath.match(/^\/tasks\/([^/]+)\/output$/);
+        if (outputMatch) {
+          const task = live.getScheduler().findTask(outputMatch[1]);
+          if (!task) return errorResponse('Task not found', 404);
+          const log = task.logPath ? Bun.file(task.logPath) : null;
+          if (!log || !(await log.exists())) {
+            return jsonResponse<ClusterTaskOutputResponse>({ output: '', truncated: false });
+          }
+          return jsonResponse<ClusterTaskOutputResponse>({
+            output: await log.slice(-OUTPUT_TAIL_BYTES).text(),
+            truncated: log.size > OUTPUT_TAIL_BYTES,
           });
         }
 
@@ -459,6 +482,15 @@ export class ClusterApi implements HubRoute {
             jobId: jobKillMatch[1],
             cancelledTasks: result.cancelledTasks,
           });
+        }
+
+        // /jobs/:id/land
+        const landMatch = subPath.match(/^\/jobs\/([^/]+)\/land$/);
+        if (landMatch) {
+          const result = await live.getScheduler().landJob(landMatch[1]);
+          if (result.code === 'not_found') return errorResponse('Job not found', 404);
+          if (result.code === 'not_landable') return errorResponse(result.reason, 409);
+          return jsonResponse<ClusterJobLandResponse>({ landed: result.landed, error: result.error });
         }
 
         // /tasks/:id/messages

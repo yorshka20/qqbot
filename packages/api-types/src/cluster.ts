@@ -148,6 +148,8 @@ export interface ClusterJob {
   baseBranch?: string;
   /** When the work reached `baseBranch`; unset while it has not, or when there was nothing to land. */
   landedAt?: string;
+  /** Why the last landing failed; `POST /jobs/:id/land` tries again. */
+  landError?: string;
   /** How many children may run at once. */
   maxChildren?: number;
   planning?: 'interactive' | 'auto';
@@ -337,6 +339,18 @@ export interface ClusterJobSubmitBody {
   planning?: 'interactive' | 'auto';
   /** How many of the job's children may run at once; further ones queue. Unset: only the cluster's own limits apply. */
   maxChildren?: number;
+}
+
+/** `GET /api/cluster/tasks/:id/output`: the end of the worker's stdout file, which outlives the worker. */
+export interface ClusterTaskOutputResponse {
+  output: string;
+  truncated: boolean;
+}
+
+/** `POST /api/cluster/jobs/:id/land`. `landed` is false when there was nothing to land or `error` says why it failed. */
+export interface ClusterJobLandResponse {
+  landed: boolean;
+  error?: string;
 }
 
 /** `POST /api/cluster/{tasks,jobs}/:id/kill` */

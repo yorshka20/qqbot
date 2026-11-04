@@ -176,7 +176,6 @@ export class HubMCPServer {
           'list of conflicting files (and their current holders) if any of the requested files are already ' +
           'locked by another worker. Always claim before writing.',
         inputSchema: {
-          taskId: z.string().describe('Your current task ID (from CLUSTER_TASK_ID env var).'),
           intent: z.string().describe('One-sentence description of what you intend to do with the files.'),
           files: z.array(z.string()).describe('Absolute or repo-relative file paths to lock.'),
         },

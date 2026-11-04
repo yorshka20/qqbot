@@ -17,7 +17,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from '../components/ui/sidebar';
-import { modelShortName } from '../lib/model';
+import { runModelName } from '../lib/model';
 import { parseAppLocation, taskPath, workerPath } from '../lib/routes';
 import type { Run } from '../lib/runs';
 import { STAGE_TONE } from '../lib/stage';
@@ -88,7 +88,7 @@ function TaskItem({ item, row, now, cursor, activeTaskId, activeWorkerId }: Item
                 <AttentionMark attention={item.attention} />
               </span>
               <span className="block truncate text-xs text-muted-foreground">
-                {modelShortName(root.task.model)} · {runClock(root, now)}
+                {runModelName(root.task)} · {runClock(root, now)}
                 {children.length > 0 && ` · ${children.length} 个子运行`}
                 {root.stage !== 'running' && latest > root.since && ` · 子运行 ${formatAgo(now - latest)}`}
               </span>
@@ -123,7 +123,7 @@ function TaskItem({ item, row, now, cursor, activeTaskId, activeWorkerId }: Item
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{child.worker?.lastReportSummary || child.title}</span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {modelShortName(child.task.model)} · {runClock(child, now)}
+                        {runModelName(child.task)} · {runClock(child, now)}
                       </span>
                     </span>
                   </Link>

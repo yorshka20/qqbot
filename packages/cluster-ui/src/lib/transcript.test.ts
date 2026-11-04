@@ -54,6 +54,15 @@ describe('parseTranscript', () => {
     expect(entries?.[0]).toMatchObject({ body: 'a\nb', failed: false });
   });
 
+  test('skips heartbeat events, which say nothing about the work', () => {
+    const lines = [
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'working' }] } }),
+      JSON.stringify({ type: 'tool_progress', tool_name: 'Bash', elapsed_time_seconds: 30 }),
+      JSON.stringify({ type: 'rate_limit_event' }),
+    ];
+    expect(parseTranscript(lines.join('\n'))?.map((entry) => entry.kind)).toEqual(['text']);
+  });
+
   test('skips system init events', () => {
     const entries = parseTranscript(
       jsonl({ type: 'system', subtype: 'init', session_id: 's' }, assistant({ type: 'text', text: '开始' })),

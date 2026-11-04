@@ -27,3 +27,8 @@ export function modelDisplayName(id: string | undefined): string {
 export function modelShortName(id: string | undefined): string {
   return modelDisplayName(id).replace(/^Claude /, '');
 }
+
+/** What a run ran on: the model the worker reported, else the template, for a backend that reports none. */
+export function runModelName(task: { model?: string; workerTemplate?: string }): string {
+  return task.model ? modelShortName(task.model) : (task.workerTemplate ?? '未知');
+}

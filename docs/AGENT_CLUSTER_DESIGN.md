@@ -75,6 +75,7 @@ worker 的行为规则必须满足两个约束：
 | `hub_claim` | 声明任务 | 准备开始修改文件前调用 |
 | `hub_report` | 执行中上报 + 完成/失败 | 每个有意义的步骤后调用；任务结束时带终态 |
 | `hub_ask` | 请求帮助 | 遇到自己无法决策的问题时调用 |
+| `hub_answer` | 回答 child 的提问 | planner 专用，只能答自己 child 的问题 |
 | `hub_message` | 自由通信 | 需要通知其他 worker 或 planner 时调用 |
 | `hub_subscribe` / `hub_unsubscribe` | 订阅兄弟任务的事件 | 任务依赖或关联别的 child 时，开始就调（见 §3.7） |
 
@@ -121,7 +122,6 @@ worker 的行为规则必须满足两个约束：
       你不需要手动释放锁——hub_report 终态时自动释放。
 
 输入:
-  taskId: string             // 调度器分配的任务 ID
   intent: string             // 一句话描述你要做什么
   files: string[]            // 你预计会修改的文件路径列表
 
@@ -608,6 +608,9 @@ worker 还在时只落库，退出时再走一次；这之前 `hub_wait` 不醒�
 项目可配 `publish`：每次合入成功后，在项目的 publish worktree 里运行（`kind = publish` 的槽，detached 到刚合入的分支，
 child 是集成分支，job 收尾是 `baseBranch`；lockfile 变化时同样安装）。它不占槽、不阻塞结算，同项目串行。日志 `<stateDir>/assignments/<taskId>.publish.log`，结果记为
 `task_published` / `task_publish_failed` 事件。
+
+job 合入失败时 `job.landError` 记原因，根任务 `blocked`。`POST /api/cluster/jobs/:id/land` 重跑这一步，成功后根任务回到 `completed`、job 回到
+`completed`、计数修正；只接受合入失败的 job 和没有 `baseBranch` 的旧 job。控制台在任务标题下显示这个状态和“合入主分支”按钮。
 
 **清理**
 

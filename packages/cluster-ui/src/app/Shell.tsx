@@ -9,7 +9,7 @@ import { Composer } from '../composer/Composer';
 import { TicketSheet } from '../composer/TicketSheet';
 import { InboxPage } from '../inbox/InboxPage';
 import { buildInbox } from '../lib/inbox';
-import { readSidebarOpen, readTaskTab, rememberTaskTab } from '../lib/memory';
+import { readSidebarOpen } from '../lib/memory';
 import { homePath, inboxPath, parentPath, parseAppLocation, settingsPath, withOverlay } from '../lib/routes';
 import { SettingsLayout } from '../settings/SettingsLayout';
 import { TaskPage } from '../task/TaskPage';
@@ -57,9 +57,8 @@ function GlobalKeys() {
       return;
     }
     const current = parseAppLocation(location.pathname, location.search);
-    if (current.page === 'task' && (current.tab ?? readTaskTab()) !== 'chat') {
+    if (current.page === 'task' && (current.tab ?? 'chat') !== 'chat') {
       event.preventDefault();
-      rememberTaskTab('chat');
       const params = new URLSearchParams(location.search);
       params.set('tab', 'chat');
       navigate({ pathname: location.pathname, search: `?${params.toString()}` });

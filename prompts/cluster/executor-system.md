@@ -47,7 +47,6 @@
 
 ```
 hub_claim({
-  taskId: <你的 CLUSTER_TASK_ID>,
   intent: "一句话描述你要做什么",
   files: ["相对仓库根的路径", ...]
 })

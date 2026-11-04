@@ -8,7 +8,7 @@ import { Skeleton } from '../components/ui/skeleton';
 import { useIsMobile } from '../hooks/use-mobile';
 import { buildHome } from '../lib/home';
 import type { InboxItem } from '../lib/inbox';
-import { modelShortName } from '../lib/model';
+import { runModelName } from '../lib/model';
 import { inboxPath, settingsPath, taskPath } from '../lib/routes';
 import type { Run } from '../lib/runs';
 import { spareSlots } from '../lib/slots';
@@ -27,7 +27,7 @@ function CompactRow({ item, now }: { item: TaskListItem; now: number }) {
       <StatusDot tone={STAGE_TONE[root.stage]} breathing={root.stage === 'running'} />
       <span className="min-w-0 flex-1 truncate">{root.title}</span>
       <span className="shrink-0 text-xs text-muted-foreground">
-        {modelShortName(root.task.model)} · {clock}
+        {runModelName(root.task)} · {clock}
       </span>
     </Link>
   );

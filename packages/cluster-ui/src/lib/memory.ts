@@ -1,14 +1,12 @@
 import type { PlanningMode } from './planning';
-import { TASK_TABS, type TaskTab } from './routes';
 import { parseRunView, type RunView } from './runs';
 import type { RunWindow } from './window';
 
-/** What only this browser knows: the composer's last choice, the run tab, the overview controls. */
+/** What only this browser knows: the composer's last choice, the overview controls. */
 const COMPOSER_KEY = 'cluster-ui.composer';
 const RUN_VIEW_KEY = 'cluster-ui.run-view';
 const OVERVIEW_KEY = 'cluster-ui.overview';
 const SIDEBAR_KEY = 'cluster-ui.sidebar-open';
-const TASK_TAB_KEY = 'cluster-ui.task-tab';
 const DETAIL_OPEN_KEY = 'cluster-ui.task-detail-open';
 const PINNED_KEY = 'cluster-ui.pinned-tasks';
 
@@ -75,15 +73,6 @@ export function readSidebarOpen(): boolean {
 
 export function rememberSidebarOpen(open: boolean): void {
   write(SIDEBAR_KEY, open);
-}
-
-export function readTaskTab(): TaskTab {
-  const saved = read<string | null>(TASK_TAB_KEY, null);
-  return TASK_TABS.find((tab) => tab === saved) ?? 'chat';
-}
-
-export function rememberTaskTab(tab: TaskTab): void {
-  write(TASK_TAB_KEY, tab);
 }
 
 export function readDetailOpen(): boolean {

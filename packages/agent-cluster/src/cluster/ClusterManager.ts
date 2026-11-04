@@ -539,6 +539,7 @@ export class ClusterManager {
         ['planning', 'TEXT'],
         ['baseBranch', 'TEXT'],
         ['landedAt', 'TEXT'],
+        ['landError', 'TEXT'],
         ['maxChildren', 'INTEGER'],
       ]) {
         if (have.has(name)) continue;

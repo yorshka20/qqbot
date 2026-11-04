@@ -12,7 +12,9 @@ const KIND_ORDER = { ask: 0, failed: 1, review: 2 } as const;
 /**
  * One row per thing that waits on the owner: a run with two questions is two rows. A question
  * whose run already ended is dropped, nobody is left to read the answer. `openRunId` keeps the
- * run on screen in the list after opening it acknowledged it, as a mail client does.
+ * run on screen in the list after opening it acknowledged it, as a mail client does. Only a root
+ * task's outcome is the owner's: a child that failed is its planner's to handle, and what the
+ * planner made of it shows in the root task's own outcome.
  */
 export function buildInbox(runs: Run[], help: ClusterHelpRequest[], openRunId: string | null): InboxItem[] {
   const runById = new Map(runs.map((r) => [r.task.id, r]));
@@ -26,7 +28,7 @@ export function buildInbox(runs: Run[], help: ClusterHelpRequest[], openRunId: s
     items.push({ kind: 'ask', key: `ask:${request.id}`, help: request, run, since: toMs(request.createdAt) ?? 0 });
   }
 
-  for (const run of runs) {
+  for (const run of runs.filter((candidate) => candidate.task.parentTaskId === undefined)) {
     const seen = run.task.acknowledgedAt !== undefined;
     const visible = !seen || run.task.id === openRunId;
     if ((run.stage === 'failed' || run.stage === 'blocked') && visible) {
