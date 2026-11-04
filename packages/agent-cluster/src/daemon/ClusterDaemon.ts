@@ -1,10 +1,11 @@
 import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import type { ClusterDaemonHealthResponse } from '@qqbot/api-types';
 import { logger } from '@qqbot/shared';
 import { withBearerToken } from '../api/bearerAuth';
 import { ClusterApi } from '../api/clusterApi';
-import { type ClusterDaemonHealthResponse, healthRoute } from '../api/healthRoute';
+import { healthRoute } from '../api/healthRoute';
 import { staticUiRoute } from '../api/staticUiRoute';
 import { TicketApi } from '../api/ticketApi';
 import { ClusterManager } from '../cluster/ClusterManager';

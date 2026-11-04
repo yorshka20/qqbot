@@ -301,3 +301,14 @@ export type ClusterJobHistoryResponse = PaginatedResponse<ClusterJob>;
 
 /** `GET /api/cluster/history/workers` */
 export type ClusterWorkerHistoryResponse = PaginatedResponse<ClusterWorkerHistoryEntry>;
+
+/** `GET /health` on the cluster daemon — what the supervisor and the bot client read to tell it is up. */
+export interface ClusterDaemonHealthResponse {
+  ok: boolean;
+  startedAt: string;
+  cluster: {
+    running: boolean;
+    paused: boolean;
+    activeWorkers: number;
+  };
+}

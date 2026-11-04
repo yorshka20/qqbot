@@ -354,10 +354,7 @@ export class WorkerPool {
         timeout: template.timeout,
       });
 
-      const child = this.startDetached(launch, task.id);
-      if (child.pid === undefined) {
-        throw new Error('spawn returned no pid');
-      }
+      const child = await this.startDetached(launch, task.id);
       workerInstance.pid = child.pid;
       workerInstance.child = child;
       workerInstance.logPath = this.outPath(task.id);
@@ -410,6 +407,12 @@ export class WorkerPool {
     }
     const template = this.config.workerTemplates[task.workerTemplate ?? ''];
     const backend = this.backends.get(template?.type || 'claude-cli');
+    if (!backend) {
+      logger.warn(
+        `[WorkerPool] No backend for template "${task.workerTemplate}" of task ${task.id}; cannot follow worker ${workerId}`,
+      );
+      return false;
+    }
     const worker: WorkerInstance = {
       id: workerId,
       templateName: task.workerTemplate ?? '',
@@ -425,9 +428,7 @@ export class WorkerPool {
       nudgedAt: null,
     };
     this.workers.set(workerId, worker);
-    if (backend) {
-      this.follow(worker, backend, undefined);
-    }
+    this.follow(worker, backend, undefined);
     logger.info(`[WorkerPool] Adopted worker ${workerId} (pid ${pid}) for task ${task.id}`);
     return true;
   }
@@ -606,7 +607,7 @@ export class WorkerPool {
    * Start the worker in its own process group with its output on files. The parent's log
    * descriptors are closed right after the spawn: the child holds its own copies.
    */
-  private startDetached(launch: WorkerLaunch, taskId: string): ChildProcess {
+  private async startDetached(launch: WorkerLaunch, taskId: string): Promise<ChildProcess & { pid: number }> {
     mkdirSync(this.assignmentsDir, { recursive: true });
     const out = openSync(this.outPath(taskId), 'a');
     const err = openSync(this.errPath(taskId), 'a');
@@ -618,12 +619,22 @@ export class WorkerPool {
         stdio: [launch.stdin === undefined ? 'ignore' : 'pipe', out, err],
         windowsHide: true,
       });
+      // A missing executable surfaces as an asynchronous `error` event on a child without a
+      // pid; listen before anything else so it is reported, not thrown as unhandled.
+      const failed = new Promise<Error>((resolve) => child.once('error', resolve));
+      if (child.pid === undefined) {
+        const error = await Promise.race([
+          failed,
+          new Promise<Error>((resolve) => setTimeout(() => resolve(new Error('spawn returned no pid')), 500)),
+        ]);
+        throw error;
+      }
       if (launch.stdin !== undefined && child.stdin) {
         child.stdin.on('error', (e) => logger.warn(`[WorkerPool] stdin write failed for task ${taskId}:`, e));
         child.stdin.end(launch.stdin);
       }
       child.unref();
-      return child;
+      return child as ChildProcess & { pid: number };
     } finally {
       closeSync(out);
       closeSync(err);

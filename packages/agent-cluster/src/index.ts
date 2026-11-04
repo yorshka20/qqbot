@@ -1,6 +1,6 @@
 export { withBearerToken } from './api/bearerAuth';
 export { ClusterApi } from './api/clusterApi';
-export { type ClusterDaemonHealthResponse, healthRoute } from './api/healthRoute';
+export { healthRoute } from './api/healthRoute';
 export { errorResponse, jsonResponse } from './api/http';
 export { staticUiRoute } from './api/staticUiRoute';
 export { TicketApi } from './api/ticketApi';

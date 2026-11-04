@@ -7,6 +7,7 @@ import { logger } from '@qqbot/shared';
 import { ProjectRegistry } from '../codingAgent/ProjectRegistry';
 import { ClusterDaemon } from './ClusterDaemon';
 import { defaultClusterDaemonConfigPath, loadClusterDaemonConfig } from './config';
+import { followSupervisor } from './supervised';
 
 async function main(): Promise<void> {
   const configPath = defaultClusterDaemonConfigPath();
@@ -16,18 +17,19 @@ async function main(): Promise<void> {
   const daemon = new ClusterDaemon(config, new ProjectRegistry(config.projectRegistry));
 
   let stopping: Promise<void> | null = null;
-  const shutdown = (signal: NodeJS.Signals): void => {
+  const shutdown = (reason: string): void => {
     if (stopping) {
       return;
     }
-    logger.info(`[ClusterDaemon] ${signal} received`);
+    logger.info(`[ClusterDaemon] ${reason}; stopping`);
     stopping = daemon
       .stop()
       .catch((err) => logger.error('[ClusterDaemon] Stop failed:', err))
       .finally(() => process.exit(0));
   };
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', () => shutdown('SIGTERM received'));
+  process.on('SIGINT', () => shutdown('SIGINT received'));
+  followSupervisor(shutdown);
 
   await daemon.start();
 }

@@ -12,6 +12,7 @@
 
 import type { WorkerProbeResult } from '@qqbot/agent-cluster';
 import type {
+  ClusterDaemonHealthResponse,
   ClusterHelpAnsweredResponse,
   ClusterHelpRequest,
   ClusterJob,
@@ -32,13 +33,6 @@ import { BotError, ConfigError, logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
-
-/** `GET /health` on the daemon. */
-export interface ClusterDaemonHealth {
-  ok: boolean;
-  startedAt: string;
-  cluster: { running: boolean; paused: boolean; activeWorkers: number };
-}
 
 /** One event off the daemon's `GET /api/cluster/stream`; `data` is the parsed JSON payload. */
 export interface ClusterEvent {
@@ -80,8 +74,8 @@ export class ClusterClient {
 
   // ── Daemon ──
 
-  health(): Promise<ClusterDaemonHealth> {
-    return this.json<ClusterDaemonHealth>('GET', '/health');
+  health(): Promise<ClusterDaemonHealthResponse> {
+    return this.json<ClusterDaemonHealthResponse>('GET', '/health');
   }
 
   // ── Cluster control ──

@@ -26,6 +26,7 @@
  *   - POST /api/cluster/jobs              submit task
  *   - POST /api/cluster/pause
  *   - POST /api/cluster/resume
+ *   - POST /api/cluster/probe          { templates?: string[] } → WorkerProbeResult[]
  *   - POST /api/cluster/workers/:id/kill
  *   - POST /api/cluster/tasks/:id/kill
  *   - POST /api/cluster/jobs/:id/kill
@@ -60,6 +61,7 @@ import { logger } from '@qqbot/shared';
 import type { ClusterManager } from '../cluster/ClusterManager';
 import type { HubRoute } from '../cluster/hub/ContextHub';
 import type { ClusterEventType, TaskRecord, WorkerRegistration } from '../cluster/types';
+import type { WorkerProbeResult } from '../cluster/WorkerProbe';
 import type { ProjectRegistry } from '../codingAgent/ProjectRegistry';
 import { errorResponse, jsonResponse } from './http';
 
@@ -380,6 +382,15 @@ export class ClusterApi implements HubRoute {
       case '/resume': {
         live.resume();
         return jsonResponse<ClusterPausedResponse>({ paused: false });
+      }
+
+      case '/probe': {
+        const body = (await req.json().catch(() => ({}))) as { templates?: unknown };
+        const templates = Array.isArray(body.templates)
+          ? body.templates.filter((t): t is string => typeof t === 'string')
+          : undefined;
+        const results = await live.probeWorkerTemplates(templates ? { templates } : undefined);
+        return jsonResponse<WorkerProbeResult[]>(results);
       }
 
       default: {

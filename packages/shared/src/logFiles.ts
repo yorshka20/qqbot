@@ -14,8 +14,13 @@ const DATE_DIR = /^\d{4}-\d{2}-\d{2}$/;
 const LOG_FILE = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.log$/;
 const POLL_MS = 500;
 
+/**
+ * Where this process writes its log files. `QQBOT_LOGS_DIR` moves them: the cluster daemon runs
+ * beside the bot from the same checkout and keeps its own tree under `logs/cluster/`.
+ */
 export function botLogsDir(): string {
-  return join(getRepoRoot(), 'logs');
+  const override = process.env.QQBOT_LOGS_DIR?.trim();
+  return override ? override : join(getRepoRoot(), 'logs');
 }
 
 /** YYYY-MM-DD in local time. */
