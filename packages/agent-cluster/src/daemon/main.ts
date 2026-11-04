@@ -1,5 +1,6 @@
 // Entry point of the cluster daemon: `bun run packages/agent-cluster/src/daemon/main.ts`.
-// Reads `cluster.jsonc` (or `$CLUSTER_CONFIG_PATH`), runs until SIGTERM / SIGINT.
+// Reads the shared config tree (`$CONFIG_PATH`, else `config.d/`, else `config.jsonc`) and runs until
+// its supervisor asks it to stop, or SIGTERM / SIGINT.
 
 import 'reflect-metadata';
 

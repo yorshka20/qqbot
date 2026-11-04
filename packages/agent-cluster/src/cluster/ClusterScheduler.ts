@@ -806,7 +806,7 @@ export class ClusterScheduler {
     this.warnedMissingProjects.add(project);
     logger.warn(
       `[ClusterScheduler] Unknown project "${project}" — not registered in the projectRegistry config. ` +
-        `Tasks for this project will be skipped. Check cluster.jsonc projects keys against your project registry.`,
+        `Tasks for this project will be skipped. Check the cluster.projects keys against the project registry.`,
     );
   }
 

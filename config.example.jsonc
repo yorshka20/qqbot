@@ -1313,8 +1313,7 @@
     "maxExampleLen": 80
   },
   // Project registry — allowed project directories and pre-registered projects
-  // for the coding agent service. The cluster daemon reads its own copy from
-  // cluster.jsonc (see `clusterClient`).
+  // for the coding agent service and the cluster daemon (it reads this same tree).
   "projectRegistry": {
     // Security whitelist: only allow projects under these directories
     "allowedBasePaths": [
@@ -1332,19 +1331,26 @@
       // }
     ]
   },
-  // Cluster daemon client. The Agent Cluster runs in its own process
-  // (`bun run cluster:start`, configured by cluster.jsonc); the bot only talks
-  // to its HTTP API with this bearer token. Omit the block and every cluster
-  // feature (the /cluster command, ticket dispatch, the WebUI cluster and
-  // ticket pages, owner escalation) answers "cluster not configured".
-  "clusterClient": {
-    "url": "http://127.0.0.1:3200",
-    "token": "change-me"
+  // Cluster daemon — the Agent Cluster runs in its own process (`bun run cluster:start`)
+  // and reads this same config tree: this block, `cluster`, `codingAgent.projectRegistry`
+  // and `tickets`. Only what the daemon process itself needs lives here.
+  "clusterDaemon": {
+    // SQLite, lock, worker logs, MCP configs and the console build; relative to the repo root.
+    "stateDir": "data/cluster",
+    // The one port: /mcp for workers (loopback only), /api/cluster, /api/tickets, /health and
+    // the console at /. "0.0.0.0" makes the console reachable over the LAN.
+    "http": { "host": "0.0.0.0", "port": 3200 },
+    // Bearer token the bot and the console present. Generate one: `openssl rand -hex 24`.
+    "auth": { "token": "change-me" }
   },
-  // Agent Cluster — local multi-agent task execution.
-  // MOVED to the cluster daemon's cluster.jsonc: the bot no longer runs the
-  // cluster in-process, so this block is read only by `bun run cluster:e2e`.
-  // Keep it in sync with cluster.jsonc until that script targets the daemon.
+  // Cluster client — how the bot reaches the daemon's HTTP API. Omit it when the daemon runs
+  // on this host from this config: the bot then uses `clusterDaemon`'s port and token. Set it
+  // only for a daemon elsewhere. Without either, every cluster feature (the /cluster command,
+  // ticket dispatch, the WebUI cluster and ticket pages, owner escalation) answers
+  // "cluster not configured".
+  // "clusterClient": { "url": "http://192.168.1.10:3200", "token": "change-me" },
+  // Agent Cluster — local multi-agent task execution, run by the cluster daemon
+  // (see `clusterDaemon`); the bot itself only reads it for `bun run cluster:e2e`.
   //
   // Spawns coding agent workers (Claude Code / Codex / Gemini / MiniMax /
   // DeepSeek) to process tasks autonomously. Disabled by default. The full

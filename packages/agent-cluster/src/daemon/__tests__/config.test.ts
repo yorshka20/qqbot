@@ -6,9 +6,9 @@ import { getRepoRoot } from '@qqbot/shared';
 import { loadClusterDaemonConfig, parseClusterDaemonConfig } from '../config';
 
 const minimal = {
-  auth: { token: 'secret' },
+  clusterDaemon: { auth: { token: 'secret' } },
   cluster: { enabled: true, workerTemplates: { tpl: { type: 'claude-cli' } }, projects: {} },
-  projectRegistry: { allowedBasePaths: [], defaultProject: 'x', projects: [] },
+  codingAgent: { projectRegistry: { allowedBasePaths: [], defaultProject: 'x', projects: [] } },
 };
 
 describe('parseClusterDaemonConfig', () => {
@@ -23,8 +23,7 @@ describe('parseClusterDaemonConfig', () => {
   test('the daemon stateDir and http address override the cluster block, workers keep loopback', () => {
     const config = parseClusterDaemonConfig({
       ...minimal,
-      stateDir: '/tmp/cluster-state',
-      http: { host: '0.0.0.0', port: 4500 },
+      clusterDaemon: { ...minimal.clusterDaemon, stateDir: '/tmp/cluster-state', http: { host: '0.0.0.0', port: 4500 } },
       cluster: { ...minimal.cluster, stateDir: '/elsewhere', hub: { port: 9, bindHost: '10.0.0.1', lockTTL: '1m' } },
     });
     expect(config.stateDir).toBe('/tmp/cluster-state');
@@ -36,36 +35,57 @@ describe('parseClusterDaemonConfig', () => {
   });
 
   test('rejects a missing token, a disabled cluster and a bad port', () => {
-    expect(() => parseClusterDaemonConfig({ ...minimal, auth: {} })).toThrow(/auth\.token/);
+    expect(() => parseClusterDaemonConfig({ ...minimal, clusterDaemon: { auth: {} } })).toThrow(/auth\.token/);
     expect(() => parseClusterDaemonConfig({ ...minimal, cluster: { enabled: false } })).toThrow(/cluster\.enabled/);
-    expect(() => parseClusterDaemonConfig({ ...minimal, http: { port: 70000 } })).toThrow(/http\.port/);
-    expect(() => parseClusterDaemonConfig({ ...minimal, projectRegistry: undefined })).toThrow(/projectRegistry/);
+    expect(() =>
+      parseClusterDaemonConfig({ ...minimal, clusterDaemon: { ...minimal.clusterDaemon, http: { port: 70000 } } }),
+    ).toThrow(/http\.port/);
+    expect(() => parseClusterDaemonConfig({ ...minimal, codingAgent: {} })).toThrow(/projectRegistry/);
+    expect(() => parseClusterDaemonConfig({ cluster: minimal.cluster })).toThrow(/clusterDaemon/);
   });
 });
 
 describe('loadClusterDaemonConfig', () => {
-  test('reads JSONC with comments and trailing commas', () => {
+  test('merges every .jsonc of a config.d directory by top-level key, with comments and trailing commas', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cluster-daemon-config-'));
-    const path = join(dir, 'cluster.jsonc');
+    writeFileSync(
+      join(dir, 'cluster.jsonc'),
+      `{
+        // comment
+        "clusterDaemon": { "auth": { "token": "t", }, },
+        "cluster": { "enabled": true, "workerTemplates": {}, "projects": {}, },
+      }`,
+    );
+    writeFileSync(
+      join(dir, 'coding-agent.jsonc'),
+      `{ "codingAgent": { "projectRegistry": { "allowedBasePaths": [], "defaultProject": "x", "projects": [] } } }`,
+    );
+    writeFileSync(join(dir, 'tickets.jsonc'), `{ "tickets": { "dir": "${dir}/tickets" } }`);
+    writeFileSync(join(dir, 'notes.txt'), 'ignored');
+    const config = loadClusterDaemonConfig(dir);
+    expect(config.auth.token).toBe('t');
+    expect(config.tickets.dir).toBe(join(dir, 'tickets'));
+    expect(config.projectRegistry.defaultProject).toBe('x');
+  });
+
+  test('reads a single config file too', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cluster-daemon-config-'));
+    const path = join(dir, 'config.jsonc');
     writeFileSync(
       path,
       `{
-        // comment
-        "auth": { "token": "t", },
-        "cluster": { "enabled": true, "workerTemplates": {}, "projects": {}, },
-        "projectRegistry": { "allowedBasePaths": [], "defaultProject": "x", "projects": [] },
-        "tickets": { "dir": "${dir}/tickets" },
+        "clusterDaemon": { "auth": { "token": "one-file" } },
+        "cluster": { "enabled": true, "workerTemplates": {}, "projects": {} },
+        "codingAgent": { "projectRegistry": { "allowedBasePaths": [], "defaultProject": "x", "projects": [] } }
       }`,
     );
-    const config = loadClusterDaemonConfig(path);
-    expect(config.auth.token).toBe('t');
-    expect(config.tickets.dir).toBe(join(dir, 'tickets'));
+    expect(loadClusterDaemonConfig(path).auth.token).toBe('one-file');
   });
 
   test('names the file in a parse error', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cluster-daemon-config-'));
-    const path = join(dir, 'cluster.jsonc');
-    writeFileSync(path, '{ "auth": ');
-    expect(() => loadClusterDaemonConfig(path)).toThrow(path);
+    const path = join(dir, 'broken.jsonc');
+    writeFileSync(path, '{ "clusterDaemon": ');
+    expect(() => loadClusterDaemonConfig(dir)).toThrow(path);
   });
 });

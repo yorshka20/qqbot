@@ -2,7 +2,12 @@
 
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { CodingAgentConfig, ProjectRegistryConfig, TicketsConfig } from '@qqbot/agent-cluster';
+import type {
+  ClusterDaemonSettings,
+  CodingAgentConfig,
+  ProjectRegistryConfig,
+  TicketsConfig,
+} from '@qqbot/agent-cluster';
 import type { LLMTarget } from '@qqbot/llm';
 import type { MCPConfig, RAGConfig } from '@qqbot/retrieval';
 import { ConfigError, getRepoRoot, logger } from '@qqbot/shared';
@@ -96,7 +101,9 @@ export interface BotConfig {
   vkbContextEngine?: VKBContextEngineConfig;
   projectRegistry?: ProjectRegistryConfig;
   cluster?: Record<string, unknown>;
-  /** The cluster daemon the bot talks to; without it every cluster feature answers "not configured". */
+  /** The cluster daemon's own settings, read by `bun run cluster:start` from this same tree. */
+  clusterDaemon?: ClusterDaemonSettings;
+  /** A daemon elsewhere; on this host `clusterDaemon` already says where it listens. Without either, every cluster feature answers "not configured". */
   clusterClient?: ClusterClientConfig;
   /**
    * Tickets storage (file-based). When absent, falls back to
@@ -527,8 +534,16 @@ export class Config {
     return this.config.cluster;
   }
 
+  /** `clusterClient`, or, when the daemon runs on this host from the same config tree, its `clusterDaemon` port and token. */
   getClusterClientConfig(): ClusterClientConfig | undefined {
-    return this.config.clusterClient;
+    if (this.config.clusterClient) {
+      return this.config.clusterClient;
+    }
+    const daemon = this.config.clusterDaemon;
+    if (!daemon?.auth?.token) {
+      return undefined;
+    }
+    return { url: `http://127.0.0.1:${daemon.http?.port ?? 3200}`, token: daemon.auth.token };
   }
 
   getAvatarConfig(): Record<string, unknown> | undefined {

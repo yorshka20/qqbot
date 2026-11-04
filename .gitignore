@@ -108,5 +108,3 @@ ops/nightly/env.sh
 
 # vrma json revert
 packages/avatar/assets/clips
-# cluster daemon config (holds the API token)
-cluster.jsonc

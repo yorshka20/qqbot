@@ -19,7 +19,10 @@ export interface StaticServerConfig {
   root: string;
 }
 
-/** Where the cluster daemon listens and the bearer token its HTTP API expects. */
+/**
+ * Where the cluster daemon listens and the bearer token its HTTP API expects. Optional: when
+ * the daemon runs on this host from the same config tree, `clusterDaemon` already says both.
+ */
 export interface ClusterClientConfig {
   url: string;
   token: string;

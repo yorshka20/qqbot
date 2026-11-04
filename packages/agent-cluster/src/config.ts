@@ -97,3 +97,19 @@ export interface TicketsConfig {
    */
   dir: string;
 }
+
+/**
+ * The `clusterDaemon` block of the shared config tree (`config.d/`): what only the daemon
+ * process needs. Everything else the daemon reads (`cluster`, `codingAgent.projectRegistry`,
+ * `tickets`) is the same block the bot reads, so there is one configuration, not two.
+ */
+export interface ClusterDaemonSettings {
+  // Where the daemon keeps state: SQLite, lock, worker logs, MCP configs, the console build.
+  // Relative paths resolve against the repo root (default: `data/cluster`).
+  stateDir?: string;
+  // The one port for `/mcp`, `/api/cluster`, `/api/tickets`, `/health` and the console
+  // (default: 0.0.0.0:3200; "127.0.0.1" keeps the console off the LAN).
+  http?: { host?: string; port?: number };
+  // Bearer token `/api/*` and `/health` require. The bot's `clusterClient` defaults to it.
+  auth: { token: string };
+}
