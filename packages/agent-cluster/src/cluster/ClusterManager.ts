@@ -20,7 +20,7 @@ import { PlannerService } from './PlannerService';
 import { createClusterTables } from './schema';
 import { QueueSource } from './sources/QueueSource';
 import { TodoFileSource } from './sources/TodoFileSource';
-import type { ClusterStatus, HelpRequest, JobRecord, PlanningMode, TaskRecord } from './types';
+import type { ClusterStatus, HelpRequest, JobRecord, SubmitTaskOptions, TaskRecord } from './types';
 import { WorkerPool } from './WorkerPool';
 import { probeWorkerTemplates, type WorkerProbeResult } from './WorkerProbe';
 import { checkWorkerTemplateHealth } from './WorkerTemplateHealthCheck';
@@ -176,6 +176,8 @@ export class ClusterManager {
     // registrations are in memory when their hub_report calls arrive.
     this.hub.workerRegistry.hydrateFromDb();
 
+    await this.worktrees.gc().catch((err) => logger.warn('[ClusterManager] Removing unclaimed worktrees failed:', err));
+
     // Start scheduler (restores jobs, adopts running workers)
     await this.scheduler.start();
 
@@ -249,11 +251,7 @@ export class ClusterManager {
    * resolved template has `role: 'planner'` (set by ticket dispatch when
    * the ticket frontmatter has `usePlanner: true`).
    */
-  async submitTask(
-    project: string,
-    description: string,
-    options?: { workerTemplate?: string; requirePlannerRole?: boolean; ticketId?: string; planning?: PlanningMode },
-  ): Promise<TaskRecord | null> {
+  async submitTask(project: string, description: string, options?: SubmitTaskOptions): Promise<TaskRecord | null> {
     return this.scheduler.submitTask(project, description, options);
   }
 
@@ -547,9 +545,16 @@ export class ClusterManager {
       const cols = this.db.query('PRAGMA table_info(cluster_jobs)').all() as Array<{ name: string }>;
       if (cols.length === 0) return;
       const have = new Set(cols.map((c) => c.name));
-      for (const name of ['ticketId', 'integrationBranch', 'planning']) {
+      for (const [name, type] of [
+        ['ticketId', 'TEXT'],
+        ['integrationBranch', 'TEXT'],
+        ['planning', 'TEXT'],
+        ['baseBranch', 'TEXT'],
+        ['landedAt', 'TEXT'],
+        ['maxChildren', 'INTEGER'],
+      ]) {
         if (have.has(name)) continue;
-        this.db.run(`ALTER TABLE cluster_jobs ADD COLUMN ${name} TEXT`);
+        this.db.run(`ALTER TABLE cluster_jobs ADD COLUMN ${name} ${type}`);
         logger.info(`[ClusterManager] Migrated cluster_jobs: added ${name} column`);
       }
     } catch (err) {

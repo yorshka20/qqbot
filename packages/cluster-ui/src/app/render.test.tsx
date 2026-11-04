@@ -356,7 +356,7 @@ describe('Shell routes render', () => {
     ['settings workers: exited', '/settings/workers', '甲模块已收尾'],
     ['settings templates', '/settings/templates', '探测模板'],
     ['settings projects', '/settings/projects', '示例项目说明'],
-    ['settings concurrency', '/settings/concurrency', /各模板余量之和/],
+    ['settings concurrency', '/settings/concurrency', /只数正在运行的进程/],
     ['settings daemon', '/settings/daemon', '启动时间'],
     ['settings console', '/settings/console', '快捷键'],
     ['unknown settings group falls to workers', '/settings/不存在', '正在整理配置'],

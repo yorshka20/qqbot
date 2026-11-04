@@ -19,6 +19,7 @@ export type ClusterEventType =
   | 'task_failed'
   | 'task_blocked'
   | 'task_merged'
+  | 'job_landed'
   | 'task_published'
   | 'task_publish_failed'
   | 'task_subscribed'
@@ -38,6 +39,8 @@ export interface ClusterStatus {
   paused: boolean;
   activeWorkers: number;
   idleWorkers: number;
+  /** The cluster-wide cap; `workers` is what counts against it. */
+  maxConcurrentWorkers: number;
   pendingTasks: number;
   runningTasks: number;
   completedTasks: number;
@@ -139,8 +142,14 @@ export interface ClusterJob {
   metadata?: string;
   /** The ticket that dispatched this job, when it came from one. */
   ticketId?: string;
-  /** Branch the job's finished tasks merge into, where the owner accepts the work. */
+  /** Branch the job's finished tasks merge into while it runs. */
   integrationBranch?: string;
+  /** The branch a finished job lands on; landing there is what ends it. */
+  baseBranch?: string;
+  /** When the work reached `baseBranch`; unset while it has not, or when there was nothing to land. */
+  landedAt?: string;
+  /** How many children may run at once. */
+  maxChildren?: number;
   planning?: 'interactive' | 'auto';
 }
 
@@ -326,6 +335,8 @@ export interface ClusterJobSubmitBody {
   ticketId?: string;
   /** Default `interactive`: the planner confirms its plan with the owner before spawning. */
   planning?: 'interactive' | 'auto';
+  /** How many of the job's children may run at once; further ones queue. Unset: only the cluster's own limits apply. */
+  maxChildren?: number;
 }
 
 /** `POST /api/cluster/{tasks,jobs}/:id/kill` */

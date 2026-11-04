@@ -125,6 +125,7 @@ export class RepeatingTicketDispatchHandler implements ActionHandler {
           workerTemplate: tpl || undefined,
           requirePlannerRole: requirePlanner ? true : undefined,
           ticketId: ticket.id,
+          maxChildren: ticket.frontmatter.maxChildren,
         });
 
         await cluster.updateTicket(ticket.id, { status: 'dispatched', dispatchedJobId: task.jobId, project });

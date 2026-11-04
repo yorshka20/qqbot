@@ -10,12 +10,13 @@
  * so sharing one pool would let waiting planners take the slots their children need. Planners
  * only read, so their slots never install and cost a bare checkout.
  *
- * The project checkout is never a slot.
+ * Every worktree lives at `<worktreeRoot>/<project>/<name>` with a random name; what a slot is for
+ * is its `kind` in SQLite, never its name. The project checkout is never a slot.
  */
 
 import type { Database } from 'bun:sqlite';
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   closeSync,
   existsSync,
@@ -27,7 +28,7 @@ import {
   rmSync,
   statSync,
 } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, sep } from 'node:path';
 import { logger } from '@qqbot/shared';
 import type { ProjectEntry, ProjectRegistry } from '../../codingAgent/ProjectRegistry';
 import type { ClusterConfig } from '../config';
@@ -35,6 +36,7 @@ import { git, runGit } from '../git';
 import type { WorktreePoolStatus } from '../types';
 
 export type SlotKind = 'executor' | 'planner';
+type StoredSlotKind = SlotKind | 'publish';
 
 export interface SlotLease {
   project: string;
@@ -55,7 +57,6 @@ interface SlotRow {
   lockHash: string | null;
 }
 
-const PUBLISH_SLOT = 'publish';
 const COMMAND_TIMEOUT_MS = 15 * 60_000;
 const LOCKFILES = ['bun.lock', 'bun.lockb', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'];
 const DEFAULT_INSTALL: Partial<Record<ProjectEntry['type'], string>> = { bun: 'bun install', node: 'npm install' };
@@ -118,9 +119,9 @@ export async function runLoggedCommand(
 }
 
 /**
- * Git environment for commands run inside a slot. `<stateDir>` usually sits inside a project
- * checkout, so in a slot that lost its `.git` file, git would walk up and act on that checkout.
- * The ceiling makes it fail instead: `checkout -f` must never reach the main checkout.
+ * Git environment for commands run inside a slot. A configured `worktreeRoot` can sit inside a
+ * project checkout, so in a slot that lost its `.git` file, git would walk up and act on that
+ * checkout. The ceiling makes it fail instead: `checkout -f` must never reach the main checkout.
  */
 function slotEnv(path: string): Record<string, string> {
   return { GIT_CEILING_DIRECTORIES: dirname(path) };
@@ -133,8 +134,8 @@ export class WorktreePool {
     private readonly projects: ProjectRegistry,
   ) {}
 
-  private get workRoot(): string {
-    return join(this.config.stateDir, 'work');
+  private get root(): string {
+    return this.config.worktreeRoot;
   }
 
   /** How many slots of each kind the project gets; none for a project that is not a git repository. */
@@ -164,34 +165,29 @@ export class WorktreePool {
     return this.capacity(entry).executor > 0;
   }
 
-  /** Take the lowest free slot of this kind, or null when all are leased. Synchronous, so two dispatches cannot pick the same one. */
+  /** Take a free slot of this kind, or a new one while the pool has room; null when all are leased. Synchronous, so two dispatches cannot pick the same one. */
   lease(entry: ProjectEntry, kind: SlotKind, taskId: string): SlotLease | null {
     const project = this.directoryName(entry);
-    const leased = new Set(
-      (
-        this.db
-          .query('SELECT slot FROM cluster_worktree_slots WHERE project = ? AND taskId IS NOT NULL')
-          .all(project) as Array<{
-          slot: string;
-        }>
-      ).map((row) => row.slot),
-    );
-    const slot = this.slotNames(entry, kind).find((name) => !leased.has(name));
-    if (!slot) {
+    const slots = this.rows(project, kind);
+    const current = slots.filter((row) => this.inRoot(row.path));
+    const free = current.find((row) => row.taskId === null);
+    const inUse = slots.filter((row) => row.taskId !== null || this.inRoot(row.path));
+    if (!free && inUse.length >= this.capacity(entry)[kind]) {
       return null;
     }
+    const slot = free?.slot ?? newSlotName();
     const lease: SlotLease = {
       project,
       slot,
       kind,
-      path: join(this.workRoot, project, slot),
+      path: free?.path ?? join(this.root, project, slot),
       taskId,
       leasedAt: new Date().toISOString(),
     };
     this.db
       .query(
         `INSERT INTO cluster_worktree_slots (project, slot, kind, path, taskId, leasedAt) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT (project, slot) DO UPDATE SET kind = excluded.kind, path = excluded.path, taskId = excluded.taskId, leasedAt = excluded.leasedAt`,
+         ON CONFLICT (project, slot) DO UPDATE SET taskId = excluded.taskId, leasedAt = excluded.leasedAt`,
       )
       .run(project, slot, kind, lease.path, taskId, lease.leasedAt);
     return lease;
@@ -260,18 +256,20 @@ export class WorktreePool {
    */
   async preparePublish(entry: ProjectEntry, rev: string, logName: string): Promise<string> {
     const project = this.directoryName(entry);
-    const path = join(this.workRoot, project, PUBLISH_SLOT);
-    await this.ensureWorktree(path, entry);
-    await git(path, ['checkout', '-f', '--detach', rev], slotEnv(path));
-    await git(path, ['clean', '-fd'], slotEnv(path));
-    this.db
-      .query(
-        `INSERT INTO cluster_worktree_slots (project, slot, kind, path) VALUES (?, ?, 'publish', ?)
-         ON CONFLICT (project, slot) DO NOTHING`,
-      )
-      .run(project, PUBLISH_SLOT, path);
-    await this.installIfLockChanged(project, PUBLISH_SLOT, path, entry, logName);
-    return path;
+    let slot = this.rows(project, 'publish').find((row) => this.inRoot(row.path));
+    if (!slot) {
+      const name = newSlotName();
+      const path = join(this.root, project, name);
+      this.db
+        .query(`INSERT INTO cluster_worktree_slots (project, slot, kind, path) VALUES (?, ?, 'publish', ?)`)
+        .run(project, name, path);
+      slot = { project, slot: name, kind: 'publish', path, taskId: null, leasedAt: null, lockHash: null };
+    }
+    await this.ensureWorktree(slot.path, entry);
+    await git(slot.path, ['checkout', '-f', '--detach', rev], slotEnv(slot.path));
+    await git(slot.path, ['clean', '-fd'], slotEnv(slot.path));
+    await this.installIfLockChanged(project, slot.slot, slot.path, entry, logName);
+    return slot.path;
   }
 
   status(): WorktreePoolStatus[] {
@@ -294,68 +292,87 @@ export class WorktreePool {
   }
 
   /**
-   * Remove every directory under `<stateDir>/work` the pool does not claim: a slot beyond the
-   * configured size, or anything of a project no longer registered. A leased slot is always
-   * claimed. Answers the removed paths; `dryRun` only lists them.
+   * Remove every worktree the pool does not claim: a free slot beyond the configured size, a free
+   * slot left outside `worktreeRoot`, a slot of a project no longer registered, and any directory
+   * in the root without a slot. A leased slot is always claimed. Answers the removed paths;
+   * `dryRun` only lists them.
    */
   async gc(options?: { dryRun?: boolean }): Promise<string[]> {
-    if (!existsSync(this.workRoot)) {
-      return [];
-    }
     const entries = new Map(this.projects.list().map((entry) => [this.directoryName(entry), entry]));
-    const claimed = new Set(this.leases().map((lease) => lease.path));
-    for (const [project, entry] of entries) {
-      for (const name of this.allSlotNames(entry)) {
-        claimed.add(join(this.workRoot, project, name));
+    const removed: string[] = [];
+    const remove = async (path: string, entry: ProjectEntry | undefined) => {
+      removed.push(path);
+      if (options?.dryRun) {
+        return;
       }
+      if (entry) {
+        await runGit(entry.path, ['worktree', 'remove', '--force', path]);
+      }
+      rmSync(path, { recursive: true, force: true });
+      this.db.query('DELETE FROM cluster_worktree_slots WHERE path = ?').run(path);
+    };
+
+    const rows = this.db.query('SELECT * FROM cluster_worktree_slots').all() as SlotRow[];
+    const surplus = rows.filter((row) => row.taskId === null && !this.claimedWhenFree(row, entries.get(row.project)));
+    for (const row of surplus) {
+      await remove(row.path, entries.get(row.project));
     }
 
-    const removed: string[] = [];
-    for (const project of readdirSync(this.workRoot)) {
-      const projectDir = join(this.workRoot, project);
+    for (const project of existsSync(this.root) ? readdirSync(this.root) : []) {
+      const projectDir = join(this.root, project);
       if (!statSync(projectDir).isDirectory()) {
         continue;
       }
-      const entry = entries.get(project);
       for (const name of readdirSync(projectDir)) {
         const path = join(projectDir, name);
-        if (!statSync(path).isDirectory() || claimed.has(path)) {
-          continue;
+        // Asked per directory, and after listing it: a lease writes its row before its worktree
+        // exists, so a directory with no row now is not one a dispatch is creating.
+        if (statSync(path).isDirectory() && !removed.includes(path) && !this.hasSlot(path)) {
+          await remove(path, entries.get(project));
         }
-        removed.push(path);
-        if (options?.dryRun) {
-          continue;
-        }
-        if (entry) {
-          await runGit(entry.path, ['worktree', 'remove', '--force', path]);
-        }
-        rmSync(path, { recursive: true, force: true });
-        this.db.query('DELETE FROM cluster_worktree_slots WHERE project = ? AND slot = ?').run(project, name);
       }
-      if (options?.dryRun) {
-        continue;
-      }
-      if (entry) {
-        await runGit(entry.path, ['worktree', 'prune']);
-      }
-      if (readdirSync(projectDir).length === 0) {
+      if (!options?.dryRun && readdirSync(projectDir).length === 0) {
         rmSync(projectDir, { recursive: true, force: true });
+      }
+    }
+
+    if (!options?.dryRun) {
+      for (const entry of entries.values()) {
+        await runGit(entry.path, ['worktree', 'prune']);
       }
     }
     return removed;
   }
 
-  private slotNames(entry: ProjectEntry, kind: SlotKind): string[] {
-    const count = this.capacity(entry)[kind];
-    return Array.from({ length: count }, (_, i) => (kind === 'planner' ? `planner-${i + 1}` : String(i + 1)));
+  private rows(project: string, kind: StoredSlotKind): SlotRow[] {
+    return this.db
+      .query('SELECT * FROM cluster_worktree_slots WHERE project = ? AND kind = ? ORDER BY slot')
+      .all(project, kind) as SlotRow[];
   }
 
-  private allSlotNames(entry: ProjectEntry): string[] {
-    return [
-      ...this.slotNames(entry, 'executor'),
-      ...this.slotNames(entry, 'planner'),
-      ...(entry.publish ? [PUBLISH_SLOT] : []),
-    ];
+  private inRoot(path: string): boolean {
+    return path.startsWith(this.root + sep);
+  }
+
+  private hasSlot(path: string): boolean {
+    return this.db.query('SELECT 1 FROM cluster_worktree_slots WHERE path = ?').get(path) !== null;
+  }
+
+  /** Whether a free slot is one the pool would still hand out. */
+  private claimedWhenFree(row: SlotRow, entry: ProjectEntry | undefined): boolean {
+    if (!entry || !this.inRoot(row.path)) {
+      return false;
+    }
+    if (row.kind === 'publish') {
+      return (
+        Boolean(entry.publish) && this.rows(row.project, 'publish').find((r) => this.inRoot(r.path))?.path === row.path
+      );
+    }
+    const kind = row.kind as SlotKind;
+    const slots = this.rows(row.project, kind).filter((r) => r.taskId !== null || this.inRoot(r.path));
+    // Leased slots come first: they stay whatever the size, so they use up the size first.
+    const ordered = [...slots.filter((r) => r.taskId !== null), ...slots.filter((r) => r.taskId === null)];
+    return ordered.slice(0, this.capacity(entry)[kind]).some((r) => r.path === row.path);
   }
 
   /** An alias can arrive as a raw path segment; it names a directory here, so it must stay one segment. */
@@ -408,6 +425,10 @@ export class WorktreePool {
       .query('UPDATE cluster_worktree_slots SET lockHash = ? WHERE project = ? AND slot = ?')
       .run(lockHash, project, slot);
   }
+}
+
+function newSlotName(): string {
+  return `wt-${randomBytes(4).toString('hex')}`;
 }
 
 function toLease(row: SlotRow): SlotLease {

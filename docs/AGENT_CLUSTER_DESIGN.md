@@ -562,13 +562,15 @@ hub_directive:
 
 **槽位**
 
-- 路径 `<stateDir>/work/<project>/<n>`，首次使用时 `git worktree add`，之后一直复用，`node_modules` 留在槽里。
+- 路径 `<worktreeRoot>/<project>/wt-<8 位随机 hex>`，所有项目、所有用途的 worktree 都在这一个根目录下，名字格式也只有这一种，
+  槽的用途只记在 `cluster_worktree_slots.kind`。`clusterDaemon.worktreeRoot` 默认 `~/.qqbot/worktrees`：放在任何检出之外，
+  从槽里往上找东西的工具（模块解析、CLI 找项目文件）才不会走进主检出。首次使用时 `git worktree add`，之后一直复用，`node_modules` 留在槽里。
   lockfile 与上次安装时不同才跑安装命令（项目的 `install`，默认按 `type` 取 `bun install` / `npm install`）。
 - 大小：项目的 `worktrees`，默认 `min(cluster.maxConcurrentWorkers, projects.<alias>.maxWorkers, 已启用 executor 的 maxConcurrent 之和)`。
   不是 git 仓库或 `worktrees: 0` 的项目没有池，worker 跑在项目目录里。
-- **planner 有自己的槽** `planner-<n>`，不占 executor 的名额，也不安装依赖。planner 在 `hub_wait` 里一直持有租约，
+- **planner 有自己的槽**，不占 executor 的名额，也不安装依赖。planner 在 `hub_wait` 里一直持有租约，
   和 executor 共用一个池的话，等待中的 planner 会占住自己的 child 需要的槽。
-- 主检出永远不是槽。`<stateDir>` 默认在主检出内部，槽里的 git 命令都带 `GIT_CEILING_DIRECTORIES`：
+- 主检出永远不是槽。`worktreeRoot` 可以被配到主检出内部，所以槽里的 git 命令都带 `GIT_CEILING_DIRECTORIES`：
   丢了 `.git` 文件的槽会让 git 报错，而不是向上找到主检出再 `checkout -f`。
 - 租约存在 `cluster_worktree_slots`，daemon 重启后被接管的 worker 继续持有；worker 已不在的，启动时结算并归还。
   没有空槽时任务留在 pending 队列，**有槽归还时立即派发**，不等调度 tick。
@@ -587,28 +589,37 @@ worker 还在时只落库，退出时再走一次；这之前 `hub_wait` 不醒�
 
 1. `git status --porcelain` 非空就把文件列表写进任务结果（`output` 和 `diffSummary`），这些改动不进分支，随槽位重置丢失。
 2. 任务 `completed` 且分支有新提交时合入集成分支：能快进就快进，否则 `git merge-tree --write-tree` 算出结果、
-   `commit-tree` 生成合并提交、`update-ref` 移动分支。合入不碰任何 worktree，所以**没有 worktree 持有集成分支**，
-   owner 可以直接检出它；冲突时也没有东西要清理。需要 git 2.38 以上。同一集成分支的合入串行。
+   `commit-tree` 生成合并提交。没有 worktree 持有目标分支时 `update-ref` 移动它；有 worktree 持有时在那里 `merge --ff-only`，
+   工作区跟着更新，那里未提交的改动和合入重叠时 git 拒绝，任务转 `blocked`，改动原样保留。冲突时没有东西要清理。
+   需要 git 2.38 以上。同一集成分支的合入串行。
 3. 冲突时任务转 `blocked`，`error` 写冲突文件和 git 的说明，发 `task_blocked` 事件；任务分支原样保留，planner 可以 spawn
    一个 executor 在自己的分支上 `git merge` 它来解决。
-4. 槽位 `checkout -f --detach` + `clean -fd` 后归还。清不干净的槽直接删掉，下次租用时重建。
+4. 结算的是 job 的根任务且仍是 `completed` 时，把集成分支合入 `baseBranch`，用同一个合入函数，同名分支的合入串行。
+   **这一步才是 job 的终点**：合入成功记 `job.landedAt` 和 `job_landed` 事件；没有改动就不合入；冲突或被检出拒绝时根任务转
+   `blocked`，job 记 `failed`，工作留在集成分支上。根任务失败或被取消时不合入。不 push，推送远端是 owner 的事。
+5. 槽位 `checkout -f --detach` + `clean -fd` 后归还。清不干净的槽直接删掉，下次租用时重建。
 
 `hub_spawn` 带 `subscribe.tasks` 的 child 留在 pending，直到依赖都已结算且 `completed`：`tryDispatch` 开头检查，`finalizeTask` 末尾再派发一轮。
 它因此从已含依赖改动的集成分支切出。依赖失败时它被取消，不占槽。
 
-owner 检出集成分支时用 `git switch --detach cluster/<job>`：`update-ref` 不更新工作区，停在这条分支上的检出会在下次合入后
-显示反向的改动。
-
 **发布**
 
-项目可配 `publish`：每次合入成功后，在 `<stateDir>/work/<project>/publish` 里运行（detached 到集成分支最新提交，lockfile 变化时
-同样安装）。它不占槽、不阻塞结算，同项目串行。日志 `<stateDir>/assignments/<taskId>.publish.log`，结果记为
+项目可配 `publish`：每次合入成功后，在项目的 publish worktree 里运行（`kind = publish` 的槽，detached 到刚合入的分支，
+child 是集成分支，job 收尾是 `baseBranch`；lockfile 变化时同样安装）。它不占槽、不阻塞结算，同项目串行。日志 `<stateDir>/assignments/<taskId>.publish.log`，结果记为
 `task_published` / `task_publish_failed` 事件。
 
 **清理**
 
-`bun run cluster:gc`（`--dry-run` 只列出）删除 `<stateDir>/work` 下池不认领的目录：超出配置大小的槽、已注销项目的目录。
-被租用的槽和池内的空闲槽都保留，可以在 daemon 运行时执行。
+daemon 启动时和 `bun run cluster:gc`（`--dry-run` 只列出）都会删除池不认领的 worktree：超出配置大小的空闲槽、不在 `worktreeRoot`
+里的空闲槽、已注销项目的槽、根目录下没有记录的目录。被租用的槽和池内的空闲槽都保留，可以在 daemon 运行时执行。
+换了 `worktreeRoot` 不用迁移：旧位置的槽空闲时被删掉，新任务在新位置建槽。
+
+**并发**
+
+并发只数正在运行的进程。全局 `maxConcurrentWorkers`、模板 `maxConcurrent` 由 `WorkerPool.canSpawnMore` 判断，已结束的 worker 不在
+`workers` 表里；job 的 `maxChildren`（`POST /jobs` 带上，通常来自 ticket）是同时在跑的 child 上限，`childPlaceFree` 只数
+`claimed` / `running` 的 child。失败、取消、受阻的 child 立刻让出名额，排队的 child 由 `finalizeTask` 末尾的派发补上。
+没有累计配额：planner 不用数，也不用为补刀问 owner。`GET /status` 的 `workers` 和 `maxConcurrentWorkers` 是控制台显示的唯一来源。
 
 ## 5. 配置
 

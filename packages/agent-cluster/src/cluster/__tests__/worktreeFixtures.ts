@@ -35,6 +35,7 @@ export function openClusterDb(path = ':memory:'): Database {
 export interface Sandbox {
   repo: string;
   stateDir: string;
+  worktreeRoot: string;
   config: ClusterConfig;
   entry: ProjectEntry;
   registry: ProjectRegistry;
@@ -54,13 +55,15 @@ export async function createSandbox(overrides: Partial<ProjectEntry> = {}): Prom
   await git(repo, ['add', '.']);
   await git(repo, ['commit', '-qm', 'initial']);
 
-  // Inside the checkout, as the default `data/cluster` is.
+  // Inside the checkout, as the default `data/cluster` is and a configured `worktreeRoot` can be.
   const stateDir = join(repo, 'state');
+  const worktreeRoot = join(stateDir, 'worktrees');
   await Bun.$`echo state/ >> ${join(repo, '.git/info/exclude')}`;
 
   const config = parseClusterConfig({
     enabled: true,
     stateDir,
+    worktreeRoot,
     schedulingInterval: 60_000,
     maxConcurrentWorkers: 6,
     workerTemplates: {
@@ -77,7 +80,15 @@ export async function createSandbox(overrides: Partial<ProjectEntry> = {}): Prom
     list: () => [entry],
   } as unknown as ProjectRegistry;
 
-  return { repo, stateDir, config, entry, registry, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return {
+    repo,
+    stateDir,
+    worktreeRoot,
+    config,
+    entry,
+    registry,
+    cleanup: () => rmSync(root, { recursive: true, force: true }),
+  };
 }
 
 export async function commitFile(cwd: string, file: string, content: string, message: string): Promise<string> {

@@ -1424,6 +1424,8 @@ export class ContextHub {
         return `阻塞: ${data.summary || ''}`;
       case 'task_merged':
         return `已合入 ${data.integrationBranch || ''}`;
+      case 'job_landed':
+        return `已合入 ${data.baseBranch || ''}`;
       case 'task_published':
         return `已发布: ${data.command || ''}`;
       case 'task_publish_failed':

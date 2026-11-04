@@ -50,5 +50,6 @@ export function workspacePromptVars(workspace: WorkerWorkspace): Record<string, 
     WORKSPACE_PATH: workspace.cwd,
     TASK_BRANCH: workspace.branch,
     INTEGRATION_BRANCH: workspace.integrationBranch,
+    BASE_BRANCH: workspace.baseBranch,
   };
 }

@@ -25,6 +25,7 @@ export type ClusterEventType =
   | 'task_failed'
   | 'task_blocked'
   | 'task_merged'
+  | 'job_landed'
   | 'task_published'
   | 'task_publish_failed'
   | 'task_subscribed'
@@ -124,11 +125,25 @@ export interface JobRecord {
   ticketId?: string;
   /** Branch the job's finished tasks merge into; unset until its first task gets a worktree slot. */
   integrationBranch?: string;
+  /** The branch a finished job lands on, which is what ends it. */
+  baseBranch?: string;
+  /** When the integration branch landed on `baseBranch`; unset when there was nothing to land. */
+  landedAt?: string;
+  /** How many of the job's children may run at once. Only a running child takes a place. */
+  maxChildren?: number;
   /** Whether the planner confirms its plan with the owner in the conversation before spawning. */
   planning: PlanningMode;
 }
 
 export type PlanningMode = 'interactive' | 'auto';
+
+export interface SubmitTaskOptions {
+  workerTemplate?: string;
+  requirePlannerRole?: boolean;
+  ticketId?: string;
+  planning?: PlanningMode;
+  maxChildren?: number;
+}
 
 export interface TaskRecord {
   id: string;
@@ -543,6 +558,7 @@ export interface WorkerWorkspace {
   kind: 'executor' | 'planner';
   branch?: string;
   integrationBranch?: string;
+  baseBranch?: string;
   /** For a planner: which `prompts/cluster/planning-<mode>.md` it works under. */
   planning: PlanningMode;
 }
@@ -647,6 +663,7 @@ export interface ClusterStatus {
   paused: boolean;
   activeWorkers: number;
   idleWorkers: number;
+  maxConcurrentWorkers: number;
   pendingTasks: number;
   runningTasks: number;
   completedTasks: number;

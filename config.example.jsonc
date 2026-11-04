@@ -1352,6 +1352,8 @@
   "clusterDaemon": {
     // SQLite, lock, worker logs, MCP configs and the console build; relative to the repo root.
     "stateDir": "data/cluster",
+    // Every project's worktrees, as <root>/<project>/wt-<random>. Keep it outside any checkout.
+    // "worktreeRoot": "~/.qqbot/worktrees" is the default; a set value must be absolute.
     // The one port: /mcp for workers (loopback only), /api/cluster, /api/tickets, /health and
     // the console at /. "0.0.0.0" makes the console reachable over the LAN.
     "http": { "host": "0.0.0.0", "port": 3200 },

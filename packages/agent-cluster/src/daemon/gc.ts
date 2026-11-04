@@ -1,5 +1,5 @@
-// `bun run cluster:gc [--dry-run]`: remove worktrees under `<stateDir>/work` that no pool entry
-// claims. Safe beside a running daemon: a leased slot, or one within a project's pool, is claimed.
+// `bun run cluster:gc [--dry-run]`: remove worktrees no pool claims. The daemon does the same on
+// start. Safe beside a running daemon: a leased slot, or one within a project's pool, is claimed.
 
 import 'reflect-metadata';
 

@@ -16,6 +16,7 @@ import {
   type JobRecord,
   type JobStatus,
   type PlanningMode,
+  type SubmitTaskOptions,
   type TaskCandidate,
   type TaskRecord,
   type TaskStatus,
@@ -440,11 +441,7 @@ export class ClusterScheduler {
    * `POST /api/cluster/jobs`) all depended on the spawn happening — see
    * docs/local/agent-cluster.md for the bug history.
    */
-  async submitTask(
-    project: string,
-    description: string,
-    options?: { workerTemplate?: string; requirePlannerRole?: boolean; ticketId?: string; planning?: PlanningMode },
-  ): Promise<TaskRecord | null> {
+  async submitTask(project: string, description: string, options?: SubmitTaskOptions): Promise<TaskRecord | null> {
     const projectInfo = this.projectRegistry.resolve(project);
     if (!projectInfo) {
       this.warnUnknownProjectOnce(project);
@@ -531,6 +528,7 @@ export class ClusterScheduler {
       createdAt: new Date().toISOString(),
       taskCount: 1,
       planning: options?.planning ?? 'interactive',
+      maxChildren: options?.maxChildren,
       tasksCompleted: 0,
       tasksFailed: 0,
       ticketId: options?.ticketId,
@@ -625,6 +623,7 @@ export class ClusterScheduler {
 
     // Check both global and per-template concurrency limits before spawning.
     if (!this.workerPool.canSpawnMore(templateName)) return false;
+    if (!this.childPlaceFree(task)) return false;
 
     const lease = this.claimWorkspace(task, templateName, projectInfo);
     if (lease === 'busy') return false;
@@ -642,6 +641,19 @@ export class ClusterScheduler {
     // answer now, and a failure reaches the task through the spawn-failure path.
     void spawned;
     return true;
+  }
+
+  /**
+   * `maxChildren` bounds how many of a job's children run at once, not how many it ever had: a
+   * child that ended gives its place back, however it ended, and the next one queued takes it.
+   */
+  private childPlaceFree(task: TaskRecord): boolean {
+    const limit = task.parentTaskId ? this.jobOf(task)?.maxChildren : undefined;
+    if (limit === undefined) return true;
+    const running = this.getActiveTasks().filter(
+      (t) => t.jobId === task.jobId && t.parentTaskId && (t.status === 'claimed' || t.status === 'running'),
+    );
+    return running.length < limit;
   }
 
   /**
@@ -1038,8 +1050,8 @@ export class ClusterScheduler {
       this.db
         .query(
           `INSERT OR REPLACE INTO cluster_jobs
-         (id, project, description, status, createdAt, startedAt, completedAt, taskCount, tasksCompleted, tasksFailed, metadata, ticketId, integrationBranch, planning)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, project, description, status, createdAt, startedAt, completedAt, taskCount, tasksCompleted, tasksFailed, metadata, ticketId, integrationBranch, planning, baseBranch, landedAt, maxChildren)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           job.id,
@@ -1056,6 +1068,9 @@ export class ClusterScheduler {
           job.ticketId ?? null,
           job.integrationBranch ?? null,
           job.planning,
+          job.baseBranch ?? null,
+          job.landedAt ?? null,
+          job.maxChildren ?? null,
         );
     } catch (err) {
       logger.error('[ClusterScheduler] Failed to persist job:', err);
@@ -1309,6 +1324,9 @@ export class ClusterScheduler {
       ticketId: (row.ticketId as string | null) ?? undefined,
       integrationBranch: (row.integrationBranch as string | null) ?? undefined,
       planning: (row.planning as PlanningMode | null) ?? 'auto',
+      baseBranch: (row.baseBranch as string | null) ?? undefined,
+      landedAt: (row.landedAt as string | null) ?? undefined,
+      maxChildren: (row.maxChildren as number | null) ?? undefined,
     };
   }
 

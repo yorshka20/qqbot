@@ -8,6 +8,9 @@
 所以**互相独立的子任务要并行 spawn**，不要因为"同一个仓库"就串行；只有真实的数据依赖才串行，写进 plan 的 `depends_on`。
 
 - child 成功退出后 daemon 立刻把它的分支合入集成分支，owner 在集成分支上验收，不用等整个 job 结束。
+- 你 `hub_report(completed)` 并退出后，daemon 把集成分支合入 `{{BASE_BRANCH}}`，**合入成功 job 才算完成**。
+  合不进去（冲突，或检出里的改动挡住了）时你这个任务以 `blocked` 结束，原因写在 `error` 里。
+  所以 `completed` 的意思是"这些工作可以进 `{{BASE_BRANCH}}`"，不要拿它表示"工作停在集成分支"。
 - child 从集成分支当时的最新提交开始。依赖 A 的 B 不用等：现在就 `hub_spawn({ ..., subscribe: { tasks: [A] } })`，
   daemon 让它排队到 A 合入后才启动，它一启动就能看到 A 的改动；A 失败时 B 被取消，`hub_wait` 把你叫醒。
 - 并行的 child 改同一个文件时，后合入的那个会以 `blocked` 结束；拆分时让并行的 child 不碰同一批文件。

@@ -4,11 +4,12 @@
  * A job gets an integration branch `cluster/<job>` cut from the project's base branch; each task
  * works in a leased slot on `cluster/<job>-<task>`, cut from the integration tip. The two names
  * cannot nest (`cluster/<job>/<task>`): git stores refs as paths, so a branch cannot also be a
- * directory of branches.
+ * directory of branches. A job ends on the base branch: when its root task finishes, the
+ * integration branch lands there, and a job that cannot land has not completed.
  *
- * Merging never touches a worktree: `git merge-tree` computes the result and `update-ref` moves
- * the branch. So no worktree has to hold the integration branch, which leaves the owner free to
- * check it out, and a conflict leaves nothing to clean up.
+ * `git merge-tree` computes every merge without a worktree, so a conflict leaves nothing to clean
+ * up. A branch no worktree holds moves by `update-ref`; one that is checked out, as the base
+ * branch usually is, fast-forwards in its worktree, which also keeps that worktree's files in step.
  */
 
 import { join } from 'node:path';
@@ -33,7 +34,7 @@ type MergeOutcome =
   | { kind: 'merged'; before: string; head: string; files: string[] }
   | { kind: 'empty' }
   | { kind: 'conflict'; detail: string }
-  | { kind: 'checkedOut'; worktree: string };
+  | { kind: 'refused'; worktree: string; detail: string };
 
 export function integrationBranchName(jobId: string): string {
   return `cluster/${jobId.slice(0, 8)}`;
@@ -80,8 +81,10 @@ export class TaskWorkspaces {
   /** Create the job's integration branch if needed and put the task on its own branch in the slot. */
   async prepare(task: TaskRecord, job: JobRecord, entry: ProjectEntry, lease: SlotLease): Promise<WorkerWorkspace> {
     const integrationBranch = integrationBranchName(job.id);
-    await this.enqueue(integrationBranch, () => this.ensureBranch(entry, integrationBranch));
+    const baseBranch = job.baseBranch ?? entry.baseBranch ?? (await defaultBranch(entry.path));
+    await this.enqueue(integrationBranch, () => this.ensureBranch(entry, integrationBranch, baseBranch));
     job.integrationBranch = integrationBranch;
+    job.baseBranch = baseBranch;
 
     const branch = taskBranchName(job.id, task.id);
     await this.pool.prepare(lease, entry, branch, integrationBranch);
@@ -100,6 +103,7 @@ export class TaskWorkspaces {
       kind: lease.kind,
       branch,
       integrationBranch,
+      baseBranch,
       planning: job.planning,
     };
   }
@@ -119,8 +123,9 @@ export class TaskWorkspaces {
   }
 
   /**
-   * The worker is gone: report what it left uncommitted, land its branch if it succeeded, and
-   * free the slot. A task whose branch cannot land ends `blocked`, with the reason in `error`.
+   * The worker is gone: report what it left uncommitted, land its branch if it succeeded, land
+   * the job if this was its root task, and free the slot. A task whose work cannot land ends
+   * `blocked`, with the reason in `error`.
    */
   async settle(task: TaskRecord, job: JobRecord | undefined): Promise<void> {
     const lease = this.pool.leaseOf(task.id);
@@ -128,11 +133,16 @@ export class TaskWorkspaces {
       return;
     }
     const entry = this.projects.resolve(task.project);
-    let merged = false;
+    let published: string | undefined;
     try {
       this.reportUncommitted(task, await this.pool.uncommitted(lease));
       if (task.status === 'completed' && task.branch && job?.integrationBranch && entry) {
-        merged = await this.land(task, job.integrationBranch, entry);
+        if (await this.land(task, job.integrationBranch, entry)) {
+          published = job.integrationBranch;
+        }
+        if (task.status === 'completed' && !task.parentTaskId && (await this.landJob(task, job, entry))) {
+          published = job.baseBranch;
+        }
       }
     } catch (err) {
       logger.error(`[TaskWorkspaces] Could not land task ${task.id}:`, err);
@@ -142,17 +152,17 @@ export class TaskWorkspaces {
     } finally {
       await this.pool.release(lease);
     }
-    if (merged && entry?.publish && job?.integrationBranch) {
-      void this.publish(task, job.integrationBranch, entry, entry.publish);
+    if (published && entry?.publish) {
+      void this.publish(task, published, entry, entry.publish);
     }
   }
 
-  private async ensureBranch(entry: ProjectEntry, branch: string): Promise<void> {
+  private async ensureBranch(entry: ProjectEntry, branch: string, startPoint: string): Promise<void> {
     const exists = await runGit(entry.path, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
     if (exists.code === 0) {
       return;
     }
-    await git(entry.path, ['branch', branch, entry.baseBranch ?? (await defaultBranch(entry.path))]);
+    await git(entry.path, ['branch', branch, startPoint]);
   }
 
   private reportUncommitted(task: TaskRecord, files: string[]): void {
@@ -175,12 +185,8 @@ export class TaskWorkspaces {
       case 'conflict':
         this.block(task, `Merge conflict landing ${branch} on ${integrationBranch}:\n${outcome.detail}`);
         return false;
-      case 'checkedOut':
-        this.block(
-          task,
-          `Cannot land ${branch}: ${integrationBranch} is checked out in ${outcome.worktree}. ` +
-            'The daemon moves that branch, so review it detached (`git switch --detach <branch>`) and retry the task.',
-        );
+      case 'refused':
+        this.block(task, refusalReason(branch, integrationBranch, outcome));
         return false;
       case 'merged':
         task.mergedAt = new Date().toISOString();
@@ -190,6 +196,37 @@ export class TaskWorkspaces {
           before: outcome.before,
           head: outcome.head,
           files: outcome.files,
+        });
+        return true;
+    }
+  }
+
+  /**
+   * The last step of a job: its integration branch onto the base branch. One queue per branch
+   * name, because two projects can be worktrees of one repository and share the base branch.
+   */
+  private async landJob(task: TaskRecord, job: JobRecord, entry: ProjectEntry): Promise<boolean> {
+    const from = job.integrationBranch as string;
+    const onto = job.baseBranch as string;
+    const outcome = await this.enqueue(`base:${onto}`, () => merge(entry.path, from, onto));
+    switch (outcome.kind) {
+      case 'empty':
+        return false;
+      case 'conflict':
+        this.block(task, `Merge conflict landing ${from} on ${onto}:\n${outcome.detail}`);
+        return false;
+      case 'refused':
+        this.block(task, refusalReason(from, onto, outcome));
+        return false;
+      case 'merged':
+        job.landedAt = new Date().toISOString();
+        this.hub.recordTaskEvent('job_landed', task, {
+          integrationBranch: from,
+          baseBranch: onto,
+          before: outcome.before,
+          head: outcome.head,
+          files: outcome.files.slice(0, MAX_REPORTED_FILES),
+          filesTotal: outcome.files.length,
         });
         return true;
     }
@@ -206,7 +243,7 @@ export class TaskWorkspaces {
   }
 
   /** Runs after the slot is free: a slow build must hold up neither the merge queue nor the next task. */
-  private publish(task: TaskRecord, integrationBranch: string, entry: ProjectEntry, command: string): Promise<void> {
+  private publish(task: TaskRecord, branch: string, entry: ProjectEntry, command: string): Promise<void> {
     const logName = `${task.id}.publish.log`;
     const controller = new AbortController();
     const run = this.enqueue(`publish:${entry.alias}`, async () => {
@@ -214,13 +251,13 @@ export class TaskWorkspaces {
         return;
       }
       try {
-        const cwd = await this.pool.preparePublish(entry, integrationBranch, logName);
+        const cwd = await this.pool.preparePublish(entry, branch, logName);
         await runLoggedCommand(command, cwd, join(this.config.stateDir, 'assignments', logName), controller.signal);
-        this.hub.recordTaskEvent('task_published', task, { integrationBranch, command, log: logName });
+        this.hub.recordTaskEvent('task_published', task, { branch, command, log: logName });
       } catch (err) {
         logger.warn(`[TaskWorkspaces] Publish failed for task ${task.id}:`, err);
         this.hub.recordTaskEvent('task_publish_failed', task, {
-          integrationBranch,
+          branch,
           command,
           log: logName,
           error: err instanceof Error ? err.message : String(err),
@@ -276,15 +313,25 @@ async function merge(repo: string, branch: string, target: string): Promise<Merg
       MERGE_IDENTITY,
     );
   }
-  // `update-ref` would move the branch under that worktree's index and working tree.
-  const worktree = await worktreeHolding(repo, target);
-  if (worktree) {
-    return { kind: 'checkedOut', worktree };
-  }
   // Listed before the branch moves: a failure here must not leave a landed task marked blocked.
   const diff = await git(repo, ['diff', '--name-only', '--no-renames', '-z', ours, head]);
-  await git(repo, ['update-ref', `refs/heads/${target}`, head, ours]);
+  // `update-ref` would move a checked-out branch under its worktree's index and files. `head`
+  // descends from `ours`, so `--ff-only` is the same move made through that worktree; git refuses
+  // it, and changes nothing, when uncommitted work there overlaps the merge.
+  const worktree = await worktreeHolding(repo, target);
+  if (worktree) {
+    const moved = await runGit(worktree, ['merge', '--ff-only', head]);
+    if (moved.code !== 0) {
+      return { kind: 'refused', worktree, detail: (moved.stderr || moved.stdout).trim() };
+    }
+  } else {
+    await git(repo, ['update-ref', `refs/heads/${target}`, head, ours]);
+  }
   return { kind: 'merged', before: ours, head, files: diff.split('\0').filter(Boolean) };
+}
+
+function refusalReason(from: string, onto: string, refused: { worktree: string; detail: string }): string {
+  return `Cannot land ${from} on ${onto}: the checkout in ${refused.worktree} refused it.\n${refused.detail}`;
 }
 
 /** The worktree that has `branch` checked out, if any (`git worktree list --porcelain` blocks). */

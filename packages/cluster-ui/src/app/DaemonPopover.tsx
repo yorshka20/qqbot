@@ -9,9 +9,9 @@ import { useCluster } from './ClusterData';
 import { DaemonControls } from './DaemonControls';
 
 export function DaemonPopover() {
-  const { cluster, unreachable, loaded, workers, templates } = useCluster();
+  const { cluster, unreachable, loaded } = useCluster();
   const navigate = useNavigate();
-  const summary = daemonSummary(cluster, unreachable, loaded, workers, templates);
+  const summary = daemonSummary(cluster, unreachable, loaded);
 
   return (
     <Popover>

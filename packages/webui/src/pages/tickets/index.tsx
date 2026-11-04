@@ -438,6 +438,7 @@ export function TicketsPage() {
         workerTemplate: pickedTemplate || undefined,
         requirePlannerRole: role === 'planner' ? true : undefined,
         ticketId: dispatchTicket.id,
+        maxChildren: dispatchTicket.frontmatter.maxChildren,
       });
 
       // 2. Mark the ticket as dispatched + record the job linkage.

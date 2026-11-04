@@ -122,6 +122,8 @@ export interface TicketJobSnapshot {
     tasksCompleted: number;
     tasksFailed: number;
     integrationBranch?: string;
+    baseBranch?: string;
+    landedAt?: string;
   };
   tasks: Array<{
     id: string;

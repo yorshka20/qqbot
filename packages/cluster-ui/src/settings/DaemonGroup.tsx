@@ -15,8 +15,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 const NOT_PROVIDED = <span className="text-muted-foreground">daemon 未提供</span>;
 
 export function DaemonGroup() {
-  const { cluster, unreachable, loaded, workers, templates, health } = useCluster();
-  const summary = daemonSummary(cluster, unreachable, loaded, workers, templates);
+  const { cluster, unreachable, loaded, health } = useCluster();
+  const summary = daemonSummary(cluster, unreachable, loaded);
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">

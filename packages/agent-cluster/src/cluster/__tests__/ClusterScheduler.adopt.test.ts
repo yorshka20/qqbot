@@ -51,7 +51,10 @@ function openDb(): Database {
     metadata TEXT,
     ticketId TEXT,
     integrationBranch TEXT,
-    planning TEXT
+    planning TEXT,
+    baseBranch TEXT,
+    landedAt TEXT,
+    maxChildren INTEGER
   )`);
   db.run(`CREATE TABLE cluster_tasks (
     id TEXT PRIMARY KEY,

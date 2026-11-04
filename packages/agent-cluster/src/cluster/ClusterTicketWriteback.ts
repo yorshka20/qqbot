@@ -138,6 +138,7 @@ async function writeResults(
     `- **Status**: ${job.status}`,
     `- **Project**: ${job.project}`,
     ...(job.integrationBranch ? [`- **Integration branch**: \`${job.integrationBranch}\``] : []),
+    ...(job.landedAt ? [`- **Landed on**: \`${job.baseBranch}\` at ${job.landedAt}`] : []),
     `- **Created**: ${job.createdAt}`,
     `- **Completed**: ${job.completedAt ?? 'N/A'}`,
     `- **Tasks**: ${job.tasksCompleted} completed, ${job.tasksFailed} failed / ${job.taskCount} total`,
@@ -203,6 +204,8 @@ async function writeResults(
       tasksCompleted: job.tasksCompleted,
       tasksFailed: job.tasksFailed,
       integrationBranch: job.integrationBranch,
+      baseBranch: job.baseBranch,
+      landedAt: job.landedAt,
     },
     tasks: tasks.map((t) => ({
       id: t.id,

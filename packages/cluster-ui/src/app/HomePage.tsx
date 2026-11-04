@@ -74,11 +74,11 @@ function Section({ id, title, children }: { id?: string; title: string; children
 }
 
 export function HomePage() {
-  const { runs, help, templates, workers, loaded } = useCluster();
+  const { runs, help, templates, cluster, loaded } = useCluster();
   const now = useNow();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const spare = useMemo(() => spareSlots(templates, workers), [templates, workers]);
+  const spare = useMemo(() => spareSlots(cluster, templates), [cluster, templates]);
   const home = useMemo(() => buildHome(runs, help, spare, now), [runs, help, spare, now]);
 
   if (!loaded) {
@@ -114,7 +114,7 @@ export function HomePage() {
         </Button>
         <span className="text-muted-foreground">·</span>
         <Button variant="ghost" size="sm" onClick={() => navigate(settingsPath('concurrency'))}>
-          空闲槽 ≤{totals.idle}
+          空闲槽 {totals.idle}
         </Button>
       </div>
 

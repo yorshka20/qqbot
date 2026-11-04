@@ -7,6 +7,7 @@ export interface RunInput {
   description: string;
   template?: string;
   ticketId?: string;
+  maxChildren?: number;
 }
 
 export interface SubmittedRun {
@@ -33,6 +34,7 @@ export async function submitRun(input: RunInput, templates: ClusterTemplatesResp
       workerTemplate: input.template,
       requirePlannerRole: role === 'planner' ? true : undefined,
       ticketId,
+      maxChildren: input.maxChildren,
     });
     if (ticketId) {
       await updateTicket(ticketId, { status: 'dispatched', dispatchedJobId: task.jobId, project: input.project });

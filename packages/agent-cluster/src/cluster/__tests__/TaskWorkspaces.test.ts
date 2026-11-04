@@ -44,10 +44,11 @@ describe('TaskWorkspaces', () => {
     };
   }
 
-  function makeTask(id: string): TaskRecord {
+  function makeTask(id: string, parentTaskId: string | undefined = 'planner-task'): TaskRecord {
     return {
       id: `${id}-0000-0000-0000-000000000000`,
       jobId: JOB_ID,
+      parentTaskId,
       project: PROJECT,
       description: 'work',
       status: 'running',
@@ -57,8 +58,18 @@ describe('TaskWorkspaces', () => {
   }
 
   /** A task as it stands once its worker started: leased, on its branch, in its slot. */
-  async function start(id: string): Promise<{ task: TaskRecord; cwd: string }> {
-    const task = makeTask(id);
+  async function start(id: string, parentTaskId?: string): Promise<{ task: TaskRecord; cwd: string }> {
+    const task = makeTask(id, parentTaskId);
+    const lease = workspaces.claim(task, box.entry, 'executor');
+    if (lease === 'busy' || lease === 'unpooled') throw new Error(`no slot: ${lease}`);
+    const { cwd } = await workspaces.prepare(task, job, box.entry, lease);
+    return { task, cwd };
+  }
+
+  /** The job's root task: finishing it is what lands the job. */
+  async function startRoot(id: string): Promise<{ task: TaskRecord; cwd: string }> {
+    const task = makeTask(id, '');
+    delete task.parentTaskId;
     const lease = workspaces.claim(task, box.entry, 'executor');
     if (lease === 'busy' || lease === 'unpooled') throw new Error(`no slot: ${lease}`);
     const { cwd } = await workspaces.prepare(task, job, box.entry, lease);
@@ -203,7 +214,7 @@ describe('TaskWorkspaces', () => {
 
     await waitFor(() => events.some((e) => e.type === 'task_published'), 8000, 'publish event');
     expect(readFileSync(join(box.stateDir, 'assignments', `${task.id}.publish.log`), 'utf8')).toContain('built');
-    expect(readFileSync(join(box.stateDir, 'work', PROJECT, 'published-copy'), 'utf8')).toContain('a.txt');
+    expect(readFileSync(join(box.worktreeRoot, PROJECT, 'published-copy'), 'utf8')).toContain('a.txt');
     // The owner can still check the branch out: nothing holds it.
     expect(await git(box.repo, ['worktree', 'list', '--porcelain'])).not.toContain(`refs/heads/${INTEGRATION}\n`);
   });
@@ -220,24 +231,128 @@ describe('TaskWorkspaces', () => {
     expect(String(events.find((e) => e.type === 'task_publish_failed')?.data.error)).toContain('exited with 7');
   });
 
-  test('a merge is refused while the integration branch is checked out somewhere, and the task says where', async () => {
-    const a = await start('11111111');
-    await commitFile(a.cwd, 'a.txt', 'a\n', 'task a');
-    await finish(a.task);
+  test('an integration branch checked out somewhere moves in that worktree, files included', async () => {
+    const { task, cwd } = await start('11111111');
+    await commitFile(cwd, 'a.txt', 'a\n', 'task a');
+    const owner = join(box.stateDir, 'owner-checkout');
+    await git(box.repo, ['worktree', 'add', '-q', owner, INTEGRATION]);
+
+    await finish(task);
+
+    expect(task.status).toBe('completed');
+    expect(readFileSync(join(owner, 'a.txt'), 'utf8')).toBe('a\n');
+    expect(await git(owner, ['status', '--porcelain'])).toBe('');
+  });
+
+  test('uncommitted work in that worktree stops the merge and is left as it was', async () => {
+    const { task, cwd } = await start('11111111');
+    await commitFile(cwd, 'shared.txt', 'theirs\n', 'task a');
+    const owner = join(box.stateDir, 'owner-checkout');
+    await git(box.repo, ['worktree', 'add', '-q', owner, INTEGRATION]);
+    writeFileSync(join(owner, 'shared.txt'), 'owner is editing this\n');
     const tip = await git(box.repo, ['rev-parse', INTEGRATION]);
-    const review = join(box.repo, '..', 'review');
-    await git(box.repo, ['worktree', 'add', '-q', review, INTEGRATION]);
 
-    const b = await start('22222222');
-    await commitFile(b.cwd, 'b.txt', 'b\n', 'task b');
-    await finish(b.task);
+    await finish(task);
 
-    expect(b.task.status).toBe('blocked');
-    expect(b.task.error).toContain('checked out in');
-    expect(b.task.error).toContain('review');
+    expect(task.status).toBe('blocked');
+    expect(task.error).toContain(owner);
+    expect(task.mergedAt).toBeUndefined();
     expect(await git(box.repo, ['rev-parse', INTEGRATION])).toBe(tip);
-    expect(await git(review, ['rev-parse', 'HEAD'])).toBe(tip);
-    expect(workspaces.holdsSlot(b.task.id)).toBe(false);
+    expect(readFileSync(join(owner, 'shared.txt'), 'utf8')).toBe('owner is editing this\n');
+  });
+
+  test('a child stops at the integration branch; the base branch waits for the job', async () => {
+    const base = await git(box.repo, ['rev-parse', 'master']);
+    const { task, cwd } = await start('11111111');
+    await commitFile(cwd, 'a.txt', 'a\n', 'task a');
+    await finish(task);
+
+    expect(task.mergedAt).toBeDefined();
+    expect(await git(box.repo, ['rev-parse', 'master'])).toBe(base);
+    expect(job.landedAt).toBeUndefined();
+  });
+
+  test('the root task lands the job on the base branch, in the checkout that holds it', async () => {
+    const child = await start('11111111');
+    await commitFile(child.cwd, 'a.txt', 'a\n', 'task a');
+    await finish(child.task);
+    const root = await startRoot('22222222');
+
+    await finish(root.task);
+
+    expect(root.task.status).toBe('completed');
+    expect(job.landedAt).toBeDefined();
+    expect(job.baseBranch).toBe('master');
+    expect(await git(box.repo, ['rev-parse', 'master'])).toBe(await git(box.repo, ['rev-parse', INTEGRATION]));
+    expect(readFileSync(join(box.repo, 'a.txt'), 'utf8')).toBe('a\n');
+    expect(await git(box.repo, ['status', '--porcelain'])).toBe('');
+    expect(events.at(-1)).toMatchObject({
+      type: 'job_landed',
+      taskId: root.task.id,
+      data: { integrationBranch: INTEGRATION, baseBranch: 'master', files: ['a.txt'], filesTotal: 1 },
+    });
+  });
+
+  test('a job with nothing to land completes without touching the base branch', async () => {
+    const base = await git(box.repo, ['rev-parse', 'master']);
+    const { task } = await startRoot('22222222');
+    await finish(task);
+
+    expect(task.status).toBe('completed');
+    expect(job.landedAt).toBeUndefined();
+    expect(await git(box.repo, ['rev-parse', 'master'])).toBe(base);
+  });
+
+  test('a base branch that moved on gets a merge commit', async () => {
+    const { task, cwd } = await startRoot('22222222');
+    await commitFile(cwd, 'a.txt', 'a\n', 'task a');
+    await commitFile(box.repo, 'b.txt', 'b\n', 'someone else');
+
+    await finish(task);
+
+    expect(task.status).toBe('completed');
+    expect(job.landedAt).toBeDefined();
+    expect(readFileSync(join(box.repo, 'a.txt'), 'utf8')).toBe('a\n');
+    expect(readFileSync(join(box.repo, 'b.txt'), 'utf8')).toBe('b\n');
+  });
+
+  test('a job that cannot land has not completed: the root task ends blocked with the conflict', async () => {
+    const { task, cwd } = await startRoot('22222222');
+    await commitFile(cwd, 'shared.txt', 'ours\n', 'task a');
+    const moved = await commitFile(box.repo, 'shared.txt', 'theirs\n', 'someone else');
+
+    await finish(task);
+
+    expect(task.status).toBe('blocked');
+    expect(task.error).toContain('shared.txt');
+    expect(job.landedAt).toBeUndefined();
+    expect(await git(box.repo, ['rev-parse', 'master'])).toBe(moved);
+    expect(events.at(-1)?.type).toBe('task_blocked');
+  });
+
+  test('a failed root task leaves the base branch alone', async () => {
+    const base = await git(box.repo, ['rev-parse', 'master']);
+    const child = await start('11111111');
+    await commitFile(child.cwd, 'a.txt', 'a\n', 'task a');
+    await finish(child.task);
+    const root = await startRoot('22222222');
+
+    root.task.status = 'failed';
+    await workspaces.settle(root.task, job);
+
+    expect(job.landedAt).toBeUndefined();
+    expect(await git(box.repo, ['rev-parse', 'master'])).toBe(base);
+  });
+
+  test('publish runs again on the base branch once the job landed', async () => {
+    await setUp({ publish: 'git rev-parse HEAD >> ../published-revs' });
+    const { task, cwd } = await startRoot('22222222');
+    await commitFile(cwd, 'a.txt', 'a\n', 'task a');
+    await commitFile(box.repo, 'b.txt', 'b\n', 'someone else');
+    await finish(task);
+
+    await waitFor(() => events.some((e) => e.type === 'task_published'), 8000, 'publish event');
+    expect(events.find((e) => e.type === 'task_published')?.data.branch).toBe('master');
   });
 
   test('a workspace states its mode, role and branches; the words come from the prompt files', async () => {

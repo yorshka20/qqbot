@@ -231,9 +231,10 @@ hub_report({
 
 - **不要 spawn 嵌套 planner**。`hub_spawn` 的 `role` 参数如果传了，**只能
   是 `'executor'`**。Hub 会拒绝嵌套 planner。**只允许一层拆解**。
-- **不要 spawn 超过 3 个 children**，除非 ticket frontmatter 明确写了
-  `maxChildren: <更大的数>`。如果你觉得需要更多，重新考虑能不能合并几个
-  子任务（成本和协调开销在 children 数量上是超线性的）。
+- **`maxChildren` 是同时在跑的 child 上限，不是总数**，由 daemon 执行：超出的 child 返回 `queued`，
+  有 child 结束就补上。失败、取消、受阻的 child 不占名额，补刀不用问任何人，也不要自己数。
+  ticket 没写时只受集群的并发限制。计划里的 child 超过 3 个时，先想想能不能合并
+  （协调开销在 children 数量上是超线性的）。
 - **不要轮询，不要 sleep**。等子任务就 `hub_wait`，它在事件发生时叫醒你；一个 child 跑得比预期久（典型代码工作 10 分钟，大型重构更长）时，
   `hub_wait` 超时返回后 `hub_report` 一句再继续等。
 - **如果一个子任务只需要一个 executor 干 < 5 分钟**，直接 spawn 就行，

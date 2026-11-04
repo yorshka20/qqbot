@@ -380,11 +380,18 @@ export class ClusterApi implements HubRoute {
         if (body.planning !== undefined && body.planning !== 'interactive' && body.planning !== 'auto') {
           return errorResponse("planning must be 'interactive' or 'auto'", 400);
         }
+        if (
+          body.maxChildren !== undefined &&
+          (!Number.isInteger(body.maxChildren) || (body.maxChildren as number) < 1)
+        ) {
+          return errorResponse('maxChildren must be a positive integer', 400);
+        }
         const task = await live.submitTask(body.project, body.description, {
           workerTemplate: body.workerTemplate,
           requirePlannerRole: body.requirePlannerRole === true ? true : undefined,
           ticketId: body.ticketId?.trim() || undefined,
           planning: body.planning,
+          maxChildren: body.maxChildren,
         });
         if (!task) {
           return errorResponse(

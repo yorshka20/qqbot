@@ -9,7 +9,16 @@ import type { TaskRecord, WorkerBackend } from '../types';
 import { WorkerPool } from '../WorkerPool';
 import { TaskWorkspaces } from '../workspace/TaskWorkspaces';
 import { WorktreePool } from '../workspace/WorktreePool';
-import { createSandbox, EXECUTOR, openClusterDb, PLANNER, PROJECT, type Sandbox, waitFor } from './worktreeFixtures';
+import {
+  commitFile,
+  createSandbox,
+  EXECUTOR,
+  openClusterDb,
+  PLANNER,
+  PROJECT,
+  type Sandbox,
+  waitFor,
+} from './worktreeFixtures';
 
 /** Workers run the task description as a shell script, in the cwd the scheduler gave them. */
 const scriptBackend: WorkerBackend = {
@@ -109,7 +118,8 @@ describe('ClusterScheduler with a worktree pool', () => {
     await waitFor(() => a.status === 'running' && b.status === 'running', 8000, 'both children running');
     expect(a.worktreePath).not.toBe(b.worktreePath);
     expect(a.worktreePath).not.toBe(box.repo);
-    expect(planner.worktreePath).toContain('planner-1');
+    expect(planner.worktreePath?.startsWith(box.worktreeRoot)).toBe(true);
+    expect([a.worktreePath, b.worktreePath]).not.toContain(planner.worktreePath);
 
     await Bun.write(gate, '');
     await waitFor(() => isDone(a) && isDone(b), 8000, 'children settled');
@@ -213,6 +223,79 @@ describe('ClusterScheduler with a worktree pool', () => {
     const job = cluster.scheduler.getJob(task.jobId);
     expect(job?.status).toBe('completed');
     expect(await git(box.repo, ['ls-tree', '--name-only', job?.integrationBranch as string])).toContain('solo.txt');
+  });
+
+  test('a job ends on the base branch: a planner job reaches master only when the planner finishes', async () => {
+    const gate = join(box.stateDir, 'planner-go');
+    const planner = await submitPlanner(`while [ ! -e ${gate} ]; do sleep 0.05; done`);
+    const base = await git(box.repo, ['rev-parse', 'master']);
+    const child = await spawnChild(planner, commitAs('a'));
+    await waitFor(() => isDone(child), 8000, 'child settled');
+    expect(await git(box.repo, ['rev-parse', 'master'])).toBe(base);
+
+    await Bun.write(gate, '');
+    await waitFor(() => isDone(planner), 8000, 'planner settled');
+
+    const job = cluster.scheduler.getJob(planner.jobId);
+    expect(job?.status).toBe('completed');
+    expect(job?.baseBranch).toBe('master');
+    expect(job?.landedAt).toBeDefined();
+    expect(readFileSync(join(box.repo, 'a.txt'), 'utf8')).toBe('a\n');
+  });
+
+  test('a job that cannot land on the base branch fails, with the reason on its root task', async () => {
+    const gate = join(box.stateDir, 'root-go');
+    const task = await cluster.scheduler.submitTask(
+      PROJECT,
+      `while [ ! -e ${gate} ]; do sleep 0.05; done; echo ours > shared.txt; git add shared.txt; git -c user.name=w -c user.email=w@example.invalid commit -qm ours`,
+    );
+    if (!task) throw new Error('submitTask refused');
+    await waitFor(() => task.status === 'running', 8000, 'root running');
+    await commitFile(box.repo, 'shared.txt', 'theirs\n', 'someone else');
+
+    await Bun.write(gate, '');
+    await waitFor(() => isDone(task), 8000, 'root settled');
+
+    expect(task.status).toBe('blocked');
+    expect(task.error).toContain('shared.txt');
+    const job = cluster.scheduler.getJob(task.jobId);
+    expect(job?.status).toBe('failed');
+    expect(job?.landedAt).toBeUndefined();
+  });
+
+  test('maxChildren holds back what would run beyond it, and a child that failed gives its place back', async () => {
+    const task = await cluster.scheduler.submitTask(PROJECT, 'sleep 30', { workerTemplate: PLANNER, maxChildren: 1 });
+    if (!task) throw new Error('submitTask refused');
+    await waitFor(() => task.status === 'running', 8000, 'planner running');
+    const gate = join(box.stateDir, 'first-go');
+
+    const first = await spawnChild(task, `while [ ! -e ${gate} ]; do sleep 0.05; done; exit 1`);
+    const second = await spawnChild(task, 'exit 1');
+    const third = await spawnChild(task, commitAs('c'));
+    await waitFor(() => first.status === 'running', 8000, 'first child running');
+    expect(second.status).toBe('pending');
+    expect(third.status).toBe('pending');
+
+    await Bun.write(gate, '');
+    await waitFor(() => isDone(first) && isDone(second) && isDone(third), 8000, 'all children settled');
+
+    expect(first.status).toBe('failed');
+    expect(second.status).toBe('failed');
+    expect(third.status).toBe('completed');
+    expect(third.mergedAt).toBeDefined();
+  });
+
+  test('without maxChildren any number of failed children leaves the next one free to start', async () => {
+    const planner = await submitPlanner('sleep 30');
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const failed = await spawnChild(planner, 'exit 1');
+      await waitFor(() => isDone(failed), 8000, `failed child ${attempt}`);
+    }
+    expect(cluster.pool.getActiveCount()).toBe(1);
+
+    const next = await spawnChild(planner, commitAs('after'));
+    await waitFor(() => isDone(next), 8000, 'child after the failures');
+    expect(next.status).toBe('completed');
   });
 
   test('a task whose workspace cannot be prepared fails, frees its slot and wakes its waiter', async () => {

@@ -1,13 +1,23 @@
-import type { ClusterTemplatesResponse, ClusterWorkerRegistration } from '@qqbot/api-types';
+import type { ClusterStatusResponse, ClusterTemplatesResponse } from '@qqbot/api-types';
 
-export function busyWorkers(workers: ClusterWorkerRegistration[], template: string): number {
-  return workers.filter((w) => w.templateName === template && w.status !== 'exited').length;
+/** The daemon's own list of live workers: a worker that ended is not in it, however it ended. */
+function liveWorkers(cluster: ClusterStatusResponse | null) {
+  return cluster?.status.workers ?? [];
 }
 
-/** Sum of each template's headroom. The daemon does not expose the cluster-wide cap, so this is an upper bound. */
-export function spareSlots(templates: ClusterTemplatesResponse | null, workers: ClusterWorkerRegistration[]): number {
-  return (templates?.templates ?? []).reduce(
-    (spare, t) => spare + Math.max(0, t.maxConcurrent - busyWorkers(workers, t.name)),
+export function runningWorkers(cluster: ClusterStatusResponse | null): number {
+  return liveWorkers(cluster).length;
+}
+
+export function busyWorkers(cluster: ClusterStatusResponse | null, template: string): number {
+  return liveWorkers(cluster).filter((w) => w.template === template).length;
+}
+
+/** What can start now: bounded by the cluster-wide cap and by what the templates have left. */
+export function spareSlots(cluster: ClusterStatusResponse | null, templates: ClusterTemplatesResponse | null): number {
+  const headroom = (templates?.templates ?? []).reduce(
+    (spare, t) => spare + Math.max(0, t.maxConcurrent - busyWorkers(cluster, t.name)),
     0,
   );
+  return Math.min(headroom, Math.max(0, (cluster?.status.maxConcurrentWorkers ?? 0) - runningWorkers(cluster)));
 }

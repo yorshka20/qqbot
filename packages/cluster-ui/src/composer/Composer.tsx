@@ -103,6 +103,7 @@ function ComposerForm() {
           description: ticket ? ticketDescription(ticket, text) : text.trim(),
           template: chosenTemplate || undefined,
           ticketId: ticket?.id,
+          maxChildren: ticket?.frontmatter.maxChildren,
         },
         templates,
       );

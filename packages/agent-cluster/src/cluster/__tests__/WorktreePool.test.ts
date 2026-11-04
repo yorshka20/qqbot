@@ -6,6 +6,8 @@ import { git } from '../git';
 import { WorktreePool } from '../workspace/WorktreePool';
 import { createSandbox, openClusterDb, PROJECT, type Sandbox } from './worktreeFixtures';
 
+const SLOT_NAME = /^wt-[0-9a-f]{8}$/;
+
 describe('WorktreePool', () => {
   let box: Sandbox;
   let db: Database;
@@ -47,8 +49,9 @@ describe('WorktreePool', () => {
   test('slots are leased until none is free, and a returned slot is reused', async () => {
     const first = leaseOrThrow('executor', 'task-1');
     const second = leaseOrThrow('executor', 'task-2');
-    expect(first.path).toBe(join(box.stateDir, 'work', PROJECT, '1'));
-    expect(second.path).toBe(join(box.stateDir, 'work', PROJECT, '2'));
+    expect(first.path).toBe(join(box.worktreeRoot, PROJECT, first.slot));
+    expect(second.path).toBe(join(box.worktreeRoot, PROJECT, second.slot));
+    expect(second.slot).not.toBe(first.slot);
     expect(pool.lease(box.entry, 'executor', 'task-3')).toBeNull();
 
     await pool.release(first);
@@ -56,7 +59,9 @@ describe('WorktreePool', () => {
   });
 
   test('a planner slot does not use up an executor slot', () => {
-    expect(leaseOrThrow('planner', 'planner-task').slot).toBe('planner-1');
+    const planner = leaseOrThrow('planner', 'planner-task');
+    expect(planner.slot).toMatch(SLOT_NAME);
+    expect(planner.path).toBe(join(box.worktreeRoot, PROJECT, planner.slot));
     leaseOrThrow('executor', 'task-1');
     leaseOrThrow('executor', 'task-2');
     expect(pool.lease(box.entry, 'planner', 'second-planner')).toBeNull();
@@ -67,12 +72,12 @@ describe('WorktreePool', () => {
 
     const restarted = new WorktreePool(box.config, db, box.registry);
     expect(restarted.leaseOf('task-1')).toEqual(lease);
-    expect(restarted.lease(box.entry, 'executor', 'task-2')?.slot).toBe('2');
+    expect(restarted.lease(box.entry, 'executor', 'task-2')?.slot).not.toBe(lease.slot);
     expect(restarted.lease(box.entry, 'executor', 'task-3')).toBeNull();
 
     await restarted.release(lease);
     expect(restarted.leaseOf('task-1')).toBeNull();
-    expect(restarted.lease(box.entry, 'executor', 'task-3')?.slot).toBe('1');
+    expect(restarted.lease(box.entry, 'executor', 'task-3')?.slot).toBe(lease.slot);
   });
 
   test('prepare checks the branch out from the start point and release frees it again', async () => {
@@ -97,7 +102,7 @@ describe('WorktreePool', () => {
     writeFileSync(join(box.repo, 'bun.lock'), 'v1\n');
     await git(box.repo, ['add', 'bun.lock']);
     await git(box.repo, ['commit', '-qm', 'lock v1']);
-    const count = join(box.stateDir, 'work', PROJECT, 'install-count');
+    const count = join(box.worktreeRoot, PROJECT, 'install-count');
     const runs = () => readFileSync(count, 'utf8').trim().split('\n').length;
 
     const first = leaseOrThrow('executor', 'task-1');
@@ -126,14 +131,14 @@ describe('WorktreePool', () => {
 
     const again = leaseOrThrow('executor', 'task-2');
     await expect(pool.prepare(again, box.entry, 'b2', 'master')).rejects.toThrow('exited with 3');
-    expect(readFileSync(join(box.stateDir, 'work', PROJECT, 'install-count'), 'utf8').trim().split('\n')).toHaveLength(2);
+    expect(readFileSync(join(box.worktreeRoot, PROJECT, 'install-count'), 'utf8').trim().split('\n')).toHaveLength(2);
   });
 
   test('planner slots never install', async () => {
     await setUp({ install: 'touch ../installed' });
     const lease = leaseOrThrow('planner', 'planner-task');
     await pool.prepare(lease, box.entry, 'plan', 'master');
-    expect(existsSync(join(box.stateDir, 'work', PROJECT, 'installed'))).toBe(false);
+    expect(existsSync(join(box.worktreeRoot, PROJECT, 'installed'))).toBe(false);
   });
 
   test('a slot that lost its .git never reaches the checkout it sits inside', async () => {
@@ -161,9 +166,9 @@ describe('WorktreePool', () => {
     await pool.prepare(idle, box.entry, 'b2', 'master');
     await pool.release(idle);
 
-    const beyondPool = join(box.stateDir, 'work', PROJECT, '9');
+    const beyondPool = join(box.worktreeRoot, PROJECT, 'wt-stray');
     await git(box.repo, ['worktree', 'add', '-q', '--detach', beyondPool]);
-    const unknownProject = join(box.stateDir, 'work', 'gone', '1');
+    const unknownProject = join(box.worktreeRoot, 'gone', 'wt-stray');
     mkdirSync(unknownProject, { recursive: true });
 
     expect((await pool.gc({ dryRun: true })).sort()).toEqual([beyondPool, unknownProject].sort());
@@ -171,10 +176,59 @@ describe('WorktreePool', () => {
 
     expect((await pool.gc()).sort()).toEqual([beyondPool, unknownProject].sort());
     expect(existsSync(beyondPool)).toBe(false);
-    expect(existsSync(join(box.stateDir, 'work', 'gone'))).toBe(false);
+    expect(existsSync(join(box.worktreeRoot, 'gone'))).toBe(false);
     expect(existsSync(kept.path)).toBe(true);
     expect(existsSync(idle.path)).toBe(true);
-    expect(await git(box.repo, ['worktree', 'list'])).not.toContain(`${PROJECT}/9`);
+    expect(await git(box.repo, ['worktree', 'list'])).not.toContain('wt-stray');
+  });
+
+  test('gc removes free slots beyond a pool that shrank', async () => {
+    const first = leaseOrThrow('executor', 'task-1');
+    await pool.prepare(first, box.entry, 'b1', 'master');
+    const second = leaseOrThrow('executor', 'task-2');
+    await pool.prepare(second, box.entry, 'b2', 'master');
+    await pool.release(first);
+    box.entry.worktrees = 1;
+
+    expect(await pool.gc()).toEqual([first.path]);
+    expect(existsSync(second.path)).toBe(true);
+  });
+
+  test('a slot left outside the root goes when it is free, and stays while a worker is in it', async () => {
+    const legacyPath = (name: string) => join(box.stateDir, 'work', PROJECT, name);
+    const addLegacy = async (name: string, taskId: string | null) => {
+      await git(box.repo, ['worktree', 'add', '-q', '--detach', legacyPath(name)]);
+      db.query('INSERT INTO cluster_worktree_slots (project, slot, kind, path, taskId) VALUES (?, ?, ?, ?, ?)').run(
+        PROJECT,
+        name,
+        'executor',
+        legacyPath(name),
+        taskId,
+      );
+    };
+    await addLegacy('1', null);
+    await addLegacy('2', 'adopted-task');
+
+    const next = leaseOrThrow('executor', 'task-1');
+    expect(next.path).toBe(join(box.worktreeRoot, PROJECT, next.slot));
+    expect(pool.lease(box.entry, 'executor', 'task-2')).toBeNull();
+
+    expect(await pool.gc()).toEqual([legacyPath('1')]);
+    expect(existsSync(legacyPath('1'))).toBe(false);
+    expect(existsSync(legacyPath('2'))).toBe(true);
+    expect(pool.leaseOf('adopted-task')?.path).toBe(legacyPath('2'));
+
+    await pool.release(pool.leaseOf('adopted-task') as NonNullable<ReturnType<typeof pool.leaseOf>>);
+    expect(await pool.gc()).toEqual([legacyPath('2')]);
+  });
+
+  test('the publish worktree sits with the slots under a name like theirs, and is reused', async () => {
+    await setUp({ publish: 'true' });
+    const first = await pool.preparePublish(box.entry, 'master', 'publish.log');
+    expect(first.startsWith(join(box.worktreeRoot, PROJECT))).toBe(true);
+    expect(first.split('/').at(-1)).toMatch(SLOT_NAME);
+    expect(await pool.preparePublish(box.entry, 'master', 'publish.log')).toBe(first);
+    expect(await pool.gc()).toEqual([]);
   });
 
   test('gc keeps a leased slot even beyond the configured size', async () => {
@@ -192,7 +246,7 @@ describe('WorktreePool', () => {
         project: PROJECT,
         size: 2,
         plannerSize: 1,
-        leased: [{ slot: '1', kind: 'executor', path: lease.path, taskId: 'task-1', leasedAt: lease.leasedAt }],
+        leased: [{ slot: lease.slot, kind: 'executor', path: lease.path, taskId: 'task-1', leasedAt: lease.leasedAt }],
       },
     ]);
   });
@@ -202,7 +256,7 @@ describe('WorktreePool', () => {
     writeFileSync(join(box.repo, 'bun.lock'), 'v1\n');
     await git(box.repo, ['add', 'bun.lock']);
     await git(box.repo, ['commit', '-qm', 'lock v1']);
-    const runs = () => readFileSync(join(box.stateDir, 'work', PROJECT, 'install-count'), 'utf8').trim().split('\n').length;
+    const runs = () => readFileSync(join(box.worktreeRoot, PROJECT, 'install-count'), 'utf8').trim().split('\n').length;
 
     const first = leaseOrThrow('executor', 'task-1');
     await pool.prepare(first, box.entry, 'b1', 'master');
@@ -219,8 +273,8 @@ describe('WorktreePool', () => {
   test('gc ignores files beside the slots', async () => {
     const slot = leaseOrThrow('executor', 'task-1');
     await pool.prepare(slot, box.entry, 'b1', 'master');
-    writeFileSync(join(box.stateDir, 'work', '.DS_Store'), '');
-    writeFileSync(join(box.stateDir, 'work', PROJECT, '.DS_Store'), '');
+    writeFileSync(join(box.worktreeRoot, '.DS_Store'), '');
+    writeFileSync(join(box.worktreeRoot, PROJECT, '.DS_Store'), '');
 
     expect(await pool.gc()).toEqual([]);
     expect(existsSync(slot.path)).toBe(true);

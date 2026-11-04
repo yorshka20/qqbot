@@ -52,7 +52,6 @@ export const buildConfigs: Record<string, BuildConfig> = {
       '@types/jsdom',
       'adm-zip',
       'async_hooks',
-      'better-sqlite3',
       'discord.js',
       'jsdom',
       'jsonc-parser',

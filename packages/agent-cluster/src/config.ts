@@ -117,6 +117,9 @@ export interface ClusterDaemonSettings {
   // Where the daemon keeps state: SQLite, lock, worker logs, MCP configs, the console build.
   // Relative paths resolve against the repo root (default: `data/cluster`).
   stateDir?: string;
+  // Where every project's worktrees live, as `<root>/<project>/<name>`. Keep it outside any
+  // checkout (default: `~/.qqbot/worktrees`).
+  worktreeRoot?: string;
   // The one port for `/mcp`, `/api/cluster`, `/api/tickets`, `/health` and the console
   // (default: 0.0.0.0:3200; "127.0.0.1" keeps the console off the LAN).
   http?: { host?: string; port?: number };

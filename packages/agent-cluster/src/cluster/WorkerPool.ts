@@ -570,6 +570,7 @@ export class WorkerPool {
       paused: this.paused,
       activeWorkers: workers.filter((w) => w.status === 'running').length,
       idleWorkers: workers.filter((w) => w.status === 'idle').length,
+      maxConcurrentWorkers: this.config.maxConcurrentWorkers,
       pendingTasks: 0, // filled by scheduler
       runningTasks: workers.filter((w) => w.status === 'running' && w.currentTask).length,
       completedTasks: 0, // filled by scheduler

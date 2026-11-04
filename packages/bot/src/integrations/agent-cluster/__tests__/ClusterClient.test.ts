@@ -51,6 +51,7 @@ const STATUS: ClusterStatusResponse = {
     paused: false,
     activeWorkers: 1,
     idleWorkers: 0,
+    maxConcurrentWorkers: 4,
     pendingTasks: 2,
     runningTasks: 1,
     completedTasks: 3,

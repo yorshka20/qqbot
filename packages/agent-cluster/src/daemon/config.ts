@@ -7,7 +7,7 @@ import { parseClusterConfig } from '../cluster/config';
 import type { ProjectRegistryConfig, TicketsConfig } from '../config';
 
 export interface ClusterDaemonConfig {
-  /** Absolute. Holds `state.sqlite`, `daemon.lock`, worker logs, MCP configs and `ui/`. */
+  /** Absolute. Holds `state.sqlite`, `daemon.lock`, worker logs, MCP configs and `ui/`; worktrees are in `cluster.worktreeRoot`. */
   stateDir: string;
   /** The one port: `/mcp`, `/api/cluster`, `/api/tickets`, `/health` and the static console. */
   http: { host: string; port: number };
@@ -102,6 +102,8 @@ export function parseClusterDaemonConfig(raw: Record<string, unknown>, source = 
       ? resolveFromRepoRoot(daemon.stateDir.trim())
       : fromRepoRoot('data', 'cluster');
 
+  const worktreeRoot = typeof daemon.worktreeRoot === 'string' ? daemon.worktreeRoot.trim() : '';
+
   const httpRaw = isRecord(daemon.http) ? daemon.http : {};
   const host = typeof httpRaw.host === 'string' && httpRaw.host.trim() ? httpRaw.host.trim() : DEFAULT_HTTP_HOST;
   const port = httpRaw.port === undefined ? DEFAULT_HTTP_PORT : httpRaw.port;
@@ -124,6 +126,7 @@ export function parseClusterDaemonConfig(raw: Record<string, unknown>, source = 
   const cluster = parseClusterConfig({
     ...raw.cluster,
     stateDir,
+    ...(worktreeRoot ? { worktreeRoot } : {}),
     hub: { ...hubRaw, port, bindHost: host },
   });
   if (!cluster) {

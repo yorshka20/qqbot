@@ -9,6 +9,7 @@ const pooledPlanner: WorkerWorkspace = {
   kind: 'planner',
   branch: 'cluster/aaaaaaaa-33333333',
   integrationBranch: 'cluster/aaaaaaaa',
+  baseBranch: 'master',
   planning: 'interactive',
 };
 

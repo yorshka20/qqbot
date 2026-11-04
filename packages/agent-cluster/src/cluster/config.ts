@@ -2,7 +2,8 @@
  * Agent Cluster configuration schema and parsing.
  */
 
-import { hostname } from 'node:os';
+import { homedir, hostname } from 'node:os';
+import { join } from 'node:path';
 import { fromRepoRoot, parseDuration, resolveFromRepoRoot } from '@qqbot/shared';
 
 export interface ClusterConfig {
@@ -19,6 +20,12 @@ export interface ClusterConfig {
    * Absolute; a relative value resolves against the repo root.
    */
   stateDir: string;
+  /**
+   * Where every worktree of every project lives, as `<worktreeRoot>/<project>/<name>`. Absolute,
+   * and outside any checkout: anything that walks up from a worktree (module resolution, a CLI
+   * looking for its project files) must not reach the checkout around it.
+   */
+  worktreeRoot: string;
   schedulingInterval: number; // ms
   maxConcurrentWorkers: number;
 
@@ -251,6 +258,10 @@ export function parseClusterConfig(raw: Record<string, unknown> | undefined): Cl
       typeof r.stateDir === 'string' && r.stateDir.trim()
         ? resolveFromRepoRoot(r.stateDir.trim())
         : fromRepoRoot('data', 'cluster'),
+    worktreeRoot:
+      typeof r.worktreeRoot === 'string' && r.worktreeRoot.trim()
+        ? resolveFromRepoRoot(r.worktreeRoot.trim())
+        : join(homedir(), '.qqbot', 'worktrees'),
     schedulingInterval:
       typeof r.schedulingInterval === 'string'
         ? parseDuration(r.schedulingInterval)
