@@ -164,7 +164,6 @@
 
   --font-heading: var(--font-sans);
 
-  --container-list: 23rem;
   --container-measure: 44rem;
 }
 
@@ -229,30 +228,6 @@
   .breathing {
     animation: none;
   }
-}
-
-/* The question node's collapse after an answer is sent. */
-.collapsible {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows 180ms ease-out;
-}
-
-.collapsible[data-collapsed="true"] {
-  grid-template-rows: 0fr;
-}
-
-.collapsible > * {
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* One minute of the timeline's time ruler per 6px. */
-.ruler {
-  background-image: repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px 6px);
-  background-size: 7px 100%;
-  background-position: center;
-  background-repeat: no-repeat;
 }
 
 /* React Flow reads these; pointing them at the tokens keeps the canvas on the console's theme. */

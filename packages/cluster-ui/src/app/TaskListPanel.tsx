@@ -28,6 +28,7 @@ import { cn } from '../lib/utils';
 import type { RunWindow } from '../lib/window';
 import { useCluster } from './ClusterData';
 import { useListCursor } from './keys';
+import { usePinned } from './pins';
 
 function runClock(run: Run, now: number): string {
   switch (run.stage) {
@@ -56,7 +57,7 @@ function AttentionMark({ attention }: { attention: TaskListItem['attention'] }) 
 
 interface ItemProps {
   item: TaskListItem;
-  row: number;
+  row: number | null;
   now: number;
   cursor: number | null;
   activeTaskId: string | null;
@@ -71,11 +72,11 @@ function TaskItem({ item, row, now, cursor, activeTaskId, activeWorkerId }: Item
 
   return (
     <Collapsible asChild open={open} onOpenChange={setOpen}>
-      <SidebarMenuItem data-row={row}>
+      <SidebarMenuItem data-row={row ?? undefined}>
         <SidebarMenuButton
           asChild
           isActive={selected && activeWorkerId === null}
-          className={cn('h-auto items-start gap-2 py-1.5 pr-8', cursor === row && 'ring-1 ring-ring')}
+          className={cn('h-auto items-start gap-2 py-1.5 pr-8', row !== null && cursor === row && 'ring-1 ring-ring')}
         >
           <Link to={taskPath(root.task.id)}>
             <span className="mt-1.5">
@@ -145,22 +146,27 @@ export function TaskListPanel({ keys = true }: { keys?: boolean }) {
   const [query, setQuery] = useState('');
   const [historyWindow, setHistoryWindow] = useState<RunWindow>('7d');
 
-  const { active, history } = useMemo(
-    () => buildTaskList(runs, { now, query, historyWindow }),
-    [runs, now, query, historyWindow],
+  const pinnedIds = usePinned();
+  const { pinned, active, history } = useMemo(
+    () => buildTaskList(runs, { now, query, historyWindow, pinned: pinnedIds }),
+    [runs, now, query, historyWindow, pinnedIds],
   );
   const current = parseAppLocation(location.pathname, location.search);
   const activeTaskId = current.page === 'task' ? current.taskId : null;
   const activeWorkerId = current.page === 'task' ? current.workerId : null;
 
-  const hrefs = useMemo(() => [...active, ...history].map((item) => taskPath(item.root.task.id)), [active, history]);
+  const hrefs = useMemo(
+    () => [...pinned, ...active, ...history].map((item) => taskPath(item.root.task.id)),
+    [pinned, active, history],
+  );
   const { cursor } = useListCursor(keys ? hrefs : [], navigate);
 
   const groups = [
-    { label: '活跃', items: active, offset: 0 },
-    { label: '历史', items: history, offset: active.length },
+    { label: '已钉住', items: pinned, offset: 0 },
+    { label: '活跃', items: active, offset: pinned.length },
+    { label: '历史', items: history, offset: pinned.length + active.length },
   ];
-  const empty = active.length === 0 && history.length === 0;
+  const empty = pinned.length === 0 && active.length === 0 && history.length === 0;
 
   return (
     <>
@@ -202,7 +208,7 @@ export function TaskListPanel({ keys = true }: { keys?: boolean }) {
                       <TaskItem
                         key={item.root.task.id}
                         item={item}
-                        row={group.offset + index}
+                        row={keys ? group.offset + index : null}
                         now={now}
                         cursor={keys ? cursor : null}
                         activeTaskId={activeTaskId}

@@ -10,6 +10,7 @@ const OVERVIEW_KEY = 'cluster-ui.overview';
 const SIDEBAR_KEY = 'cluster-ui.sidebar-open';
 const TASK_TAB_KEY = 'cluster-ui.task-tab';
 const DETAIL_OPEN_KEY = 'cluster-ui.task-detail-open';
+const PINNED_KEY = 'cluster-ui.pinned-tasks';
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -90,4 +91,13 @@ export function readDetailOpen(): boolean {
 
 export function rememberDetailOpen(open: boolean): void {
   write(DETAIL_OPEN_KEY, open);
+}
+
+export function readPinnedTasks(): string[] {
+  const saved = read<unknown>(PINNED_KEY, []);
+  return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string') : [];
+}
+
+export function rememberPinnedTasks(ids: string[]): void {
+  write(PINNED_KEY, ids);
 }

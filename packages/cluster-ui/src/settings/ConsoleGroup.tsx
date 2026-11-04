@@ -14,6 +14,7 @@ const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: 'Enter', action: '打开选中的行' },
   { keys: 'n', action: '新建任务' },
   { keys: '/', action: '搜索任务' },
+  { keys: 'a', action: '回答待处理的提问' },
   { keys: 'Esc', action: '返回上一级' },
   { keys: '⌘Enter', action: '提交输入框里的内容' },
 ];

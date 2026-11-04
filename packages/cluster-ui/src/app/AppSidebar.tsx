@@ -55,7 +55,7 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <TaskListPanel />
+        <TaskListPanel keys={current.page !== 'inbox'} />
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>

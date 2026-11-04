@@ -1,9 +1,20 @@
 import type { ClusterTaskDetail } from '@qqbot/api-types';
-import { ArrowLeft, Check, ChevronRight, PanelRight, PanelRightClose, RotateCcw, Square } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  PanelRight,
+  PanelRightClose,
+  Pin,
+  PinOff,
+  RotateCcw,
+  Square,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { acknowledgeClusterTask, killClusterTask } from '../api';
 import { useCluster } from '../app/ClusterData';
+import { togglePinned, usePinned } from '../app/pins';
 import { StageBadge } from '../components/StageBadge';
 import { Button } from '../components/ui/button';
 import {
@@ -106,6 +117,7 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
   const { runs, loaded, templates, workerExits, refresh } = useCluster();
   const { task: detail, events, failed: loadFailed } = useTaskDetail(currentId);
   const liveOutput = useOutput(currentId);
+  const pinned = usePinned().has(taskId);
   const [detailOpen, setDetailOpen] = useState(readDetailOpen);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -277,6 +289,17 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
             </Button>
           )}
           {live && <KillDialog busy={busy} onConfirm={kill} />}
+          {workerId === null && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" onClick={() => togglePinned(taskId)} aria-pressed={pinned}>
+                  {pinned ? <PinOff /> : <Pin />}
+                  {pinned ? '取消钉住' : '钉住'}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{pinned ? '从对话列表顶部取消钉住' : '钉在对话列表顶部'}</TooltipContent>
+            </Tooltip>
+          )}
           {(stage === 'failed' || stage === 'blocked') && (
             <Button variant="outline" disabled={busy} onClick={acknowledge}>
               <Check />
@@ -291,9 +314,9 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
         onValueChange={(value) => chooseTab(value as TaskTab)}
         className="shrink-0 border-b px-3 py-1 md:px-6"
       >
-        <TabsList variant="line">
+        <TabsList variant="line" className="w-full md:w-auto">
           {TASK_TABS.map((value) => (
-            <TabsTrigger key={value} value={value}>
+            <TabsTrigger key={value} value={value} className="flex-1 md:flex-none">
               {TAB_LABEL[value]}
             </TabsTrigger>
           ))}

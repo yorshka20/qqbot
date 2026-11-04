@@ -15,6 +15,7 @@ export interface TaskListItem {
 }
 
 export interface TaskList {
+  pinned: TaskListItem[];
   active: TaskListItem[];
   history: TaskListItem[];
 }
@@ -83,13 +84,21 @@ function matches(item: TaskListItem, needle: string): boolean {
 const rankOf = (item: TaskListItem): number => Math.min(...familyOf(item).map(stageRankOfRun));
 
 /** One item per conversation: a root run with everything it spawned. */
-export function buildTaskList(runs: Run[], opts: { now: number; query: string; historyWindow: RunWindow }): TaskList {
+export function buildTaskList(
+  runs: Run[],
+  opts: { now: number; query: string; historyWindow: RunWindow; pinned: ReadonlySet<string> },
+): TaskList {
   const needle = opts.query.trim().toLowerCase();
   const items = buildItems(runs).filter((item) => needle === '' || matches(item, needle));
 
+  const pinned: TaskListItem[] = [];
   const active: TaskListItem[] = [];
   const history: TaskListItem[] = [];
   for (const item of items) {
+    if (opts.pinned.has(item.root.task.id)) {
+      pinned.push(item);
+      continue;
+    }
     const family = familyOf(item);
     if (item.attention !== null || family.some((run) => isLive(run.task))) {
       active.push(item);
@@ -98,9 +107,10 @@ export function buildTaskList(runs: Run[], opts: { now: number; query: string; h
     }
   }
 
+  pinned.sort((a, b) => latestSince(b) - latestSince(a));
   active.sort((a, b) => rankOf(a) - rankOf(b) || latestSince(a) - latestSince(b));
   history.sort((a, b) => latestSince(b) - latestSince(a));
-  return { active, history };
+  return { pinned, active, history };
 }
 
 /** Where opening a run goes: a root opens its task, a spawned run opens its place under the root. */

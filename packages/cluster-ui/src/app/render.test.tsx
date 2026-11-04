@@ -40,8 +40,11 @@ Element.prototype.hasPointerCapture = () => false;
 Element.prototype.setPointerCapture = () => {};
 Element.prototype.releasePointerCapture = () => {};
 
-const { render, cleanup, screen, within, fireEvent } = await import('@testing-library/react');
-const { MemoryRouter } = await import('react-router');
+const { render, cleanup, screen, within, fireEvent, waitFor } = await import('@testing-library/react');
+const { MemoryRouter, useLocation } = await import('react-router');
+const { useEffect } = await import('react');
+const { setTheme } = await import('./theme');
+const { togglePinned } = await import('./pins');
 const { ClusterDataContext } = await import('./ClusterData');
 const { Shell } = await import('./Shell');
 const { buildRuns } = await import('../lib/runs');
@@ -313,10 +316,24 @@ function clusterData(): ClusterData {
   };
 }
 
+let visited: string[] = [];
+
+function LocationProbe() {
+  const location = useLocation();
+  useEffect(() => {
+    visited.push(`${location.pathname}${location.search}`);
+  }, [location.key, location.pathname, location.search]);
+  return null;
+}
+
+const here = () => visited[visited.length - 1];
+
 function renderAt(url: string) {
+  visited = [];
   return render(
     <ClusterDataContext.Provider value={clusterData()}>
       <MemoryRouter initialEntries={[url]}>
+        <LocationProbe />
         <Shell />
       </MemoryRouter>
     </ClusterDataContext.Provider>,
@@ -399,5 +416,138 @@ describe('Shell routes render', () => {
     const option = await screen.findByRole('option', { name: '自动选择' });
     expect(option).not.toBeNull();
     expect(screen.getAllByRole('option').length).toBe(3);
+  });
+});
+
+describe('keyboard', () => {
+  test('j then Enter on the inbox navigates once, to the first item', async () => {
+    const { container } = renderAt('/inbox');
+    await screen.findAllByText('等你回答');
+    expect(container.querySelectorAll('[data-row="0"]').length).toBe(1);
+    fireEvent.keyDown(window, { key: 'j' });
+    await waitFor(() => expect(container.querySelector('[data-row="0"].bg-muted\\/60')).not.toBeNull());
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await waitFor(() => expect(here().startsWith(`/t/${ROOT}`)).toBe(true));
+    expect(visited.length).toBe(2);
+  });
+
+  test('Esc climbs from a worker to its task and then home', async () => {
+    renderAt(`/t/${ROOT}/w/${DONE}`);
+    await screen.findAllByText('甲模块进行中');
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(here()).toBe(`/t/${ROOT}`));
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(here()).toBe('/'));
+  });
+
+  test('n opens the composer', async () => {
+    renderAt('/');
+    await screen.findAllByText('等你处理');
+    fireEvent.keyDown(window, { key: 'n' });
+    await screen.findByText('开始运行');
+    expect(here()).toContain('new=1');
+  });
+
+  test('/ focuses the search box', async () => {
+    const { container } = renderAt('/');
+    await screen.findAllByText('等你处理');
+    fireEvent.keyDown(window, { key: '/' });
+    await waitFor(() => expect(document.activeElement).toBe(container.querySelector('[data-search]')));
+  });
+
+  test('a focuses the pending answer box', async () => {
+    const { container } = renderAt('/inbox');
+    await screen.findAllByText('等你回答');
+    fireEvent.keyDown(window, { key: 'a' });
+    await waitFor(() => expect(document.activeElement).toBe(container.querySelector('[data-answer-box]')));
+  });
+
+  test('a from another tab switches to the conversation first', async () => {
+    const { container } = renderAt(`/t/${ROOT}?tab=result`);
+    await screen.findAllByText('派生了 2 条子运行');
+    fireEvent.keyDown(window, { key: 'a' });
+    await waitFor(() => expect(here()).toContain('tab=chat'));
+    await waitFor(() => expect(document.activeElement).toBe(container.querySelector('[data-answer-box]')));
+  });
+
+  test('Esc with a dialog open closes only the dialog', async () => {
+    renderAt(`/t/${ROOT}?log=1`);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(visited.every((path) => path.startsWith(`/t/${ROOT}`))).toBe(true);
+    expect(here()).not.toContain('log=1');
+  });
+
+  test('typing j in an input does not move the list cursor', async () => {
+    const { container } = renderAt('/inbox');
+    await screen.findAllByText('等你回答');
+    const box = container.querySelector<HTMLElement>('[data-answer-box]') as HTMLElement;
+    box.focus();
+    fireEvent.keyDown(box, { key: 'j' });
+    expect(container.querySelector('[data-row].bg-muted\\/60')).toBeNull();
+  });
+});
+
+describe('pinning', () => {
+  test('pinning a root run lists it under the pinned group, and not for a worker page', async () => {
+    renderAt(`/t/${ROOT}`);
+    await screen.findAllByText('正在拆分子任务');
+    expect(screen.queryAllByText('已钉住').length).toBe(0);
+    fireEvent.click(screen.getByRole('button', { name: /^钉住/ }));
+    await waitFor(() => expect(screen.getAllByText('已钉住').length).toBeGreaterThan(0));
+    togglePinned(ROOT);
+    await waitFor(() => expect(screen.queryAllByText('已钉住').length).toBe(0));
+    cleanup();
+    renderAt(`/t/${ROOT}/w/${DONE}`);
+    await screen.findAllByText('甲模块进行中');
+    expect(screen.queryByRole('button', { name: /钉住/ })).toBeNull();
+  });
+});
+
+describe('mobile', () => {
+  const desktopWidth = window.innerWidth;
+  beforeAll(() => {
+    window.innerWidth = 375;
+  });
+  afterAll(() => {
+    window.innerWidth = desktopWidth;
+  });
+
+  test('home shows the conversation list and the new-task button', async () => {
+    renderAt('/');
+    expect((await screen.findAllByLabelText('新任务')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('已结束的历史任务')).length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText('返回')).toBeNull();
+  });
+
+  test('a task page has a back button and the segmented tabs', async () => {
+    renderAt(`/t/${ROOT}`);
+    await screen.findAllByText('正在拆分子任务');
+    expect(screen.getByLabelText('返回')).not.toBeNull();
+    expect(screen.getByRole('tablist')).not.toBeNull();
+  });
+
+  test('a worker page goes back to its task and opens details in a sheet', async () => {
+    renderAt(`/t/${ROOT}/w/${DONE}`);
+    await screen.findAllByText('甲模块进行中');
+    expect(screen.getByLabelText('返回').getAttribute('href')).toBe(`/t/${ROOT}`);
+    fireEvent.click(screen.getByLabelText('打开详情'));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByText('详情')).not.toBeNull();
+  });
+});
+
+describe('theme', () => {
+  test('the topology renders in light mode with a light canvas', async () => {
+    setTheme('light');
+    try {
+      const { container } = renderAt(`/t/${ROOT}?tab=topology`);
+      await screen.findAllByText('coder-done');
+      expect(document.documentElement.dataset.theme).toBe('light');
+      expect(container.querySelector('.react-flow.light')).not.toBeNull();
+    } finally {
+      setTheme('dark');
+    }
   });
 });

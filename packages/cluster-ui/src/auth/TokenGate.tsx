@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react';
-import { Button } from '../ui/Button';
-import { INPUT_CLASS } from '../ui/Field';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { checkToken, signIn, type TokenCheck } from './session';
 
 const CHECK_ERROR: Record<Exclude<TokenCheck, 'ok'>, string> = {
@@ -34,20 +34,20 @@ export function TokenGate({ rejected }: { rejected: boolean }) {
     <div className="flex min-h-full items-center justify-center bg-bg p-4">
       <form onSubmit={submit} className="flex w-full max-w-sm flex-col gap-3">
         <h1 className="text-18 font-medium">Agent Cluster</h1>
-        <label className="flex flex-col gap-1">
+        <label htmlFor="daemon-token" className="flex flex-col gap-1">
           <span className="text-13 text-ink-muted">Daemon token（config.d 里的 clusterDaemon.auth.token）</span>
-          <input
+          <Input
+            id="daemon-token"
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
             autoComplete="off"
-            // biome-ignore lint/a11y/noAutofocus: the token is the only thing this screen asks for
             autoFocus
-            className={`${INPUT_CLASS} font-mono`}
+            className="font-mono"
           />
         </label>
         {error && <p className="text-13 text-failed">{error}</p>}
-        <Button type="submit" variant="solid" disabled={checking || !token.trim()} className="justify-center py-1.5">
+        <Button type="submit" disabled={checking || !token.trim()}>
           {checking ? '正在验证…' : '进入控制台'}
         </Button>
       </form>

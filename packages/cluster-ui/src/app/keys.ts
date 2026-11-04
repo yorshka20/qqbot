@@ -52,11 +52,11 @@ export function useListCursor(hrefs: string[], open: (href: string) => void): { 
   return { cursor: clamped };
 }
 
-/** A Radix overlay is open: it owns Esc until it closes. */
+/** A dialog, popover, menu or select is open and owns Esc until it closes; a tooltip does not. */
 export function overlayIsOpen(): boolean {
   return (
     document.querySelector(
-      '[role="dialog"][data-state="open"], [role="menu"][data-state="open"], [data-radix-popper-content-wrapper]',
+      '[role="dialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]',
     ) !== null
   );
 }
