@@ -1,6 +1,14 @@
-// Cluster end-to-end test — boots the full bootstrap path, starts the
-// Agent Cluster, submits one minimal task, and asserts that it actually
-// flows through scheduler → worker → backend → DB writeback.
+// Cluster end-to-end test — boots the full bootstrap path, builds an
+// in-process Agent Cluster from the bot config's `cluster` block, submits one
+// minimal task, and asserts that it actually flows through
+// scheduler → worker → backend → DB writeback.
+//
+// TODO(22-superagent-cluster): the bot no longer hosts a ClusterManager (it
+// is an HTTP client of the cluster daemon), so this script builds its own
+// ClusterManager the way bootstrap used to. It has to be rewritten against
+// the daemon's HTTP API (`ClusterClient`) once the daemon lands; until then
+// it exercises the package in-process and still needs the `cluster` block in
+// the bot's config.
 //
 // Two modes:
 //
@@ -67,11 +75,11 @@
 import 'reflect-metadata';
 
 import { spawnSync } from 'node:child_process';
-import type { ClusterManager, EventEntry, TaskRecord } from '@qqbot/agent-cluster';
+import { ClusterManager, type EventEntry, parseClusterConfig, type TaskRecord } from '@qqbot/agent-cluster';
+import { ProjectRegistry } from '@qqbot/agent-cluster/projects';
 import { logger, randomUUID } from '@qqbot/shared';
 import { type App, startApp } from '@/core/app';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 
 /** Supported values for --mcp-tool. Empty string = sentinel mode. */
 type McpTool = '' | 'hub_claim' | 'hub_report' | 'hub_ask';
@@ -462,13 +470,11 @@ async function main() {
 
   const app = await startApp(process.env.CONFIG_PATH, { connect: false });
 
-  // Resolve ClusterManager from DI. If cluster wasn't enabled in config,
-  // bootstrap would have skipped registration entirely.
   let cluster: ClusterManager;
   try {
-    cluster = getContainer().resolve<ClusterManager>(DITokens.CLUSTER_MANAGER);
-  } catch {
-    logger.error('[ClusterE2E] ✗ ClusterManager not registered — is `cluster.enabled` true in config?');
+    cluster = await buildInProcessCluster(app);
+  } catch (err) {
+    logger.error(`[ClusterE2E] ✗ ${err instanceof Error ? err.message : String(err)}`);
     await teardown(app);
     process.exit(1);
   }
@@ -913,6 +919,25 @@ async function main() {
     await teardown(app);
     process.exit(1);
   }
+}
+
+/** The ClusterManager bootstrap used to build before the cluster moved into its own daemon. */
+async function buildInProcessCluster(app: App): Promise<ClusterManager> {
+  const config = app.bot.getConfig();
+  const clusterConfig = parseClusterConfig(config.getClusterConfig());
+  if (!clusterConfig) {
+    throw new Error('`cluster.enabled` is not true in config');
+  }
+  const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
+  const adapter = app.conversationComponents.databaseManager.getAdapter();
+  if (!(adapter instanceof SQLiteAdapter)) {
+    throw new Error('the in-process cluster requires the SQLite database adapter');
+  }
+  const rawDb = adapter.getRawDb();
+  if (!rawDb) {
+    throw new Error('the in-process cluster requires SQLite — raw DB not available');
+  }
+  return new ClusterManager(clusterConfig, rawDb, getContainer().resolve(ProjectRegistry), config.getTicketsDir());
 }
 
 async function teardown(app: App): Promise<void> {

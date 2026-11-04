@@ -1,21 +1,21 @@
 /**
- * ClusterCommandHandler — QQ commands for Agent Cluster control.
+ * ClusterCommandHandler — QQ commands for Agent Cluster control, over the cluster daemon's HTTP API.
  *
  * Commands:
  *   /cluster                          → status summary
- *   /cluster start                    → start cluster
- *   /cluster stop                     → stop cluster
  *   /cluster pause / resume           → pause/resume scheduling
  *   /cluster task <project> "desc"    → submit manual task
  *   /cluster ask list                 → list pending hub_ask requests
  *   /cluster ask answer <id> <text>   → answer a pending hub_ask request
  *   /cluster health [template]        → verify worker template provider credentials
+ *   /cluster start / stop             → explain that the daemon is run by the supervisor
  */
 
-import type { ClusterManager } from '@qqbot/agent-cluster';
 import { logger } from '@qqbot/shared';
-import { inject, injectable } from 'tsyringe';
+import { injectable } from 'tsyringe';
+import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
+import type { ClusterClient } from '@/integrations/agent-cluster/ClusterClient';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -24,45 +24,54 @@ function textResult(content: string): CommandResult {
   return { success: true, segments: new MessageBuilder().text(content).build() };
 }
 
+const NOT_CONFIGURED = 'cluster 未配置（config.clusterClient）';
+const DAEMON_MANAGED_BY_SUPERVISOR =
+  'cluster daemon 由 supervisor 管理，不在 bot 进程内：\n' +
+  '  bun run cluster:start | cluster:stop | cluster:restart | cluster:status\n' +
+  '调度的暂停/恢复用 /cluster pause 与 /cluster resume';
+
 @Command({
   name: 'cluster',
   description: 'Agent Cluster 控制命令',
-  usage: '/cluster [status|start|stop|pause|resume|task|health]',
+  usage: '/cluster [status|pause|resume|task|ask|health]',
   permissions: ['owner'],
 })
 @injectable()
 export class ClusterCommand implements CommandHandler {
   name = 'cluster';
   description = 'Agent Cluster 控制命令';
-  usage = '/cluster [status|start|stop|pause|resume|task|health]';
-
-  constructor(@inject(DITokens.CLUSTER_MANAGER) private clusterManager: ClusterManager) {}
+  usage = '/cluster [status|pause|resume|task|ask|health]';
 
   async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     const subcommand = args[0]?.toLowerCase() || 'status';
+    const client = this.client();
+    if (!client) {
+      return { success: false, error: NOT_CONFIGURED };
+    }
 
     try {
       switch (subcommand) {
         case 'status':
-          return this.handleStatus();
+          return await this.handleStatus(client);
         case 'start':
-          return this.handleStart();
         case 'stop':
-          return this.handleStop();
+          return textResult(DAEMON_MANAGED_BY_SUPERVISOR);
         case 'pause':
-          return this.handlePause();
+          await client.pause();
+          return textResult('Agent Cluster 调度已暂停');
         case 'resume':
-          return this.handleResume();
+          await client.resume();
+          return textResult('Agent Cluster 调度已恢复');
         case 'task':
-          return this.handleTask(args.slice(1));
+          return await this.handleTask(client, args.slice(1));
         case 'ask':
-          return this.handleAsk(args.slice(1), context);
+          return await this.handleAsk(client, args.slice(1), context);
         case 'health':
-          return this.handleHealth(args.slice(1));
+          return await this.handleHealth(client, args.slice(1));
         default:
           return {
             success: false,
-            error: `未知子命令: ${subcommand}\n用法: /cluster [status|start|stop|pause|resume|task|ask|health]`,
+            error: `未知子命令: ${subcommand}\n用法: /cluster [status|pause|resume|task|ask|health]`,
           };
       }
     } catch (err) {
@@ -74,8 +83,16 @@ export class ClusterCommand implements CommandHandler {
     }
   }
 
-  private handleStatus(): CommandResult {
-    const status = this.clusterManager.getStatus();
+  private client(): ClusterClient | null {
+    // container-lookup: optional-service the cluster client exists only when clusterClient is configured
+    const container = getContainer();
+    return container.isRegistered(DITokens.CLUSTER_CLIENT)
+      ? container.resolve<ClusterClient>(DITokens.CLUSTER_CLIENT)
+      : null;
+  }
+
+  private async handleStatus(client: ClusterClient): Promise<CommandResult> {
+    const { status } = await client.getStatus();
     const lines = [
       `Agent Cluster ${status.running ? '运行中' : '已停止'}${status.paused ? ' (已暂停)' : ''}`,
       `Workers: ${status.activeWorkers} active, ${status.idleWorkers} idle`,
@@ -96,37 +113,11 @@ export class ClusterCommand implements CommandHandler {
     return textResult(lines.join('\n'));
   }
 
-  private async handleStart(): Promise<CommandResult> {
-    if (this.clusterManager.isStarted()) {
-      return textResult('Agent Cluster 已在运行中');
-    }
-    await this.clusterManager.start();
-    return textResult('Agent Cluster 已启动');
-  }
-
-  private async handleStop(): Promise<CommandResult> {
-    if (!this.clusterManager.isStarted()) {
-      return textResult('Agent Cluster 未在运行');
-    }
-    await this.clusterManager.stop();
-    return textResult('Agent Cluster 已停止');
-  }
-
-  private handlePause(): CommandResult {
-    this.clusterManager.pause();
-    return textResult('Agent Cluster 调度已暂停');
-  }
-
-  private handleResume(): CommandResult {
-    this.clusterManager.resume();
-    return textResult('Agent Cluster 调度已恢复');
-  }
-
-  private handleAsk(args: string[], context: CommandContext): CommandResult {
+  private async handleAsk(client: ClusterClient, args: string[], context: CommandContext): Promise<CommandResult> {
     const sub = args[0]?.toLowerCase();
 
     if (sub === 'list' || sub === undefined) {
-      const pending = this.clusterManager.getPendingHelpRequests();
+      const pending = await client.getPendingHelpRequests();
       if (pending.length === 0) {
         return textResult('当前没有待处理的 hub_ask 请求');
       }
@@ -163,7 +154,7 @@ export class ClusterCommand implements CommandHandler {
       // permissions are already enforced at the command-decorator level
       // (`permissions: ['owner']`).
       const answeredBy = `qq:${context.userId}`;
-      const ok = this.clusterManager.answerHelpRequest(askId, answer, answeredBy);
+      const ok = await client.answerHelpRequest(askId, answer, answeredBy);
       if (!ok) {
         return {
           success: false,
@@ -179,7 +170,7 @@ export class ClusterCommand implements CommandHandler {
     };
   }
 
-  private async handleTask(args: string[]): Promise<CommandResult> {
+  private async handleTask(client: ClusterClient, args: string[]): Promise<CommandResult> {
     if (args.length < 2) {
       return {
         success: false,
@@ -189,17 +180,12 @@ export class ClusterCommand implements CommandHandler {
 
     const project = args[0];
     const description = args.slice(1).join(' ');
-
-    const task = await this.clusterManager.submitTask(project, description);
-    if (!task) {
-      return { success: false, error: `任务创建失败（项目 "${project}" 不存在？）` };
-    }
-
+    const task = await client.submitTask(project, description);
     return textResult(`任务已提交: ${task.id}\n项目: ${project}\n描述: ${description}`);
   }
 
-  private async handleHealth(args: string[]): Promise<CommandResult> {
-    const results = await this.clusterManager.probeWorkerTemplates(args[0] ? { templates: [args[0]] } : undefined);
+  private async handleHealth(client: ClusterClient, args: string[]): Promise<CommandResult> {
+    const results = await client.probeWorkerTemplates(args[0] ? { templates: [args[0]] } : undefined);
     const ok = results.filter((r) => r.ok);
     const lines = [`Worker 凭据检查: ${ok.length}/${results.length} 可用`];
     for (const r of results) {

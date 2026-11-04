@@ -1,28 +1,34 @@
-// Run the bot under its supervisor (Supervisor.ts), the same way on every platform. Nothing is
+// Run an app under its supervisor (Supervisor.ts), the same way on every platform. Nothing is
 // installed into the operating system: the supervisor is started by hand, from a terminal, and
-// nothing starts it at boot or login.
+// nothing starts it at boot or login. The bot and the cluster daemon each have a supervisor of
+// their own, picked with --app (default: bot; `bun run cluster:*` passes `--app cluster`).
 //
 // Usage: bun run start           start the supervisor, which starts the bot (no-op when running)
 //        bun run stop            stop the bot, then the supervisor
 //        bun run restart         restart the bot on the checked-out code
 //        bun run status          supervisor and bot state
 //        bun run logs [-n N]     follow the bot's log file
+//        bun run cluster:start | cluster:stop | cluster:restart | cluster:status | cluster:logs
 
 import { existsSync, readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { botLogsDir, followLatestLog } from '@qqbot/shared';
-import { BOT_APP } from './app';
+import { APP_NAMES, type AppDefinition, appByName, BOT_APP } from './app';
 import { connectSupervisor, launchSupervisor, type SupervisorClient } from './client';
+import { followFile } from './followFile';
 import type { BotStatus } from './Supervisor';
 
 export const COMMANDS = ['start', 'stop', 'restart', 'status', 'logs'] as const;
 export type SupervisorCommand = (typeof COMMANDS)[number];
 
-const USAGE = `usage: bun run scripts/supervisor/cli.ts <${COMMANDS.join('|')}> [--lines N]`;
+const USAGE = `usage: bun run scripts/supervisor/cli.ts [--app <${APP_NAMES.join('|')}>] <${COMMANDS.join('|')}> [--lines N]`;
 
 export class UsageError extends Error {}
 
-const OPTIONS = { lines: { type: 'string', short: 'n', default: '50' } } as const;
+const OPTIONS = {
+  lines: { type: 'string', short: 'n', default: '50' },
+  app: { type: 'string', default: BOT_APP.name },
+} as const;
 
 function parse(argv: string[]) {
   try {
@@ -32,7 +38,7 @@ function parse(argv: string[]) {
   }
 }
 
-export function parseCliArgs(argv: string[]): { command: SupervisorCommand; lines: number } {
+export function parseCliArgs(argv: string[]): { command: SupervisorCommand; lines: number; app: string } {
   const { positionals, values } = parse(argv);
   if (positionals.length !== 1 || !COMMANDS.includes(positionals[0] as SupervisorCommand)) {
     throw new UsageError(USAGE);
@@ -41,7 +47,10 @@ export function parseCliArgs(argv: string[]): { command: SupervisorCommand; line
   if (!Number.isInteger(lines) || lines < 0) {
     throw new UsageError(`--lines takes a whole number, got "${values.lines}"`);
   }
-  return { command: positionals[0] as SupervisorCommand, lines };
+  if (!APP_NAMES.includes(values.app)) {
+    throw new UsageError(`--app takes one of ${APP_NAMES.join(', ')}, got "${values.app}"`);
+  }
+  return { command: positionals[0] as SupervisorCommand, lines, app: values.app };
 }
 
 /**
@@ -80,20 +89,21 @@ function duration(ms: number): string {
   return parts.slice(0, 2).join(' ');
 }
 
-function printStatus(client: SupervisorClient, bot: BotStatus): void {
+function printStatus(app: AppDefinition, client: SupervisorClient, status: BotStatus): void {
   const { pid, port, startedAt } = client.state;
+  const label = app.name.padEnd(11);
   console.log(`supervisor  running (pid ${pid}, since ${startedAt}, control 127.0.0.1:${port})`);
-  const up = bot.startedAt ? `, up ${duration(Date.now() - Date.parse(bot.startedAt))}` : '';
-  console.log(`bot         ${bot.state}${bot.pid ? ` (pid ${bot.pid}${up})` : ''}, ${bot.starts} start(s)`);
-  if (bot.lastExit) {
-    const { code, signal, at, uptimeMs } = bot.lastExit;
+  const up = status.startedAt ? `, up ${duration(Date.now() - Date.parse(status.startedAt))}` : '';
+  console.log(`${label} ${status.state}${status.pid ? ` (pid ${status.pid}${up})` : ''}, ${status.starts} start(s)`);
+  if (status.lastExit) {
+    const { code, signal, at, uptimeMs } = status.lastExit;
     console.log(`last exit   code ${code}, signal ${signal}, after ${duration(uptimeMs)}, at ${at}`);
   }
-  if (bot.nextStartAt) {
-    console.log(`next start  in ${duration(Date.parse(bot.nextStartAt) - Date.now())}`);
+  if (status.nextStartAt) {
+    console.log(`next start  in ${duration(Date.parse(status.nextStartAt) - Date.now())}`);
   }
-  if (bot.deploying) {
-    console.log(`deploy      running; output: ${BOT_APP.files.deployLog}`);
+  if (status.deploying) {
+    console.log(`deploy      running; output: ${app.files.deployLog}`);
   }
 }
 
@@ -110,56 +120,69 @@ function printTail(path: string, lines: number): void {
   }
 }
 
-async function start(): Promise<void> {
-  const running = await connectSupervisor(BOT_APP.files);
+async function start(app: AppDefinition): Promise<void> {
+  const running = await connectSupervisor(app.files);
   if (running) {
     console.log('already running');
-    printStatus(running, await running.status());
+    printStatus(app, running, await running.status());
     return;
   }
   const warning = localNetworkWarning(process.env, process.platform);
   if (warning) {
     console.warn(warning);
   }
-  const client = await launchSupervisor(BOT_APP);
-  printStatus(client, await client.status());
-  console.log(`\nbot log: bun run logs    supervisor log: ${BOT_APP.files.log}`);
+  const client = await launchSupervisor(app);
+  printStatus(app, client, await client.status());
+  const logs = app === BOT_APP ? 'bun run logs' : `bun run ${app.name}:logs`;
+  console.log(`\n${app.name} log: ${logs}    supervisor log: ${app.files.log}`);
 }
 
-async function main(argv: string[]): Promise<void> {
-  const { command, lines } = parseCliArgs(argv);
-  if (command === 'logs') {
-    const abort = new AbortController();
-    process.once('SIGINT', () => abort.abort());
+/** The bot's own logger writes `logs/<date>/`; every other app's log is its captured output. */
+async function followLogs(app: AppDefinition, lines: number): Promise<void> {
+  const abort = new AbortController();
+  process.once('SIGINT', () => abort.abort());
+  if (app === BOT_APP) {
     console.log(`following the newest log file under ${botLogsDir()} (Ctrl+C to stop)`);
     await followLatestLog(botLogsDir(), (line) => console.log(line), { signal: abort.signal, initialLines: lines });
     return;
   }
-  if (command === 'start') {
-    await start();
+  console.log(`following ${app.files.botOutput} (Ctrl+C to stop)`);
+  await followFile(app.files.botOutput, (line) => console.log(line), { signal: abort.signal, initialLines: lines });
+}
+
+async function main(argv: string[]): Promise<void> {
+  const { command, lines, app: appName } = parseCliArgs(argv);
+  const app = appByName(appName);
+  if (command === 'logs') {
+    await followLogs(app, lines);
     return;
   }
-  const client = await connectSupervisor(BOT_APP.files);
+  if (command === 'start') {
+    await start(app);
+    return;
+  }
+  const client = await connectSupervisor(app.files);
   if (command === 'restart' && !client) {
-    await start();
+    await start(app);
     return;
   }
   if (!client) {
-    console.log('the supervisor is not running (start it with `bun run start`)');
-    printTail(BOT_APP.files.log, 5);
+    const startCommand = app === BOT_APP ? 'bun run start' : `bun run ${app.name}:start`;
+    console.log(`the supervisor is not running (start it with \`${startCommand}\`)`);
+    printTail(app.files.log, 5);
     return;
   }
   if (command === 'status') {
-    printStatus(client, await client.status());
-    printTail(BOT_APP.files.botOutput, 5);
+    printStatus(app, client, await client.status());
+    printTail(app.files.botOutput, 5);
   } else if (command === 'restart') {
-    printStatus(client, await client.restart());
+    printStatus(app, client, await client.restart());
   } else {
     await client.stop();
-    while (existsSync(BOT_APP.files.state)) {
+    while (existsSync(app.files.state)) {
       await Bun.sleep(100);
     }
-    console.log('bot and supervisor stopped');
+    console.log(`${app.name} and supervisor stopped`);
   }
 }
 

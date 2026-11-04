@@ -19,6 +19,12 @@ export interface StaticServerConfig {
   root: string;
 }
 
+/** Where the cluster daemon listens and the bearer token its HTTP API expects. */
+export interface ClusterClientConfig {
+  url: string;
+  token: string;
+}
+
 export interface FileReadServiceConfig {
   root: string;
   filterPaths: string[];

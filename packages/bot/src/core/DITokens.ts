@@ -118,10 +118,10 @@ export const DITokens = {
   }),
 
   // ── Optional: cluster + coding-agent integrations ──
-  /** Optional — only registered when `cluster` config block is present. */
-  CLUSTER_MANAGER: defineToken('ClusterManager', {
+  /** Optional — only registered when `clusterClient` config block is present. */
+  CLUSTER_CLIENT: defineToken('ClusterClient', {
     required: false,
-    gatedBy: 'cluster config block',
+    gatedBy: 'clusterClient config block',
   }),
   /** Optional — only registered when `codingAgent.enabled` is true. */
   CODING_AGENT_SERVICE: defineToken('CodingAgentService', {

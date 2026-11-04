@@ -1186,6 +1186,8 @@
     "maxConcurrentTasks": 1,
     // Project registry for multi-project support (optional)
     // When configured, enables cross-directory project operations via @alias syntax
+    // Cluster workers no longer read this copy: the cluster daemon has its own
+    // `projectRegistry` in cluster.jsonc. This one serves the coding agent service.
     "projectRegistry": {
       // Security whitelist: only allow projects under these directories
       "allowedBasePaths": [
@@ -1310,8 +1312,9 @@
     "maxUsageExamples": 5,
     "maxExampleLen": 80
   },
-  // Project registry — shared across the coding agent service and Cluster workers.
-  // Defines allowed project directories and pre-registered projects.
+  // Project registry — allowed project directories and pre-registered projects
+  // for the coding agent service. The cluster daemon reads its own copy from
+  // cluster.jsonc (see `clusterClient`).
   "projectRegistry": {
     // Security whitelist: only allow projects under these directories
     "allowedBasePaths": [
@@ -1329,7 +1332,20 @@
       // }
     ]
   },
+  // Cluster daemon client. The Agent Cluster runs in its own process
+  // (`bun run cluster:start`, configured by cluster.jsonc); the bot only talks
+  // to its HTTP API with this bearer token. Omit the block and every cluster
+  // feature (the /cluster command, ticket dispatch, the WebUI cluster and
+  // ticket pages, owner escalation) answers "cluster not configured".
+  "clusterClient": {
+    "url": "http://127.0.0.1:3200",
+    "token": "change-me"
+  },
   // Agent Cluster — local multi-agent task execution.
+  // MOVED to the cluster daemon's cluster.jsonc: the bot no longer runs the
+  // cluster in-process, so this block is read only by `bun run cluster:e2e`.
+  // Keep it in sync with cluster.jsonc until that script targets the daemon.
+  //
   // Spawns coding agent workers (Claude Code / Codex / Gemini / MiniMax /
   // DeepSeek) to process tasks autonomously. Disabled by default. The full
   // template (with all providers + tokens) lives in config.d/cluster.jsonc
@@ -1586,6 +1602,10 @@
   // repo so cross-project work items can live in their own git history.
   // Absolute path recommended. Relative resolves against process.cwd().
   // Omit this block to fall back to `<cwd>/tickets`.
+  //
+  // MOVED to the cluster daemon's cluster.jsonc: tickets are read and written
+  // through the daemon's `/api/tickets/*`. The bot still resolves this path for
+  // `bun run cluster:e2e` and `/cluster-sync`.
   //
   // Expected layout under the configured directory:
   //   .templates/ticket.md   — default body skeleton rendered by WebUI

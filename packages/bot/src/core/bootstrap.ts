@@ -4,8 +4,6 @@
 // the debug CLI all use, so the initialization sequence can never drift between them.
 // Everything that opens a live connection belongs to startApp's connect phase instead.
 
-import { ClusterManager, parseClusterConfig, wireClusterTicketWriteback } from '@qqbot/agent-cluster';
-import { ProjectRegistry } from '@qqbot/agent-cluster/projects';
 import { AvatarService } from '@qqbot/avatar';
 import { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
@@ -37,7 +35,7 @@ import type { DatabaseManager } from '@/database/DatabaseManager';
 import { EventInitializer } from '@/events/EventInitializer';
 import type { EventRouter } from '@/events/EventRouter';
 import { CodingAgentInitializer } from '@/integrations/agent-cluster';
-import { wireClusterEscalation } from '@/integrations/agent-cluster/ClusterEscalation';
+import type { ClusterClient } from '@/integrations/agent-cluster/ClusterClient';
 import type { CodingAgentService } from '@/integrations/agent-cluster/CodingAgentService';
 import { LivemodeInterceptor } from '@/integrations/avatar/livemode/LivemodeInterceptor';
 import { type PersonaModulationAdapter, type PersonaService, startPersonaSubsystem } from '@/persona';
@@ -71,7 +69,6 @@ import '@/core/staticBackends';
 export interface BootstrapResult {
   bot: Bot;
   codingAgentService: CodingAgentService | null;
-  clusterManager: ClusterManager | null;
   conversationComponents: ConversationComponents;
   eventRouter: EventRouter;
   retrievalService: RetrievalService;
@@ -135,10 +132,6 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
 
   // ── StaticServer (local HTTP + backends; must precede ConversationInitializer — ImageGenerationService needs it) ──
   // Optional: `lanRelay.*.disabledStaticBackends` omits specific backends by registry id.
-  // `ticketsDir` is resolved once here and shared with the Agent Cluster below
-  // so `ContextHub` (plan artifacts) and `ClusterTicketWriteback` point at
-  // the same filesystem root as `TicketBackend` (which pulls via `config`).
-  const ticketsDir = config.getTicketsDir();
   const staticServerConfig = config.getStaticServerConfig();
   if (staticServerConfig) {
     const disabledBackendIds = config.getDisabledStaticBackendIds();
@@ -148,10 +141,11 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   // ── Claude Code init (sync, no connections) ──
   const codingAgentService = CodingAgentInitializer.initialize(config);
 
-  // ── Agent Cluster init (sync, no connections) ──
-  let clusterManager: ClusterManager | null = null;
-  const clusterRawConfig = config.getClusterConfig();
-  const clusterConfig = parseClusterConfig(clusterRawConfig);
+  // ── Cluster daemon client (registered by wiring when `clusterClient` is configured; no connection yet) ──
+  if (container.isRegistered(DITokens.CLUSTER_CLIENT)) {
+    const clusterClient = container.resolve<ClusterClient>(DITokens.CLUSTER_CLIENT);
+    logger.info(`[Bootstrap] Cluster daemon client configured: ${clusterClient.url}`);
+  }
 
   // ── Conversation system (tools, hooks, commands, AI, DB, context, agenda) ──
   const conversationComponents = await ConversationInitializer.initialize(config);
@@ -182,40 +176,6 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   // ── Admin alerting: route uncaught process errors to the owner ──
   const adminAlertService = container.resolve(AdminAlertService);
   adminAlertService.installProcessBoundary();
-
-  // ── Agent Cluster (after DB is ready) ──
-  if (clusterConfig) {
-    try {
-      const { DatabaseManager } = await import('@/database/DatabaseManager');
-      const { SQLiteAdapter } = await import('@/database/adapters/SQLiteAdapter');
-      const dbManager = container.resolve<InstanceType<typeof DatabaseManager>>(DatabaseManager);
-      const adapter = dbManager.getAdapter();
-      if (!(adapter instanceof SQLiteAdapter)) {
-        throw new Error('[Bootstrap] Agent Cluster requires SQLite database adapter');
-      }
-      const rawDb = adapter.getRawDb();
-      if (!rawDb) {
-        throw new Error('[Bootstrap] Agent Cluster requires SQLite — raw DB not available');
-      }
-      clusterManager = new ClusterManager(clusterConfig, rawDb, container.resolve(ProjectRegistry), ticketsDir);
-      container.registerInstance(DITokens.CLUSTER_MANAGER, clusterManager);
-
-      await wireClusterEscalation(clusterManager, config);
-      wireClusterTicketWriteback(clusterManager);
-
-      clusterManager.setHealthAlertNotifier(async (failures) => {
-        await adminAlertService.alert({
-          scope: 'ClusterHealth',
-          title: `${failures.length} worker template(s) unavailable`,
-          detail: failures.map((f) => `✗ ${f.templateName}: ${f.reason ?? 'unknown'}`).join('\n'),
-        });
-      });
-
-      logger.info('[Bootstrap] Agent Cluster initialized');
-    } catch (err) {
-      logger.error('[Bootstrap] Failed to initialize Agent Cluster:', err);
-    }
-  }
 
   // ── Retrieval health check (after HealthCheckManager is created) ──
   retrievalService.registerHealthCheck();
@@ -357,7 +317,6 @@ export async function bootstrapApp(configPath?: string): Promise<BootstrapResult
   return {
     bot,
     codingAgentService,
-    clusterManager,
     conversationComponents,
     eventRouter,
     retrievalService,
