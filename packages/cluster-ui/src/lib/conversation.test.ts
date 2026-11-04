@@ -4,6 +4,7 @@ import {
   buildConversation,
   type ConversationEntry,
   type ConversationInput,
+  type LiveSay,
   failureReason,
   foldConversation,
 } from './conversation';
@@ -52,10 +53,46 @@ function request(id: string, patch: Partial<ClusterHelpRequest> = {}): ClusterHe
 }
 
 function conversation(input: Partial<ConversationInput> = {}): ConversationEntry[] {
-  return buildConversation({ task: task(), events: [], help: [], helpHistory: [], children: [], ...input });
+  return buildConversation({ task: task(), events: [], liveSays: [], help: [], helpHistory: [], children: [], ...input });
 }
 
 describe('buildConversation', () => {
+  test('a worker_message becomes a worker entry', () => {
+    const entries = conversation({ events: [event('worker_message', 3, { text: '方案如下' })] });
+    expect(entries.filter((entry) => entry.kind === 'worker')).toMatchObject([{ kind: 'worker', text: '方案如下' }]);
+  });
+
+  describe('live says', () => {
+    const say = (patch: Partial<LiveSay> = {}): LiveSay => ({
+      id: 'live:0',
+      at: T0 + 5 * MIN,
+      text: '先做甲',
+      afterSeq: 100,
+      ...patch,
+    });
+    const workers = (entries: ConversationEntry[]) => entries.filter((entry) => entry.kind === 'worker');
+
+    test('an unconfirmed say shows up once', () => {
+      expect(workers(conversation({ liveSays: [say()] }))).toMatchObject([{ id: 'live:0', text: '先做甲' }]);
+    });
+
+    test('a newer event with the same text confirms it', () => {
+      const confirming = { ...event('worker_message', 5, { text: '先做甲' }), seq: 101 };
+      expect(workers(conversation({ liveSays: [say()], events: [confirming] }))).toHaveLength(1);
+      expect(workers(conversation({ liveSays: [say()], events: [confirming] }))[0].id).toBe('e101');
+    });
+
+    test('an older event with the same text does not confirm it', () => {
+      const old = { ...event('worker_message', 1, { text: '先做甲' }), seq: 100 };
+      expect(workers(conversation({ liveSays: [say()], events: [old] }))).toHaveLength(2);
+    });
+
+    test('an event with other text does not confirm it', () => {
+      const other = { ...event('worker_message', 5, { text: '先做乙' }), seq: 101 };
+      expect(workers(conversation({ liveSays: [say()], events: [other] }))).toHaveLength(2);
+    });
+  });
+
   test('a directive is the owner speaking, with the text from data.text', () => {
     const entries = conversation({ events: [event('directive', 2, { text: '先停下' }, 'owner')] });
     expect(entries.find((entry) => entry.kind === 'owner')).toMatchObject({

@@ -47,11 +47,20 @@ export type ConversationEntry =
       files: string[];
       stats?: ReportStats;
     }
+  | { kind: 'worker'; id: string; at: number; text: string }
   | { kind: 'system'; id: string; at: number; seq?: number; text: string };
+
+export interface LiveSay {
+  id: string;
+  at: number;
+  text: string;
+  afterSeq: number;
+}
 
 export interface ConversationInput {
   task: ClusterTask;
   events: ClusterEventEntry[];
+  liveSays: LiveSay[];
   help: ClusterHelpRequest[];
   helpHistory: ClusterHelpRequest[];
   workerExitedAt?: number;
@@ -88,7 +97,7 @@ const TERMINAL: ReadonlySet<ClusterTask['status']> = new Set(['completed', 'fail
  * how it ended — one time-ordered stream built from the event log plus the task record.
  */
 export function buildConversation(input: ConversationInput): ConversationEntry[] {
-  const { task, events, help, helpHistory, workerExitedAt, children, output } = input;
+  const { task, events, liveSays, help, helpHistory, workerExitedAt, children, output } = input;
   const files = parseFiles(task.filesModified);
   const entries: ConversationEntry[] = [];
 
@@ -187,6 +196,9 @@ export function buildConversation(input: ConversationInput): ConversationEntry[]
       case 'directive':
         entries.push({ kind: 'owner', id, at, from: event.sourceWorkerId, text: String(event.data.text ?? '') });
         break;
+      case 'worker_message':
+        entries.push({ kind: 'worker', id, at, text: String(event.data.text ?? '') });
+        break;
       case 'lock_acquired':
         entries.push({ kind: 'system', id, at, seq: event.seq, text: `锁定 ${lockedFileCount(event)} 个文件` });
         break;
@@ -204,6 +216,15 @@ export function buildConversation(input: ConversationInput): ConversationEntry[]
         break;
       default:
         break;
+    }
+  }
+
+  for (const say of liveSays) {
+    const confirmed = events.some(
+      (event) => event.type === 'worker_message' && event.seq > say.afterSeq && event.data.text === say.text,
+    );
+    if (!confirmed) {
+      entries.push({ kind: 'worker', id: say.id, at: say.at, text: say.text });
     }
   }
 

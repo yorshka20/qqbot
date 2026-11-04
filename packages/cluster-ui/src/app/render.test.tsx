@@ -382,6 +382,33 @@ describe('Shell routes render', () => {
     expect(container.querySelector('[data-row]')).not.toBeNull();
   });
 
+  test('an answered question is collapsed until opened', async () => {
+    const answered: ClusterHelpRequest = {
+      ...ask,
+      status: 'answered',
+      answer: '保留旧配置并加注释',
+      answeredBy: 'owner',
+      answeredAt: iso(-3 * MIN),
+    };
+    visited = [];
+    render(
+      <ClusterDataContext.Provider value={{ ...clusterData(), help: [], helpHistory: [answered] }}>
+        <MemoryRouter initialEntries={[`/t/${ROOT}`]}>
+          <Shell />
+        </MemoryRouter>
+      </ClusterDataContext.Provider>,
+    );
+    const trigger = (await screen.findAllByText('要不要保留旧配置？'))
+      .map((node) => node.closest('button'))
+      .find((button) => button !== null);
+    expect(trigger).toBeTruthy();
+    expect(trigger?.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText(/答 · owner/)).toBeNull();
+    fireEvent.click(trigger as HTMLElement);
+    expect(await screen.findByText(/答 · owner/)).not.toBeNull();
+    expect(document.querySelector('[data-answer-box]')).toBeNull();
+  });
+
   test('topology draws every task of the tree, finished ones included', async () => {
     const { container } = renderAt(`/t/${ROOT}?tab=topology`);
     await screen.findAllByText('coder-done');
