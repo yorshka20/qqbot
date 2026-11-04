@@ -8,7 +8,7 @@
  * nothing.
  */
 
-import { closeSync, existsSync, openSync, readSync, statSync } from 'node:fs';
+import { closeSync, openSync, readSync, statSync } from 'node:fs';
 
 export class LogTail {
   private offset = 0;
@@ -22,12 +22,13 @@ export class LogTail {
     private readonly intervalMs = 300,
   ) {}
 
-  /** Start following from the current end of the file (or from its start when `fromStart`). */
-  start(fromStart = false): void {
+  /**
+   * Start following from `offset`. The caller owns it: a size sampled here would land after
+   * whatever the writer has already produced, and that output would never be delivered.
+   */
+  start(offset: number): void {
     if (this.timer) return;
-    if (!fromStart && existsSync(this.path)) {
-      this.offset = statSync(this.path).size;
-    }
+    this.offset = offset;
     this.timer = setInterval(() => this.poll(), this.intervalMs);
   }
 
