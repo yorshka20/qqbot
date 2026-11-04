@@ -95,6 +95,23 @@ export function sortRuns(runs: Run[]): Run[] {
   });
 }
 
+/**
+ * What the composer opens with: the remembered project if it still exists, else the configured
+ * default; the remembered template only follows a remembered project that hit.
+ */
+export function composerDefaults(
+  saved: { project?: string; template?: string },
+  projects: string[],
+  defaultAlias: string | undefined,
+  projectDefaults: Record<string, string>,
+): { project: string; template: string } {
+  const savedProject = saved.project && projects.includes(saved.project) ? saved.project : undefined;
+  const project =
+    savedProject ?? (defaultAlias && projects.includes(defaultAlias) ? defaultAlias : (projects[0] ?? ''));
+  const template = savedProject ? (saved.template ?? projectDefaults[project] ?? '') : (projectDefaults[project] ?? '');
+  return { project, template };
+}
+
 /** Files a terminal report listed; the column holds a JSON array. */
 export function parseFiles(filesModified: string | undefined): string[] {
   if (!filesModified) {

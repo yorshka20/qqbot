@@ -1,6 +1,6 @@
 import type { ClusterHelpRequest } from '@qqbot/api-types';
 import type { Run } from './runs';
-import { toMs } from './time';
+import { formatDayLabel, toMs } from './time';
 
 export type InboxItem =
   | { kind: 'ask'; key: string; help: ClusterHelpRequest; run?: Run; since: number }
@@ -41,4 +41,31 @@ export function buildInbox(
   }
 
   return items.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.since - b.since);
+}
+
+export interface InboxGroup {
+  label: string;
+  items: InboxItem[];
+}
+
+/** Items keep the order they arrive in; groups are ordered by their earliest item. */
+export function groupInboxByDay(items: InboxItem[], now: number): InboxGroup[] {
+  const byDay = new Map<string, InboxItem[]>();
+  for (const item of items) {
+    const dayKey = new Date(item.since).toDateString();
+    const bucket = byDay.get(dayKey);
+    if (bucket) {
+      bucket.push(item);
+    } else {
+      byDay.set(dayKey, [item]);
+    }
+  }
+  return [...byDay.values()]
+    .map((bucket) => ({
+      label: formatDayLabel(bucket[0].since, now),
+      items: bucket,
+      since: Math.min(...bucket.map((i) => i.since)),
+    }))
+    .sort((a, b) => a.since - b.since)
+    .map(({ label, items: bucketItems }) => ({ label, items: bucketItems }));
 }

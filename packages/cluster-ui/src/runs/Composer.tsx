@@ -1,24 +1,34 @@
 import type { Ticket, TicketFrontmatter } from '@qqbot/api-types';
+import { FileText, X } from 'lucide-react';
 import { type FormEvent, type KeyboardEvent, useEffect, useState } from 'react';
 import { getTicket, listTickets } from '../api';
 import { useCluster } from '../app/ClusterData';
 import { navigate, routeHref } from '../app/route';
+import { readComposerChoice, rememberComposerChoice } from '../lib/memory';
+import { composerDefaults } from '../lib/runs';
 import { Button } from '../ui/Button';
 import { INPUT_CLASS, Select } from '../ui/Field';
 import { submitRun, ticketDescription } from './submitRun';
 
+const PLACEHOLDER = '修 proactive 卡片在长回复时丢失的问题：先定位 ReplyGenerationService 里截断的那一段，再补测试';
+
 export function Composer({ closeHref }: { closeHref: string }) {
   const { projects, templates, refresh } = useCluster();
+  const [saved] = useState(() => readComposerChoice());
   const [text, setText] = useState('');
   const [project, setProject] = useState<string | null>(null);
   const [template, setTemplate] = useState<string | null>(null);
   const [readyTickets, setReadyTickets] = useState<TicketFrontmatter[]>([]);
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [showTicketPicker, setShowTicketPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const chosenProject = project ?? projects?.defaultAlias ?? '';
-  const chosenTemplate = template ?? templates?.projectDefaults[chosenProject] ?? '';
+  const projectAliases = projects?.projects.map((p) => p.alias) ?? [];
+  const remembered = composerDefaults(saved, projectAliases, projects?.defaultAlias, templates?.projectDefaults ?? {});
+  const chosenProject = project ?? remembered.project;
+  const chosenTemplate =
+    template ?? (project === null ? remembered.template : (templates?.projectDefaults[chosenProject] ?? ''));
 
   useEffect(() => {
     listTickets().then(
@@ -61,6 +71,7 @@ export function Composer({ closeHref }: { closeHref: string }) {
         },
         templates,
       );
+      rememberComposerChoice({ project: chosenProject, template: chosenTemplate });
       await refresh();
       navigate(routeHref({ section: 'runs', runId: task.id }));
     } catch (err) {
@@ -78,14 +89,27 @@ export function Composer({ closeHref }: { closeHref: string }) {
   };
 
   return (
-    <form onSubmit={submit} onKeyDown={onKeyDown} className="flex flex-col gap-2 px-4 pb-4">
+    <form onSubmit={submit} onKeyDown={onKeyDown} className="flex flex-col gap-3 border-b border-line px-4 pt-1 pb-4">
+      {ticket && (
+        <div className="flex items-center justify-between gap-2 rounded-ui bg-surface-2 px-2.5 py-1.5 text-14">
+          <span className="truncate">{ticket.frontmatter.title}</span>
+          <button
+            type="button"
+            onClick={() => pickTicket('')}
+            aria-label="取消引用这个 ticket"
+            className="shrink-0 text-ink-muted hover:text-ink"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
       <textarea
         // biome-ignore lint/a11y/noAutofocus: opening the composer is asking to type
         autoFocus
         rows={4}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="说一句要做什么"
+        placeholder={PLACEHOLDER}
         aria-label="要做什么"
         className={`${INPUT_CLASS} resize-y`}
       />
@@ -113,24 +137,39 @@ export function Composer({ closeHref }: { closeHref: string }) {
           ))}
         </Select>
       </div>
-      {readyTickets.length > 0 && (
-        <Select label="从 ticket 文件（可选）" value={ticket?.id ?? ''} onChange={(e) => pickTicket(e.target.value)}>
-          <option value="">不用 ticket</option>
-          {readyTickets.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.title}
-            </option>
-          ))}
-        </Select>
-      )}
+      <div>
+        <button
+          type="button"
+          disabled={readyTickets.length === 0}
+          title={readyTickets.length === 0 ? '没有 ready 状态的 ticket' : undefined}
+          onClick={() => setShowTicketPicker((v) => !v)}
+          className="inline-flex items-center gap-1.5 text-14 text-ink-muted hover:text-ink disabled:opacity-50"
+        >
+          <FileText className="size-3.5" />
+          <span>从 ticket 文件填入</span>
+        </button>
+        {showTicketPicker && readyTickets.length > 0 && (
+          <div className="mt-2">
+            <Select label="选择 ticket" value={ticket?.id ?? ''} onChange={(e) => pickTicket(e.target.value)}>
+              <option value="">不用 ticket</option>
+              {readyTickets.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
+      </div>
       {error && <p className="text-13 text-failed">{error}</p>}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <Button type="submit" variant="solid" disabled={submitting || !text.trim() || !chosenProject}>
           开始运行
         </Button>
         <a href={closeHref} className="rounded-ui px-2.5 py-1 text-13 text-ink-muted hover:bg-surface-2">
           取消
         </a>
+        <span className="text-12 text-ink-muted">⌘Enter 提交 · Esc 取消</span>
       </div>
     </form>
   );

@@ -7,6 +7,7 @@ import { useSyncExternalStore } from 'react';
  */
 const SEEN_KEY = 'cluster-ui.seen';
 const ANSWERS_KEY = 'cluster-ui.answers';
+const COMPOSER_KEY = 'cluster-ui.composer';
 const MAX_ENTRIES = 500;
 
 function read<T>(key: string, fallback: T): T {
@@ -64,4 +65,18 @@ export function rememberAnswer(askId: string, answer: string): void {
   answers = new Map(next);
   write(ANSWERS_KEY, next);
   notify();
+}
+
+interface ComposerChoice {
+  project?: string;
+  template?: string;
+}
+
+/** The composer's last project/template, read once when it opens; not part of the subscribe/notify store. */
+export function readComposerChoice(): ComposerChoice {
+  return read<ComposerChoice>(COMPOSER_KEY, {});
+}
+
+export function rememberComposerChoice(choice: ComposerChoice): void {
+  write(COMPOSER_KEY, choice);
 }

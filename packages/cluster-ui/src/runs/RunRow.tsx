@@ -1,7 +1,8 @@
 import type { Run } from '../lib/runs';
-import { STAGE_LABEL, STAGE_TONE, stageRank, TONE_BG, TONE_TEXT } from '../lib/stage';
+import { STAGE_LABEL, STAGE_TONE, stageRank } from '../lib/stage';
 import { formatAgo, formatSpan } from '../lib/time';
-import { StatusDot } from '../ui/StatusDot';
+import { STAGE_ICON, StatePill } from '../ui/StatePill';
+import { StatusBar } from '../ui/StatusBar';
 
 export function runSpanLabel(run: Run, now: number): string {
   const ended = stageRank(run.stage) >= stageRank('done') || run.stage === 'review';
@@ -28,17 +29,22 @@ export function RunRow({
     <a
       href={href}
       data-row={index}
-      className={`relative block px-4 py-2.5 hover:bg-surface-2 ${selected || cursor ? 'bg-surface-2' : ''}`}
+      className={`relative block border-b border-line/60 px-4 py-3 pl-5 hover:bg-surface-2 ${
+        selected || cursor ? 'bg-surface-2' : ''
+      }`}
     >
-      {selected && <span className={`absolute inset-y-0 left-0 w-0.5 ${TONE_BG[tone]}`} />}
-      <div className={`flex items-center gap-1.5 text-15 font-medium ${TONE_TEXT[tone]}`}>
-        {run.stage === 'running' && <StatusDot tone="working" breathing />}
-        <span>
-          {STAGE_LABEL[run.stage]} · {runSpanLabel(run, now)}
-        </span>
+      <StatusBar tone={tone} active={selected} />
+      <div className="flex items-center justify-between gap-2">
+        <StatePill
+          tone={tone}
+          label={STAGE_LABEL[run.stage]}
+          icon={STAGE_ICON[run.stage]}
+          breathing={run.stage === 'running'}
+        />
+        <span className="text-13 text-ink-muted">{runSpanLabel(run, now)}</span>
       </div>
-      <div className="truncate text-15">{run.title}</div>
-      <div className="truncate text-13 text-ink-muted">
+      <div className={`truncate text-16 ${selected ? 'font-medium' : ''}`}>{run.title}</div>
+      <div className="truncate text-14 text-ink-muted">
         {[run.task.parentTaskId && '子运行', run.task.project, run.task.workerTemplate].filter(Boolean).join(' · ')}
       </div>
     </a>

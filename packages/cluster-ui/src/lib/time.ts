@@ -48,3 +48,15 @@ export function formatClock(ms: number, now: number): string {
     ? clock
     : `${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${clock}`;
 }
+
+/** `今天` / `昨天` / `MM-DD`: the day heading an inbox groups under. */
+export function formatDayLabel(ms: number, now: number): string {
+  const at = new Date(ms);
+  if (at.toDateString() === new Date(now).toDateString()) {
+    return '今天';
+  }
+  if (at.toDateString() === new Date(now - DAY).toDateString()) {
+    return '昨天';
+  }
+  return `${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}

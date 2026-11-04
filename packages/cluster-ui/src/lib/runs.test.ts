@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClusterHelpRequest, ClusterTask } from '@qqbot/api-types';
 import { buildInbox } from './inbox';
-import { buildRuns, parseFiles, runTitle, sortRuns } from './runs';
+import { buildRuns, composerDefaults, parseFiles, runTitle, sortRuns } from './runs';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z');
 
@@ -115,5 +115,28 @@ describe('buildInbox', () => {
   test('the open run stays listed after being seen', () => {
     expect(inbox([finished], [], ['c'], 'c').map((i) => i.kind)).toEqual(['review']);
     expect(inbox([failed], [], ['f'], 'f').map((i) => i.kind)).toEqual(['failed']);
+  });
+});
+
+describe('composerDefaults', () => {
+  const projects = ['demo', 'other'];
+  const projectDefaults = { demo: 'tpl-demo', other: 'tpl-other' };
+
+  test('a remembered project that still exists keeps its remembered template', () => {
+    expect(composerDefaults({ project: 'demo', template: 'tpl-x' }, projects, 'other', projectDefaults)).toEqual({
+      project: 'demo',
+      template: 'tpl-x',
+    });
+  });
+
+  test('a remembered project that no longer exists falls back to the configured default', () => {
+    expect(composerDefaults({ project: 'gone', template: 'tpl-x' }, projects, 'other', projectDefaults)).toEqual({
+      project: 'other',
+      template: 'tpl-other',
+    });
+  });
+
+  test('nothing remembered and no default returns empty strings', () => {
+    expect(composerDefaults({}, [], undefined, {})).toEqual({ project: '', template: '' });
   });
 });

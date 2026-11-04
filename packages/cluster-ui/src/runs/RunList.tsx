@@ -7,7 +7,9 @@ import { sortRuns } from '../lib/runs';
 import { STAGE_LABEL } from '../lib/stage';
 import { useNow } from '../lib/useNow';
 import { Button } from '../ui/Button';
+import { EmptyState } from '../ui/EmptyState';
 import { INPUT_CLASS } from '../ui/Field';
+import { SkeletonRows } from '../ui/Skeleton';
 import { Composer } from './Composer';
 import { RunRow } from './RunRow';
 
@@ -43,7 +45,7 @@ export function RunList({ route }: { route: Route }) {
 
   return (
     <>
-      <header className="flex items-center gap-2 px-4 pt-3 pb-2">
+      <header className="flex items-center gap-2 px-4 pt-4 pb-3">
         <h1 className="text-18 font-medium">运行</h1>
         <input
           data-search
@@ -70,19 +72,23 @@ export function RunList({ route }: { route: Route }) {
       )}
       {route.composing && <Composer closeHref={withRoute(route, { composing: false })} />}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {loaded && visible.length === 0 && (
-          <p className="px-4 py-2 text-15 text-ink-muted">
-            {runs.length === 0 ? (
-              <>
-                还没有运行。
-                <a href={routeHref({ section: 'runs', composing: true })} className="underline">
-                  派一件事
-                </a>
-              </>
-            ) : (
-              '没有符合条件的运行。'
-            )}
-          </p>
+        {!loaded && <SkeletonRows rows={5} />}
+        {loaded && visible.length === 0 && runs.length === 0 && (
+          <EmptyState
+            title="还没有运行。"
+            hint="说一句要做什么，agent 会接手。"
+            action={
+              <a
+                href={routeHref({ section: 'runs', composing: true })}
+                className="inline-flex items-center gap-1.5 rounded-ui bg-ink px-3 py-1.5 text-14 font-medium text-bg hover:opacity-90"
+              >
+                派一件事
+              </a>
+            }
+          />
+        )}
+        {loaded && visible.length === 0 && runs.length > 0 && (
+          <EmptyState title="没有符合条件的运行。" hint="清掉筛选再看看。" />
         )}
         {visible.map((run, index) => (
           <RunRow
