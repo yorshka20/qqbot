@@ -57,6 +57,7 @@ import type {
   HubSpawnInput,
   HubSpawnOutput,
   HubSyncOutput,
+  HubTaskSnapshot,
   HubUpdate,
   HubWaitInput,
   HubWaitOutput,
@@ -66,12 +67,12 @@ import type {
   TaskCandidate,
   TaskRecord,
 } from '../types';
-
 import { EventLog } from './EventLog';
 import { HubMCPServer } from './HubMCPServer';
 import { LockManager } from './LockManager';
 import { MessageBox } from './MessageBox';
 import { WorkerRegistry } from './WorkerRegistry';
+import { WAIT_MAX_MS } from './waitWindow';
 
 /** Callback for when planner dispatches a new task */
 export type DispatchCallback = (candidate: TaskCandidate) => Promise<void>;
@@ -143,7 +144,8 @@ export interface SchedulerBridge {
  * Longest a hub_wait blocks. Bun's HTTP idle timeout for the hub is 255 s; a response that has
  * not started by then is cut, so the window stays under it and the worker calls again.
  */
-const WAIT_MAX_MS = 240_000;
+// A planner reads the tail to see what a child is doing now; the full log is the owner's, on disk.
+const QUERY_OUTPUT_TAIL_CHARS = 8_000;
 const WAIT_HEARTBEAT_MS = 60_000;
 
 export class ContextHub {
@@ -690,11 +692,14 @@ export class ContextHub {
       // "not exists" should look the same from the planner's POV.
       throw new Error(`hub_query_task: task ${input.taskId} is not a child of your current task`);
     }
+    const output = target.output;
+    const truncated = output !== undefined && output.length > QUERY_OUTPUT_TAIL_CHARS;
     return {
       taskId: target.id,
       status: target.status,
       workerId: target.workerId,
-      output: target.output,
+      output: truncated ? output.slice(-QUERY_OUTPUT_TAIL_CHARS) : output,
+      outputTruncated: truncated || undefined,
       diffSummary: target.diffSummary,
       error: target.error,
       startedAt: target.startedAt,
@@ -704,22 +709,6 @@ export class ContextHub {
     };
   }
 
-  /**
-   * Hub side of `hub_wait_task`. Polls `handleQueryTask` every 500ms until
-   * the target task reaches a terminal status (`completed` / `failed` /
-   * `cancelled`) or the timeout elapses. Returns the same shape as
-   * `hub_query_task`.
-   *
-   * Implementation note: this blocks the MCP request handler (which is
-   * fine — MCP tool calls are inherently long-running and the SSE
-   * framing overhead per response is negligible). The hub
-   * itself is single-process; other workers' tool calls run in parallel
-   * because Bun.serve fetch handlers are independent async closures.
-   *
-   * Timeout is clamped to a hard upper bound of 30 minutes regardless of
-   * what the planner asks for — keeps a misbehaving planner from leaking
-   * Bun.serve fetch handlers indefinitely if it picks Number.MAX_SAFE_INTEGER.
-   */
   /**
    * Hub side of `hub_wait`: block until a watched child task settles, a message arrives for the
    * worker, or the window runs out. Event-driven — nothing polls: `taskSettled` and the
@@ -731,15 +720,20 @@ export class ContextHub {
     const timeoutMs = Math.min(requested, WAIT_MAX_MS);
     const tasks = Array.from(new Set((input.tasks ?? []).filter((t) => typeof t === 'string' && t)));
     // A task the hub cannot see (not this worker's child, or gone) is simply not watched.
-    const snapshots = (): HubQueryTaskOutput[] =>
+    const snapshots = (): HubTaskSnapshot[] =>
       tasks.flatMap((taskId) => {
         try {
-          return [this.handleQueryTask(workerId, { taskId })];
+          const {
+            output: _output,
+            outputTruncated: _truncated,
+            ...snapshot
+          } = this.handleQueryTask(workerId, { taskId });
+          return [snapshot];
         } catch {
           return [];
         }
       });
-    const settled = (snapshot: HubQueryTaskOutput) => this.schedulerBridge?.isTaskSettled(snapshot.taskId) === true;
+    const settled = (snapshot: HubTaskSnapshot) => this.schedulerBridge?.isTaskSettled(snapshot.taskId) === true;
 
     // Already something to do: answer at once.
     if (snapshots().some(settled)) {

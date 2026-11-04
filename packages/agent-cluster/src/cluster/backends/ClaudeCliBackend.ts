@@ -13,6 +13,7 @@
 
 import { logger, randomUUID } from '@qqbot/shared';
 import { parseClaudeStreamJson } from '../../cli/claudeStreamJson';
+import { MCP_TOOL_CALL_TIMEOUT_MS } from '../hub/waitWindow';
 import type {
   CredentialProbeConfig,
   CredentialProbeResult,
@@ -66,7 +67,7 @@ export class ClaudeCliBackend implements WorkerBackend {
     return {
       cmd: [config.command, ...args, config.taskPrompt],
       cwd: config.projectPath,
-      env: config.env,
+      env: { MCP_TOOL_TIMEOUT: String(MCP_TOOL_CALL_TIMEOUT_MS), ...config.env },
       sessionId,
     };
   }
