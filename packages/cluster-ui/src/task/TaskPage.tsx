@@ -29,12 +29,12 @@ import { pathOfRun } from '../lib/taskList';
 import { formatClock, formatSpan } from '../lib/time';
 import { useNow } from '../lib/useNow';
 import { retryRun } from '../runs/submitRun';
+import { TopologyTab } from '../topology/TopologyTab';
 import { ConversationStream } from './ConversationStream';
 import { DetailPanel } from './DetailPanel';
 import { LogView } from './LogView';
 import { MessageComposer } from './MessageComposer';
 import { ResultTab } from './ResultTab';
-import { TopologySlot } from './TopologySlot';
 import { useTaskDetail } from './useTaskDetail';
 
 const TAB_LABEL: Record<TaskTab, string> = { chat: '对话', topology: '拓扑', result: '结果' };
@@ -295,8 +295,8 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
         </>
       )}
       {tab === 'topology' && (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <TopologySlot />
+        <div className="min-h-0 flex-1">
+          <TopologyTab rootId={taskId} currentId={currentId} detail={task} />
         </div>
       )}
       {tab === 'result' && (

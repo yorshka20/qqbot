@@ -254,3 +254,28 @@
   background-position: center;
   background-repeat: no-repeat;
 }
+
+/* React Flow reads these; pointing them at the tokens keeps the canvas on the console's theme. */
+.react-flow {
+  --xy-background-color: var(--bg);
+  --xy-background-color-default: var(--bg);
+  --xy-background-pattern-color: var(--line);
+  --xy-background-pattern-color-default: var(--line);
+  --xy-edge-stroke: var(--ink-muted);
+  --xy-edge-stroke-default: var(--ink-muted);
+  --xy-edge-stroke-selected: var(--ink);
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-default: var(--surface);
+  --xy-controls-button-background-color-hover: var(--surface-2);
+  --xy-controls-button-background-color-hover-default: var(--surface-2);
+  --xy-controls-button-color: var(--ink);
+  --xy-controls-button-color-default: var(--ink);
+  --xy-controls-button-color-hover: var(--ink);
+  --xy-controls-button-color-hover-default: var(--ink);
+  --xy-controls-button-border-color: var(--line);
+  --xy-controls-button-border-color-default: var(--line);
+  --xy-node-background-color: var(--surface);
+  --xy-node-background-color-default: var(--surface);
+  --xy-node-color: var(--ink);
+  --xy-node-color-default: var(--ink);
+}

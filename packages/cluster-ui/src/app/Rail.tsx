@@ -1,5 +1,6 @@
 import { Cpu, FolderGit2, Inbox, type LucideIcon, Network, Play, Plus, Settings } from 'lucide-react';
-import { useInbox } from '../inbox/useInbox';
+import { useMemo } from 'react';
+import { buildInbox } from '../lib/inbox';
 import type { Tone } from '../lib/stage';
 import { StatusDot } from '../ui/StatusDot';
 import { useCluster } from './ClusterData';
@@ -55,8 +56,13 @@ function RailHeader() {
   );
 }
 
+function useInboxCount(route: Route): number {
+  const { runs, help } = useCluster();
+  return useMemo(() => buildInbox(runs, help, route.runId).length, [runs, help, route.runId]);
+}
+
 export function Rail({ route }: { route: Route }) {
-  const count = useInbox(route).length;
+  const count = useInboxCount(route);
   return (
     <nav className="hidden w-14 shrink-0 flex-col gap-0.5 p-2 md:flex lg:w-44">
       <RailHeader />
@@ -91,7 +97,7 @@ export function Rail({ route }: { route: Route }) {
 }
 
 export function TabBar({ route }: { route: Route }) {
-  const count = useInbox(route).length;
+  const count = useInboxCount(route);
   return (
     <nav className="flex shrink-0 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
       {TABS.map(({ section, label, icon: Icon }) => {

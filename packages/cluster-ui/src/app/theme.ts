@@ -19,8 +19,7 @@ function readChoice(): ThemeChoice {
 let choice = readChoice();
 
 function apply(): void {
-  const resolved = choice === 'system' ? (systemLight.matches ? 'light' : 'dark') : choice;
-  document.documentElement.dataset.theme = resolved;
+  document.documentElement.dataset.theme = resolved();
   const background = getComputedStyle(document.documentElement).getPropertyValue('--bg');
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', background);
 }
@@ -51,4 +50,19 @@ export function useThemeChoice(): ThemeChoice {
     },
     () => choice,
   );
+}
+
+function resolved(): 'dark' | 'light' {
+  return choice === 'system' ? (systemLight.matches ? 'light' : 'dark') : choice;
+}
+
+export function useResolvedTheme(): 'dark' | 'light' {
+  return useSyncExternalStore((listener) => {
+    listeners.add(listener);
+    systemLight.addEventListener('change', listener);
+    return () => {
+      listeners.delete(listener);
+      systemLight.removeEventListener('change', listener);
+    };
+  }, resolved);
 }
