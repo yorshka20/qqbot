@@ -657,10 +657,14 @@ export class LLMService {
             label,
           ).then((result) => {
             this.assertEndTurnHasContent(result, options, allowEmptyEndTurn, label);
+            if (result.usage) {
+              this.rateLimiter.recordUsage(result.usage.totalTokens, alt.target.provider);
+            }
             return result;
           });
         },
         prompt,
+        { opLabel: 'generate', options, startedAt, conversationId: round.conversationId },
       );
     }
   }
@@ -717,6 +721,7 @@ export class LLMService {
           return awaitCompletion(this.invokeLiteGeneration(alt, prompt, mergedOptions), t, `generateLite-fallback`);
         },
         prompt,
+        { opLabel: 'generateLite', options: mergedOptions, startedAt, conversationId: randomUUID() },
       );
     }
   }
@@ -799,6 +804,7 @@ export class LLMService {
         (alt) =>
           alt.provider.generateStream(prompt, handler, this.optionsForProvider(alt.provider, options, alt.target)),
         prompt,
+        { opLabel: 'generateStream', options, startedAt, conversationId: randomUUID() },
       );
     }
   }
@@ -1414,6 +1420,7 @@ export class LLMService {
     failedProvider: string,
     fn: (alt: Route) => Promise<AIGenerateResponse>,
     prompt: string,
+    trace: { opLabel: string; options: LLMCallOptions | undefined; startedAt: number; conversationId: string },
   ): Promise<AIGenerateResponse> {
     const alternatives = this.getAlternativeProviderNames(failedProvider);
     for (const altName of alternatives) {
@@ -1425,6 +1432,8 @@ export class LLMService {
         const result = await fn(alt);
         result.resolvedProviderName = altName;
         this.stampResolvedModel(result, alt.target);
+        this.logLLMUsage(altName, prompt, trace.options, result);
+        this.emitTrace(trace.opLabel, altName, prompt, trace.options, result, trace.startedAt, trace.conversationId);
         return result;
       } catch (altErr) {
         logger.warn(`[LLMService] Fallback provider "${altName}" also failed:`, altErr);

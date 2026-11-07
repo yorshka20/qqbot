@@ -676,6 +676,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     return {
       text,
       usage: parsed.usage,
+      resolvedModel: model,
       metadata: {
         model: response.model,
         reasoningContent: parsed.reasoningContent || undefined,
@@ -723,6 +724,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       return {
         text,
         usage: parsed.usage,
+        resolvedModel: model,
         metadata: {
           model: response.model,
           reasoningContent: parsed.reasoningContent || undefined,

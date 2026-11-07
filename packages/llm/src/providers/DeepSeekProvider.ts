@@ -354,6 +354,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
         text: stripDSML(rawText),
         usage,
         reasoningContent,
+        resolvedModel: model,
         metadata: { model: data.model, reasoningContent },
       };
 

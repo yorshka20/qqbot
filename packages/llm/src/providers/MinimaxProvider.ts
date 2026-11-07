@@ -357,7 +357,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
         requestBody,
       );
 
-      return this.parseResponse(response);
+      return { ...this.parseResponse(response), resolvedModel: model };
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
       logger.error('[MinimaxProvider] Vision generation failed:', err);
