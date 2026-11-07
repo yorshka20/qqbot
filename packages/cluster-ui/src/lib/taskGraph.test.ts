@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { ClusterJob, ClusterTask } from '@qqbot/api-types';
+import type { ClusterTask } from '@qqbot/api-types';
 import { stageOfStatus } from './stage';
 import { buildTaskGraph } from './taskGraph';
 
@@ -16,8 +16,8 @@ function task(id: string, patch: Partial<ClusterTask> = {}): ClusterTask {
   };
 }
 
-const graphOf = (rootId: string, tasks: ClusterTask[], job?: ClusterJob) =>
-  buildTaskGraph(rootId, tasks, (t) => stageOfStatus(t.status), job);
+const graphOf = (rootId: string, tasks: ClusterTask[], children: Array<{ id: string; dependsOn: string[] }> = []) =>
+  buildTaskGraph(rootId, tasks, (t) => stageOfStatus(t.status), children);
 
 describe('buildTaskGraph', () => {
   test('a lone root is one node and no edges', () => {
@@ -83,34 +83,22 @@ describe('buildTaskGraph', () => {
     }
   });
 
-  test('the job runs on to its branches: merged children reach integration, a landed job reaches base', () => {
-    const job = { integrationBranch: 'cluster/j1', baseBranch: 'master', landedAt: '2026-11-04T12:00:00Z' } as ClusterJob;
+  test('dependsOn adds a dependency edge between tasks in the graph, and nothing for strangers', () => {
     const graph = graphOf(
       'r',
+      [task('r'), task('a', { parentTaskId: 'r' }), task('b', { parentTaskId: 'r' })],
       [
-        task('r', { status: 'completed' }),
-        task('a', { parentTaskId: 'r', status: 'completed', mergedAt: '2026-11-04T11:30:00Z' }),
-        task('b', { parentTaskId: 'r', status: 'running' }),
-        task('c', { parentTaskId: 'r', status: 'failed' }),
+        { id: 'a', dependsOn: [] },
+        { id: 'b', dependsOn: ['a', 'ghost'] },
       ],
-      job,
     );
-
-    const edge = (source: string, target: string) => graph.edges.find((e) => e.source === source && e.target === target);
-    expect(edge('a', 'branch:integration')?.pending).toBe(false);
-    expect(edge('b', 'branch:integration')?.pending).toBe(true);
-    expect(edge('c', 'branch:integration')).toBeUndefined();
-    expect(edge('r', 'branch:integration')).toBeUndefined();
-    expect(edge('branch:integration', 'branch:base')?.pending).toBe(false);
-    expect(graph.nodes.find((n) => n.id === 'branch:base')).toMatchObject({ branch: 'master', caption: '已合入' });
+    const deps = graph.edges.filter((e) => e.kind === 'dependency');
+    expect(deps.map((e) => [e.source, e.target])).toEqual([['a', 'b']]);
+    expect(graph.edges.filter((e) => e.kind === 'child')).toHaveLength(2);
   });
 
-  test('a job with no children delivers from its root, and a failed landing says so', () => {
-    const job = { integrationBranch: 'cluster/j1', baseBranch: 'master', landError: 'conflict' } as ClusterJob;
-    const graph = graphOf('r', [task('r', { status: 'blocked', mergedAt: '2026-11-04T11:30:00Z' })], job);
-
-    expect(graph.edges.map((e) => e.id)).toContain('r->branch:integration');
-    expect(graph.edges.find((e) => e.target === 'branch:base')?.pending).toBe(true);
-    expect(graph.nodes.find((n) => n.id === 'branch:base')).toMatchObject({ caption: '合入失败', reached: false });
+  test('there are no branch nodes', () => {
+    const graph = graphOf('r', [task('r', { mergedAt: '2026-11-04T11:30:00Z' }), task('a', { parentTaskId: 'r' })]);
+    expect(graph.nodes.every((n) => n.kind === 'task')).toBe(true);
   });
 });

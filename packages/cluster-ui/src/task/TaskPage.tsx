@@ -38,12 +38,13 @@ import { readDetailOpen, rememberDetailOpen } from '../lib/memory';
 import { modelDisplayName } from '../lib/model';
 import { useOutput } from '../lib/outputs';
 import { PLANNING_STATE_LABEL, planningState } from '../lib/planning';
-import { homePath, parseOverlay, TASK_TABS, type TaskTab, taskPath, withOverlay } from '../lib/routes';
+import { homePath, parseOverlay, parseView, TASK_TABS, type TaskTab, taskPath, withOverlay } from '../lib/routes';
 import { type Run, resolveTemplate, runTimes, runTitle } from '../lib/runs';
 import { isLive, stageOfStatus } from '../lib/stage';
 import { pathOfRun } from '../lib/taskList';
 import { formatClock, formatSpan } from '../lib/time';
 import { useNow } from '../lib/useNow';
+import { RunFlow } from '../topology/RunFlow';
 import { TopologyTab } from '../topology/TopologyTab';
 import { ConversationStream } from './ConversationStream';
 import { DeliveryLine } from './DeliveryLine';
@@ -356,7 +357,11 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
       )}
       {tab === 'topology' && (
         <div className="min-h-0 flex-1">
-          <TopologyTab rootId={taskId} currentId={currentId} detail={task} />
+          {workerId !== null || parseView(location.search) === 'run' ? (
+            <RunFlow taskId={currentId} backTo={taskPath(taskId, 'topology')} />
+          ) : (
+            <TopologyTab rootId={taskId} currentId={currentId} detail={task} />
+          )}
         </div>
       )}
       {tab === 'result' && (

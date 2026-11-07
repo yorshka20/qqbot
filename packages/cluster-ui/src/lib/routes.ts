@@ -4,6 +4,9 @@ export type TaskTab = (typeof TASK_TABS)[number];
 export const SETTINGS_GROUPS = ['workers', 'templates', 'projects', 'concurrency', 'daemon', 'console'] as const;
 export type SettingsGroup = (typeof SETTINGS_GROUPS)[number];
 
+export const TASK_VIEWS = ['run'] as const;
+export type TaskView = (typeof TASK_VIEWS)[number];
+
 export type AppLocation =
   | { page: 'home' }
   | { page: 'inbox' }
@@ -13,6 +16,16 @@ export type AppLocation =
 function parseTab(search: string): TaskTab | null {
   const value = new URLSearchParams(search).get('tab');
   return TASK_TABS.find((tab) => tab === value) ?? null;
+}
+
+export function parseView(search: string): TaskView | null {
+  const value = new URLSearchParams(search).get('view');
+  return TASK_VIEWS.find((view) => view === value) ?? null;
+}
+
+/** Topology tab of a task, showing that task's own run flow instead of the job graph. */
+export function runViewPath(taskId: string): string {
+  return `${taskPath(taskId, 'topology')}&view=run`;
 }
 
 function decode(segment: string): string | null {

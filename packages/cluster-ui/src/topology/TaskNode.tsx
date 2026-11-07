@@ -1,12 +1,13 @@
 import type { ClusterTask } from '@qqbot/api-types';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
+import { Check } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useCluster } from '../app/ClusterData';
 import { StatusDot } from '../components/StatusDot';
 import { Button } from '../components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
 import { modelDisplayName, runModelName } from '../lib/model';
-import { taskPath, workerPath } from '../lib/routes';
+import { runViewPath, workerPath } from '../lib/routes';
 import { runTimes, runTitle } from '../lib/runs';
 import { isLive, STAGE_LABEL, STAGE_TONE, type Stage } from '../lib/stage';
 import { formatClock, formatSpan } from '../lib/time';
@@ -47,6 +48,7 @@ export function TaskNode({ data }: NodeProps<TaskFlowNode>) {
     (lock) => lock.taskId === task.id || (task.workerId && lock.workerId === task.workerId),
   ).length;
   const usage = usageFacts(task.usage);
+  const summary = ended ? task.diffSummary?.split('\n', 1)[0] || lastSaid : lastSaid;
 
   return (
     <Tooltip>
@@ -54,20 +56,27 @@ export function TaskNode({ data }: NodeProps<TaskFlowNode>) {
         <Button
           type="button"
           variant="ghost"
-          onClick={() => navigate(isRoot ? taskPath(rootId, 'topology') : workerPath(rootId, task.id, 'chat'))}
+          onClick={() => navigate(isRoot ? runViewPath(rootId) : workerPath(rootId, task.id, 'topology'))}
           className={cn(
-            'flex h-full w-full justify-start gap-2 rounded-md border border-border bg-card px-2.5 text-left font-normal text-xs text-card-foreground hover:bg-muted hover:text-card-foreground dark:hover:bg-muted',
+            'flex h-full w-full flex-col items-stretch justify-center gap-0.5 rounded-md border border-border bg-card px-2.5 text-left font-normal text-xs text-card-foreground hover:bg-muted hover:text-card-foreground dark:hover:bg-muted',
             current && 'ring-2 ring-ring',
             ended && 'opacity-60',
           )}
         >
           <Handle type="target" position={Position.Left} className="opacity-0" />
-          <StatusDot tone={STAGE_TONE[stage]} breathing={stage === 'running'} />
-          <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
-          <span className="shrink-0 text-muted-foreground">{runModelName(task)}</span>
-          <span className="shrink-0 tabular-nums text-muted-foreground">
-            {durationMs !== null ? formatSpan(durationMs) : '—'}
+          <span className="flex min-w-0 items-center gap-2">
+            <StatusDot tone={STAGE_TONE[stage]} breathing={stage === 'running'} />
+            <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
+            {task.mergedAt && <Check className="size-3.5 shrink-0 text-done" aria-label="已合入" />}
+            {task.resumeCount ? (
+              <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">续 ×{task.resumeCount}</span>
+            ) : null}
+            <span className="shrink-0 text-muted-foreground">{runModelName(task)}</span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">
+              {durationMs !== null ? formatSpan(durationMs) : '—'}
+            </span>
           </span>
+          <span className="block min-w-0 truncate pl-4 text-muted-foreground">{summary ?? ''}</span>
           <Handle type="source" position={Position.Right} className="opacity-0" />
         </Button>
       </TooltipTrigger>

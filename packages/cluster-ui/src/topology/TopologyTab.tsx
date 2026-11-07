@@ -1,4 +1,4 @@
-import type { ClusterTask } from '@qqbot/api-types';
+import type { ClusterTask, ClusterTaskChild } from '@qqbot/api-types';
 import { Background, Controls, type Edge, ReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useMemo } from 'react';
@@ -6,10 +6,9 @@ import { useCluster } from '../app/ClusterData';
 import { useResolvedTheme } from '../app/theme';
 import { stageOfStatus } from '../lib/stage';
 import { buildTaskGraph } from '../lib/taskGraph';
-import { type BranchFlowNode, BranchNode } from './BranchNode';
 import { type TaskFlowNode, TaskNode } from './TaskNode';
 
-const nodeTypes = { task: TaskNode, branch: BranchNode };
+const nodeTypes = { task: TaskNode };
 
 /** Tasks the graph may draw from: the loaded runs, the open task and its children, deduplicated by id. */
 function mergeTasks(runTasks: ClusterTask[], detail: ClusterTask, children: ClusterTask[]): ClusterTask[] {
@@ -27,7 +26,7 @@ export function TopologyTab({
 }: {
   rootId: string;
   currentId: string;
-  detail: ClusterTask & { children?: ClusterTask[] };
+  detail: ClusterTask & { children?: ClusterTaskChild[] };
 }) {
   const { runs } = useCluster();
   const colorMode = useResolvedTheme();
@@ -42,44 +41,49 @@ export function TopologyTab({
       ),
     [runs, detail],
   );
-  const job = runs.find((run) => run.task.id === rootId)?.job;
   const graph = useMemo(
-    () => buildTaskGraph(rootId, tasks, (task) => stageByTaskId.get(task.id) ?? stageOfStatus(task.status), job),
-    [rootId, tasks, stageByTaskId, job],
+    () =>
+      buildTaskGraph(
+        rootId,
+        tasks,
+        (task) => stageByTaskId.get(task.id) ?? stageOfStatus(task.status),
+        detail.children ?? [],
+      ),
+    [rootId, tasks, stageByTaskId, detail.children],
   );
 
-  const nodes = useMemo<Array<TaskFlowNode | BranchFlowNode>>(
+  const nodes = useMemo<TaskFlowNode[]>(
     () =>
-      graph.nodes.map((node) => {
-        const placed = { id: node.id, position: { x: node.x, y: node.y }, width: node.width, height: node.height };
-        return node.kind === 'branch'
-          ? {
-              ...placed,
-              type: 'branch' as const,
-              data: { branch: node.branch, caption: node.caption, reached: node.reached },
-            }
-          : {
-              ...placed,
-              type: 'task' as const,
-              data: {
-                task: node.task,
-                stage: node.stage,
-                rootId,
-                isRoot: node.id === rootId,
-                current: node.id === currentId,
-              },
-            };
-      }),
+      graph.nodes.map((node) => ({
+        id: node.id,
+        type: 'task' as const,
+        position: { x: node.x, y: node.y },
+        width: node.width,
+        height: node.height,
+        data: {
+          task: node.task,
+          stage: node.stage,
+          rootId,
+          isRoot: node.id === rootId,
+          current: node.id === currentId,
+        },
+      })),
     [graph, rootId, currentId],
   );
   const edges = useMemo<Edge[]>(
     () =>
-      graph.edges.map(({ id, source, target, pending }) => ({
-        id,
-        source,
-        target,
-        style: pending ? { strokeDasharray: '4 4' } : undefined,
-      })),
+      graph.edges.map(({ id, source, target, kind }) =>
+        kind === 'dependency'
+          ? {
+              id,
+              source,
+              target,
+              label: '依赖',
+              style: { strokeDasharray: '4 4' },
+              labelStyle: { fontSize: 11 },
+            }
+          : { id, source, target },
+      ),
     [graph],
   );
 
@@ -89,7 +93,7 @@ export function TopologyTab({
 
   return (
     <div className="h-full w-full">
-      {/* `fitView` runs once per mount, and the branch nodes arrive after the tasks do. */}
+      {/* `fitView` runs once per mount, and children arrive after the root does. */}
       <ReactFlow
         key={graph.nodes.length}
         nodes={nodes}

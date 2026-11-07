@@ -4,8 +4,10 @@ import {
   homePath,
   inboxPath,
   parentPath,
+  runViewPath,
   parseAppLocation,
   parseOverlay,
+  parseView,
   SETTINGS_GROUPS,
   settingsPath,
   taskPath,
@@ -96,5 +98,25 @@ describe('overlays', () => {
     expect(search).toBe('?tab=chat&created=T-9');
     expect(parseOverlay(search).created).toBe('T-9');
     expect(withOverlay(search, { created: null })).toBe('?tab=chat');
+  });
+});
+
+describe('view param', () => {
+  test('parses run and ignores anything else', () => {
+    expect(parseView('?tab=topology&view=run')).toBe('run');
+    expect(parseView('?view=other')).toBeNull();
+    expect(parseView('')).toBeNull();
+  });
+
+  test('runViewPath keeps the topology tab and round-trips', () => {
+    const path = runViewPath('a/b');
+    const [pathname, query] = path.split('?');
+    expect(parseAppLocation(pathname, `?${query}`)).toEqual({
+      page: 'task',
+      taskId: 'a/b',
+      workerId: null,
+      tab: 'topology',
+    });
+    expect(parseView(`?${query}`)).toBe('run');
   });
 });

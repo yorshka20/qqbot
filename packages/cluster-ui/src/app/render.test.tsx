@@ -232,7 +232,9 @@ const detailOf = (id: string): ClusterTaskDetail | undefined => {
   if (!found) {
     return undefined;
   }
-  return id === ROOT ? { ...found, children: [doneChild, failedChild] } : found;
+  return id === ROOT
+    ? { ...found, children: [doneChild, failedChild].map((child) => ({ ...child, dependsOn: [] })) }
+    : found;
 };
 
 function json(body: unknown, status = 200): Response {
@@ -566,7 +568,7 @@ describe('settings menu and scroll areas', () => {
     await screen.findAllByText('coder-done');
     const canvas = container.querySelector('.react-flow') as HTMLElement;
     fireEvent.click(within(canvas).getByText('coder-done'));
-    await waitFor(() => expect(here()).toBe(`/t/${ROOT}/w/${DONE}?tab=chat`));
+    await waitFor(() => expect(here()).toBe(`/t/${ROOT}/w/${DONE}?tab=topology`));
   });
 });
 

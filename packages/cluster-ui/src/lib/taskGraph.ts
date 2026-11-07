@@ -1,12 +1,9 @@
 import dagre from '@dagrejs/dagre';
-import type { ClusterJob, ClusterTask } from '@qqbot/api-types';
-import { isLive, type Stage } from './stage';
+import type { ClusterTask } from '@qqbot/api-types';
+import type { Stage } from './stage';
 
 export const NODE_WIDTH = 232;
-export const NODE_HEIGHT = 40;
-
-const INTEGRATION_ID = 'branch:integration';
-const BASE_ID = 'branch:base';
+export const NODE_HEIGHT = 52;
 
 interface Placed {
   id: string;
@@ -22,21 +19,14 @@ export interface TaskGraphTaskNode extends Placed {
   stage: Stage;
 }
 
-export interface TaskGraphBranchNode extends Placed {
-  kind: 'branch';
-  branch: string;
-  caption: string;
-  reached: boolean;
-}
-
-export type TaskGraphNode = TaskGraphTaskNode | TaskGraphBranchNode;
+export type TaskGraphNode = TaskGraphTaskNode;
 
 export interface TaskGraphEdge {
   id: string;
   source: string;
   target: string;
-  /** Work on its way along this edge: it has not arrived. */
-  pending: boolean;
+  /** `child` is spawned-by; `dependency` is a sibling that had to land first. */
+  kind: 'child' | 'dependency';
 }
 
 export interface TaskGraph {
@@ -45,15 +35,14 @@ export interface TaskGraph {
 }
 
 /**
- * The life of a job, left to right: the root, its children, the integration branch they merge
- * into, and the base branch it lands on. `tasks` may hold unrelated runs; only the root and its
- * descendants enter the graph. A job with no integration branch has only its tasks.
+ * The task tree: the root, its descendants, and the dependency edges between siblings.
+ * `tasks` may hold unrelated runs; only the root and its descendants enter the graph.
  */
 export function buildTaskGraph(
   rootId: string,
   tasks: ClusterTask[],
   stageOf: (task: ClusterTask) => Stage,
-  job: ClusterJob | undefined,
+  children: ReadonlyArray<{ id: string; dependsOn: string[] }>,
 ): TaskGraph {
   const byId = new Map<string, ClusterTask>();
   const childrenOf = new Map<string, ClusterTask[]>();
@@ -88,34 +77,27 @@ export function buildTaskGraph(
         continue;
       }
       seen.add(child.id);
-      edges.push({ id: `${task.id}->${child.id}`, source: task.id, target: child.id, pending: false });
+      edges.push({ id: `${task.id}->${child.id}`, source: task.id, target: child.id, kind: 'child' });
       queue.push(child);
     }
   }
 
-  const branches = branchNodes(job);
-  if (job?.integrationBranch) {
-    const delivering = members.length === 1 ? members : members.filter((task) => task.id !== rootId);
-    for (const task of delivering) {
-      if (task.mergedAt || isLive(task)) {
-        const pending = !task.mergedAt;
-        edges.push({ id: `${task.id}->${INTEGRATION_ID}`, source: task.id, target: INTEGRATION_ID, pending });
+  for (const child of children) {
+    for (const dependency of child.dependsOn) {
+      if (seen.has(child.id) && seen.has(dependency) && dependency !== child.id) {
+        edges.push({ id: `dep:${dependency}->${child.id}`, source: dependency, target: child.id, kind: 'dependency' });
       }
-    }
-    if (job.baseBranch) {
-      const pending = !job.landedAt;
-      edges.push({ id: `${INTEGRATION_ID}->${BASE_ID}`, source: INTEGRATION_ID, target: BASE_ID, pending });
     }
   }
 
-  const graph = new dagre.graphlib.Graph();
+  const graph = new dagre.graphlib.Graph({ multigraph: true });
   graph.setGraph({ rankdir: 'LR', nodesep: 12, ranksep: 40 });
   graph.setDefaultEdgeLabel(() => ({}));
-  for (const id of [...members.map((task) => task.id), ...branches.map((branch) => branch.id)]) {
+  for (const { id } of members) {
     graph.setNode(id, { width: NODE_WIDTH, height: NODE_HEIGHT });
   }
   for (const edge of edges) {
-    graph.setEdge(edge.source, edge.target);
+    graph.setEdge(edge.source, edge.target, {}, edge.id);
   }
   dagre.layout(graph);
 
@@ -130,27 +112,7 @@ export function buildTaskGraph(
     };
   };
   return {
-    nodes: [
-      ...members.map((task): TaskGraphNode => ({ ...place(task.id), kind: 'task', task, stage: stageOf(task) })),
-      ...branches.map((branch): TaskGraphNode => ({ ...place(branch.id), kind: 'branch', ...branch.data })),
-    ],
+    nodes: members.map((task): TaskGraphNode => ({ ...place(task.id), kind: 'task', task, stage: stageOf(task) })),
     edges,
   };
-}
-
-function branchNodes(job: ClusterJob | undefined) {
-  if (!job?.integrationBranch) {
-    return [];
-  }
-  const landing = job.landError ? '合入失败' : '待合入';
-  const integration = { branch: job.integrationBranch, caption: '集成分支', reached: true };
-  const base = job.baseBranch
-    ? [
-        {
-          id: BASE_ID,
-          data: { branch: job.baseBranch, caption: job.landedAt ? '已合入' : landing, reached: Boolean(job.landedAt) },
-        },
-      ]
-    : [];
-  return [{ id: INTEGRATION_ID, data: integration }, ...base];
 }

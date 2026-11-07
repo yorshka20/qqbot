@@ -28,12 +28,12 @@ bun test packages/cluster-ui
 |---|---|
 | `src/app/` | 外壳（侧栏 + 主区，手机上侧栏是抽屉）、快捷键、主题、钉住；`ClusterData.tsx` 是唯一的数据源；`TaskListPanel.tsx` 是对话列表，桌面在侧栏里，手机上就是首页 |
 | `src/task/` | 一条对话：对话卡片流（`cards/`）、输入框、详情面板、日志、结果 tab |
-| `src/topology/` | 拓扑 tab：React Flow 画一棵 task 树，布局由 `lib/taskGraph.ts` 交给 dagre |
+| `src/topology/` | 拓扑 tab：任务树（`TopologyTab`，节点两行：标题 / 模型 / 用时 / 已合入 / 续用次数，下一行是最近汇报或 diff 摘要；虚线「依赖」边来自 `dependsOn`），布局由 `lib/taskGraph.ts` 交给 dagre；点子运行或根节点进入这条运行的执行流程图（`RunFlow`：每次运行一个分组，其中按阶段分组、步骤自上而下，右侧是改动文件列），布局是纯函数 `lib/runFlow.ts`，点步骤在侧栏看原始记录 |
 | `src/inbox/` | 收件箱：提问、失败或受阻、待查看，以及已处理归档 |
 | `src/composer/` | 新任务 composer、ticket 抽屉、`submitRun` |
 | `src/settings/` | 设置的六个分组：workers、templates、projects、concurrency、daemon、console |
 | `src/components/` | 业务组件；`components/ui/` 是 shadcn 生成的基础组件 |
-| `src/lib/` | 纯逻辑，都有单测：`routes`（路由契约）、`taskList`（对话列表分组与钉住）、`taskGraph`（拓扑图）、`home`、`stage`（状态映射）、`inbox`、`runs`（运行聚合、`resolveTemplate`、planner ticket 草稿）、`planning`（规划模式与规划状态）、`conversation` / `transcript`（对话视图）、`logs`、`usage` / `model`、`window`、`timeline`、`resume`、`workers`、`daemon`、`slots` |
+| `src/lib/` | 纯逻辑，都有单测：`routes`（路由契约）、`taskList`（对话列表分组与钉住）、`taskGraph`（拓扑图）、`home`、`stage`（状态映射）、`inbox`、`runs`（运行聚合、`resolveTemplate`、planner ticket 草稿）、`planning`（规划模式与规划状态）、`conversation` / `transcript`（对话视图）、`runTrace`（把对话折成阶段 / 步骤 / 文件）、`runFlow`（执行流程图布局）、`logs`、`usage` / `model`、`window`、`timeline`、`resume`、`workers`、`daemon`、`slots` |
 | `src/api.ts` `src/stream/` `src/auth/` | HTTP、SSE（fetch + ReadableStream，因为 `EventSource` 带不了 Authorization）、token |
 
 全页一条 SSE，事件触发 `ClusterData` 刷新；轮询只在流断开时兜底，切回隐藏的页签时补一次。
@@ -48,7 +48,7 @@ bun test packages/cluster-ui
 | `/t/:taskId/w/:workerId` | 对话下的一条子运行；`:workerId` 是子运行的 task id，不是 worker id |
 | `/settings/:group` | 设置分组 |
 
-查询参数：`tab`（`chat` / `topology` / `result`）、`new`（打开 composer）、`ticket` 和 `file`（打开 ticket 抽屉）、`log`（全屏日志）、`created`（composer 为 planner 新建的 ticket id，对话头部显示）。
+查询参数：`tab`（`chat` / `topology` / `result`）、`new`（打开 composer）、`ticket` 和 `file`（打开 ticket 抽屉）、`view`（`run`：拓扑 tab 显示这条运行自己的执行流程图，子运行页面默认如此）、`log`（全屏日志）、`created`（composer 为 planner 新建的 ticket id，对话头部显示）。
 
 快捷键：`j` `k` 上下、`Enter` 打开、`n` 新任务、`a` 聚焦回答框、`/` 搜索、`Esc` 返回上一级（浮层打开时只关浮层）。
 钉住的对话记在这台设备的 `localStorage`，显示在对话列表顶部。
