@@ -83,10 +83,12 @@ export function DailyStatsPage() {
 
       {error && <div className="text-center py-12 text-red-500">{error}</div>}
 
+      {stats && !loading && <DailyStatsSummaryCards stats={stats} />}
+
+      <DailyStatsUsageCost report={usage} error={usageError} />
+
       {stats && !loading && (
         <>
-          <DailyStatsSummaryCards stats={stats} />
-          <DailyStatsUsageCost report={usage} error={usageError} />
           <DailyStatsCharts stats={stats} />
           <DailyStatsProviderTable stats={stats} />
           <DailyStatsGroupsAndErrors stats={stats} />
