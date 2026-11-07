@@ -104,9 +104,12 @@ export function landClusterJob(jobId: string): Promise<ClusterJobLandResponse> {
   return post('Land cluster job', `${CLUSTER}/jobs/${encodeURIComponent(jobId)}/land`);
 }
 
-/** The end of a worker's stdout, which outlives the worker. */
-export function getClusterTaskOutput(taskId: string): Promise<ClusterTaskOutputResponse> {
-  return request('Read cluster task output', `${CLUSTER}/tasks/${encodeURIComponent(taskId)}/output`);
+/** The end of a worker's stdout, which outlives the worker. `full` reads the whole file up to 8 MiB. */
+export function getClusterTaskOutput(taskId: string, opts?: { full?: boolean }): Promise<ClusterTaskOutputResponse> {
+  return request(
+    'Read cluster task output',
+    `${CLUSTER}/tasks/${encodeURIComponent(taskId)}/output${query({ full: opts?.full ? 1 : undefined })}`,
+  );
 }
 
 export function startCluster(): Promise<ClusterStartedResponse> {

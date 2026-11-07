@@ -40,6 +40,14 @@ function TranscriptRow({
     );
   } else if (kind === 'raw') {
     content = <p className="font-mono text-xs break-words whitespace-pre-wrap opacity-60">{body}</p>;
+  } else if (kind === 'session') {
+    content = (
+      <div className="flex items-center gap-2 text-xs opacity-50">
+        <span className="h-px flex-1 bg-current" />
+        <span className="whitespace-nowrap">{title}</span>
+        <span className="h-px flex-1 bg-current" />
+      </div>
+    );
   } else {
     const label = (
       <span

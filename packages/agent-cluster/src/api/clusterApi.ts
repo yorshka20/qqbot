@@ -57,10 +57,12 @@ import type {
   ClusterTask,
   ClusterTaskAcknowledgedResponse,
   ClusterTaskCancelledResponse,
+  ClusterTaskChild,
   ClusterTaskDetail,
   ClusterTaskMessageBody,
   ClusterTaskMessagedResponse,
   ClusterTaskOutputResponse,
+  ClusterTaskSubscriptions,
   ClusterTemplatesResponse,
   ClusterWorkerHistoryResponse,
   ClusterWorkerKilledResponse,
@@ -79,6 +81,8 @@ import { errorResponse, jsonResponse } from './http';
 
 const API_PREFIX = '/api/cluster';
 const OUTPUT_TAIL_BYTES = 256 * 1024;
+/** `?full=1` cap: a whole log past this is still cut to its end. */
+const OUTPUT_FULL_BYTES = 8 * 1024 * 1024;
 
 export class ClusterApi implements HubRoute {
   readonly prefix = API_PREFIX;
@@ -131,6 +135,19 @@ export class ClusterApi implements HubRoute {
   /** Whether a message to the task would wake its session rather than reach a running worker. */
   private withResumable(live: ClusterManager, task: TaskRecord): TaskRecord & { resumable: boolean } {
     return { ...task, resumable: live.getScheduler().routeMessage(task).kind === 'resume' };
+  }
+
+  /**
+   * A child that already ended has no subscription rows left, so its plan dependencies are read
+   * back from the `task_subscribed` events it announced while it ran.
+   */
+  private withDependsOn(live: ClusterManager, child: TaskRecord): ClusterTaskChild {
+    const announced = live.getHub().eventLog.query({ taskId: child.id, type: 'task_subscribed', limit: 1 })[0];
+    const fromEvent = (announced?.data.subscriptions as ClusterTaskSubscriptions | undefined)?.dependsOn;
+    return {
+      ...this.withResumable(live, child),
+      dependsOn: fromEvent ?? live.getHub().subscriptions.of(child.id).dependsOn,
+    };
   }
 
   private capTaskForList(t: TaskRecord): TaskRecord & { outputBytes?: number; outputTruncated?: boolean } {
@@ -336,12 +353,12 @@ export class ClusterApi implements HubRoute {
           const subscribed = subscriptions.tasks.length > 0 || subscriptions.files.length > 0 || subscriptions.branch;
           return jsonResponse<ClusterTaskDetail>({
             ...this.withResumable(live, task),
-            children: children.length > 0 ? children.map((child) => this.withResumable(live, child)) : undefined,
+            children: children.length > 0 ? children.map((child) => this.withDependsOn(live, child)) : undefined,
             subscriptions: subscribed ? subscriptions : undefined,
           });
         }
 
-        // /tasks/:id/output — the end of the worker's stdout file, which outlives the process
+        // /tasks/:id/output — the end of the worker's stdout file, or the whole file with `?full=1`
         const outputMatch = subPath.match(/^\/tasks\/([^/]+)\/output$/);
         if (outputMatch) {
           const task = live.getScheduler().findTask(outputMatch[1]);
@@ -350,9 +367,10 @@ export class ClusterApi implements HubRoute {
           if (!log || !(await log.exists())) {
             return jsonResponse<ClusterTaskOutputResponse>({ output: '', truncated: false });
           }
+          const cap = url.searchParams.get('full') === '1' ? OUTPUT_FULL_BYTES : OUTPUT_TAIL_BYTES;
           return jsonResponse<ClusterTaskOutputResponse>({
-            output: await log.slice(-OUTPUT_TAIL_BYTES).text(),
-            truncated: log.size > OUTPUT_TAIL_BYTES,
+            output: await log.slice(-cap).text(),
+            truncated: log.size > cap,
           });
         }
 

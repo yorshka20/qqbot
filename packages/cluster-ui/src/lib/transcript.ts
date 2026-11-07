@@ -1,6 +1,13 @@
 import { logLines } from './logs';
 
-export type TranscriptKind = 'text' | 'tool' | 'result' | 'reasoning' | 'raw';
+export type TranscriptKind = 'text' | 'tool' | 'result' | 'reasoning' | 'raw' | 'session';
+
+/** A tool invocation, kept structured so a view can group calls without re-threading the raw line. */
+export interface ToolCall {
+  name: string;
+  input: Record<string, unknown>;
+  id?: string;
+}
 
 export interface TranscriptEntry {
   id: string;
@@ -13,6 +20,10 @@ export interface TranscriptEntry {
   body?: string;
   /** A tool call that failed, so the row can be marked. */
   failed?: boolean;
+  /** Present on a tool call, absent on its result. */
+  call?: ToolCall;
+  /** On a result row, the `id` of the call it answers. */
+  resultOf?: string;
 }
 
 type Json = Record<string, unknown>;
@@ -38,7 +49,8 @@ function firstLine(text: string): string {
   return text.trim().split('\n', 1)[0] ?? '';
 }
 
-function shortenPath(path: string): string {
+/** Cut a worktree path down to its repo-relative part; a relative path is already what we want. */
+export function shortenPath(path: string): string {
   if (!path.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(path)) {
     return path;
   }
@@ -141,7 +153,7 @@ function claudeDrafts(event: Json, type: string): Draft[] {
     return [{ kind: 'result', title: failed ? '运行出错' : '最终答复', body: asString(event.result) ?? '', failed }];
   }
   if (type === 'system') {
-    return [];
+    return event.subtype === 'init' ? [{ kind: 'session', title: '会话开始' }] : [];
   }
 
   const content = asRecord(event.message)?.content;
@@ -173,71 +185,111 @@ function claudeDrafts(event: Json, type: string): Draft[] {
           body: thinking || undefined,
         });
       } else if (block.type === 'tool_use') {
+        const name = asString(block.name) ?? 'unknown';
+        const input = asRecord(block.input) ?? {};
+        const call: ToolCall = { name, input };
+        const callId = asString(block.id);
+        if (callId !== undefined) {
+          call.id = callId;
+        }
         drafts.push({
           kind: 'tool',
-          title: toolTitle(asString(block.name) ?? 'unknown', block.input),
+          title: toolTitle(name, input),
           body: JSON.stringify(block.input ?? {}, null, 2),
+          call,
         });
       }
     } else if (type === 'user' && block.type === 'tool_result') {
       const text = blockText(block.content) ?? '';
       const gist = firstLine(text);
-      drafts.push({
+      const draft: Draft = {
         kind: 'tool',
         title: `结果 · ${gist ? clip(gist, ARG_MAX) : '（空）'}`,
         body: text || undefined,
         failed: block.is_error === true,
-      });
+      };
+      const resultOf = asString(block.tool_use_id);
+      if (resultOf !== undefined) {
+        draft.resultOf = resultOf;
+      }
+      drafts.push(draft);
     }
   }
   return drafts;
 }
 
-function codexItemDraft(item: Json, line: string): Draft {
+function codexDrafts(item: Json, line: string): Draft[] {
   const itemType = asString(item.type) ?? asString(item.item_type);
   const text = blockText(item.text) ?? blockText(item.content) ?? blockText(item.message);
 
   switch (itemType) {
     case 'agent_message':
     case 'assistant_message':
-      return text !== undefined && text.trim() !== '' ? textDraft(text) : rawDraft(line);
+      return text !== undefined && text.trim() !== '' ? [textDraft(text)] : [rawDraft(line)];
     case 'reasoning': {
       const thought = text ?? blockText(item.summary);
       return thought === undefined
-        ? rawDraft(line)
-        : { kind: 'reasoning', title: clip(`思考 · ${firstLine(thought)}`, TITLE_MAX), body: thought };
+        ? [rawDraft(line)]
+        : [{ kind: 'reasoning', title: clip(`思考 · ${firstLine(thought)}`, TITLE_MAX), body: thought }];
     }
     case 'command_execution': {
       const command = asString(item.command);
       if (command === undefined) {
-        return rawDraft(line);
+        return [rawDraft(line)];
       }
       const exitCode = item.exit_code;
-      return {
-        kind: 'tool',
-        title: toolTitle('Bash', { command }),
-        body: asString(item.aggregated_output) ?? asString(item.output),
-        failed: item.status === 'failed' || (typeof exitCode === 'number' && exitCode !== 0),
-      };
+      return [
+        {
+          kind: 'tool',
+          title: toolTitle('Bash', { command }),
+          body: asString(item.aggregated_output) ?? asString(item.output),
+          failed: item.status === 'failed' || (typeof exitCode === 'number' && exitCode !== 0),
+          call: { name: 'Bash', input: { command } },
+        },
+      ];
     }
     case 'tool_call':
     case 'mcp_tool_call': {
       const tool = asString(item.tool) ?? asString(item.name);
       if (tool === undefined) {
-        return rawDraft(line);
+        return [rawDraft(line)];
       }
       const server = asString(item.server);
+      const name = server ? `mcp__${server}__${tool}` : tool;
       const args = item.arguments ?? item.input;
+      const input = asRecord(args) ?? {};
       const detail = item.result ?? item.output ?? item.error ?? args;
-      return {
-        kind: 'tool',
-        title: toolTitle(server ? `mcp__${server}__${tool}` : tool, args),
-        body: detail === undefined ? undefined : (blockText(detail) ?? JSON.stringify(detail, null, 2)),
-        failed: item.status === 'failed' || item.error !== undefined,
-      };
+      return [
+        {
+          kind: 'tool',
+          title: toolTitle(name, input),
+          body: detail === undefined ? undefined : (blockText(detail) ?? JSON.stringify(detail, null, 2)),
+          failed: item.status === 'failed' || item.error !== undefined,
+          call: { name, input },
+        },
+      ];
+    }
+    case 'file_change': {
+      const changes = Array.isArray(item.changes) ? item.changes : [];
+      const drafts = changes.flatMap((change) => {
+        const path = asString(asRecord(change)?.path);
+        if (path === undefined) {
+          return [];
+        }
+        const kind = asString(asRecord(change)?.kind);
+        return [
+          {
+            kind: 'tool' as const,
+            title: toolTitle('Edit', { file_path: path }),
+            body: kind,
+            call: { name: 'Edit', input: { file_path: path } },
+          },
+        ];
+      });
+      return drafts.length > 0 ? drafts : [rawDraft(line)];
     }
     default:
-      return rawDraft(line);
+      return [rawDraft(line)];
   }
 }
 
@@ -250,7 +302,10 @@ interface Parsed {
 function parseEvent(event: Json, type: string, line: string): Parsed {
   const at = eventTime(event);
 
-  if (type === 'thread.started' || type === 'turn.started' || type === 'turn.completed') {
+  if (type === 'thread.started') {
+    return { drafts: [{ kind: 'session', title: '会话开始' }], at };
+  }
+  if (type === 'turn.started' || type === 'turn.completed') {
     return { drafts: [], at };
   }
   if (type === 'item.started' || type === 'item.completed') {
@@ -258,7 +313,7 @@ function parseEvent(event: Json, type: string, line: string): Parsed {
     if (!item) {
       return { drafts: [rawDraft(line)], at };
     }
-    return { drafts: [codexItemDraft(item, line)], itemId: asString(item.id), at: at ?? eventTime(item) };
+    return { drafts: codexDrafts(item, line), itemId: asString(item.id), at: at ?? eventTime(item) };
   }
   if (CLAUDE_HEARTBEATS.has(type)) {
     return { drafts: [], at };
@@ -277,8 +332,9 @@ export function parseTranscript(raw: string): TranscriptEntry[] | null {
   }
 
   const entries: TranscriptEntry[] = [];
-  // codex emits `item.started` then `item.completed` for one item; the later event replaces the earlier row.
-  const itemSlots = new Map<string, number>();
+  // codex emits `item.started` then `item.completed` for one item; the later event replaces the earlier
+  // rows. An item can carry several rows (a `file_change` has one per path), so every offset is tracked.
+  const itemSlots = new Map<string, number[]>();
   let events = 0;
 
   lines.forEach((line, index) => {
@@ -302,14 +358,21 @@ export function parseTranscript(raw: string): TranscriptEntry[] | null {
       if (at !== undefined) {
         entry.at = at;
       }
-      const slot = itemId === undefined ? undefined : itemSlots.get(itemId);
+      if (itemId === undefined) {
+        entries.push(entry);
+        return;
+      }
+      let slots = itemSlots.get(itemId);
+      if (slots === undefined) {
+        slots = [];
+        itemSlots.set(itemId, slots);
+      }
+      const slot = slots[offset];
       if (slot !== undefined) {
         entries[slot] = { ...entry, id: entries[slot]?.id ?? entry.id };
         return;
       }
-      if (itemId !== undefined) {
-        itemSlots.set(itemId, entries.length);
-      }
+      slots[offset] = entries.length;
       entries.push(entry);
     });
   });

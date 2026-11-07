@@ -23,9 +23,9 @@ import {
   listClusterLocks,
   listClusterWorkers,
 } from '../api';
+import { type CachedJobDetail, type ListedJob, loadJobDetail } from '../lib/jobCache';
 import { hasOutput, setOutput } from '../lib/outputs';
 import { buildRuns, type Run, type TaskRow } from '../lib/runs';
-import { isLive } from '../lib/stage';
 import { toMs } from '../lib/time';
 import { useNow } from '../lib/useNow';
 import { mergeWorkers } from '../lib/workers';
@@ -83,10 +83,6 @@ export function useCluster(): ClusterData {
   return data;
 }
 
-function isTerminal(status: string): boolean {
-  return status === 'completed' || status === 'failed' || status === 'cancelled';
-}
-
 interface Snapshot {
   rows: TaskRow[];
   help: ClusterHelpRequest[];
@@ -129,27 +125,19 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
 
   const now = useNow();
 
-  /** A terminal job no longer changes, so its detail is read once. */
-  const finishedJobs = useRef(new Map<string, ClusterJobWithDetail | null>());
+  /** Details of finished jobs, each answering only for the run it was read for. */
+  const finishedJobs = useRef(new Map<string, CachedJobDetail>());
   const inFlight = useRef<Promise<void> | null>(null);
   const rerun = useRef(false);
   const running = useRef(new Set<string>());
   const historyLimitRef = useRef(historyLimit);
   historyLimitRef.current = historyLimit;
 
-  const loadJob = useCallback(async (jobId: string, status: string): Promise<ClusterJobWithDetail | null> => {
-    const known = finishedJobs.current.get(jobId);
-    if (known !== undefined) {
-      return known;
-    }
-    // The scheduler keeps a week of jobs in memory; an older one 404s and has no task rows left to show.
-    const detail = await getClusterJob(jobId).catch(() => null);
-    // A job ends with its root task; a planner's children can outlive it and still change.
-    if (isTerminal(status) && !detail?.tasks.some(isLive)) {
-      finishedJobs.current.set(jobId, detail);
-    }
-    return detail;
-  }, []);
+  const loadJob = useCallback(
+    (job: ListedJob): Promise<ClusterJobWithDetail | null> =>
+      loadJobDetail(finishedJobs.current, job, (jobId) => getClusterJob(jobId).catch(() => null)),
+    [],
+  );
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -166,7 +154,7 @@ export function ClusterDataProvider({ children }: { children: ReactNode }) {
           listClusterLocks(),
           listClusterHistoryJobs({ limit: historyLimitRef.current }),
         ]);
-        const jobs = await Promise.all(history.items.map((job) => loadJob(job.id, job.status)));
+        const jobs = await Promise.all(history.items.map((job) => loadJob(job)));
 
         const rows = new Map<string, TaskRow>();
         const workerExits = new Map<string, number>();

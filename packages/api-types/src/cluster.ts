@@ -253,9 +253,15 @@ export interface ClusterTaskSubscribedEvent {
   subscriptions: ClusterTaskSubscriptions;
 }
 
+/** A child a planner spawned, with the sibling tasks its plan required to land first. */
+export interface ClusterTaskChild extends ClusterTask {
+  /** The plan's `depends_on`; empty when the child waited for no sibling. */
+  dependsOn: string[];
+}
+
 /** `GET /api/cluster/tasks/:id` — a planner task also carries the tasks it spawned. */
 export interface ClusterTaskDetail extends ClusterTask {
-  children?: ClusterTask[];
+  children?: ClusterTaskChild[];
   /** Unset when the task has no live subscriptions. */
   subscriptions?: ClusterTaskSubscriptions;
 }
