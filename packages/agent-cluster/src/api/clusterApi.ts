@@ -42,6 +42,7 @@ import type {
   ClusterEventListResponse,
   ClusterHelpAnswerBody,
   ClusterHelpAnsweredResponse,
+  ClusterHelpNotifiedResponse,
   ClusterHelpRequest,
   ClusterJob,
   ClusterJobCancelledResponse,
@@ -552,6 +553,13 @@ export class ClusterApi implements HubRoute {
           }
           const answered = live.answerHelpRequest(answerMatch[1], body.answer, body.answeredBy || 'human');
           return jsonResponse<ClusterHelpAnsweredResponse>({ answered });
+        }
+
+        // /help/:id/notified
+        const notifiedMatch = subPath.match(/^\/help\/([^/]+)\/notified$/);
+        if (notifiedMatch) {
+          const notified = live.getHub().markHelpRequestNotified(notifiedMatch[1]);
+          return jsonResponse<ClusterHelpNotifiedResponse>({ notified });
         }
 
         return errorResponse('Not found', 404);

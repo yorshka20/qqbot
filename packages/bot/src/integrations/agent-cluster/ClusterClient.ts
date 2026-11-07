@@ -14,6 +14,7 @@ import type { WorkerProbeResult } from '@qqbot/agent-cluster';
 import type {
   ClusterDaemonHealthResponse,
   ClusterHelpAnsweredResponse,
+  ClusterHelpNotifiedResponse,
   ClusterHelpRequest,
   ClusterJob,
   ClusterJobSubmitBody,
@@ -124,6 +125,14 @@ export class ClusterClient {
       { answer, answeredBy },
     );
     return res.answered;
+  }
+
+  async markHelpRequestNotified(askId: string): Promise<boolean> {
+    const res = await this.json<ClusterHelpNotifiedResponse>(
+      'POST',
+      `/api/cluster/help/${encodeURIComponent(askId)}/notified`,
+    );
+    return res.notified;
   }
 
   /** `POST /api/cluster/probe` — the daemon checks each worker template's provider credentials. */

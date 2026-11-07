@@ -1182,10 +1182,17 @@ export class ContextHub {
 
   /**
    * A task reached a terminal status (the scheduler says so): wake whoever waits on it. Its own
-   * subscriptions end here too, which covers a task that never had a worker to exit.
+   * subscriptions end here too, which covers a task that never had a worker to exit. Its
+   * unanswered questions expire: nobody is left to read an answer.
    */
   taskSettled(taskId: string): void {
     this.dropSubscriptions(taskId);
+    for (const request of this.helpRequests.values()) {
+      if (request.taskId === taskId && request.status === 'pending') {
+        request.status = 'expired';
+        this.persistHelpRequest(request);
+      }
+    }
     for (const [workerId, waiter] of this.waiters) {
       if (waiter.tasks.has(taskId)) {
         this.waiters.delete(workerId);
@@ -1407,6 +1414,19 @@ export class ContextHub {
       text: answer,
     });
 
+    return true;
+  }
+
+  /**
+   * Records that the owner has been told about a pending question. Kept in memory only: a pending
+   * request cannot outlive the daemon, because `loadHelpRequests` expires every pending row at startup.
+   */
+  markHelpRequestNotified(askId: string): boolean {
+    const request = this.helpRequests.get(askId);
+    if (!request || request.status !== 'pending') {
+      return false;
+    }
+    request.notifiedAt = new Date().toISOString();
     return true;
   }
 

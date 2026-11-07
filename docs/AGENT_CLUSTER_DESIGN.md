@@ -198,6 +198,8 @@ worker 同样按 `waiting` 处理。
   expectedResponseTime?: string // 预估回复时间（如 "planner 通常 1-2 分钟内回复"）
 ```
 
+一个问题在被回答、或其任务终结（settle）时结束，后者把它标为 `expired`，之后不能再回答。owner 只被通知一次：daemon 用 `notifiedAt` 记录已通知，bot 重启后不会重发。
+
 #### `hub_message`
 
 自由形式的 worker 间通信。

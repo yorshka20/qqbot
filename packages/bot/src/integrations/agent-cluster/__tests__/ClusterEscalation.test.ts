@@ -27,9 +27,21 @@ function harness(initialPending: ClusterHelpRequest[]) {
   const pending = [...initialPending];
   const sent: Array<{ userId: string; text: string; protocol: string }> = [];
   let failNextSend = false;
+  let failNextMark = false;
   let stream: { onEvent: (e: ClusterEvent) => void; onConnect?: () => void } | null = null;
   const client = {
-    getPendingHelpRequests: async () => [...pending],
+    getPendingHelpRequests: async () => pending.map((r) => ({ ...r })),
+    markHelpRequestNotified: async (askId: string) => {
+      if (failNextMark) {
+        failNextMark = false;
+        throw new Error('mark failed');
+      }
+      const entry = pending.find((r) => r.id === askId);
+      if (entry) {
+        entry.notifiedAt = '2026-11-04T00:00:01.000Z';
+      }
+      return Boolean(entry);
+    },
     events: async (onEvent: (e: ClusterEvent) => void, signal: AbortSignal, onConnect?: () => void) => {
       stream = { onEvent, onConnect };
       await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve(), { once: true }));
@@ -46,13 +58,17 @@ function harness(initialPending: ClusterHelpRequest[]) {
   } as unknown as MessageAPI;
   const permissionChecker = { getOwnerId: () => '10000001' } as unknown as PermissionChecker;
   const config = { getEnabledProtocols: () => [{ name: 'milky' }] } as unknown as Config;
-  const escalation = new ClusterEscalation(client, messageAPI, permissionChecker, config);
+  const create = () => new ClusterEscalation(client, messageAPI, permissionChecker, config);
   return {
-    escalation,
+    escalation: create(),
+    create,
     pending,
     sent,
     failNextSend: () => {
       failNextSend = true;
+    },
+    failNextMark: () => {
+      failNextMark = true;
     },
     connect: async () => {
       stream?.onConnect?.();
@@ -105,5 +121,50 @@ describe('ClusterEscalation', () => {
     await h.connect();
     expect(h.sent).toHaveLength(2);
     h.escalation.stop();
+  });
+
+  test('does not send a request the daemon already marked notified', async () => {
+    const h = harness([request('c1', { notifiedAt: '2026-11-04T00:00:01.000Z' })]);
+    h.escalation.start();
+    await h.connect();
+    expect(h.sent).toHaveLength(0);
+    h.escalation.stop();
+  });
+
+  test('marks a sent request, but not one whose send failed', async () => {
+    const h = harness([request('d1')]);
+    h.escalation.start();
+    h.failNextSend();
+    await h.connect();
+    expect(h.pending[0].notifiedAt).toBeUndefined();
+
+    await h.connect();
+    expect(h.sent).toHaveLength(1);
+    expect(h.pending[0].notifiedAt).toBeString();
+    h.escalation.stop();
+  });
+
+  test('a failed mark does not cause a second send', async () => {
+    const h = harness([request('e1')]);
+    h.escalation.start();
+    h.failNextMark();
+    await h.connect();
+    await h.connect();
+    expect(h.sent).toHaveLength(1);
+    h.escalation.stop();
+  });
+
+  test('a restarted bot does not resend what it already sent', async () => {
+    const h = harness([request('f1')]);
+    h.escalation.start();
+    await h.connect();
+    expect(h.sent).toHaveLength(1);
+    h.escalation.stop();
+
+    const restarted = h.create();
+    restarted.start();
+    await h.connect();
+    expect(h.sent).toHaveLength(1);
+    restarted.stop();
   });
 });

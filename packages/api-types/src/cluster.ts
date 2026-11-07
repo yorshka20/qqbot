@@ -344,6 +344,7 @@ export interface ClusterHelpRequest {
   answeredBy?: string;
   createdAt: string;
   answeredAt?: string;
+  notifiedAt?: string;
 }
 
 /** `POST /api/cluster/jobs` */
@@ -438,6 +439,11 @@ export interface ClusterJobCancelledResponse {
 /** `POST /api/cluster/help/:id/answer` */
 export interface ClusterHelpAnsweredResponse {
   answered: boolean;
+}
+
+/** `POST /api/cluster/help/:id/notified` */
+export interface ClusterHelpNotifiedResponse {
+  notified: boolean;
 }
 
 /** `GET /api/cluster/history/jobs` */

@@ -118,6 +118,30 @@ describe('hub_ask and hub_answer', () => {
     expect(() => hub.handleAnswer(planner, { askId, answer: 'b' })).toThrow('already answered');
   });
 
+  test("settling a task expires its pending questions and only those", () => {
+    const first = addTask('first', 'coder');
+    const second = addTask('second', 'coder');
+    const { askId: firstAsk } = ask(first);
+    const { askId: secondAsk } = ask(second);
+
+    hub.taskSettled('first');
+
+    expect(hub.getPendingHelpRequests().map((r) => r.id)).toEqual([secondAsk]);
+    expect(hub.answerHelpRequest(firstAsk, 'late', 'owner')).toBe(false);
+  });
+
+  test('marking a question notified sets notifiedAt on a pending one only', () => {
+    const first = addTask('first', 'coder');
+    const { askId } = ask(first);
+
+    expect(hub.markHelpRequestNotified(askId)).toBe(true);
+    expect(hub.getPendingHelpRequests()[0].notifiedAt).toBeString();
+    expect(hub.markHelpRequestNotified('missing')).toBe(false);
+
+    hub.taskSettled('first');
+    expect(hub.markHelpRequestNotified(askId)).toBe(false);
+  });
+
   test('only the planner of the asking child can answer', () => {
     addTask('plan', 'planner');
     const stranger = addTask('other-plan', 'planner');

@@ -21,11 +21,13 @@ interface OwnerTarget {
  * The daemon's SSE stream announces each new request (`help_request`), but the pending list is
  * the source of truth: every announcement and every (re)connection reconciles against
  * `GET /api/cluster/help`, so a request raised while the bot was disconnected is still
- * delivered, and each one is delivered once.
+ * delivered. The daemon holds the delivery state (`notifiedAt`), so a bot restart does not
+ * send a request again.
  */
 @singleton()
 export class ClusterEscalation {
   private abort: AbortController | null = null;
+  // Guards overlapping syncPending runs; delivery across restarts is the daemon's `notifiedAt`.
   private readonly notified = new Set<string>();
 
   constructor(
@@ -87,7 +89,7 @@ export class ClusterEscalation {
       }
     }
     for (const request of pending) {
-      if (this.notified.has(request.id)) {
+      if (request.notifiedAt || this.notified.has(request.id)) {
         continue;
       }
       this.notified.add(request.id);
@@ -96,6 +98,12 @@ export class ClusterEscalation {
       } catch (err) {
         this.notified.delete(request.id);
         logger.error(`${TAG} failed to notify owner ${target.ownerId} via ${target.protocol}:`, err);
+        continue;
+      }
+      try {
+        await this.client.markHelpRequestNotified(request.id);
+      } catch (err) {
+        logger.warn(`${TAG} could not record that owner was told about ${request.id}:`, err);
       }
     }
   }

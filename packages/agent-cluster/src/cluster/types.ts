@@ -304,6 +304,7 @@ export interface HelpRequest {
   answeredBy?: string;
   createdAt: string;
   answeredAt?: string;
+  notifiedAt?: string;
 }
 
 // ── MCP Tool I/O types ──
