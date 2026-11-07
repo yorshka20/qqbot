@@ -71,6 +71,7 @@ describe('ClusterScheduler resumes a session instead of keeping its worker alive
       findTask: (taskId) => scheduler.findTask(taskId),
       isTaskSettled: (taskId) => scheduler.isTaskSettled(taskId),
       taskInboxed: (taskId, type) => scheduler.taskInboxed(taskId, type),
+      routeMessage: (task) => scheduler.routeMessage(task),
     });
     hub.setReportCallback((_workerId, taskId, input) => {
       const task = taskId && scheduler.getActiveTask(taskId);

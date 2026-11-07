@@ -33,7 +33,7 @@ import { logger } from '@qqbot/shared';
 import type { ProjectEntry, ProjectRegistry } from '../../codingAgent/ProjectRegistry';
 import type { ClusterConfig } from '../config';
 import { git, runGit } from '../git';
-import type { WorktreePoolStatus } from '../types';
+import type { WorkspaceCatchUp, WorktreePoolStatus } from '../types';
 
 export type SlotKind = 'executor' | 'planner';
 type StoredSlotKind = SlotKind | 'publish';
@@ -57,6 +57,8 @@ interface SlotRow {
   lockHash: string | null;
 }
 
+const CATCH_UP_MAX_COMMITS = 30;
+const CATCH_UP_MAX_FILES = 50;
 const COMMAND_TIMEOUT_MS = 15 * 60_000;
 const LOCKFILES = ['bun.lock', 'bun.lockb', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'];
 const DEFAULT_INSTALL: Partial<Record<ProjectEntry['type'], string>> = { bun: 'bun install', node: 'npm install' };
@@ -237,19 +239,65 @@ export class WorktreePool {
   }
 
   /**
-   * Put a slot leased again back on the task's own branch, as the task left it. A slot the task
-   * still holds is left alone: the worker's uncommitted work is in it.
+   * Put a slot leased again back on the task's own branch, as the task left it, and move the
+   * branch to the integration tip when that loses nothing. A slot the task still holds is left
+   * alone: the worker's uncommitted work is in it.
    */
-  async reopen(lease: SlotLease, entry: ProjectEntry, branch: string, held: boolean): Promise<void> {
+  async reopen(
+    lease: SlotLease,
+    entry: ProjectEntry,
+    branch: string,
+    integrationBranch: string,
+    held: boolean,
+  ): Promise<WorkspaceCatchUp | undefined> {
     if (held) {
-      return;
+      return undefined;
     }
     await this.ensureWorktree(lease.path, entry);
     await git(lease.path, ['checkout', '-f', branch], slotEnv(lease.path));
     await git(lease.path, ['clean', '-fd'], slotEnv(lease.path));
+    const catchUp = await this.catchUp(lease, branch, integrationBranch);
     if (lease.kind === 'executor') {
       await this.installIfLockChanged(lease.project, lease.slot, lease.path, entry, `${lease.taskId}.install.log`);
     }
+    return catchUp;
+  }
+
+  private async catchUp(lease: SlotLease, branch: string, integrationBranch: string): Promise<WorkspaceCatchUp> {
+    const env = slotEnv(lease.path);
+    const previousHead = await git(lease.path, ['rev-parse', 'HEAD'], env);
+    const integrationHead = await git(lease.path, ['rev-parse', integrationBranch], env);
+    const log = await git(
+      lease.path,
+      ['log', `--max-count=${CATCH_UP_MAX_COMMITS}`, '--format=%H%x09%s', `${previousHead}..${integrationHead}`],
+      env,
+    );
+    const commits = log
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [sha, ...subject] = line.split('\t');
+        return { sha, subject: subject.join('\t') };
+      });
+    const changes = await git(lease.path, ['diff', '--name-status', previousHead, integrationHead], env);
+    const changedFiles = changes.split('\n').filter(Boolean).slice(0, CATCH_UP_MAX_FILES);
+
+    if (previousHead === integrationHead) {
+      return { previousHead, head: previousHead, advanced: false, commits, changedFiles };
+    }
+    const ancestor = await runGit(lease.path, ['merge-base', '--is-ancestor', previousHead, integrationHead], env);
+    if (ancestor.code !== 0) {
+      return {
+        previousHead,
+        head: previousHead,
+        advanced: false,
+        commits,
+        changedFiles,
+        reason: `${branch} has commits that ${integrationBranch} does not`,
+      };
+    }
+    await git(lease.path, ['checkout', '-f', '-B', branch, integrationHead], env);
+    return { previousHead, head: integrationHead, advanced: true, commits, changedFiles };
   }
 
   /** What `git status --porcelain` shows in the slot; empty when it is clean or was never set up. */

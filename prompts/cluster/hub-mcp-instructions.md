@@ -19,6 +19,7 @@
 | 工具 | 用途 | 要点 |
 |------|------|------|
 | `hub_spawn` | 创建 executor 子 worker | **必须指定 `template`**（匹配 `cluster.workerTemplates` 的 key）；返回 `childTaskId`；`subscribe.tasks` 写 plan 的 `depends_on`，child 排队到依赖合入才启动 |
+| `hub_continue` | 给自己的某个 child 一条新指令，已结束的会被唤醒 | `taskId` 是 `hub_spawn` 返回的 `childTaskId`；instruction 写什么是新的、什么变了；被拒绝才新 `hub_spawn`；受 `maxChildren` 约束 |
 | `hub_answer` | 回答 child 的 `hub_ask` | 消息里带 `askId`；该由人定的问题不用答，owner 也看得到 |
 | `hub_query_task` | 非阻塞查询子任务状态 | 只能查询自己 spawn 的 children |
 | `hub_wait_task` | 短等一个子任务结束 | 和 `hub_wait` 同样只做短等；等 child 干活用 `hub_report(waiting)` 退出 |

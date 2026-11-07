@@ -146,6 +146,17 @@ backend 的 session 续跑（claude `--resume`、codex `exec resume`）起一个
 已经 `completed` / `failed` / `blocked` 的任务被人发话也会这样唤醒。退出码 0、没有终态 report、还有 child 没结束的
 worker 同样按 `waiting` 处理。
 
+**planner 续用 child（`hub_continue`）。** planner 专属工具 `hub_continue({ taskId, instruction })` 只接受自己的 child，
+按 `scheduler.routeMessage` 路由：child 有 live worker 就是 `messageWorker`（route `worker`），可续跑就是 `messageTask`
+（route `resume`，directive 唤醒 completed / failed / blocked / waiting 的任务），其余拒绝，planner 改 `hub_spawn`。
+续跑和派发共用 `childPlaceFree`，所以受 job 的 `maxChildren` 约束，名额满时 `tryResume` 返回 `busy` 继续排队。
+
+**续跑时的工作区补齐。** `WorktreePool.reopen`（pooled，且槽位不是该任务一直持有的）把任务分支 checkout 后，若分支 tip 是集成分支 tip 的祖先
+（`merge-base --is-ancestor`），用 `checkout -B` 把分支移到集成分支 tip，否则不动。结果以 `WorkspaceCatchUp`
+（`previousHead` / `head` / `advanced` / 至多 30 个提交 / 至多 50 个改动文件 / 没移动的 `reason`）放在 `WorkerWorkspace` 上。
+`resume.md` 的 `{{WORKSPACE}}` 渲染它，连同任务上次的结束状态、`error` 和 `diffSummary`（没有补齐信息的 unpooled 任务为空）；
+planner 续跑时 `{{CHILDREN}}` 列出每个 child 的状态、是否已合入、能否续用（`resumeContext.ts`）。
+
 ```
 描述: 上报你的状态。working = 有进展的检查点；waiting = 没事可做，报完结束回合，
       等的事发生时 daemon 用同一个 session 唤醒你；completed/failed/blocked 结束任务。

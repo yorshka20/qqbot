@@ -10,6 +10,7 @@ import type { ProjectEntry, ProjectRegistry } from '../codingAgent/ProjectRegist
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { MessageType } from './hub/MessageBox';
+import type { ResumeChild } from './resumeContext';
 import type { TaskSource } from './sources/TaskSource';
 import {
   type HubSubscribeInput,
@@ -909,6 +910,7 @@ export class ClusterScheduler {
       return 'dropped';
     }
     const templateName = task.workerTemplate as string;
+    if (!this.childPlaceFree(task)) return 'busy';
     if (!this.workerPool.canSpawnMore(templateName)) return 'busy';
 
     const heldSlot = this.workspaces.holdsSlot(task.id);
@@ -916,6 +918,7 @@ export class ClusterScheduler {
     if (claim === 'busy') return 'busy';
     const lease = claim === 'unpooled' ? null : claim;
 
+    const previous = { status: task.status, error: task.error, diffSummary: task.diffSummary };
     this.reopenTask(task);
     const now = new Date().toISOString();
     task.status = 'claimed';
@@ -933,10 +936,24 @@ export class ClusterScheduler {
       sessionId: task.sessionId as string,
       updates,
       heldSlot,
+      previous,
+      children: this.slotKind(templateName) === 'planner' ? this.resumeChildren(task) : undefined,
     });
     if (lease === null) return (await spawned) ? 'resumed' : 'dropped';
     void spawned;
     return 'resumed';
+  }
+
+  private resumeChildren(planner: TaskRecord): ResumeChild[] {
+    return this.getChildTasks(planner.id).map((child) => ({
+      id: child.id,
+      workerTemplate: child.workerTemplate,
+      status: child.status,
+      merged: Boolean(child.mergedAt),
+      resumable: this.routeMessage(child).kind === 'resume',
+      description: child.description,
+      diffSummary: child.diffSummary,
+    }));
   }
 
   /** An ended task comes back to life: it counts as open again, and so does its job. */

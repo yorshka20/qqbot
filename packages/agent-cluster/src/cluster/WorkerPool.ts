@@ -24,6 +24,7 @@ import {
   workspacePromptName,
   workspacePromptVars,
 } from './prompts';
+import { type PreviousRun, type ResumeChild, renderChildren, renderWorkspaceChanges } from './resumeContext';
 import {
   type ClusterStatus,
   type HubUpdate,
@@ -65,6 +66,10 @@ export interface WorkerResume {
   sessionId: string;
   /** What arrived while the task had no worker: the resumed session's first input. */
   updates: HubUpdate[];
+  /** How the task ended last time. */
+  previous?: PreviousRun;
+  /** For a planner: its children. */
+  children?: ResumeChild[];
 }
 
 const RESUME_PROMPT = 'resume.md';
@@ -442,6 +447,8 @@ export class WorkerPool {
         // The session already holds the role prompt and the task; it only needs what happened since.
         const taskPrompt = renderPrompt(await loadClusterPrompt(RESUME_PROMPT, projectPath), {
           UPDATES: renderUpdates(resume.updates),
+          WORKSPACE: renderWorkspaceChanges(workspace?.catchUp, workspace?.integrationBranch, resume.previous),
+          CHILDREN: renderChildren(resume.children ?? []),
         });
         launch = await backend.resume({ ...spawnConfig, taskPrompt, sessionId: resume.sessionId });
       } else {

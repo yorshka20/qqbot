@@ -28,6 +28,7 @@ import type {
   HubAnswerInput,
   HubAskInput,
   HubClaimInput,
+  HubContinueInput,
   HubDirectiveInput,
   HubDispatchInput,
   HubMessageInput,
@@ -411,6 +412,26 @@ export class HubMCPServer {
       async (args, extra) =>
         this.runTool('hub_spawn', extra, (workerId) =>
           this.hub.handleSpawn(workerId, args as unknown as HubSpawnInput),
+        ),
+    );
+
+    // hub_continue
+    register(
+      'hub_continue',
+      {
+        description:
+          'PLANNER ONLY. Give one of your own children a new instruction and, if it has ended, wake it: it keeps ' +
+          'its session and branch, and the daemon tells it what changed in the workspace since it ended. Use it ' +
+          'when follow-up work touches what that child did, instead of spawning a new executor. Refused for a task ' +
+          'that is not your child or cannot be resumed (e.g. still queued): then hub_spawn.',
+        inputSchema: {
+          taskId: z.string().describe('The childTaskId returned by hub_spawn.'),
+          instruction: z.string().describe('What is new and what changed since the child last ended.'),
+        },
+      },
+      async (args, extra) =>
+        this.runTool('hub_continue', extra, (workerId) =>
+          this.hub.handleContinue(workerId, args as unknown as HubContinueInput),
         ),
     );
 

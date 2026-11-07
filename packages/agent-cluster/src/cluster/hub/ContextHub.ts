@@ -37,6 +37,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
+import type { MessageRoute } from '../ClusterScheduler';
 import type { ClusterConfig } from '../config';
 import { readClusterPrompt, renderPrompt } from '../prompts';
 import { bucketForProject, findTicketDir, ticketDirForCreate } from '../tickets/storage';
@@ -49,6 +50,8 @@ import type {
   HubAskOutput,
   HubClaimInput,
   HubClaimOutput,
+  HubContinueInput,
+  HubContinueOutput,
   HubDirectiveInput,
   HubDispatchInput,
   HubMessageInput,
@@ -154,6 +157,8 @@ export interface SchedulerBridge {
   isTaskSettled(taskId: string): boolean;
   /** Something arrived for a task that has no worker: a parked or ended task may be woken by it. */
   taskInboxed(taskId: string, type: MessageType): void;
+  /** Where a message to this task goes right now. */
+  routeMessage(task: TaskRecord): MessageRoute;
 }
 
 /**
@@ -1014,6 +1019,37 @@ export class ContextHub {
       // means a worker is on its way, even if its slot is still being prepared.
       status: child.status === 'pending' ? 'queued' : 'running',
     };
+  }
+
+  /**
+   * Hub side of `hub_continue`: hand a new instruction to one of the caller's own children,
+   * waking it if it has ended. The child keeps its session and branch; a child that cannot be
+   * woken is refused, and the planner spawns a new executor instead.
+   */
+  handleContinue(workerId: string, input: HubContinueInput): HubContinueOutput {
+    this.workerRegistry.touch(workerId);
+    const reg = this.workerRegistry.get(workerId);
+    if (!reg || reg.role !== 'planner') {
+      throw new Error('hub_continue is only available to planner-role workers');
+    }
+    const parent = this.currentTaskOf(workerId, 'hub_continue');
+    const bridge = this.schedulerBridge as SchedulerBridge;
+    const child = bridge.findTask(input.taskId);
+    if (!child || child.parentTaskId !== parent.id) {
+      throw new Error(`hub_continue: task ${input.taskId} is not one of your children`);
+    }
+    const route = bridge.routeMessage(child);
+    if (route.kind === 'worker') {
+      this.messageWorker(route.workerId, child.id, input.instruction, workerId);
+      return { taskId: child.id, route: 'worker' };
+    }
+    if (route.kind === 'resume') {
+      this.messageTask(child.id, input.instruction, workerId);
+      return { taskId: child.id, route: 'resume' };
+    }
+    throw new Error(
+      `hub_continue: ${route.reason}. hub_spawn a new executor instead and paste this child's summary into its description.`,
+    );
   }
 
   /**

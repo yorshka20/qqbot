@@ -5,3 +5,7 @@
 做完可做的事之后，还有要等的就再 `hub_report(waiting)` 并结束回合；全部做完就 `hub_report(completed)`。
 
 {{UPDATES}}
+
+{{WORKSPACE}}
+
+{{CHILDREN}}

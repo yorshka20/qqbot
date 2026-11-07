@@ -44,6 +44,7 @@ describe('subscriptions against a real scheduler and real merges', () => {
       findTask: (taskId) => scheduler.findTask(taskId),
       isTaskSettled: (taskId) => scheduler.isTaskSettled(taskId),
       taskInboxed: (taskId, type) => scheduler.taskInboxed(taskId, type),
+      routeMessage: (task) => scheduler.routeMessage(task),
     });
     return { hub, pool, scheduler };
   }

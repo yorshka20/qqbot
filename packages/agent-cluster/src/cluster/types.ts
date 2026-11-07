@@ -498,6 +498,19 @@ export interface HubSpawnOutput {
   status: 'queued' | 'running';
 }
 
+export interface HubContinueInput {
+  /** A child of the calling planner. */
+  taskId: string;
+  /** What is new, and what changed since the child last ended. */
+  instruction: string;
+}
+
+export interface HubContinueOutput {
+  taskId: string;
+  /** `'worker'`: the instruction went to its running worker; `'resume'`: it wakes the ended or parked task. */
+  route: 'worker' | 'resume';
+}
+
 export interface HubQueryTaskInput {
   taskId: string;
 }
@@ -615,6 +628,22 @@ export interface WorkerWorkspace {
   baseBranch?: string;
   /** For a planner: which `prompts/cluster/planning-<mode>.md` it works under. */
   planning: PlanningMode;
+  /** Set when a resumed task's branch was brought up to the integration branch's tip, or could not be. */
+  catchUp?: WorkspaceCatchUp;
+}
+
+/** What changed in a resumed task's workspace since its worker last ended. */
+export interface WorkspaceCatchUp {
+  previousHead: string;
+  head: string;
+  /** The task branch was moved to the integration tip. */
+  advanced: boolean;
+  /** `previousHead..integration`, newest first. */
+  commits: Array<{ sha: string; subject: string }>;
+  /** `git diff --name-status previousHead..integration`, one entry per line. */
+  changedFiles: string[];
+  /** Why the branch was not advanced. */
+  reason?: string;
 }
 
 /**

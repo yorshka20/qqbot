@@ -142,7 +142,7 @@ export class TaskWorkspaces {
   ): Promise<WorkerWorkspace> {
     const branch = task.branch ?? taskBranchName(job.id, task.id);
     const integrationBranch = job.integrationBranch ?? integrationBranchName(job.id);
-    await this.pool.reopen(lease, entry, branch, held);
+    const catchUp = await this.pool.reopen(lease, entry, branch, integrationBranch, held);
     task.branch = branch;
     task.worktreePath = lease.path;
     return {
@@ -159,6 +159,7 @@ export class TaskWorkspaces {
       integrationBranch,
       baseBranch: job.baseBranch,
       planning: job.planning,
+      catchUp,
     };
   }
 

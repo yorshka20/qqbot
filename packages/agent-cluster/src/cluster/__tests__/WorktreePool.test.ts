@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { git } from '../git';
 import { WorktreePool } from '../workspace/WorktreePool';
-import { createSandbox, openClusterDb, PROJECT, removeSeedRepo, type Sandbox } from './worktreeFixtures';
+import { commitFile, createSandbox, openClusterDb, PROJECT, removeSeedRepo, type Sandbox } from './worktreeFixtures';
 
 afterAll(removeSeedRepo);
 
@@ -291,5 +291,60 @@ describe('WorktreePool', () => {
 
     expect(await pool.gc()).toEqual([]);
     expect(existsSync(slot.path)).toBe(true);
+  });
+  describe('reopen catches the task branch up with the integration branch', () => {
+    /** A task that committed on its branch and ended, and a second slot to move the integration branch with. */
+    async function endedTask() {
+      const first = leaseOrThrow('executor', 'task-1');
+      await git(box.repo, ['branch', 'cluster/job']);
+      await pool.prepare(first, box.entry, 'cluster/job-task', 'cluster/job');
+      await commitFile(first.path, 'own.txt', 'own\n', 'own work');
+      await pool.release(first);
+      return { scratch: leaseOrThrow('executor', 'task-2') };
+    }
+
+    async function integrate(scratch: ReturnType<typeof leaseOrThrow>, from: string): Promise<void> {
+      await pool.prepare(scratch, box.entry, 'scratch', from);
+      await commitFile(scratch.path, 'sibling.txt', 'x\n', 'sibling work');
+      await git(box.repo, ['branch', '-f', 'cluster/job', 'scratch']);
+    }
+
+    test('a branch behind the integration tip is moved to it, with the new commits and files reported', async () => {
+      const { scratch } = await endedTask();
+      await integrate(scratch, 'cluster/job-task');
+      const lease = leaseOrThrow('executor', 'task-1');
+
+      const catchUp = await pool.reopen(lease, box.entry, 'cluster/job-task', 'cluster/job', false);
+
+      const tip = await git(box.repo, ['rev-parse', 'cluster/job']);
+      expect(catchUp).toMatchObject({ advanced: true, head: tip });
+      expect(catchUp?.reason).toBeUndefined();
+      expect(catchUp?.commits.map((c) => c.subject)).toEqual(['sibling work']);
+      expect(catchUp?.changedFiles).toEqual(['A\tsibling.txt']);
+      expect(await git(lease.path, ['rev-parse', 'HEAD'])).toBe(tip);
+      expect(await git(lease.path, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('cluster/job-task');
+    });
+
+    test('a branch with commits the integration branch lacks stays where it is, with the reason', async () => {
+      const { scratch } = await endedTask();
+      await integrate(scratch, 'master');
+      const lease = leaseOrThrow('executor', 'task-1');
+      const ownHead = await git(box.repo, ['rev-parse', 'cluster/job-task']);
+
+      const catchUp = await pool.reopen(lease, box.entry, 'cluster/job-task', 'cluster/job', false);
+
+      expect(catchUp?.advanced).toBe(false);
+      expect(catchUp?.reason).toContain('cluster/job-task');
+      expect(catchUp?.head).toBe(ownHead);
+      expect(await git(lease.path, ['rev-parse', 'HEAD'])).toBe(ownHead);
+      expect(catchUp?.commits.map((c) => c.subject)).toEqual(['sibling work']);
+    });
+
+    test('a slot the task still holds is left alone', async () => {
+      const { scratch } = await endedTask();
+      await integrate(scratch, 'cluster/job-task');
+      const lease = leaseOrThrow('executor', 'task-1');
+      expect(await pool.reopen(lease, box.entry, 'cluster/job-task', 'cluster/job', true)).toBeUndefined();
+    });
   });
 });

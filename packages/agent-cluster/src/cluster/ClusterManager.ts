@@ -108,6 +108,7 @@ export class ClusterManager {
       findTask: (taskId) => this.scheduler.findTask(taskId),
       isTaskSettled: (taskId) => this.scheduler.isTaskSettled(taskId),
       taskInboxed: (taskId, type) => this.scheduler.taskInboxed(taskId, type),
+      routeMessage: (task) => this.scheduler.routeMessage(task),
     });
 
     this.hub.setReportCallback((workerId, taskId, input) => {
