@@ -1,7 +1,7 @@
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { MessageBuilder } from '@/message/MessageBuilder';
-import { renderUsageCardImage } from '@/services/tokenUsage/renderUsageCard';
+import { formatUnpricedWarning, renderUsageCardImage } from '@/services/tokenUsage/renderUsageCard';
 import { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -67,6 +67,10 @@ export class UsageCommandHandler implements CommandHandler {
         );
       });
     }
+    const reportWarning = formatUnpricedWarning(report.unpricedModels);
+    if (reportWarning) {
+      lines.push('', reportWarning);
+    }
     lines.push('', '我的近三日：');
     for (const d of mine) {
       lines.push(
@@ -74,6 +78,10 @@ export class UsageCommandHandler implements CommandHandler {
           ? `  ${d.date} · 无`
           : `  ${d.date} · 输入 ${fmt(d.promptTokens)} / 输出 ${fmt(d.completionTokens)} / 合计 ${fmt(d.totalTokens)}${fmtCost(d.cost)}${d.totalImages > 0 ? ` · ${d.totalImages}图` : ''}`,
       );
+    }
+    const mineWarning = formatUnpricedWarning([...new Set(mine.flatMap((d) => d.unpricedModels))].sort());
+    if (mineWarning) {
+      lines.push(mineWarning);
     }
     return lines.join('\n');
   }

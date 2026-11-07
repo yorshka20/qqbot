@@ -18,6 +18,16 @@ export interface UsageCardData {
   avatarMap?: Map<string, string>;
 }
 
+/** Warning that `models` are priced at $0 because `modelPricing` has no entry; null when none. */
+export function formatUnpricedWarning(models: string[]): string | null {
+  return models.length > 0 ? `⚠️ 未定价模型（费用按 $0 计，实际开销被低估）：${models.join(', ')}` : null;
+}
+
+function unpricedBlock(models: string[]): string {
+  const warning = formatUnpricedWarning(models);
+  return warning ? `<div class="unpriced">${esc(warning)}</div>` : '';
+}
+
 const IN_COLOR = '#2563eb'; // input (prompt) tokens
 const OUT_COLOR = '#f59e0b'; // output (completion) tokens
 
@@ -239,6 +249,8 @@ export function renderUsageCardHTML(data: UsageCardData): string {
 
   .cost-tag { font-size: 12px; font-weight: 600; color: #059669; margin-left: 8px; }
 
+  .unpriced { margin-top: 12px; padding: 8px 12px; border-radius: 10px; font-size: 12px; color: #92400e; background: #fef3c7; }
+
   .empty { text-align: center; color: #94a3b8; padding: 24px 0; font-size: 14px; }
 
   /* My recent days */
@@ -296,12 +308,14 @@ export function renderUsageCardHTML(data: UsageCardData): string {
           <span class="io"><i class="dot dot-out"></i>输出 (completion)</span>
         </div>
         ${buildTopRows(report.topUsers, avatarMap)}
+        ${unpricedBlock(report.unpricedModels)}
       </div>
 
       <div class="section">
         <div class="section-title">我的近三日</div>
         <div class="mine-head">${selfLabel}</div>
         ${buildMineRows(mine)}
+        ${unpricedBlock([...new Set(mine.flatMap((d) => d.unpricedModels))].sort())}
       </div>
     </div>
   </div>

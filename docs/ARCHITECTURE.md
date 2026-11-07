@@ -755,6 +755,11 @@ ones at `cachedInput` (only DeepSeek reports them; most of its input is cache hi
 completion at `output`. An image row prices the same way when its provider reports token
 counts — the Images API does, and gpt-image is billed on exactly those tokens — and falls
 back to `perImage` for providers that report none (Gemini image, local backends).
+A model with no `modelPricing` entry counts $0: `/usage` names it in a warning line (the
+report's `unpricedModels`, which also lists a row without a model as `(unknown)`), and
+`TokenUsageService.record` logs a warning the first time it stores one. An entry of
+`{ "input": 0, "output": 0 }` counts as priced, which is how a deliberately free model
+(a local backend) stays out of that list.
 
 - **Per-user cap** (`userDailyLimitUsd`, `userDailyLimitOverrides`) — `GateCheckStage` asks
   `UsageBudgetService.checkUser` after the whitelist gate and before `onMessageBeforeAI`

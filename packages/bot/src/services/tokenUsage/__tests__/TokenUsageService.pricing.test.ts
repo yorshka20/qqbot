@@ -1,5 +1,6 @@
 import 'reflect-metadata';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
+import { logger } from '@qqbot/shared';
 import type { Config, ModelPricingEntry } from '@/core/config';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { TokenUsageRecord } from '@/database/models/types';
@@ -11,6 +12,7 @@ const PRICING: Record<string, ModelPricingEntry> = {
   'image-model': { perImage: 0.15 },
   'token-image-model': { input: 8, cachedInput: 2, output: 30 },
   'discounted-model': { input: 2, cachedInput: 0.2, output: 10, budgetMultiplier: 0.1 },
+  'free-model': { input: 0, output: 0 },
   'family-*': { input: 2, output: 2 },
 };
 
@@ -161,6 +163,63 @@ describe('TokenUsageService pricing', () => {
       expect((await service.getGroupSpend('10000001', date)).cost).toBeCloseTo(2, 10);
       expect((await service.getDailyReport(date, 10)).cost).toBeCloseTo(2, 10);
       expect((await service.getUserDailyBreakdown('a', [date]))[0].cost).toBeCloseTo(2, 10);
+    });
+  });
+
+  describe('unpriced models', () => {
+    async function seed() {
+      const service = makeService();
+      const tokens = { promptTokens: 10, completionTokens: 5 };
+      await service.record(event({ model: 'text-model', ...tokens }));
+      await service.record(event({ model: 'free-model', ...tokens }));
+      await service.record(event({ model: 'zz-unpriced', ...tokens }));
+      await service.record(event({ model: 'aa-unpriced', userId: '20000002', ...tokens }));
+      await service.record(event({ model: 'aa-unpriced', ...tokens }));
+      return service;
+    }
+
+    it('lists unpriced models in the daily report across all users, not just the top-N', async () => {
+      const service = await seed();
+      const report = await service.getDailyReport(service.getLocalDate(), 1);
+
+      expect(report.unpricedModels).toEqual(['aa-unpriced', 'zz-unpriced']);
+    });
+
+    it('lists unpriced models in the per-user breakdown and omits priced and zero-priced ones', async () => {
+      const service = await seed();
+      const [day] = await service.getUserDailyBreakdown('20000001', [service.getLocalDate()]);
+
+      expect(day.unpricedModels).toEqual(['aa-unpriced', 'zz-unpriced']);
+    });
+
+    it('lists a row without a model as (unknown)', async () => {
+      const service = makeService();
+      await service.record(event({ promptTokens: 10 }));
+      const report = await service.getDailyReport(service.getLocalDate(), 5);
+
+      expect(report.unpricedModels).toEqual(['(unknown)']);
+    });
+
+    it('warns once per unpriced model and never for a priced one', async () => {
+      const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
+      try {
+        const service = makeService();
+        await service.record(event({ model: 'zz-unpriced', promptTokens: 10 }));
+        await service.record(event({ model: 'zz-unpriced', promptTokens: 10 }));
+        await service.record(event({ model: 'free-model', promptTokens: 10 }));
+        await service.record(event({ model: 'text-model', promptTokens: 10 }));
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(String(warn.mock.calls[0][0])).toContain('zz-unpriced');
+        expect(String(warn.mock.calls[0][0])).toContain('deepseek');
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('still prices an unpriced model at 0', async () => {
+      const service = makeService();
+      expect(await service.record(event({ model: 'zz-unpriced', promptTokens: 1_000_000 }))).toBe(0);
     });
   });
 });

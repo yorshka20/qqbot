@@ -66,6 +66,8 @@ export interface DailyReport {
   totalTokens: number;
   totalImages: number;
   cost: number;
+  /** Models seen that day with no `modelPricing` entry; their cost is counted as 0. */
+  unpricedModels: string[];
   topUsers: UserUsageAgg[];
 }
 
@@ -88,11 +90,17 @@ export interface DailyUsageAgg {
   totalTokens: number;
   totalImages: number;
   cost: number;
+  /** Models seen that day with no `modelPricing` entry; their cost is counted as 0. */
+  unpricedModels: string[];
   byProvider: ProviderUsageAgg[];
 }
 
+const UNKNOWN_MODEL = '(unknown)';
+
 @singleton()
 export class TokenUsageService {
+  private readonly warnedUnpricedModels = new Set<string>();
+
   constructor(
     @inject(DatabaseManager) private databaseManager: DatabaseManager,
     @inject(DITokens.CONFIG) private config: Config,
@@ -145,6 +153,12 @@ export class TokenUsageService {
     } catch (err) {
       logger.warn('[TokenUsageService] Failed to persist usage record:', err);
       return null;
+    }
+    if (!this.getModelPricing(record.model) && !this.warnedUnpricedModels.has(record.model ?? UNKNOWN_MODEL)) {
+      this.warnedUnpricedModels.add(record.model ?? UNKNOWN_MODEL);
+      logger.warn(
+        `[TokenUsageService] No modelPricing entry for model "${record.model ?? UNKNOWN_MODEL}" (provider ${record.provider}); its usage is counted as $0`,
+      );
     }
     return this.priceUsage(record);
   }
@@ -236,6 +250,7 @@ export class TokenUsageService {
       totalTokens: aggs.reduce((s, u) => s + u.totalTokens, 0),
       totalImages: aggs.reduce((s, u) => s + u.totalImages, 0),
       cost: aggs.reduce((s, u) => s + u.cost, 0),
+      unpricedModels: this.findUnpricedModels(rows),
       topUsers: aggs.slice(0, limit),
     };
   }
@@ -254,6 +269,7 @@ export class TokenUsageService {
         totalTokens: byProvider.reduce((s, p) => s + p.totalTokens, 0),
         totalImages: byProvider.reduce((s, p) => s + p.imageCount, 0),
         cost: byProvider.reduce((s, p) => s + p.cost, 0),
+        unpricedModels: this.findUnpricedModels(rows),
         byProvider,
       });
     }
@@ -275,6 +291,17 @@ export class TokenUsageService {
       }
     }
     return undefined;
+  }
+
+  /** Sorted unique model names in `rows` that have no pricing entry; a row without a model is `(unknown)`. */
+  private findUnpricedModels(rows: TokenUsageRecord[]): string[] {
+    const names = new Set<string>();
+    for (const row of rows) {
+      if (!this.getModelPricing(row.model)) {
+        names.add(row.model || UNKNOWN_MODEL);
+      }
+    }
+    return [...names].sort();
   }
 
   /** USD for one call priced with `modelPricing`; 0 when the model has no price. */
