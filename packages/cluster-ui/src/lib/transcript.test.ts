@@ -29,6 +29,13 @@ describe('parseTranscript', () => {
     expect(entries?.[0]?.body).toContain('"file_path"');
   });
 
+  test('keeps a tool_use call structured with its name, input and id', () => {
+    const entries = parseTranscript(
+      jsonl(assistant({ type: 'tool_use', id: 'u1', name: 'Grep', input: { pattern: 'useOutput', path: 'src' } })),
+    );
+    expect(entries?.[0]?.call).toEqual({ name: 'Grep', input: { pattern: 'useOutput', path: 'src' }, id: 'u1' });
+  });
+
   test('marks an errored tool_result as failed', () => {
     const entries = parseTranscript(
       jsonl({
@@ -42,6 +49,16 @@ describe('parseTranscript', () => {
       body: 'ENOENT: no such file\nat x',
       failed: true,
     });
+  });
+
+  test('points a tool_result at the call it answers', () => {
+    const entries = parseTranscript(
+      jsonl({
+        type: 'user',
+        message: { content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'ok' }] },
+      }),
+    );
+    expect(entries?.[0]?.resultOf).toBe('u1');
   });
 
   test('joins text blocks of an array tool_result', () => {
@@ -63,12 +80,12 @@ describe('parseTranscript', () => {
     expect(parseTranscript(lines.join('\n'))?.map((entry) => entry.kind)).toEqual(['text']);
   });
 
-  test('skips system init events', () => {
+  test('starts a session on a claude system init event', () => {
     const entries = parseTranscript(
       jsonl({ type: 'system', subtype: 'init', session_id: 's' }, assistant({ type: 'text', text: '开始' })),
     );
-    expect(entries).toHaveLength(1);
-    expect(entries?.[0]?.kind).toBe('text');
+    expect(entries?.map((entry) => entry.kind)).toEqual(['session', 'text']);
+    expect(entries?.[0]).toMatchObject({ kind: 'session', title: '会话开始' });
   });
 
   test('marks an errored result as failed with its own title', () => {
@@ -93,7 +110,10 @@ describe('parseTranscript', () => {
         { type: 'turn.completed', usage: {} },
       ),
     );
-    expect(entries).toEqual([{ id: 't2', kind: 'text', title: '已经改好了', body: '已经改好了' }]);
+    expect(entries).toEqual([
+      { id: 't0', kind: 'session', title: '会话开始' },
+      { id: 't2', kind: 'text', title: '已经改好了', body: '已经改好了' },
+    ]);
   });
 
   test('collapses a codex item started then completed into one row', () => {
@@ -105,6 +125,45 @@ describe('parseTranscript', () => {
     );
     expect(entries).toHaveLength(1);
     expect(entries?.[0]).toMatchObject({ id: 't0', kind: 'tool', title: '执行 bash: bun test', body: 'ok', failed: true });
+  });
+
+  test('keeps a codex command_execution call structured as Bash', () => {
+    const entries = parseTranscript(
+      jsonl({ type: 'item.completed', item: { id: 'i1', type: 'command_execution', command: 'bun run lint', status: 'completed' } }),
+    );
+    expect(entries?.[0]?.call).toEqual({ name: 'Bash', input: { command: 'bun run lint' } });
+  });
+
+  test('names a codex mcp_tool_call after its server and tool', () => {
+    const entries = parseTranscript(
+      jsonl({
+        type: 'item.completed',
+        item: { id: 'i2', type: 'mcp_tool_call', server: 'hub', tool: 'hub_sync', arguments: { since: 3 } },
+      }),
+    );
+    expect(entries?.[0]?.call).toEqual({ name: 'mcp__hub__hub_sync', input: { since: 3 } });
+    expect(entries?.[0]?.title).toBe('调用 hub · hub_sync');
+  });
+
+  test('turns each path of a codex file_change into one Edit row', () => {
+    const entries = parseTranscript(
+      jsonl({
+        type: 'item.completed',
+        item: {
+          id: 'i3',
+          type: 'file_change',
+          changes: [
+            { path: '/work/repo/src/a.ts', kind: 'update' },
+            { path: '/work/repo/src/b.ts', kind: 'add' },
+          ],
+        },
+      }),
+    );
+    expect(entries?.map((entry) => entry.title)).toEqual(['编辑 src/a.ts', '编辑 src/b.ts']);
+    expect(entries?.map((entry) => entry.call)).toEqual([
+      { name: 'Edit', input: { file_path: '/work/repo/src/a.ts' } },
+      { name: 'Edit', input: { file_path: '/work/repo/src/b.ts' } },
+    ]);
   });
 
   test('keeps a codex item it cannot read as raw instead of dropping it', () => {
