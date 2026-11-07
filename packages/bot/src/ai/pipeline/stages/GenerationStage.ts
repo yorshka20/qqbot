@@ -232,6 +232,7 @@ export class GenerationStage implements ReplyStage {
         maxToolRounds: genOptions.maxToolRounds,
         sessionId: genOptions.sessionId,
         reasoningEffort: genOptions.reasoningEffort,
+        usageRecordedByCaller: true,
         nativeWebSearch: effectiveNativeSearchEnabled,
         toolExecutor,
         onReasoning,

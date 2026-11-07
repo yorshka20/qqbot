@@ -3,6 +3,7 @@
 import type {
   AIGenerateResponse,
   AIManager,
+  AIProvider,
   ChatMessage,
   LLMCapability,
   StreamingHandler,
@@ -14,7 +15,10 @@ import { inject, singleton } from 'tsyringe';
 import { ProviderSelector } from '@/ai/ProviderSelector';
 import type { LLMCallOptions } from '@/ai/types';
 import { DITokens } from '@/core/DITokens';
+import { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
 import { normalizeVisionImages } from '../utils/imageUtils';
+
+type NamedVisionProvider = AIProvider & VisionCapability;
 
 /**
  * Vision Service
@@ -25,7 +29,20 @@ export class VisionService {
   constructor(
     @inject(DITokens.AI_MANAGER) private aiManager: AIManager,
     @inject(ProviderSelector) private providerSelector: ProviderSelector,
+    @inject(TokenUsageService) private tokenUsage: TokenUsageService,
   ) {}
+
+  /** Vision calls bypass LLMService and its trace, so each response is recorded here. */
+  private recordUsage(provider: NamedVisionProvider, response: AIGenerateResponse): AIGenerateResponse {
+    if (response.usage) {
+      void this.tokenUsage.recordSystemLLM({
+        provider: provider.name,
+        model: response.resolvedModel,
+        usage: response.usage,
+      });
+    }
+    return response;
+  }
 
   /**
    * Generate text with vision (multimodal input)
@@ -47,7 +64,7 @@ export class VisionService {
     });
 
     // Determine which provider to use
-    let provider: VisionCapability | null = null;
+    let provider: NamedVisionProvider | null = null;
     const sessionId = options?.sessionId;
 
     if (providerName) {
@@ -77,7 +94,7 @@ export class VisionService {
       }
     }
 
-    return await provider.generateWithVision(prompt, normalizedImages, options);
+    return this.recordUsage(provider, await provider.generateWithVision(prompt, normalizedImages, options));
   }
 
   /**
@@ -148,7 +165,7 @@ export class VisionService {
       maxSize: 10 * 1024 * 1024, // 10MB default
     });
 
-    let provider: VisionCapability | null = null;
+    let provider: NamedVisionProvider | null = null;
     const sessionId = options?.sessionId;
 
     if (providerName) {
@@ -201,7 +218,7 @@ export class VisionService {
     });
 
     // Determine which provider to use
-    let provider: VisionCapability | null = null;
+    let provider: NamedVisionProvider | null = null;
     const sessionId = options?.sessionId;
 
     if (providerName) {
@@ -248,7 +265,7 @@ export class VisionService {
 
     const finalMessages = messages;
 
-    let provider: VisionCapability | null = null;
+    let provider: NamedVisionProvider | null = null;
     const sessionId = options?.sessionId;
     if (providerName) {
       const preferredProvider = this.aiManager.getProviderForCapability('vision', providerName);
@@ -276,7 +293,7 @@ export class VisionService {
     }
 
     if (typeof provider.generateWithVisionMessages === 'function') {
-      return await provider.generateWithVisionMessages(finalMessages, options);
+      return this.recordUsage(provider, await provider.generateWithVisionMessages(finalMessages, options));
     }
 
     // Fallback: flatten to single prompt + all images (order may not match; use when provider has no messages API)
@@ -302,6 +319,6 @@ export class VisionService {
       }
     }
     const flattenedPrompt = textParts.join('\n\n');
-    return await provider.generateWithVision(flattenedPrompt, allImages, options);
+    return this.recordUsage(provider, await provider.generateWithVision(flattenedPrompt, allImages, options));
   }
 }

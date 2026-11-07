@@ -7,7 +7,13 @@
 import { logger } from '@qqbot/shared';
 import type { Page } from 'puppeteer-core';
 import { BrowserService } from '@/services/browser/BrowserService';
-import type { DailyReport, DailyUsageAgg, ProviderUsageAgg, UserUsageAgg } from './TokenUsageService';
+import {
+  type DailyReport,
+  type DailyUsageAgg,
+  type ProviderUsageAgg,
+  SYSTEM_USER_ID,
+  type UserUsageAgg,
+} from './TokenUsageService';
 
 export interface UsageCardData {
   report: DailyReport;
@@ -55,8 +61,12 @@ function fmtCost(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
-function avatarSrc(userId: string, avatarMap?: Map<string, string>): string {
-  return avatarMap?.get(userId) ?? `https://q1.qlogo.cn/g?b=qq&nk=${userId}&s=140`;
+function avatarImg(userId: string, avatarMap?: Map<string, string>): string {
+  if (userId === SYSTEM_USER_ID) {
+    return `<span class="avatar"></span>`;
+  }
+  const src = avatarMap?.get(userId) ?? `https://q1.qlogo.cn/g?b=qq&nk=${userId}&s=140`;
+  return `<img class="avatar" src="${src}" alt="" />`;
 }
 
 function providerChips(byProvider: ProviderUsageAgg[]): string {
@@ -97,7 +107,7 @@ function buildTopRows(top: UserUsageAgg[], avatarMap?: Map<string, string>): str
       return `
       <div class="row">
         ${rankBadge(i)}
-        <img class="avatar" src="${avatarSrc(u.userId, avatarMap)}" alt="" />
+        ${avatarImg(u.userId, avatarMap)}
         <div class="row-body">
           <div class="row-head">
             <span class="name">${name}</span>
@@ -327,17 +337,19 @@ export function renderUsageCardHTML(data: UsageCardData): string {
 async function prefetchAvatars(userIds: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   await Promise.allSettled(
-    userIds.map(async (uid) => {
-      try {
-        const res = await fetch(`https://q1.qlogo.cn/g?b=qq&nk=${uid}&s=140`);
-        if (!res.ok) return;
-        const buf = Buffer.from(await res.arrayBuffer());
-        const ct = res.headers.get('content-type') || 'image/jpeg';
-        map.set(uid, `data:${ct};base64,${buf.toString('base64')}`);
-      } catch {
-        // Fall back to the external URL in the HTML.
-      }
-    }),
+    userIds
+      .filter((uid) => uid !== SYSTEM_USER_ID)
+      .map(async (uid) => {
+        try {
+          const res = await fetch(`https://q1.qlogo.cn/g?b=qq&nk=${uid}&s=140`);
+          if (!res.ok) return;
+          const buf = Buffer.from(await res.arrayBuffer());
+          const ct = res.headers.get('content-type') || 'image/jpeg';
+          map.set(uid, `data:${ct};base64,${buf.toString('base64')}`);
+        } catch {
+          // Fall back to the external URL in the HTML.
+        }
+      }),
   );
   return map;
 }

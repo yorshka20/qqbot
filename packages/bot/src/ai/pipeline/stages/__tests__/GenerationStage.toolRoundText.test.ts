@@ -25,8 +25,10 @@ interface Round {
 async function runStage(rounds: Round[], final: ToolUseGenerateResponse) {
   const sent: MessageSegment[][] = [];
   const history: string[] = [];
+  const callOptions: ToolUseGenerateOptions[] = [];
   const llmService = {
     generateWithTools: async (_messages: unknown, _tools: unknown, options: ToolUseGenerateOptions) => {
+      callOptions.push(options);
       for (const round of rounds) {
         await options.onToolRoundText?.(round.text, round.calls);
       }
@@ -73,7 +75,7 @@ async function runStage(rounds: Round[], final: ToolUseGenerateResponse) {
   ctx.genOptions = { temperature: 0.7, sessionId: 'group:10000002', reasoningEffort: 'medium', maxToolRounds: 15 };
 
   await stage.execute(ctx);
-  return { sent, history, ctx };
+  return { sent, history, ctx, callOptions };
 }
 
 const research: FunctionCall = { name: 'research', arguments: '{}' };
@@ -109,5 +111,11 @@ describe('GenerationStage tool-round text', () => {
     );
 
     expect(sent).toEqual([[{ type: 'text', data: { text: '稍等' } }]]);
+  });
+
+  it('marks its calls as recorded by the caller so trace observers do not count them again', async () => {
+    const { callOptions } = await runStage([], { text: '好了', stopReason: 'end_turn' });
+
+    expect(callOptions[0]).toMatchObject({ usageRecordedByCaller: true });
   });
 });

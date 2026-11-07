@@ -360,6 +360,82 @@ describe('LLMService trace observers', () => {
   });
 });
 
+describe('LLMService usageRecordedByCaller', () => {
+  function setup() {
+    const received: Array<AIGenerateOptions | undefined> = [];
+    let round = 0;
+    const provider = {
+      name: 'mock',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      supportsToolUse: true,
+      generate: async (_prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> => {
+        received.push(options);
+        round++;
+        return round === 1
+          ? { text: '', functionCalls: [{ name: 'noop', arguments: '{}', toolCallId: 'call_1' }] }
+          : { text: 'done' };
+      },
+    };
+    const aiManager = {
+      getProviderForCapability: (_cap: string, name?: string) => (name ? provider : null),
+      getProvidersForCapability: () => [],
+      getDefaultLLM: () => ({ provider: provider.name }),
+    } as unknown as AIManager;
+    const service = createLLMService(aiManager, { toolUseProviders: ['mock'], fallback: { fallbackOrder: [] } });
+    const seen: import('@/ai/types').LLMTraceEntry[] = [];
+    service.addTraceObserver((e) => seen.push(e));
+    return { service, received, seen };
+  }
+  const tools: ToolDefinition[] = [
+    { name: 'noop', description: 'does nothing', parameters: { type: 'object', properties: {} } },
+  ];
+
+  it('keeps the flag on the trace entry and away from the provider', async () => {
+    const { service, received, seen } = setup();
+
+    await service.generate('hi', { reasoningEffort: 'none', usageRecordedByCaller: true }, { provider: 'mock' });
+
+    expect(seen[0].usageRecordedByCaller).toBe(true);
+    expect('usageRecordedByCaller' in (received[0] ?? {})).toBe(false);
+  });
+
+  it('flags every round of a tool loop', async () => {
+    const { service, received, seen } = setup();
+
+    await service.generateWithTools(
+      [{ role: 'user', content: 'hi' }],
+      tools,
+      { reasoningEffort: 'none', usageRecordedByCaller: true, toolExecutor: async () => 'ok' },
+      { provider: 'mock' },
+    );
+
+    expect(seen.map((e) => e.usageRecordedByCaller)).toEqual([true, true]);
+    expect(received.some((o) => o && 'usageRecordedByCaller' in o)).toBe(false);
+  });
+
+  it('flags a call that has no tools to run', async () => {
+    const { service, seen } = setup();
+
+    await service.generateWithTools(
+      [{ role: 'user', content: 'hi' }],
+      [],
+      { reasoningEffort: 'none', usageRecordedByCaller: true },
+      { provider: 'mock' },
+    );
+
+    expect(seen.map((e) => e.usageRecordedByCaller)).toEqual([true]);
+  });
+
+  it('leaves the flag unset on a call that does not record its own usage', async () => {
+    const { service, seen } = setup();
+
+    await service.generate('hi', { reasoningEffort: 'none' }, { provider: 'mock' });
+
+    expect(seen[0].usageRecordedByCaller).toBeUndefined();
+  });
+});
+
 describe('LLMService prompt log', () => {
   const tools: ToolDefinition[] = [
     { name: 'noop', description: 'does nothing', parameters: { type: 'object', properties: {} } },

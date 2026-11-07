@@ -234,7 +234,7 @@ export class LLMService {
     opLabel: string,
     provider: string,
     prompt: string,
-    options: AIGenerateOptions | undefined,
+    options: LLMCallOptions | undefined,
     result: AIGenerateResponse,
     startedAt: number,
     conversationId: string,
@@ -245,6 +245,7 @@ export class LLMService {
       conversationId,
       provider,
       resolvedModel: result.resolvedModel,
+      usageRecordedByCaller: options?.usageRecordedByCaller,
       systemPrompt: options?.systemPrompt,
       prompt,
       messages: options?.messages,
@@ -1346,7 +1347,8 @@ export class LLMService {
    * after a failure, and its options object is already built by then.
    */
   private optionsForProvider(provider: LLMCapability, options: LLMCallOptions, target: LLMTarget): AIGenerateOptions {
-    const providerOptions: AIGenerateOptions = { ...options, model: target.model };
+    const { usageRecordedByCaller: _usageRecordedByCaller, ...forwarded } = options;
+    const providerOptions: AIGenerateOptions = { ...forwarded, model: target.model };
     if (!providerOptions.messages?.length) {
       return providerOptions;
     }

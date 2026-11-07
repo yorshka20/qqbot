@@ -1,21 +1,25 @@
-// Usage tracking plugin — records per-user token/image consumption.
+// Usage tracking plugin — records token/image consumption.
 //
 // Decoupled by design: the generation producers (GenerationStage for LLM,
 // ImageFacadeService for image) stamp an `aiUsage` payload onto the HookContext
-// metadata; this plugin is the single consumer that reads it off the
-// `onAIGenerationComplete` hook and persists it. LLMService/ImageGenerationService
-// have no knowledge of usage tracking.
+// metadata; this plugin reads it off the `onAIGenerationComplete` hook and persists it
+// per user. Every other completed LLM call reaches it as a trace entry from LLMService
+// and is recorded under the system user; a reply-path call is flagged
+// `usageRecordedByCaller` and skipped there, so nothing is counted twice.
+// LLMService/ImageGenerationService have no knowledge of usage tracking.
 //
 // Always-on: the handlers intentionally do not gate on `this.enabled`. Hook
 // handlers are registered regardless of the config enable flag, and tracking is
 // infrastructure that should run for every reply without requiring a config entry.
 
 import { logger } from '@qqbot/shared';
+import { LLMService } from '@/ai/services/LLMService';
 import { ConversationMessageSender } from '@/conversation/ConversationMessageSender';
 import { getContainer } from '@/core/DIContainer';
 import type { HookContext } from '@/hooks/types';
 import { Hook, RegisterPlugin } from '@/plugins/decorators';
 import { PluginBase } from '@/plugins/PluginBase';
+import { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
 import { UsageNoticeService } from '@/services/tokenUsage/UsageNoticeService';
 
 @RegisterPlugin({
@@ -37,6 +41,19 @@ export class UsageTrackingPlugin extends PluginBase {
   async onInit(): Promise<void> {
     this.noticeService = getContainer().resolve(UsageNoticeService);
     this.messageSender = getContainer().resolve(ConversationMessageSender);
+    const tokenUsage = getContainer().resolve(TokenUsageService);
+    getContainer()
+      .resolve(LLMService)
+      .addTraceObserver((entry) => {
+        if (entry.usageRecordedByCaller || !entry.response.usage) {
+          return;
+        }
+        void tokenUsage.recordSystemLLM({
+          provider: entry.provider,
+          model: entry.resolvedModel,
+          usage: entry.response.usage,
+        });
+      });
   }
 
   @Hook({ stage: 'onAIGenerationComplete', priority: 'NORMAL', order: 100 })

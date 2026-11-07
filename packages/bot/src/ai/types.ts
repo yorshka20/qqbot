@@ -35,7 +35,18 @@ export interface ToolResult {
  * option: it travels with its provider in the call's `LLMTarget`, so a model can never
  * reach a provider it was not chosen for.
  */
-export type LLMCallOptions = Omit<AIGenerateOptions, 'model'> & Required<Pick<AIGenerateOptions, 'reasoningEffort'>>;
+export type LLMCallOptions = Omit<AIGenerateOptions, 'model'> &
+  Required<Pick<AIGenerateOptions, 'reasoningEffort'>> &
+  UsageAttributionOptions;
+
+/**
+ * Set by a caller that sums the usage of its call itself and records it against a user.
+ * It is read by LLMService for the trace entry and never reaches a provider; without it,
+ * a completed call is recorded as system usage.
+ */
+export interface UsageAttributionOptions {
+  usageRecordedByCaller?: boolean;
+}
 
 /** Tool Use generation options */
 export interface ToolUseGenerateOptions extends AIGenerateOptions {
@@ -70,7 +81,8 @@ export interface ToolUseGenerateOptions extends AIGenerateOptions {
 }
 
 export type ToolUseCallOptions = Omit<ToolUseGenerateOptions, 'model'> &
-  Required<Pick<AIGenerateOptions, 'reasoningEffort'>>;
+  Required<Pick<AIGenerateOptions, 'reasoningEffort'>> &
+  UsageAttributionOptions;
 
 /** Tool Use generation response */
 export interface ToolUseGenerateResponse extends AIGenerateResponse {
@@ -111,6 +123,8 @@ export interface LLMTraceEntry {
   conversationId: string;
   provider: string;
   resolvedModel?: string;
+  /** True when the caller records this call's usage itself, so a trace observer must not. */
+  usageRecordedByCaller?: boolean;
   systemPrompt?: string;
   /** The flat prompt argument (used by legacy single-turn callers). */
   prompt: string;

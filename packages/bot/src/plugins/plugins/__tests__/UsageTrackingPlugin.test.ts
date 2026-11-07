@@ -1,9 +1,12 @@
 import 'reflect-metadata';
 import { afterEach, describe, expect, it, vi } from 'bun:test';
+import { LLMService } from '@/ai/services/LLMService';
+import type { LLMTraceEntry } from '@/ai/types';
 import { ConversationMessageSender } from '@/conversation/ConversationMessageSender';
 import { getContainer } from '@/core/DIContainer';
 import { HookMetadataMap } from '@/hooks/metadata';
 import type { HookContext } from '@/hooks/types';
+import { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
 import { UsageNoticeService } from '@/services/tokenUsage/UsageNoticeService';
 import { UsageTrackingPlugin } from '../UsageTrackingPlugin';
 
@@ -34,14 +37,47 @@ async function makePlugin(notices: string[]) {
   const container = getContainer();
   container.registerInstance(UsageNoticeService, noticeService as unknown as UsageNoticeService);
   container.registerInstance(ConversationMessageSender, sender as unknown as ConversationMessageSender);
+  const observers: Array<(entry: LLMTraceEntry) => void> = [];
+  const llmService = { addTraceObserver: (observer: (entry: LLMTraceEntry) => void) => observers.push(observer) };
+  const tokenUsage = { recordSystemLLM: vi.fn(async () => null) };
+  container.registerInstance(LLMService, llmService as unknown as LLMService);
+  container.registerInstance(TokenUsageService, tokenUsage as unknown as TokenUsageService);
   const plugin = new UsageTrackingPlugin({ name: 'usage-tracking', version: '1.0.0', description: '' });
   await plugin.onInit();
-  return { plugin, noticeService, sender };
+  return { plugin, noticeService, sender, tokenUsage, trace: (entry: Partial<LLMTraceEntry>) => observers.forEach((o) => o(entry as LLMTraceEntry)) };
 }
 
 describe('UsageTrackingPlugin', () => {
   afterEach(() => {
     getContainer().clear();
+  });
+
+  describe('trace observer', () => {
+    const usage = { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 2 };
+
+    it('records a call outside the reply path as system usage', async () => {
+      const { tokenUsage, trace } = await makePlugin([]);
+
+      trace({ provider: 'deepseek', resolvedModel: 'deepseek-flash', response: { text: '', usage } });
+
+      expect(tokenUsage.recordSystemLLM).toHaveBeenCalledWith({ provider: 'deepseek', model: 'deepseek-flash', usage });
+    });
+
+    it('skips a call whose caller records the usage itself', async () => {
+      const { tokenUsage, trace } = await makePlugin([]);
+
+      trace({ provider: 'deepseek', usageRecordedByCaller: true, response: { text: '', usage } });
+
+      expect(tokenUsage.recordSystemLLM).not.toHaveBeenCalled();
+    });
+
+    it('skips a call that reported no usage', async () => {
+      const { tokenUsage, trace } = await makePlugin([]);
+
+      trace({ provider: 'deepseek', response: { text: '' } });
+
+      expect(tokenUsage.recordSystemLLM).not.toHaveBeenCalled();
+    });
   });
 
   it('records the usage once, with the opening prompt size, and consumes it', async () => {

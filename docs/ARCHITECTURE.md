@@ -749,7 +749,13 @@ Tool rounds are capped by `ai.chat.maxToolRounds` (default 5).
 
 `ai.usage` turns on spend controls priced with `ai.modelPricing` over the rows in
 `token_usage` (the numbers `/usage` reports, except the per-user cap, which also applies
-`budgetMultiplier`). Each key is active only while set; a day is
+`budgetMultiplier`). `token_usage` covers every completed LLM call: reply calls are rows
+under the user they served; every other call (reflection, memory extraction, classifiers,
+subagents, proactive replies, summaries, vision) is one row per call or tool-loop round under
+the `system` user with source `system`, written by a `UsageTrackingPlugin` trace observer
+(and by `VisionService`, which bypasses `LLMService`). `GenerationStage` flags its calls
+`usageRecordedByCaller` so the observer skips them. `system` has no group and is never
+checked against a cap. A failed call reports no usage and is not recorded. Each key is active only while set; a day is
 the server's local calendar day. Text rows price uncached prompt tokens at `input`, cached
 ones at `cachedInput` (only DeepSeek reports them; most of its input is cache hits) and
 completion at `output`. An image row prices the same way when its provider reports token

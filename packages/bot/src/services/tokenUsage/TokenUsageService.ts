@@ -1,16 +1,21 @@
 // Per-user token / image consumption tracking.
 //
-// One row is written per user-triggered LLM call (incl. subagent / tool-loop
-// iterations) and per image-generation call. Recording never throws: a
+// One row is written per reply-path LLM call (incl. subagent / tool-loop
+// iterations) and per image-generation call, under the user it served. Every other
+// completed LLM call is written under SYSTEM_USER_ID, which no cap ever checks. Recording never throws: a
 // persistence failure must never break reply generation. Aggregation happens at
 // read time (modest volume; keeps the schema flexible and adapter-agnostic).
 
+import type { AIGenerateResponse } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { Config, ModelPricingEntry } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { DatabaseManager } from '@/database/DatabaseManager';
 import type { TokenUsageRecord } from '@/database/models/types';
+
+/** User id of rows for LLM calls not made on behalf of a user; it is not a QQ number. */
+export const SYSTEM_USER_ID = 'system';
 
 export interface TokenUsageEvent {
   userId: string | number;
@@ -114,6 +119,27 @@ export class TokenUsageService {
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
+  }
+
+  /** Record a completed LLM call made outside the reply path; it counts against no user or group. */
+  async recordSystemLLM(call: {
+    provider: string;
+    model?: string;
+    usage: NonNullable<AIGenerateResponse['usage']>;
+  }): Promise<number | null> {
+    return this.record({
+      userId: SYSTEM_USER_ID,
+      nickname: '系统',
+      protocol: 'system',
+      provider: call.provider,
+      model: call.model,
+      type: 'llm',
+      source: 'system',
+      promptTokens: call.usage.promptTokens,
+      cachedPromptTokens: call.usage.cachedPromptTokens,
+      completionTokens: call.usage.completionTokens,
+      totalTokens: call.usage.totalTokens,
+    });
   }
 
   /**

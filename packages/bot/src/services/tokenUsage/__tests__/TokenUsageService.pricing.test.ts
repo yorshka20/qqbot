@@ -4,7 +4,7 @@ import { logger } from '@qqbot/shared';
 import type { Config, ModelPricingEntry } from '@/core/config';
 import type { DatabaseManager } from '@/database/DatabaseManager';
 import type { TokenUsageRecord } from '@/database/models/types';
-import { type TokenUsageEvent, TokenUsageService } from '../TokenUsageService';
+import { SYSTEM_USER_ID, type TokenUsageEvent, TokenUsageService } from '../TokenUsageService';
 
 const PRICING: Record<string, ModelPricingEntry> = {
   'text-model': { input: 1, cachedInput: 0.1, output: 4 },
@@ -221,5 +221,28 @@ describe('TokenUsageService pricing', () => {
       const service = makeService();
       expect(await service.record(event({ model: 'zz-unpriced', promptTokens: 1_000_000 }))).toBe(0);
     });
+  });
+});
+
+describe('TokenUsageService.recordSystemLLM', () => {
+  it('stores a groupless row under the system user that the report shows but no spend counts', async () => {
+    const service = makeService();
+    await service.record(event({ promptTokens: 1000, completionTokens: 100, model: 'text-model' }));
+    const userBefore = await service.getUserBudgetSpend('20000001', service.getLocalDate());
+    const groupBefore = await service.getGroupSpend('10000001', service.getLocalDate());
+
+    await service.recordSystemLLM({
+      provider: 'deepseek',
+      model: 'text-model',
+      usage: { promptTokens: 5000, completionTokens: 500, totalTokens: 5500, cachedPromptTokens: 2000 },
+    });
+
+    const day = service.getLocalDate();
+    const report = await service.getDailyReport(day, 10);
+    const system = report.topUsers.find((u) => u.userId === SYSTEM_USER_ID);
+    expect(system?.totalTokens).toBe(5500);
+    expect(system?.nickname).toBe('系统');
+    expect(await service.getUserBudgetSpend('20000001', day)).toBe(userBefore);
+    expect(await service.getGroupSpend('10000001', day)).toEqual(groupBefore);
   });
 });
