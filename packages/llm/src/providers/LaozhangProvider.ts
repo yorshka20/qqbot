@@ -433,10 +433,11 @@ export class LaozhangProvider
       systemPrompt.push({ text: `system: ${options.systemPrompt}\n\n` });
     }
     const contentsParts = [...systemPrompt, { text: prompt }, ...imageParts];
-    return this.generateContentText(model, contentsParts, {
+    const result = await this.generateContentText(model, contentsParts, {
       temperature: options?.temperature ?? 0.7,
       maxTokens: options?.maxTokens,
     });
+    return { ...result, resolvedModel: model };
   }
 
   async generateStreamWithVision(

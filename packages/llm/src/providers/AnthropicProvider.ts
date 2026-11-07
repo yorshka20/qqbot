@@ -595,6 +595,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       return {
         text,
         usage,
+        resolvedModel: model,
         metadata: {
           model: data.model,
         },

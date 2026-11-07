@@ -453,6 +453,7 @@ export class OpenAIProvider
       text: parsed.text,
       usage: parsed.usage,
       reasoningContent: parsed.reasoningContent,
+      resolvedModel: model,
       metadata: {
         model: response.model,
         finishReason: response.status,
@@ -488,6 +489,7 @@ export class OpenAIProvider
         text: parsed.text,
         usage: parsed.usage,
         reasoningContent: parsed.reasoningContent,
+        resolvedModel: model,
         metadata: {
           model: response.model,
           finishReason: response.status,

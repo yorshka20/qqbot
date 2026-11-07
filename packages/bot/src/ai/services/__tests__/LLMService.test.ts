@@ -1223,3 +1223,88 @@ describe('LLMService resolvedModel stamping', () => {
     });
   });
 });
+
+describe('LLMService fallback success trace', () => {
+  function setup() {
+    const failing = async (): Promise<AIGenerateResponse> => {
+      throw new HttpClientError('not found', 404);
+    };
+    const answer = async (): Promise<AIGenerateResponse> => ({
+      text: 'from alt',
+      resolvedModel: 'alt-model-1',
+      usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 },
+    });
+    const primary = {
+      name: 'primary',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      generate: failing,
+      generateStream: failing,
+    };
+    const alt = {
+      name: 'alt',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      generate: answer,
+      generateStream: async (_p: string, handler: (t: string) => void) => {
+        handler('from alt');
+        return answer();
+      },
+    };
+    const providers = [primary, alt];
+    const aiManager = {
+      getProviderForCapability: (_cap: string, name?: string) => (name ? providers.find((p) => p.name === name) : null),
+      getProvidersForCapability: () => providers,
+      getDefaultLLM: () => ({ provider: primary.name }),
+    } as unknown as AIManager;
+    const service = createLLMService(aiManager, { toolUseProviders: ['alt'], fallback: { fallbackOrder: ['alt'] } });
+    const seen: import('@/ai/types').LLMTraceEntry[] = [];
+    service.addTraceObserver((e) => seen.push(e));
+    return { service, seen };
+  }
+
+  it('generate emits one trace for the alternative and keeps usageRecordedByCaller', async () => {
+    const { service, seen } = setup();
+
+    const res = await service.generate('hi', { reasoningEffort: 'none', usageRecordedByCaller: true }, { provider: 'primary' });
+
+    expect(res.text).toBe('from alt');
+    expect(seen).toHaveLength(1);
+    expect(seen[0].opLabel).toBe('generate');
+    expect(seen[0].provider).toBe('alt');
+    expect(seen[0].resolvedModel).toBe('alt-model-1');
+    expect(seen[0].usageRecordedByCaller).toBe(true);
+    expect(seen[0].response.usage?.totalTokens).toBe(5);
+  });
+
+  it('generate leaves usageRecordedByCaller unset when the caller did not set it', async () => {
+    const { service, seen } = setup();
+
+    await service.generate('hi', { reasoningEffort: 'none' }, { provider: 'primary' });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].usageRecordedByCaller).toBeUndefined();
+  });
+
+  it('generateLite emits one trace for the alternative', async () => {
+    const { service, seen } = setup();
+
+    await service.generateLite('hi', { reasoningEffort: 'none' }, { provider: 'primary' });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].opLabel).toBe('generateLite');
+    expect(seen[0].provider).toBe('alt');
+    expect(seen[0].resolvedModel).toBe('alt-model-1');
+  });
+
+  it('generateStream emits one trace for the alternative', async () => {
+    const { service, seen } = setup();
+
+    await service.generateStream('hi', () => {}, { reasoningEffort: 'none', usageRecordedByCaller: true }, { provider: 'primary' });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].opLabel).toBe('generateStream');
+    expect(seen[0].provider).toBe('alt');
+    expect(seen[0].usageRecordedByCaller).toBe(true);
+  });
+});
