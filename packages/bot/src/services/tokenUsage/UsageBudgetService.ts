@@ -14,7 +14,7 @@ export interface BudgetExceeded {
 
 export interface BudgetReset {
   date: string;
-  /** Spend that no longer counts against the cap. Still reported by `/usage`. */
+  /** Spend that no longer counts against the cap, priced for the cap: can be lower than the cost `/usage` reports for the same rows, which still appear there. */
   waivedUsd: number;
   waivedRows: number;
   /** The cap the user is now measured against; null when no cap is configured. */

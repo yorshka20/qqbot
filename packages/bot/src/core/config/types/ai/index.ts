@@ -149,8 +149,10 @@ export const DEFAULT_CHAT_REASONING_EFFORTS: ChatReasoningEfforts = {
  * Keys are model name strings matching the `model` field persisted in TokenUsageRecord.
  * Glob-style trailing wildcard (`*`) is supported for prefix matching
  * (e.g. `"gpt-4o*"` covers `gpt-4o`, `gpt-4o-mini`, etc.).
+ * `budgetMultiplier` scales what the model counts for against the per-user daily cap, for a
+ * model that is not paid for at list price; reported cost is unaffected.
  */
-export type ModelPricingEntry = TokenPricing | ImagePricing;
+export type ModelPricingEntry = (TokenPricing | ImagePricing) & { budgetMultiplier?: number };
 
 /** USD per 1M tokens. */
 export interface TokenPricing {
@@ -166,8 +168,8 @@ export interface ImagePricing {
 }
 
 /**
- * Spend controls, all priced with `modelPricing` over the recorded usage. Each one
- * is active only when its key is set. Days are the server's local calendar days, the same
+ * Spend controls, all priced with `modelPricing` over the recorded usage (the per-user cap
+ * additionally applies `budgetMultiplier`). Each one is active only when its key is set. Days are the server's local calendar days, the same
  * days `/usage` reports.
  */
 export interface AIUsageConfig {

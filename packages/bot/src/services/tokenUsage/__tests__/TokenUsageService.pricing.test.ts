@@ -10,6 +10,7 @@ const PRICING: Record<string, ModelPricingEntry> = {
   'uncached-model': { input: 1, output: 4 },
   'image-model': { perImage: 0.15 },
   'token-image-model': { input: 8, cachedInput: 2, output: 30 },
+  'discounted-model': { input: 2, cachedInput: 0.2, output: 10, budgetMultiplier: 0.1 },
   'family-*': { input: 2, output: 2 },
 };
 
@@ -134,5 +135,32 @@ describe('TokenUsageService pricing', () => {
     expect((await service.getDailyReport(date, 10)).cost).toBeCloseTo(1, 10);
     // A second reset has nothing left to waive.
     expect(await service.waiveUserBudget('a', date)).toEqual({ waivedRows: 0, waivedCost: 0 });
+  });
+
+  describe('budgetMultiplier', () => {
+    async function recordDiscounted() {
+      const service = makeService();
+      const date = service.getLocalDate();
+      const cost = await service.record(
+        event({ userId: 'a', model: 'discounted-model', promptTokens: 1_000_000, completionTokens: 0 }),
+      );
+      return { service, date, cost };
+    }
+
+    it('scales only what counts against the cap', async () => {
+      const { service, date } = await recordDiscounted();
+
+      expect(await service.getUserBudgetSpend('a', date)).toBeCloseTo(0.2, 10);
+      expect((await service.waiveUserBudget('a', date)).waivedCost).toBeCloseTo(0.2, 10);
+    });
+
+    it('keeps every reported cost at the official price', async () => {
+      const { service, date, cost } = await recordDiscounted();
+
+      expect(cost).toBeCloseTo(2, 10);
+      expect((await service.getGroupSpend('10000001', date)).cost).toBeCloseTo(2, 10);
+      expect((await service.getDailyReport(date, 10)).cost).toBeCloseTo(2, 10);
+      expect((await service.getUserDailyBreakdown('a', [date]))[0].cost).toBeCloseTo(2, 10);
+    });
   });
 });

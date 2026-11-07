@@ -901,17 +901,21 @@
     // optionally cachedInput, for prompt tokens served from the provider's cache) in USD
     // per 1M tokens. Image models that report no token counts: perImage, USD per
     // generated image (gpt-image does report them, so it is priced per token).
+    // Any entry may add budgetMultiplier: it scales what that model counts for against the
+    // per-user daily cap only (e.g. 0.14 for a model paid for with free plan credit);
+    // /usage and group spend notices keep the full price.
     // "modelPricing": {
     //   "deepseek-flash": { "input": 0.3, "cachedInput": 0.006, "output": 1.2 },
     //   "gpt-5.6-terra": { "input": 2.0, "output": 12.0 },
     //   "claude-opus-5": { "input": 5.0, "output": 25.0 },
+    //   "claude-sonnet-5-5": { "input": 2.0, "cachedInput": 0.2, "output": 10.0, "budgetMultiplier": 0.14 },
     //   "gemini-3.7-flash": { "input": 0.75, "output": 3.75 },
     //   "gpt-image-2": { "input": 8.0, "cachedInput": 2.0, "output": 30.0 },
     //   "gemini-3.1-flash-image": { "perImage": 0.067 }
     // },
-    // Spend controls, priced with modelPricing over recorded usage (the same numbers
-    // /usage shows). Each one is active only while its key is set. A "day" is the
-    // server's local calendar day.
+    // Spend controls, priced with modelPricing over recorded usage. Only the per-user
+    // cap applies budgetMultiplier; everything else uses the numbers /usage shows. Each
+    // one is active only while its key is set. A "day" is the server's local calendar day.
     // "usage": {
     //   // Per-user cap per day (USD). Past it the user's replies are refused with a
     //   // one-line notice until the day turns. Admins (and the owner) are never capped,

@@ -150,18 +150,20 @@ export class TokenUsageService {
   }
 
   /**
-   * One user's priced spend on `date` that counts against their daily cap, across every
-   * group and private chat. Rows waived by {@link waiveUserBudget} are left out — they
+   * One user's spend on `date` that counts against their daily cap, across every
+   * group and private chat. Priced for the cap (`budgetMultiplier` applied), so it can
+   * differ from what `/usage` reports. Rows waived by {@link waiveUserBudget} are left out — they
    * stay in the reports, they just no longer hold the cap down.
    */
   async getUserBudgetSpend(userId: string, date: string): Promise<number> {
     const rows = await this.databaseManager.getAdapter().getModel('tokenUsage').find({ date, userId });
-    return rows.reduce((sum, row) => (row.budgetWaived ? sum : sum + this.priceUsage(row)), 0);
+    return rows.reduce((sum, row) => (row.budgetWaived ? sum : sum + this.priceForBudget(row)), 0);
   }
 
   /**
    * Clear one user's daily cap for `date` by waiving every row recorded so far, and
-   * return the spend that no longer counts. The rows stay exactly as they are in the
+   * return the spend that no longer counts, priced for the cap (so it can differ from what
+   * `/usage` reports for the same rows). The rows stay exactly as they are in the
    * usage reports; only the cap is released, so the day's stats remain truthful.
    */
   async waiveUserBudget(userId: string, date: string): Promise<{ waivedRows: number; waivedCost: number }> {
@@ -170,7 +172,7 @@ export class TokenUsageService {
     let waivedCost = 0;
     for (const row of rows) {
       await model.update(row.id, { budgetWaived: true });
-      waivedCost += this.priceUsage(row);
+      waivedCost += this.priceForBudget(row);
     }
     return { waivedRows: rows.length, waivedCost };
   }
@@ -289,6 +291,11 @@ export class TokenUsageService {
         usage.completionTokens * price.output) /
       1_000_000
     );
+  }
+
+  /** USD one call counts for against the per-user daily cap: its price scaled by `budgetMultiplier`. */
+  private priceForBudget(usage: PricedUsage): number {
+    return this.priceUsage(usage) * (this.getModelPricing(usage.model)?.budgetMultiplier ?? 1);
   }
 
   private aggregateByProvider(rows: TokenUsageRecord[]): ProviderUsageAgg[] {
