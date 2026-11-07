@@ -71,6 +71,7 @@ import type {
   TicketsListResponse,
   TicketTemplateResponse,
   TicketUpdateBody,
+  UsageReportResponse,
   ZhihuContentsResponse,
   ZhihuStatsResponse,
 } from '@qqbot/api-types';
@@ -89,6 +90,7 @@ import {
   getReportApiBase,
   getStatsApiBase,
   getTicketsApiBase,
+  getUsageApiBase,
   getZhihuApiBase,
 } from './config';
 
@@ -461,6 +463,17 @@ export async function getDailyStats(date?: string): Promise<DailyStatsResponse> 
     throw new Error(err.error ?? `Get daily stats failed: ${res.status}`);
   }
   return res.json() as Promise<DailyStatsResponse>;
+}
+
+export async function getUsageReport(date?: string): Promise<UsageReportResponse> {
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  const res = await fetch(`${getUsageApiBase()}?${params}`, { cache: 'no-store' });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Get usage report failed: ${res.status}`);
+  }
+  return res.json() as Promise<UsageReportResponse>;
 }
 
 export async function getStatsDates(): Promise<StatsDateListResponse> {

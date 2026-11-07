@@ -2,14 +2,15 @@
  * Daily Stats page (route entry) — log-based daily statistics dashboard.
  */
 
-import type { DailyStats } from '@qqbot/api-types';
+import type { DailyStats, UsageDailyReport } from '@qqbot/api-types';
 import { useCallback, useEffect, useState } from 'react';
-import { getDailyStats, getStatsDates } from '../../api';
+import { getDailyStats, getStatsDates, getUsageReport } from '../../api';
 import { DailyStatsCharts } from './components/DailyStatsCharts';
 import { DailyStatsDateBar } from './components/DailyStatsDateBar';
 import { DailyStatsGroupsAndErrors } from './components/DailyStatsGroupsAndErrors';
 import { DailyStatsProviderTable } from './components/DailyStatsProviderTable';
 import { DailyStatsSummaryCards } from './components/DailyStatsSummaryCards';
+import { DailyStatsUsageCost } from './components/DailyStatsUsageCost';
 import { todayString } from './utils';
 
 export function DailyStatsPage() {
@@ -18,6 +19,8 @@ export function DailyStatsPage() {
   const [stats, setStats] = useState<DailyStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [usage, setUsage] = useState<UsageDailyReport | null>(null);
+  const [usageError, setUsageError] = useState<string | null>(null);
 
   useEffect(() => {
     getStatsDates()
@@ -38,9 +41,21 @@ export function DailyStatsPage() {
     }
   }, []);
 
+  const loadUsage = useCallback(async (d: string) => {
+    setUsage(null);
+    setUsageError(null);
+    try {
+      const res = await getUsageReport(d);
+      setUsage(res.report);
+    } catch (err) {
+      setUsageError(err instanceof Error ? err.message : 'Failed to load usage');
+    }
+  }, []);
+
   useEffect(() => {
     loadStats(date);
-  }, [date, loadStats]);
+    loadUsage(date);
+  }, [date, loadStats, loadUsage]);
 
   const shiftDate = useCallback(
     (delta: number) => {
@@ -71,6 +86,7 @@ export function DailyStatsPage() {
       {stats && !loading && (
         <>
           <DailyStatsSummaryCards stats={stats} />
+          <DailyStatsUsageCost report={usage} error={usageError} />
           <DailyStatsCharts stats={stats} />
           <DailyStatsProviderTable stats={stats} />
           <DailyStatsGroupsAndErrors stats={stats} />

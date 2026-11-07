@@ -19,6 +19,7 @@ import '@/services/staticServer/backends/DocsPreviewBackend';
 import '@/services/staticServer/backends/FileManagerBackend';
 import '@/services/staticServer/backends/LogsBackend';
 import '@/services/staticServer/backends/OutputStaticHost';
+import '@/services/tokenUsage/UsageBackend';
 import '@/services/wechat/InsightsBackend';
 import '@/services/wechat/moments/MomentsBackend';
 import '@/services/wechat/ReportBackend';

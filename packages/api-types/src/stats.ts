@@ -57,3 +57,44 @@ export interface DailyStatsResponse {
 export interface StatsDateListResponse {
   dates: string[];
 }
+
+// `/api/usage` — the `/usage` report: official-price spend per day, read live from `token_usage`.
+
+export interface UsageProviderAgg {
+  provider: string;
+  type: 'llm' | 'image';
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  imageCount: number;
+  cost: number;
+}
+
+export interface UsageUserAgg {
+  userId: string;
+  nickname?: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  totalImages: number;
+  cost: number;
+  byProvider: UsageProviderAgg[];
+}
+
+export interface UsageDailyReport {
+  date: string;
+  userCount: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  totalImages: number;
+  cost: number;
+  topUsers: UsageUserAgg[];
+  unpricedModels: string[];
+}
+
+/** `GET /api/usage` */
+export interface UsageReportResponse {
+  report: UsageDailyReport;
+}

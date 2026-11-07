@@ -113,6 +113,12 @@ export function getStatsApiBase(): string {
   return serverBase ? `${serverBase}/api/stats` : '/api/stats';
 }
 
+/** Base URL for Usage (cost) API requests. */
+export function getUsageApiBase(): string {
+  const serverBase = getStaticServerBase();
+  return serverBase ? `${serverBase}/api/usage` : '/api/usage';
+}
+
 /** Base URL for Memory Status API requests. */
 export function getMemoryApiBase(): string {
   const serverBase = getStaticServerBase();

@@ -765,7 +765,8 @@ A model with no `modelPricing` entry counts $0: `/usage` names it in a warning l
 report's `unpricedModels`, which also lists a row without a model as `(unknown)`), and
 `TokenUsageService.record` logs a warning the first time it stores one. An entry of
 `{ "input": 0, "output": 0 }` counts as priced, which is how a deliberately free model
-(a local backend) stays out of that list.
+(a local backend) stays out of that list. `GET /api/usage` (`UsageBackend`) serves the `/usage`
+report, and the WebUI `/stats` page reads it live.
 
 - **Per-user cap** (`userDailyLimitUsd`, `userDailyLimitOverrides`) — `GateCheckStage` asks
   `UsageBudgetService.checkUser` after the whitelist gate and before `onMessageBeforeAI`
