@@ -84,6 +84,8 @@ const OUTPUT_TAIL_BYTES = 256 * 1024;
 /** `?full=1` cap: a whole log past this is still cut to its end. */
 const OUTPUT_FULL_BYTES = 8 * 1024 * 1024;
 
+const SSE_KEEPALIVE_MS = 30_000;
+
 export class ClusterApi implements HubRoute {
   readonly prefix = API_PREFIX;
 
@@ -588,34 +590,48 @@ export class ClusterApi implements HubRoute {
   private handleSSEStream(cluster: ClusterManager): Response {
     const hub = cluster.getHub();
 
+    let teardown = (): void => {};
+
     const stream = new ReadableStream({
       start(controller) {
         const encoder = new TextEncoder();
 
         let closed = false;
-        const send = (event: string, data: unknown) => {
-          if (closed) return;
+        const write = (chunk: string): void => {
+          if (closed) {
+            return;
+          }
           try {
-            const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-            controller.enqueue(encoder.encode(payload));
+            controller.enqueue(encoder.encode(chunk));
           } catch {
             closed = true;
           }
         };
+        const send = (event: string, data: unknown) => {
+          write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+        };
 
-        // Send initial worker state
+        // Bun.serve closes a response that writes nothing for its idleTimeout (255 s), so an
+        // otherwise quiet stream needs a comment line, which SSE clients ignore.
+        const keepAlive = setInterval(() => write(': keepalive\n\n'), SSE_KEEPALIVE_MS);
+
         send('init', { workers: hub.workerRegistry.getAll() });
 
-        // Register with hub SSE manager if available
-        hub.addSSESubscriber({
+        const subscriber = {
           send,
           close: () => {
             closed = true;
+            clearInterval(keepAlive);
           },
-        });
+        };
+        hub.addSSESubscriber(subscriber);
+        teardown = () => {
+          subscriber.close();
+          hub.removeSSESubscriber(subscriber);
+        };
       },
       cancel() {
-        // cleanup handled by subscriber close
+        teardown();
       },
     });
 
