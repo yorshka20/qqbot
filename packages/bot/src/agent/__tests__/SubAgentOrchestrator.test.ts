@@ -5,6 +5,8 @@ import { SubAgentManager } from '../SubAgentManager';
 import { SubAgentOrchestrator } from '../SubAgentOrchestrator';
 import { SubAgentType } from '../types';
 
+const SERVED = { provider: 'deepseek', model: 'deepseek-chat' };
+
 describe('SubAgentOrchestrator.run', () => {
   it('spawns the session, runs it and returns the output it recorded', async () => {
     const manager = new SubAgentManager();
@@ -14,14 +16,14 @@ describe('SubAgentOrchestrator.run', () => {
         executed.push(sessionId);
         manager.updateSessionStatus(sessionId, 'running');
         manager.updateSessionStatus(sessionId, 'completed', 'done');
-        return 'done';
+        return { output: 'done', servedBy: SERVED };
       },
     } as unknown as SubAgentExecutor;
     const orchestrator = new SubAgentOrchestrator(manager, executor);
 
-    const output = await orchestrator.run(SubAgentType.RESEARCH, { description: 'task', input: {} }, undefined, 'agent:p');
+    const run = await orchestrator.run(SubAgentType.RESEARCH, { description: 'task', input: {} }, undefined, 'agent:p');
 
-    expect(output).toBe('done');
+    expect(run).toEqual({ output: 'done', servedBy: SERVED });
     const [session] = manager.listByParent('agent:p');
     expect(executed).toEqual([session.id]);
     expect(session.type).toBe(SubAgentType.RESEARCH);

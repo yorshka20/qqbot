@@ -173,7 +173,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('SubAgentManager integration 
       expect(typeof sessionId).toBe('string');
       expect(sessionId.startsWith('agent:')).toBe(true);
 
-      const result = await executor.execute(sessionId);
+      const { output: result } = await executor.execute(sessionId);
       expect(result).toBeDefined();
       expect(typeof result).toBe('string');
       expect(result.trim()).toContain('42');
@@ -193,7 +193,7 @@ describe.skipIf(!getIntegrationProvider('doubao'))('SubAgentManager integration 
         input: { query: 'Beijing weather' },
       });
 
-      const result = await executor.execute(sessionId);
+      const { output: result } = await executor.execute(sessionId);
       expect(result).toBeDefined();
       expect(typeof result).toBe('string');
       expect(result.length).toBeGreaterThan(0);

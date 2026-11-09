@@ -84,6 +84,10 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
    * Get capabilities supported by this provider
    * Ollama supports LLM text generation
    */
+  override getDefaultModel(): string {
+    return this.config.model;
+  }
+
   getCapabilities(): CapabilityType[] {
     return this._capabilities;
   }
@@ -141,7 +145,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
     const thinking = options?.includeReasoning ?? false;
-    const model = options?.model ?? this.config.model;
+    const model = options?.model ?? this.getDefaultModel();
 
     const body: Record<string, unknown> = {
       model,
@@ -171,7 +175,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   ): Promise<ReadableStream<Uint8Array>> {
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
-    const model = options?.model ?? this.config.model;
+    const model = options?.model ?? this.getDefaultModel();
 
     const streamBody: Record<string, unknown> = {
       model,
@@ -194,7 +198,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
   }
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
-    const model = options?.model ?? this.config.model;
+    const model = options?.model ?? this.getDefaultModel();
     try {
       logger.info(`[STATS] [OllamaProvider] Generating with model: ${model}`);
 
@@ -296,7 +300,7 @@ export class OllamaProvider extends AIProvider implements LLMCapability {
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    const model = options?.model ?? this.config.model;
+    const model = options?.model ?? this.getDefaultModel();
     try {
       logger.info(`[STATS] [OllamaProvider] Generating stream with model: ${model}`);
 

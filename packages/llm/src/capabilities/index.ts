@@ -5,7 +5,7 @@ export { isImage2ImageCapability } from './Image2ImageCapability';
 export type { Image2VideoCapability } from './Image2VideoCapability';
 export { isImage2VideoCapability } from './Image2VideoCapability';
 export type { LLMCapability } from './LLMCapability';
-export { isLLMCapability } from './LLMCapability';
+export { concreteLLMTarget, isLLMCapability } from './LLMCapability';
 export type { Text2ImageCapability } from './Text2ImageCapability';
 export { isText2ImageCapability } from './Text2ImageCapability';
 export type {

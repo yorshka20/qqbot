@@ -1,5 +1,6 @@
 // SubAgentTriggerHandler - keyword match → spawn subagent → deliver result to group
 
+import type { ConcreteLLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import type { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
 import { getRolePreset } from '@/agent/SubAgentRolePresets';
@@ -314,7 +315,7 @@ export class SubAgentTriggerHandler {
 
       try {
         // Step 2: run subagent
-        const result = await this.subAgents.run(
+        const { output: resultText, servedBy } = await this.subAgents.run(
           preset.type,
           { description, input: taskInput, parentContext },
           configOverrides,
@@ -328,13 +329,12 @@ export class SubAgentTriggerHandler {
           return;
         }
 
-        const resultText = result;
         if (!resultText.trim()) {
           logger.warn(`[SubAgentTriggerHandler] Rule ${ruleIndex} ("${rule.presetKey}") returned empty result`);
           return;
         }
 
-        await this.sendResult(targetGroupIdNum, resultText, syntheticContext);
+        await this.sendResult(targetGroupIdNum, resultText, servedBy, syntheticContext);
       } catch (err) {
         if (!cancelled.value) {
           const error = err instanceof Error ? err : new Error(String(err));
@@ -369,6 +369,7 @@ export class SubAgentTriggerHandler {
   private async sendResult(
     groupId: number | string,
     resultText: string,
+    servedBy: ConcreteLLMTarget | null,
     syntheticContext: NormalizedMessageEvent,
   ): Promise<void> {
     const groupIdStr = groupId.toString();
@@ -376,7 +377,8 @@ export class SubAgentTriggerHandler {
     try {
       const { text: cleanText, skipCard, skipForward } = parseDeliveryMarkers(resultText);
 
-      const cardResult = skipCard ? null : await this.aiService.processReplyMaybeCard(cleanText, groupIdStr);
+      const cardResult =
+        skipCard || !servedBy ? null : await this.aiService.processReplyMaybeCard(cleanText, groupIdStr, servedBy);
       const isCard = cardResult !== null;
       const segments = cardResult ? cardResult.segments : new MessageBuilder().text(cleanText).build();
 

@@ -1,3 +1,4 @@
+import type { ConcreteLLMTarget } from '@qqbot/llm';
 import type { ProactiveReply } from '@/ai/services/ProactiveReplyGenerationService';
 import { type RenderedCard, withTrailingText } from '@/context/HookContextHelpers';
 import type { MessageSegment } from '@/message/types';
@@ -19,7 +20,7 @@ export interface ProactiveOutgoing {
  */
 export async function resolveProactiveOutgoing(
   reply: ProactiveReply,
-  renderMaybeCard: (text: string) => Promise<RenderedCard | null>,
+  renderMaybeCard: (text: string, servedBy: ConcreteLLMTarget) => Promise<RenderedCard | null>,
 ): Promise<ProactiveOutgoing | null> {
   const parsed = parseSubtextTags(reply.text);
   const { text, skipCard } = parseDeliveryMarkers(parsed.visible);
@@ -35,7 +36,7 @@ export async function resolveProactiveOutgoing(
   if (!text) {
     return null;
   }
-  const rendered = skipCard ? null : await renderMaybeCard(text);
+  const rendered = skipCard || !reply.servedBy ? null : await renderMaybeCard(text, reply.servedBy);
   return rendered
     ? { message: rendered.segments, historyText: rendered.textForHistory, ...tags }
     : { message: text, historyText: text, ...tags };

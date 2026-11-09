@@ -288,7 +288,7 @@ export class CodingAgentService {
       };
     }
     return delivery.sendCards(task.requestedBy, deck, {
-      agentName: this.executors[task.executor].displayName,
+      provider: this.executors[task.executor].displayName,
       model: task.model,
     });
   }

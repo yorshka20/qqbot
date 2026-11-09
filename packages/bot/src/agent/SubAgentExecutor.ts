@@ -6,6 +6,7 @@ import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { LLMService } from '@/ai/services/LLMService';
 import type { ToolUseGenerateResponse } from '@/ai/types';
+import { servedTargetOf } from '@/ai/utils/servedTarget';
 import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
@@ -13,7 +14,7 @@ import type { PermissionChecker } from '@/permission';
 import type { ToolManager } from '@/tools/ToolManager';
 import { SubAgentManager } from './SubAgentManager';
 import { type IToolRunner, ToolRunner } from './ToolRunner';
-import type { SubAgentConfig, SubAgentContext, SubAgentSession, SubAgentType } from './types';
+import type { SubAgentConfig, SubAgentContext, SubAgentRun, SubAgentSession, SubAgentType } from './types';
 
 /** Template name mapping: SubAgentType → prompt template key */
 const SUBAGENT_SYSTEM_TEMPLATES: Partial<Record<SubAgentType, string>> = {
@@ -96,7 +97,7 @@ export class SubAgentExecutor {
   /**
    * Run a pending sub-agent session to completion and return its output.
    */
-  async execute(sessionId: string): Promise<string> {
+  async execute(sessionId: string): Promise<SubAgentRun> {
     const session = this.subAgentManager.getStatus(sessionId);
     if (!session) {
       throw new Error(`Sub-agent session not found: ${sessionId}`);
@@ -147,7 +148,7 @@ export class SubAgentExecutor {
 
       this.subAgentManager.updateSessionStatus(session.id, 'completed', output);
 
-      return output;
+      return { output, servedBy: servedTargetOf(result) };
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error(`[SubAgentExecutor] Sub-agent ${session.id} failed:`, err);

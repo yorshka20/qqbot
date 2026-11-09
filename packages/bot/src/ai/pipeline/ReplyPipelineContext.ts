@@ -1,7 +1,14 @@
 // Mutable context passed through all reply pipeline stages.
 // Each stage reads upstream fields and writes its own outputs.
 
-import type { ChatMessage, LLMTarget, ReasoningEffort, ToolDefinition, VisionImage } from '@qqbot/llm';
+import type {
+  ChatMessage,
+  ConcreteLLMTarget,
+  LLMTarget,
+  ReasoningEffort,
+  ToolDefinition,
+  VisionImage,
+} from '@qqbot/llm';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
@@ -67,7 +74,7 @@ export class ReplyPipelineContext {
   // --- GenerationStage ---
   responseText = '';
   /** The LLM that actually served the final round (a fallback may differ from `target`). */
-  actualTarget: LLMTarget | undefined;
+  actualTarget: ConcreteLLMTarget | null = null;
   /** True when the model ended the turn via the end_turn tool. */
   endTurnRequested = false;
 

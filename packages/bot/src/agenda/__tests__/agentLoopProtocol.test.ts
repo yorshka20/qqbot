@@ -29,7 +29,7 @@ function makeLoop(preferredProtocol: ProtocolName, sent: Array<{ groupId: number
     {} as PromptManager,
     {} as ToolManager,
     {} as HookManager,
-    {} as AIService,
+    { defaultCardAttribution: () => ({ provider: 'deepseek', model: 'deepseek-chat' }) } as unknown as AIService,
     {} as SubAgentOrchestrator,
     config,
   );

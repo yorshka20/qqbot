@@ -285,6 +285,9 @@ export interface LLMTarget {
   model?: string;
 }
 
+/** An `LLMTarget` whose model is settled: what actually served a call, as opposed to what was asked for. */
+export type ConcreteLLMTarget = Required<LLMTarget>;
+
 /** `provider / model` for logs and replies; a target without a model shows the provider alone. */
 export function describeLLMTarget(target: LLMTarget): string {
   return target.model ? `${target.provider} / ${target.model}` : target.provider;

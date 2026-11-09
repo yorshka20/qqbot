@@ -62,13 +62,11 @@ export class CardFormatToolExecutor extends BaseToolExecutor {
     }
 
     try {
-      // Stamp the card with whoever is actually generating this turn (set by
-      // GenerationStage). Without this the card defaults to the global
-      // default LLM provider — wrong footer when the active provider was
-      // overridden (e.g. `claude:` prefix → anthropic).
-      const activeProvider = context.hookContext?.metadata.get('activeProvider');
-      const activeModel = context.hookContext?.metadata.get('activeModel');
-      const result = await this.cardHelper.renderParsedCards(validated, activeProvider, activeModel);
+      const attribution = context.hookContext?.metadata.get('activeTarget');
+      if (!attribution) {
+        throw new Error('no LLM is generating this turn, so the card has no model to attribute');
+      }
+      const result = await this.cardHelper.renderParsedCards(validated, attribution);
       if (context.hookContext) {
         this.cardHelper.setCardReplyOnContext(context.hookContext, result.segments, result.textForHistory);
         context.hookContext.metadata.set('cardSent', true);

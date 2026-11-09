@@ -159,7 +159,7 @@ describe('BaseFanout ordering', () => {
       events.push(`${name}:start`);
       if (name === 'a') {
         await sleep(10);
-        call.options.onProviderResolved?.({ providerName: 'p' });
+        call.options.onProviderResolved?.({ provider: 'p', model: 'm' });
         events.push('a:round1');
         await sleep(30);
       }

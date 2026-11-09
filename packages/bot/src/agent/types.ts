@@ -1,6 +1,6 @@
 // SubAgent system type definitions
 
-import type { AIGenerateOptions, LLMTarget } from '@qqbot/llm';
+import type { AIGenerateOptions, ConcreteLLMTarget, LLMTarget } from '@qqbot/llm';
 
 /**
  * SubAgent types
@@ -66,6 +66,12 @@ export interface SubAgentTask {
     conversationId?: string;
     messageId?: string;
   };
+}
+
+/** A finished sub-agent: its output and the LLM that wrote it (null when none served the run). */
+export interface SubAgentRun {
+  output: string;
+  servedBy: ConcreteLLMTarget | null;
 }
 
 export interface SubAgentSession {

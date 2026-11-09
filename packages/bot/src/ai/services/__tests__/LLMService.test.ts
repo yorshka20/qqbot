@@ -79,6 +79,7 @@ describe('LLMService', () => {
         name: 'mock',
         getCapabilities: () => ['llm'],
         isAvailable: () => true,
+        getDefaultModel: () => 'test-model',
         generate: async (_prompt: string, options?: Record<string, unknown>) => {
           lastOptions = options;
           return { text: '{"result": "ok"}' };
@@ -195,6 +196,7 @@ describe('LLMService same-provider retry', () => {
       name: 'mock',
       getCapabilities: () => ['llm'],
       isAvailable: () => true,
+      getDefaultModel: () => 'test-model',
       generate: (p: string, o?: Record<string, unknown>) => {
         calls++;
         return generate(p, o);
@@ -271,6 +273,7 @@ describe('LLMService trace observers', () => {
       name: 'mock',
       getCapabilities: () => ['llm'],
       isAvailable: () => true,
+      getDefaultModel: () => 'test-model',
       generate: async () => ({
         text: 'hello back',
         resolvedModel: 'mock-1',
@@ -305,6 +308,7 @@ describe('LLMService trace observers', () => {
       name: 'mock',
       getCapabilities: () => ['llm'],
       isAvailable: () => true,
+      getDefaultModel: () => 'test-model',
       supportsToolUse: true,
       generate: async (): Promise<AIGenerateResponse> => {
         round++;
@@ -343,6 +347,7 @@ describe('LLMService trace observers', () => {
       name: 'mock',
       getCapabilities: () => ['llm'],
       isAvailable: () => true,
+      getDefaultModel: () => 'test-model',
       generate: async () => ({ text: 'ok' }),
     };
     const aiManager = {
@@ -368,6 +373,7 @@ describe('LLMService usageRecordedByCaller', () => {
       name: 'mock',
       getCapabilities: () => ['llm'],
       isAvailable: () => true,
+      getDefaultModel: () => 'test-model',
       supportsToolUse: true,
       generate: async (_prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> => {
         received.push(options);
@@ -470,6 +476,7 @@ describe('LLMService prompt log', () => {
       name: 'mock',
       getCapabilities: () => ['llm'],
       isAvailable: () => true,
+      getDefaultModel: () => 'test-model',
       supportsToolUse: true,
       generate: async (): Promise<AIGenerateResponse> => {
         round++;
@@ -521,6 +528,7 @@ describe('LLMService prompt log', () => {
       name: 'mock',
       getCapabilities: () => ['llm'],
       isAvailable: () => true,
+      getDefaultModel: () => 'test-model',
       generate: async () => ({ text: 'ok' }),
     };
     const service = createService(provider);
@@ -604,6 +612,7 @@ describe('LLMService resolvedModel stamping', () => {
         name: 'mock',
         getCapabilities: () => ['llm'],
         isAvailable: () => true,
+        getDefaultModel: () => 'test-model',
         supportsToolUse: true,
         generate: async (): Promise<AIGenerateResponse> => {
           round++;
@@ -676,6 +685,7 @@ describe('LLMService resolvedModel stamping', () => {
         name: 'mock',
         getCapabilities: () => ['llm'],
         isAvailable: () => true,
+        getDefaultModel: () => 'test-model',
         supportsToolUse: true,
         generate: async (): Promise<AIGenerateResponse> => {
           round++;
@@ -744,6 +754,7 @@ describe('LLMService resolvedModel stamping', () => {
         name: 'mock',
         getCapabilities: () => ['llm'],
         isAvailable: () => true,
+        getDefaultModel: () => 'test-model',
         supportsToolUse: true,
         generate: async (): Promise<AIGenerateResponse> => ({ text: 'plain answer' }),
       };
@@ -771,6 +782,7 @@ describe('LLMService resolvedModel stamping', () => {
         name: 'mock',
         getCapabilities: () => ['llm'],
         isAvailable: () => true,
+        getDefaultModel: () => 'test-model',
         supportsToolUse: true,
         generate: async (_prompt: string, options?: { messages?: ChatMessage[] }): Promise<AIGenerateResponse> => {
           const messages = options?.messages ?? [];
@@ -862,6 +874,7 @@ describe('LLMService resolvedModel stamping', () => {
         name: 'mock',
         getCapabilities: () => ['llm'],
         isAvailable: () => true,
+        getDefaultModel: () => 'test-model',
         supportsToolUse: true,
         generate: async (): Promise<AIGenerateResponse> => {
           round++;
@@ -918,6 +931,7 @@ describe('LLMService resolvedModel stamping', () => {
         name: 'mock',
         getCapabilities: () => ['llm'],
         isAvailable: () => true,
+        getDefaultModel: () => 'test-model',
         supportsToolUse: true,
         generate: async (): Promise<AIGenerateResponse> => {
           const text = rounds[round];
@@ -994,6 +1008,7 @@ describe('LLMService resolvedModel stamping', () => {
         name: 'mock',
         getCapabilities: () => ['llm'],
         isAvailable: () => true,
+        getDefaultModel: () => 'test-model',
         supportsToolUse: true,
         generate: async (_p: string, o?: AIGenerateOptions): Promise<AIGenerateResponse> => {
           requests.push((o?.messages ?? []).map((m) => ({ role: m.role, content: contentToPlainString(m.content) })));
@@ -1180,6 +1195,7 @@ describe('LLMService resolvedModel stamping', () => {
           echoesReasoningNatively,
           getCapabilities: () => ['llm'],
           isAvailable: () => true,
+          getDefaultModel: () => 'test-model',
           supportsToolUse: false,
           generate: async (_p: string, o?: AIGenerateOptions): Promise<AIGenerateResponse> => {
             if (o) seen.push(o);
@@ -1238,6 +1254,7 @@ describe('LLMService fallback success trace', () => {
       name: 'primary',
       getCapabilities: () => ['llm'],
       isAvailable: () => true,
+      getDefaultModel: () => 'test-model',
       generate: failing,
       generateStream: failing,
     };
@@ -1245,6 +1262,7 @@ describe('LLMService fallback success trace', () => {
       name: 'alt',
       getCapabilities: () => ['llm'],
       isAvailable: () => true,
+      getDefaultModel: () => 'test-model',
       generate: answer,
       generateStream: async (_p: string, handler: (t: string) => void) => {
         handler('from alt');

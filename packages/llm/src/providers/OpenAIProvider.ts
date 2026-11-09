@@ -296,7 +296,7 @@ export class OpenAIProvider
 
   getConfig(): Record<string, unknown> {
     return {
-      model: this.config.model || 'gpt-3.5-turbo',
+      model: this.getDefaultModel(),
       defaultMaxTokens: this.config.defaultMaxTokens || 2000,
     };
   }
@@ -305,6 +305,10 @@ export class OpenAIProvider
    * Get capabilities supported by this provider
    * OpenAI supports LLM text generation and Vision (multimodal)
    */
+  override getDefaultModel(): string {
+    return this.config.model ?? 'gpt-3.5-turbo';
+  }
+
   getCapabilities(): CapabilityType[] {
     return this._capabilities;
   }
@@ -364,7 +368,7 @@ export class OpenAIProvider
       throw new Error('OpenAI client not initialized');
     }
 
-    const model = options?.model ?? this.config.model ?? 'gpt-3.5-turbo';
+    const model = options?.model ?? this.getDefaultModel();
 
     try {
       logger.info(`[STATS] [OpenAIProvider] Generating with model: ${model}`);
@@ -399,7 +403,7 @@ export class OpenAIProvider
       throw new Error('OpenAI client not initialized');
     }
 
-    const model = options?.model ?? this.config.model ?? 'gpt-3.5-turbo';
+    const model = options?.model ?? this.getDefaultModel();
 
     try {
       logger.info(`[STATS] [OpenAIProvider] Generating stream with model: ${model}`);

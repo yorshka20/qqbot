@@ -1,6 +1,14 @@
 // Proactive reply generation service — generates proactive replies for group participation.
 
-import type { AIGenerateResponse, AIProvider, ChatMessage, ContentPart, LLMTarget, VisionImage } from '@qqbot/llm';
+import type {
+  AIGenerateResponse,
+  AIProvider,
+  ChatMessage,
+  ConcreteLLMTarget,
+  ContentPart,
+  LLMTarget,
+  VisionImage,
+} from '@qqbot/llm';
 import { contentToPlainString } from '@qqbot/llm';
 import { inject, singleton } from 'tsyringe';
 import { LLMService } from '@/ai/services/LLMService';
@@ -20,6 +28,7 @@ import type { ToolManager } from '@/tools/ToolManager';
 import type { PromptManager } from '../prompt/PromptManager';
 import { buildSkillUsageInstructions, executeSkillCall, getReplySkillDefinitions } from '../tools/replyTools';
 import { normalizeVisionImages } from '../utils/imageUtils';
+import { recordActiveTarget, servedTargetOf } from '../utils/servedTarget';
 
 /**
  * Proactive reply: the single ceiling on history entries in the prompt, enforced by dropping
@@ -43,6 +52,8 @@ export interface ProactiveReply {
   text: string;
   reasoningContent?: string;
   card: RenderedCard | null;
+  /** The LLM that wrote `text`; null when none did, so the text is never rendered as a card. */
+  servedBy: ConcreteLLMTarget | null;
 }
 
 /**
@@ -257,6 +268,7 @@ export class ProactiveReplyGenerationService {
           nativeWebSearch: nativeWebSearchEnabled,
           toolExecutor,
           reasoningEffort: this.reasoningEfforts.toolReasoningEffort,
+          onProviderResolved: recordActiveTarget(hookContext),
         },
         effectiveTarget,
       );
@@ -264,6 +276,7 @@ export class ProactiveReplyGenerationService {
         text: toolUseResponse.text,
         reasoningContent: toolUseResponse.reasoningContent,
         card: getQueuedCard(hookContext),
+        servedBy: servedTargetOf(toolUseResponse),
       };
     }
 
@@ -278,7 +291,12 @@ export class ProactiveReplyGenerationService {
           effectiveTarget?.provider,
         )
       : await this.generatePlain(messages, genOptions, effectiveTarget);
-    return { text: response.text, reasoningContent: response.reasoningContent, card: null };
+    return {
+      text: response.text,
+      reasoningContent: response.reasoningContent,
+      card: null,
+      servedBy: servedTargetOf(response),
+    };
   }
 
   private generatePlain(

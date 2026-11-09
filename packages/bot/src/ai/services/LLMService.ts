@@ -6,6 +6,7 @@ import type {
   AIManager,
   ChatMessage,
   ChatMessageToolCall,
+  ConcreteLLMTarget,
   ContentPart,
   FunctionCall,
   LLMCapability,
@@ -13,7 +14,7 @@ import type {
   StreamingHandler,
   ToolDefinition,
 } from '@qqbot/llm';
-import { contentToPlainString, isLLMCapability } from '@qqbot/llm';
+import { concreteLLMTarget, contentToPlainString, isLLMCapability } from '@qqbot/llm';
 import { formatLogSections, HttpClientError, type LogSection, logger, randomUUID } from '@qqbot/shared';
 import { HealthCheckManager } from '@qqbot/shared/health';
 import { inject, singleton } from 'tsyringe';
@@ -39,7 +40,7 @@ type TokenUsage = NonNullable<AIGenerateResponse['usage']>;
 /** A resolved LLM call: the provider instance, and the target it serves with the model made concrete. */
 interface Route {
   provider: LLMCapability;
-  target: LLMTarget;
+  target: ConcreteLLMTarget;
 }
 
 /**
@@ -429,7 +430,18 @@ export class LLMService {
     if (!provider || !isLLMCapability(provider) || !provider.isAvailable()) {
       return null;
     }
-    return { provider, target: { provider: target.provider, model: target.model ?? provider.getDefaultModel?.() } };
+    return { provider, target: concreteLLMTarget(provider, target) };
+  }
+
+  /** The target that served a response. A response from another provider than `current` must name its own
+   *  model: `current`'s model means nothing there. */
+  private static servedTarget(response: AIGenerateResponse, current: ConcreteLLMTarget): ConcreteLLMTarget {
+    const provider = response.resolvedProviderName ?? current.provider;
+    const model = response.resolvedModel ?? (provider === current.provider ? current.model : undefined);
+    if (!model) {
+      throw new Error(`LLM response from "${provider}" names no resolved model`);
+    }
+    return { provider, model };
   }
 
   /** The model that actually served a call: what the provider reported wins (Gemini
@@ -935,13 +947,14 @@ export class LLMService {
 
       // A round served by a fallback provider moves the rest of the loop there, on that
       // provider's own model — the previous target's model means nothing to it.
-      if (response.resolvedProviderName && response.resolvedProviderName !== currentTarget.provider) {
-        currentTarget = { provider: response.resolvedProviderName };
+      const served = LLMService.servedTarget(response, currentTarget);
+      if (served.provider !== currentTarget.provider) {
+        currentTarget = served;
       }
 
       // Surface the provider/model that actually served this round before its tool
       // calls run, so mid-loop tools (e.g. send_card footer) can report the truth.
-      options?.onProviderResolved?.({ providerName: currentTarget.provider, model: response.resolvedModel });
+      options?.onProviderResolved?.(served);
 
       // Get all function calls from this response
       const calls = response.functionCalls ?? [];

@@ -170,7 +170,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
       await this.httpClient.post(
         MINIMAX_CHAT_COMPLETIONS_PATH,
         {
-          model: this.config.model || MINIMAX_DEFAULT_MODEL,
+          model: this.getDefaultModel(),
           messages: [{ role: 'user', content: 'test' }],
           max_completion_tokens: 1,
         },
@@ -188,7 +188,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
 
   getConfig(): Record<string, unknown> {
     return {
-      model: this.config.model || MINIMAX_DEFAULT_MODEL,
+      model: this.getDefaultModel(),
       defaultTemperature: this.config.defaultTemperature ?? 1.0,
       defaultMaxTokens: clampMaxTokens(this.config.defaultMaxTokens),
       reasoningSplit: this.config.reasoningSplit ?? true,
@@ -199,6 +199,10 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
    * Get capabilities supported by this provider
    * Minimax supports LLM text generation and Vision (multimodal image understanding)
    */
+  override getDefaultModel(): string {
+    return this.config.model ?? MINIMAX_DEFAULT_MODEL;
+  }
+
   getCapabilities(): CapabilityType[] {
     return this._capabilities;
   }
@@ -208,7 +212,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
       throw new Error('Minimax client not initialized');
     }
 
-    const model = options?.model ?? this.config.model ?? MINIMAX_DEFAULT_MODEL;
+    const model = options?.model ?? this.getDefaultModel();
     const temperature = this.sanitizeTemperature(options?.temperature ?? this.config.defaultTemperature ?? 1.0);
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
 
@@ -257,7 +261,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
       throw new Error('Minimax client not initialized');
     }
 
-    const model = options?.model ?? this.config.model ?? MINIMAX_DEFAULT_MODEL;
+    const model = options?.model ?? this.getDefaultModel();
     const temperature = this.sanitizeTemperature(options?.temperature ?? this.config.defaultTemperature ?? 1.0);
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
 
@@ -309,7 +313,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
       throw new Error('Minimax client not initialized');
     }
 
-    const model = options?.model ?? this.config.model ?? MINIMAX_DEFAULT_MODEL;
+    const model = options?.model ?? this.getDefaultModel();
     const temperature = this.sanitizeTemperature(options?.temperature ?? this.config.defaultTemperature ?? 1.0);
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
 
@@ -382,7 +386,7 @@ export class MinimaxProvider extends AIProvider implements LLMCapability, Vision
       throw new Error('Minimax client not initialized');
     }
 
-    const model = options?.model ?? this.config.model ?? MINIMAX_DEFAULT_MODEL;
+    const model = options?.model ?? this.getDefaultModel();
     const temperature = this.sanitizeTemperature(options?.temperature ?? this.config.defaultTemperature ?? 1.0);
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
 

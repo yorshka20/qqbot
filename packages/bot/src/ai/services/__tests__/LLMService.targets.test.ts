@@ -143,4 +143,24 @@ describe('LLMService targets: a provider and its model travel together', () => {
     expect(res.text).toBe('done');
     expect(res.resolvedProviderName).toBe('beta');
   });
+
+  it('reports the target that served each round, on a concrete model, as the loop falls over', async () => {
+    const alpha = fakeProvider('alpha', 'alpha-default', () => new HttpClientError('Bad request', 400));
+    const beta = fakeProvider('beta', 'beta-default', (call) =>
+      call === 1 ? { text: '', functionCalls: [{ name: 'noop', arguments: '{}', toolCallId: 'call_1' }] } : { text: 'done' },
+    );
+    const service = serviceWith([alpha, beta], { provider: 'alpha', model: 'alpha-small' }, {}, ['beta']);
+    const served: unknown[] = [];
+
+    await service.generateWithTools([{ role: 'user', content: 'hi' }], [NOOP_TOOL], {
+      reasoningEffort: 'none',
+      toolExecutor: async () => 'ok',
+      onProviderResolved: (target) => served.push(target),
+    });
+
+    expect(served).toEqual([
+      { provider: 'beta', model: 'beta-default' },
+      { provider: 'beta', model: 'beta-default' },
+    ]);
+  });
 });

@@ -129,7 +129,7 @@ export class ResearchToolExecutor extends BaseToolExecutor {
         messageId: context.messageId,
       };
 
-      const output = await this.subAgents.run(
+      const { output } = await this.subAgents.run(
         SubAgentType.RESEARCH,
         {
           description: task,

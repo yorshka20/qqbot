@@ -211,7 +211,7 @@ export class VideoAnalyzePlugin extends PluginBase {
     logger.info(`[VideoAnalyzePlugin] Starting video analysis | sessionKey=${sessionKey} | url=${url}`);
 
     try {
-      const result = await this.subAgents.run(VIDEO_AGENT_TYPE as SubAgentType, {
+      const { output: result } = await this.subAgents.run(VIDEO_AGENT_TYPE as SubAgentType, {
         description: TASK_DESCRIPTION,
         input: {
           url,

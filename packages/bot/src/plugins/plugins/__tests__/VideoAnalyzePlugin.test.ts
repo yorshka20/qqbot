@@ -69,7 +69,7 @@ function createMockSubAgents(opts: MockSubAgentsOpts = {}): SubAgentOrchestrator
       if (opts.throws) {
         throw opts.throws;
       }
-      return opts.result;
+      return { output: opts.result, servedBy: null };
     },
   } as unknown as SubAgentOrchestrator;
 }

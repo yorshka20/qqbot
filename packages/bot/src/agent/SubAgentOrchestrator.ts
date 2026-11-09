@@ -6,7 +6,7 @@
 import { inject, singleton } from 'tsyringe';
 import { SubAgentExecutor } from './SubAgentExecutor';
 import { SubAgentManager } from './SubAgentManager';
-import type { SubAgentConfig, SubAgentTask, SubAgentType } from './types';
+import type { SubAgentConfig, SubAgentRun, SubAgentTask, SubAgentType } from './types';
 
 @singleton()
 export class SubAgentOrchestrator {
@@ -15,15 +15,15 @@ export class SubAgentOrchestrator {
     @inject(SubAgentExecutor) private readonly executor: SubAgentExecutor,
   ) {}
 
-  /** Spawn a sub-agent, run it to completion and return its output. */
+  /** Spawn a sub-agent, run it to completion and return its output with the LLM that wrote it. */
   async run(
     type: SubAgentType,
     task: SubAgentTask,
     configOverrides?: Partial<SubAgentConfig>,
     parentId?: string,
-  ): Promise<string> {
+  ): Promise<SubAgentRun> {
     const sessionId = await this.manager.spawn(parentId, type, task, configOverrides);
-    await this.executor.execute(sessionId);
-    return this.manager.wait(sessionId);
+    const { servedBy } = await this.executor.execute(sessionId);
+    return { output: await this.manager.wait(sessionId), servedBy };
   }
 }

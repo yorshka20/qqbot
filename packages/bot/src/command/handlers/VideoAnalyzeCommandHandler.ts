@@ -78,8 +78,8 @@ export class VideoAnalyzeCommandHandler implements CommandHandler {
         input: { url, customPrompt: prompt },
         parentContext,
       })
-      .then(async (result) => {
-        const replyText = result.trim() || '视频分析完成，但未返回有效结果。';
+      .then(async ({ output }) => {
+        const replyText = output.trim() || '视频分析完成，但未返回有效结果。';
         await this.sendAnalysisResult(replyText, context);
       })
       .catch(async (err) => {

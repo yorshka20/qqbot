@@ -102,6 +102,7 @@ describe('CardFormatToolExecutor (send_card)', () => {
   describe('success path', () => {
     it('renders cards and sets cardSent=true on hookContext metadata', async () => {
       const hookContext = makeHookContext();
+      hookContext.metadata.set('activeTarget', { provider: 'deepseek', model: 'deepseek-chat' });
       const cardHelper = makeCardHelper();
       const executor = await makeExecutorWithHelper(cardHelper);
 
@@ -113,40 +114,37 @@ describe('CardFormatToolExecutor (send_card)', () => {
       expect(cardHelper.setCardReplyOnContext).toHaveBeenCalledTimes(1);
     });
 
-    it('works without hookContext (no crash)', async () => {
-      const cardHelper = makeCardHelper();
-      const executor = await makeExecutorWithHelper(cardHelper);
-      const result = await executor.execute(defaultCall, makeContext(undefined));
-      expect(result.success).toBe(true);
-    });
-
-    it('passes the active provider and actually-used model to the card footer', async () => {
+    it('passes the active target to the card footer as one value', async () => {
       const hookContext = makeHookContext();
-      hookContext.metadata.set('activeProvider', 'gemini');
-      hookContext.metadata.set('activeModel', 'gemini-3.5-flash');
+      hookContext.metadata.set('activeTarget', { provider: 'gemini', model: 'gemini-3.5-flash' });
       const cardHelper = makeCardHelper();
       const executor = await makeExecutorWithHelper(cardHelper);
 
       await executor.execute(defaultCall, makeContext(hookContext));
 
-      expect(cardHelper.renderParsedCards).toHaveBeenCalledWith(expect.anything(), 'gemini', 'gemini-3.5-flash');
+      expect(cardHelper.renderParsedCards).toHaveBeenCalledWith(expect.anything(), {
+        provider: 'gemini',
+        model: 'gemini-3.5-flash',
+      });
     });
 
-    it('passes model=undefined when no activeModel was resolved (footer falls back to config)', async () => {
-      const hookContext = makeHookContext();
-      hookContext.metadata.set('activeProvider', 'deepseek');
-      const cardHelper = makeCardHelper();
-      const executor = await makeExecutorWithHelper(cardHelper);
+    it('fails without an active target rather than guessing a model', async () => {
+      for (const hookContext of [makeHookContext(), undefined]) {
+        const cardHelper = makeCardHelper();
+        const executor = await makeExecutorWithHelper(cardHelper);
 
-      await executor.execute(defaultCall, makeContext(hookContext));
+        const result = await executor.execute(defaultCall, makeContext(hookContext));
 
-      expect(cardHelper.renderParsedCards).toHaveBeenCalledWith(expect.anything(), 'deepseek', undefined);
+        expect(result.success).toBe(false);
+        expect(cardHelper.renderParsedCards).not.toHaveBeenCalled();
+      }
     });
   });
 
   describe('rendering failure', () => {
     it('sets cardSendFailedReason and returns failure when renderParsedCards throws', async () => {
       const hookContext = makeHookContext();
+      hookContext.metadata.set('activeTarget', { provider: 'deepseek', model: 'deepseek-chat' });
       const cardHelper = makeCardHelper({
         renderParsedCards: vi.fn().mockRejectedValue(new Error('puppeteer crashed')),
       });

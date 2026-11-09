@@ -75,7 +75,7 @@ describe('AgentDelivery', () => {
   test('a card is rendered, sent, and its text form goes to history', async () => {
     const { delivery, recorded } = createDelivery();
     const result = await delivery.sendCards(GROUP, [{ type: 'paragraph', content: '内容' }], {
-      agentName: 'Codex',
+      provider: 'Codex',
       model: 'gpt-6-sol',
     });
     expect(result.success).toBe(true);

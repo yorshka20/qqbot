@@ -1,6 +1,7 @@
 // Reply generation pipeline orchestrator.
 // Runs the stage-based pipeline for normal reply generation.
 
+import type { ConcreteLLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
@@ -115,21 +116,21 @@ export class ReplyPipelineOrchestrator {
   async handleCardReply(
     responseText: string,
     sessionId: string,
-    options: { context: HookContext; providerName?: string },
+    options: { context: HookContext; attribution: ConcreteLLMTarget },
   ): Promise<boolean>;
   async handleCardReply(
     responseText: string,
     sessionId: string,
-    options?: { providerName?: string },
+    options: { attribution: ConcreteLLMTarget },
   ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null>;
   async handleCardReply(
     responseText: string,
     sessionId: string,
-    options?: { context?: HookContext; providerName?: string },
+    options: { context?: HookContext; attribution: ConcreteLLMTarget },
   ): Promise<boolean | { segments: MessageSegment[]; textForHistory: string } | null> {
-    if (options?.context != null) {
-      return this.cardHelper.handleCardReplyWithContext(responseText, sessionId, options.context, options.providerName);
+    if (options.context != null) {
+      return this.cardHelper.handleCardReplyWithContext(responseText, sessionId, options.context, options.attribution);
     }
-    return this.cardHelper.handleCardReplyWithoutContext(responseText, sessionId, options?.providerName);
+    return this.cardHelper.handleCardReplyWithoutContext(responseText, sessionId, options.attribution);
   }
 }

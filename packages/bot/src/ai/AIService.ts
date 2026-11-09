@@ -1,6 +1,12 @@
 // AI Service — pure facade delegating to specialized sub-services.
 
-import type { Image2ImageOptions, ImageGenerationResponse, LLMTarget, Text2ImageOptions } from '@qqbot/llm';
+import type {
+  ConcreteLLMTarget,
+  Image2ImageOptions,
+  ImageGenerationResponse,
+  LLMTarget,
+  Text2ImageOptions,
+} from '@qqbot/llm';
 import { inject, singleton } from 'tsyringe';
 import type { ProactiveReplyInjectContext } from '@/context/types';
 import type { HookContext } from '@/hooks/types';
@@ -38,9 +44,8 @@ export class AIService {
 
   // --- Card rendering ---
 
-  async renderCardToSegments(cardJson: string, providerName?: string): Promise<MessageSegment[]> {
-    const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
-    const base64Image = await this.cardRenderingService.renderCard(cardJson, provider);
+  async renderCardToSegments(cardJson: string, attribution: ConcreteLLMTarget): Promise<MessageSegment[]> {
+    const base64Image = await this.cardRenderingService.renderCard(cardJson, attribution);
     const messageBuilder = new MessageBuilder();
     messageBuilder.image({ data: base64Image });
     return messageBuilder.build();
@@ -51,14 +56,22 @@ export class AIService {
    * constructed in code (e.g. /help): renderCardToSegments runs the LLM-text
    * JSON extractor, which mis-grabs nested arrays / bracketed substrings out of
    * a structured card. Pre-validated CardData must bypass that extraction.
+   * No LLM wrote these cards, so the footer names the default LLM.
    */
-  async renderCardDataToSegments(cards: CardData | CardData[], providerName?: string): Promise<MessageSegment[]> {
-    const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
+  async renderCardDataToSegments(cards: CardData | CardData[]): Promise<MessageSegment[]> {
     const deck = Array.isArray(cards) ? cards : [cards];
-    const base64Image = await this.cardRenderingService.renderCardData(deck, provider);
+    const base64Image = await this.cardRenderingService.renderCardData(
+      deck,
+      this.cardRenderingService.defaultAttribution(),
+    );
     const messageBuilder = new MessageBuilder();
     messageBuilder.image({ data: base64Image });
     return messageBuilder.build();
+  }
+
+  /** The attribution of a card no LLM wrote (see renderCardDataToSegments). */
+  defaultCardAttribution(): ConcreteLLMTarget {
+    return this.cardRenderingService.defaultAttribution();
   }
 
   // --- Reply generation ---
@@ -84,9 +97,9 @@ export class AIService {
   async processReplyMaybeCard(
     replyText: string,
     sessionId: string,
-    providerName?: string,
+    attribution: ConcreteLLMTarget,
   ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null> {
-    return this.replyPipeline.handleCardReply(replyText, sessionId, { providerName });
+    return this.replyPipeline.handleCardReply(replyText, sessionId, { attribution });
   }
 
   // --- Image generation ---

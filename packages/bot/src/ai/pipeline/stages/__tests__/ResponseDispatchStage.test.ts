@@ -58,7 +58,7 @@ function makePipelineContext(
   const ctx = new ReplyPipelineContext(hookContext, new Map());
   ctx.responseText = responseText;
   ctx.sessionId = 'session-1';
-  ctx.actualTarget = { provider: 'deepseek' };
+  ctx.actualTarget = { provider: 'deepseek', model: 'deepseek-chat' };
   ctx.taskResultImages = taskResultImages;
   return ctx;
 }
@@ -332,7 +332,7 @@ describe('ResponseDispatchStage', () => {
 
       await stage.execute(ctx);
 
-      expect(cardHelper.renderMarkdownDirect).toHaveBeenCalledWith('# 标题', 'deepseek', undefined);
+      expect(cardHelper.renderMarkdownDirect).toHaveBeenCalledWith('# 标题', { provider: 'deepseek', model: 'deepseek-chat' });
     });
 
     it('strips markers from the follow-up text after a send_card', async () => {

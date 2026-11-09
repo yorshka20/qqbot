@@ -111,7 +111,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
       await this.httpClient.post(
         '/chat/completions',
         {
-          model: this.config.model || 'deepseek-chat',
+          model: this.getDefaultModel(),
           messages: [{ role: 'user', content: 'test' }],
           max_tokens: 1,
         },
@@ -132,7 +132,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
 
   getConfig(): Record<string, unknown> {
     return {
-      model: this.config.model || 'deepseek-chat',
+      model: this.getDefaultModel(),
       baseURL: this.baseUrl,
       defaultTemperature: this.config.defaultTemperature || 0.7,
       defaultMaxTokens: this.config.defaultMaxTokens || 2000,
@@ -143,6 +143,10 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
    * Get capabilities supported by this provider
    * DeepSeek supports LLM text generation and Vision (multimodal)
    */
+  override getDefaultModel(): string {
+    return this.config.model ?? 'deepseek-chat';
+  }
+
   getCapabilities(): CapabilityType[] {
     return this._capabilities;
   }
@@ -270,7 +274,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
   }
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
-    const model = options?.model ?? this.config.model ?? 'deepseek-chat';
+    const model = options?.model ?? this.getDefaultModel();
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
 
@@ -405,7 +409,7 @@ export class DeepSeekProvider extends AIProvider implements LLMCapability, Visio
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    const model = options?.model ?? this.config.model ?? 'deepseek-chat';
+    const model = options?.model ?? this.getDefaultModel();
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
 

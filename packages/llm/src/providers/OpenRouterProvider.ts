@@ -66,7 +66,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
     try {
       // Test API connection by making a simple request
       await this.httpClient.post('/chat/completions', {
-        model: this.config.model || 'openai/gpt-3.5-turbo',
+        model: this.getDefaultModel(),
         messages: [{ role: 'user', content: 'test' }],
         max_tokens: 1,
       });
@@ -85,7 +85,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
 
   getConfig(): Record<string, unknown> {
     return {
-      model: this.config.model || 'openai/gpt-3.5-turbo',
+      model: this.getDefaultModel(),
       defaultTemperature: this.config.temperature || 0.7,
       defaultMaxTokens: this.config.maxTokens || 2000,
     };
@@ -95,12 +95,16 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
    * Get capabilities supported by this provider
    * OpenRouter supports LLM text generation
    */
+  override getDefaultModel(): string {
+    return this.config.model ?? 'openai/gpt-3.5-turbo';
+  }
+
   getCapabilities(): CapabilityType[] {
     return this._capabilities;
   }
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
-    const model = options?.model ?? this.config.model ?? 'openai/gpt-3.5-turbo';
+    const model = options?.model ?? this.getDefaultModel();
     const temperature = options?.temperature ?? this.config.temperature ?? 0.7;
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.maxTokens);
 
@@ -172,7 +176,7 @@ export class OpenRouterProvider extends AIProvider implements LLMCapability {
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    const model = options?.model ?? this.config.model ?? 'openai/gpt-3.5-turbo';
+    const model = options?.model ?? this.getDefaultModel();
     const temperature = options?.temperature ?? this.config.temperature ?? 0.7;
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.maxTokens);
 

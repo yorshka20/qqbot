@@ -1,7 +1,7 @@
 // Card Rendering Service - provides card rendering capability for LLM responses
 
-import type { AIManager } from '@qqbot/llm';
-import { logger } from '@qqbot/shared';
+import { type AIManager, type ConcreteLLMTarget, concreteLLMTarget, isLLMCapability } from '@qqbot/llm';
+import { ConfigError, logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { extractExpectedJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import { DITokens } from '@/core/DITokens';
@@ -26,60 +26,45 @@ export class CardRenderingService {
   }
 
   /**
-   * Get default LLM provider name for card footer when no specific provider is in context (e.g. help command, system cards).
+   * The attribution of a card the bot builds itself (help, dedup report, file preview): the
+   * default LLM, on the model it runs when nothing names one.
    */
-  getDefaultProviderName(): string {
-    const provider = this.aiManager.getDefaultProvider('llm');
-    return provider?.name ?? 'default';
+  defaultAttribution(): ConcreteLLMTarget {
+    const target = this.aiManager.getDefaultLLM();
+    if (!target) {
+      throw new ConfigError('No default LLM is configured (ai.defaultProviders.llm)');
+    }
+    const provider = this.aiManager.getProviderForCapability('llm', target.provider);
+    if (!provider || !isLLMCapability(provider)) {
+      throw new ConfigError(`Default LLM provider "${target.provider}" is not available`);
+    }
+    return concreteLLMTarget(provider, target);
   }
 
-  /**
-   * Resolve a provider's configured model name for the card footer. Provider configs are not
-   * uniform: most expose `model` at the top level, while multi-mode providers (e.g. gemini) nest
-   * it under `llm.model`. Returns undefined when no model can be resolved, so the footer falls
-   * back to the provider display name.
-   */
-  private resolveModelName(providerName: string): string | undefined {
-    const config = this.aiManager.getProvider(providerName)?.getConfig();
-    if (!config) {
-      return undefined;
-    }
-    if (typeof config.model === 'string' && config.model) {
-      return config.model;
-    }
-    const llm = config.llm as { model?: unknown } | undefined;
-    if (llm && typeof llm.model === 'string' && llm.model) {
-      return llm.model;
-    }
-    return undefined;
-  }
-
-  /**
-   * Render card from LLM response text
-   * @param responseText - LLM response text (should be JSON card data)
-   * @param providerName - Provider name (e.g. doubao, claude, deepseek) shown in card footer; required on all paths
-   * @returns Base64 encoded image buffer
-   * @throws Error if JSON parsing or rendering fails
-   */
   /**
    * Render pre-parsed CardData[] to a base64 image string.
    * Bypasses JSON extraction — caller is responsible for providing valid CardData[].
    * @param cards - Already-validated card data array
-   * @param providerName - Provider name shown in card footer
+   * @param attribution - The provider and model shown in the card footer
    * @returns Base64 encoded image buffer
    * @throws Error if rendering fails
    */
-  async renderCardData(cards: CardData[], providerName: string, model?: string): Promise<string> {
+  async renderCardData(cards: CardData[], attribution: ConcreteLLMTarget): Promise<string> {
     const imageBuffer = await this.cardRenderer.render(cards, {
-      provider: providerName,
-      // The actually-used runtime model wins over the static config default.
-      model: model ?? this.resolveModelName(providerName),
+      attribution,
       appearance: this.appearance.resolve(),
     });
     return imageBuffer.toString('base64');
   }
 
-  async renderCard(responseText: string, providerName: string): Promise<string> {
+  /**
+   * Render card from LLM response text
+   * @param responseText - LLM response text (should be JSON card data)
+   * @param attribution - The provider and model that generated the text, shown in the card footer
+   * @returns Base64 encoded image buffer
+   * @throws Error if JSON parsing or rendering fails
+   */
+  async renderCard(responseText: string, attribution: ConcreteLLMTarget): Promise<string> {
     try {
       // Expected JSON only: use dedicated JSON extractor (codeBlock, braceMatch, regex); do not mix with non-JSON strategies
       let jsonStr = extractExpectedJsonFromLlmText(responseText, { expect: 'array' }) ?? responseText;
@@ -87,11 +72,9 @@ export class CardRenderingService {
       jsonStr = this.normalizeCardDeckJson(jsonStr);
       const cards: CardData[] = parseCardDeck(jsonStr);
 
-      // Render card(s) to image (provider required for footer on all paths)
       logger.info('[CardRenderingService] Rendering card image');
       const imageBuffer = await this.cardRenderer.render(cards, {
-        provider: providerName,
-        model: this.resolveModelName(providerName),
+        attribution,
         appearance: this.appearance.resolve(),
       });
 

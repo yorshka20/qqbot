@@ -1,5 +1,6 @@
 // Card rendering helper — shared card rendering, detection, and extraction logic.
 
+import type { ConcreteLLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { replaceReplyWithSegments } from '@/context/HookContextHelpers';
@@ -35,10 +36,9 @@ export class CardRenderingHelper {
   /** Render card JSON string → image segments. */
   async renderCardJsonToSegments(
     cardJson: string,
-    providerName?: string,
+    attribution: ConcreteLLMTarget,
   ): Promise<{ segments: MessageSegment[]; textForHistory: string }> {
-    const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
-    const base64Image = await this.cardRenderingService.renderCard(cardJson, provider);
+    const base64Image = await this.cardRenderingService.renderCard(cardJson, attribution);
     const messageBuilder = new MessageBuilder();
     messageBuilder.image({ data: base64Image });
     return { segments: messageBuilder.build(), textForHistory: cardJson };
@@ -53,11 +53,9 @@ export class CardRenderingHelper {
    */
   async renderParsedCards(
     cards: CardData[],
-    providerName?: string,
-    model?: string,
+    attribution: ConcreteLLMTarget,
   ): Promise<{ segments: MessageSegment[]; textForHistory: string }> {
-    const provider = providerName ?? this.cardRenderingService.getDefaultProviderName();
-    const base64Image = await this.cardRenderingService.renderCardData(cards, provider, model);
+    const base64Image = await this.cardRenderingService.renderCardData(cards, attribution);
     const messageBuilder = new MessageBuilder();
     messageBuilder.image({ data: base64Image });
     return { segments: messageBuilder.build(), textForHistory: cardDeckToText(cards) };
@@ -71,15 +69,14 @@ export class CardRenderingHelper {
    */
   async renderMarkdownDirect(
     content: string,
-    providerName?: string,
-    model?: string,
+    attribution: ConcreteLLMTarget,
   ): Promise<{ segments: MessageSegment[]; textForHistory: string }> {
     // A face marker cannot survive this path: the card is an image, so the marker would be
     // painted into it as literal text. Stripping before both the render and the history text
     // keeps what was said and what was recorded the same.
     const prose = stripFaceMarkers(content);
     const card: CardData = { type: 'markdown', content: prose };
-    const result = await this.renderParsedCards([card], providerName, model);
+    const result = await this.renderParsedCards([card], attribution);
     return { segments: result.segments, textForHistory: prose };
   }
 
@@ -99,9 +96,9 @@ export class CardRenderingHelper {
    * Try to render card JSON and set reply on context. Returns true on success.
    * Executes onAIGenerationComplete hook on success.
    */
-  async tryRenderCardReply(context: HookContext, cardJson: string, providerName?: string): Promise<boolean> {
+  async tryRenderCardReply(context: HookContext, cardJson: string, attribution: ConcreteLLMTarget): Promise<boolean> {
     try {
-      const result = await this.renderCardJsonToSegments(cardJson, providerName);
+      const result = await this.renderCardJsonToSegments(cardJson, attribution);
       this.setCardReplyOnContext(context, result.segments, result.textForHistory);
       logger.info('[CardRenderingHelper] Card image rendered and stored in reply');
       await this.hookManager.execute('onAIGenerationComplete', context);
@@ -227,12 +224,12 @@ export class CardRenderingHelper {
     responseText: string,
     _sessionId: string,
     context: HookContext,
-    providerName?: string,
+    attribution: ConcreteLLMTarget,
   ): Promise<boolean> {
     if (!this.shouldUseCardReply(responseText)) return false;
     if (this.looksLikeCardJson(responseText)) {
       const cleanJson = extractExpectedJsonFromLlmText(responseText, { expect: 'array' }) ?? responseText;
-      const directResult = await this.renderCardJsonToSegments(cleanJson, providerName).catch(() => null);
+      const directResult = await this.renderCardJsonToSegments(cleanJson, attribution).catch(() => null);
       if (directResult) {
         this.setCardReplyOnContext(context, directResult.segments, directResult.textForHistory);
         await this.hookManager.execute('onAIGenerationComplete', context);
@@ -240,7 +237,7 @@ export class CardRenderingHelper {
       }
     }
     if (this.looksLikeMarkdown(responseText)) {
-      const mdResult = await this.renderMarkdownDirect(responseText, providerName).catch(() => null);
+      const mdResult = await this.renderMarkdownDirect(responseText, attribution).catch(() => null);
       if (mdResult) {
         this.setCardReplyOnContext(context, mdResult.segments, mdResult.textForHistory);
         await this.hookManager.execute('onAIGenerationComplete', context);
@@ -258,16 +255,16 @@ export class CardRenderingHelper {
   async handleCardReplyWithoutContext(
     responseText: string,
     _sessionId: string,
-    providerName?: string,
+    attribution: ConcreteLLMTarget,
   ): Promise<{ segments: MessageSegment[]; textForHistory: string } | null> {
     if (!this.shouldUseCardReply(responseText)) return null;
     if (this.looksLikeCardJson(responseText)) {
       const cleanJson = extractExpectedJsonFromLlmText(responseText, { expect: 'array' }) ?? responseText;
-      const directResult = await this.renderCardJsonToSegments(cleanJson, providerName).catch(() => null);
+      const directResult = await this.renderCardJsonToSegments(cleanJson, attribution).catch(() => null);
       if (directResult) return directResult;
     }
     if (this.looksLikeMarkdown(responseText)) {
-      return this.renderMarkdownDirect(responseText, providerName).catch(() => null);
+      return this.renderMarkdownDirect(responseText, attribution).catch(() => null);
     }
     return null;
   }
