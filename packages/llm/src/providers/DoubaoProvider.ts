@@ -289,7 +289,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       await this.httpClient.post(
         '/responses',
         {
-          model: this.config.model ?? DEFAULT_DOUBAO_MODEL,
+          model: this.getDefaultModel(),
           input: [{ role: 'user', content: 'test' }],
         },
         { timeout: 5000 },
@@ -306,7 +306,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
 
   getConfig(): Record<string, unknown> {
     return {
-      model: this.config.model ?? DEFAULT_DOUBAO_MODEL,
+      model: this.getDefaultModel(),
       defaultTemperature: this.config.defaultTemperature ?? 0.7,
       defaultMaxTokens: clampMaxTokens(this.config.defaultMaxTokens),
       reasoningEffort: this.config.reasoningEffort ?? 'medium',
@@ -317,6 +317,10 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
    * Get capabilities supported by this provider
    * Doubao supports LLM text generation and Vision (multimodal)
    */
+  override getDefaultModel(): string {
+    return this.config.model ?? DEFAULT_DOUBAO_MODEL;
+  }
+
   getCapabilities(): CapabilityType[] {
     return this._capabilities;
   }
@@ -329,7 +333,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
     if (!this.isAvailable()) {
       throw new Error('Doubao client not initialized');
     }
-    const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    const model = options?.model ?? this.getDefaultModel();
     return this.generateViaChatCompletions(prompt, model, options);
   }
 
@@ -384,7 +388,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    const model = options?.model ?? this.getDefaultModel();
 
     // Lite models (e.g. doubao-1-5-lite-32k-250115) do not support Responses API; use Chat Completions API.
     if (useChatCompletionsForModel(model)) {
@@ -478,7 +482,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    const model = options?.model ?? this.getDefaultModel();
     try {
       logger.info(`[STATS] [DoubaoProvider] Generating stream with model: ${model}`);
 
@@ -656,7 +660,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    const model = options?.model ?? this.getDefaultModel();
     const filtered = messages.filter((m) => !(m.role === 'assistant' && m.tool_calls?.length));
     const input: ArkInputItem[] = filtered.map((m) => this.chatMessageToArkInputItem(m));
     const body = this.buildRequestBody(model, input, !!options?.tools?.length, options);
@@ -697,7 +701,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    const model = options?.model ?? this.getDefaultModel();
     try {
       logger.info(`[STATS] [DoubaoProvider] Generating with vision, model: ${model}`);
 
@@ -767,7 +771,7 @@ export class DoubaoProvider extends AIProvider implements LLMCapability, VisionC
       throw new Error('Doubao client not initialized');
     }
 
-    const model = options?.model ?? this.config.model ?? DEFAULT_DOUBAO_MODEL;
+    const model = options?.model ?? this.getDefaultModel();
     try {
       logger.info(`[STATS] [DoubaoProvider] Generating stream with vision, model: ${model}`);
 

@@ -100,7 +100,7 @@ export class Text2ImageCommand implements CommandHandler {
   }
 
   /** Get default text2img provider: config default if available, else local-text2img, else novelai */
-  private getDefaultProviderName(): string {
+  private getDefaultImageProviderName(): string {
     const defaultProvider = this.aiManager.getDefaultProvider('text2img');
     if (defaultProvider?.isAvailable()) {
       logger.debug(`[Text2ImageCommand] Using config default provider: ${defaultProvider.name}`);
@@ -142,10 +142,10 @@ export class Text2ImageCommand implements CommandHandler {
           logger.debug(`[Text2ImageCommand] Using provider override: ${providerName}`);
         } else {
           logger.warn(`[Text2ImageCommand] Requested provider ${providerOverride} not available, using default`);
-          providerName = this.getDefaultProviderName();
+          providerName = this.getDefaultImageProviderName();
         }
       } else {
-        providerName = this.getDefaultProviderName();
+        providerName = this.getDefaultImageProviderName();
       }
 
       // Check if num parameter is provided for multiple image generation

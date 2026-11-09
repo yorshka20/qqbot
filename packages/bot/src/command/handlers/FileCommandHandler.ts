@@ -114,7 +114,10 @@ export class CatCommand implements CommandHandler {
       content,
       level: 'info',
     };
-    const imageBase64 = await this.cardRenderingService.renderCardData([cardData], 'system');
+    const imageBase64 = await this.cardRenderingService.renderCardData(
+      [cardData],
+      this.cardRenderingService.defaultAttribution(),
+    );
 
     const messageBuilder = new MessageBuilder();
     messageBuilder.image({ data: imageBase64 });

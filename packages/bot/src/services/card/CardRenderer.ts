@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { ConcreteLLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import type { Page } from 'puppeteer-core';
 import { BrowserService } from '@/services/browser/BrowserService';
@@ -33,13 +34,13 @@ export class CardRenderer {
    * Render card(s) to WebP image buffer.
    * Accepts single card or array of cards (deck); multiple cards are laid out in order.
    * @param cardData - Single card or array of cards to render
-   * @param options - provider drives the theme + the large watermark (e.g. "Claude"); model, when
-   *   given, is the full model name shown after "AI Assistant" in the footer (falls back to the
-   *   provider display name when absent); appearance selects the light or dark palette.
+   * @param options - attribution.provider drives the theme + the large watermark (e.g. "Claude");
+   *   attribution.model is the full model name shown after "AI Assistant" in the footer;
+   *   appearance selects the light or dark palette.
    */
   async render(
     cardData: CardData | CardData[],
-    options: { provider: string; model?: string; appearance: CardAppearance },
+    options: { attribution: ConcreteLLMTarget; appearance: CardAppearance },
   ): Promise<Buffer> {
     const cards = Array.isArray(cardData) ? cardData : [cardData];
     const cardHTML = renderCardDeck(cards);
@@ -50,9 +51,9 @@ export class CardRenderer {
       page = await BrowserService.getInstance().createPage();
 
       // Theme + large watermark use the provider display name (e.g. "DeepSeek" not "deepseek");
-      // the footer line shows the full model name when known.
-      const theme = getProviderTheme(options.provider);
-      const footerText = `🤖 AI Assistant · ${options.model?.trim() || theme.displayName}`;
+      // the footer line shows the full model name.
+      const theme = getProviderTheme(options.attribution.provider);
+      const footerText = `🤖 AI Assistant · ${options.attribution.model}`;
 
       // Build full HTML document (twemoji JS is inlined from local libs/ to avoid CDN timeouts)
       const fullHTML = `

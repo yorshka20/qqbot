@@ -669,7 +669,7 @@ delivery actions with non-overlapping semantics:
   the same thing.
 - **`send_card`** — renders a card image and queues it on the context
   (`cardSent`); history stores the deck as readable text (`cardDeckToHistoryText`),
-  never raw JSON.
+  never raw JSON. The footer shows the model serving the current round (`activeTarget`).
 - **`speak`** — synthesizes a short voice message and sends it immediately
   (real send, like `send_message`), capped by `tts.voiceReply.maxPerReply`.
   Present only when a cue-capable TTS backend is configured and healthy. See
@@ -830,6 +830,8 @@ Routing only picks the provider — it never rewrites the message. The LLM recei
 #### LLM targets
 
 An LLM is addressed as an `LLMTarget` — `{ provider, model? }` — never as a provider name with a model passed separately: a model name means nothing to another provider, so the two travel as one value through every route. An omitted model is the provider's own configured model (`ai.providers.<name>.model`); `LLMService` makes it concrete when it resolves the route, and that concrete target is what the prompt's model identity, the usage record and the card footer report. Call options carry no `model` (`LLMCallOptions` omits it).
+
+**Card footer attribution.** The footer ("🤖 AI Assistant · <model>") names the provider and model that wrote the reply, as one `ConcreteLLMTarget` (`Required<LLMTarget>`) that every card API takes as a required argument — `CardRenderer.render`, `CardRenderingService`, `CardRenderingHelper`, `AIService.processReplyMaybeCard`. It is never rebuilt from provider config. `LLMService` reports it per round through `onProviderResolved`, and each caller carries the result of its own generation: the reply pipeline's `ctx.actualTarget`, the `activeTarget` hook metadata that `send_card` reads (recorded by `recordActiveTarget`), `ProactiveReply.servedBy`, and `SubAgentRun.servedBy`. When no model served a text (LLMService's canned "no provider" reply) it is not rendered as a card. Cards the bot builds itself (`/help`, dedup report, file preview) use `CardRenderingService.defaultAttribution()`: the default LLM target on its model. A provider's `getDefaultModel()` is required on `LLMCapability` and returns the same model the provider calls when no model is named.
 
 `LLMService` resolves a call's route in one place (`resolveRoute`): an explicit target, else the session's override (`ProviderSelector.getSessionOverride`, which returns only an override the session set — never the default), else the default LLM (`AIManager.getDefaultLLM`). Where the route ends up on a different provider than the one requested, the requested model is dropped with it:
 

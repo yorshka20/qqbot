@@ -64,7 +64,10 @@ const DECK: CardData[] = [
 async function main(): Promise<void> {
   const outDir = process.argv[2] ?? '/tmp';
   for (const appearance of ['light', 'dark'] as CardAppearance[]) {
-    const buffer = await CardRenderer.getInstance().render(DECK, { provider: 'claude', appearance });
+    const buffer = await CardRenderer.getInstance().render(DECK, {
+      attribution: { provider: 'claude', model: 'claude-sonnet-5-5' },
+      appearance,
+    });
     const path = join(outDir, `card-deck-${appearance}.webp`);
     writeFileSync(path, buffer);
     console.log(`${appearance} → ${path} (${(buffer.length / 1024).toFixed(0)} KB)`);

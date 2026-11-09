@@ -1,6 +1,8 @@
 // HookContext Metadata type definitions
 // Provides type-safe access to metadata keys
 
+import type { ConcreteLLMTarget } from '@qqbot/llm';
+
 /**
  * Token/image consumption for the current AI generation, stamped onto the
  * HookContext by the producer (GenerationStage for LLM, ImageFacadeService for
@@ -104,22 +106,11 @@ export interface HookContextMetadata {
    */
   replyReasoning?: string;
   /**
-   * Provider name currently driving the reply generation (e.g. 'anthropic',
-   * 'deepseek'). Set by GenerationStage before the LLM call so tool
-   * executors invoked mid-generation (e.g. send_card) can stamp the right
-   * provider on their output. Without this, send_card defaults to the
-   * global default LLM provider, producing wrong-provider footers when
-   * the active provider was overridden upstream (e.g. via `claude:` prefix).
+   * The provider and model serving the current tool-loop round, recorded before the round's tool
+   * calls run (see `recordActiveTarget`). Tools that render mid-generation (send_card) attribute
+   * their output to it; absent outside a generation loop.
    */
-  activeProvider?: string;
-  /**
-   * The model that actually served the current generation, set per tool-use round
-   * from the response's resolvedModel — stamped centrally by LLMService (provider-
-   * reported model, else the caller-pinned model, else the provider's configured
-   * default) rather than reported by every provider itself. Lets mid-loop tools
-   * (send_card footer) show the real model instead of the static config default.
-   */
-  activeModel?: string;
+  activeTarget?: ConcreteLLMTarget;
   /**
    * Reply complexity routing decision: `'quick'` skips the model's reasoning
    * budget on eligible providers (configured via `ai.chat.replyModeProviders`,
@@ -185,8 +176,7 @@ const DEFAULT_METADATA: Required<
     | 'replyTagsMeta'
     | 'replyReasoning'
     | 'replyMode'
-    | 'activeProvider'
-    | 'activeModel'
+    | 'activeTarget'
     | 'aiUsage'
     | 'agendaChainDepth'
     | 'sendMessageCount'
@@ -228,8 +218,7 @@ const OPTIONAL_METADATA_KEYS: (keyof HookContextMetadata)[] = [
   'replyTagsMeta',
   'replyReasoning',
   'replyMode',
-  'activeProvider',
-  'activeModel',
+  'activeTarget',
   'aiUsage',
   'agendaChainDepth',
   'sendMessageCount',

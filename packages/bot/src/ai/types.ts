@@ -5,6 +5,7 @@ import type {
   AIGenerateOptions,
   AIGenerateResponse,
   ChatMessage,
+  ConcreteLLMTarget,
   FunctionCall,
   FunctionCallInfo,
   ToolDefinition,
@@ -53,10 +54,10 @@ export interface ToolUseGenerateOptions extends AIGenerateOptions {
   tools?: ToolDefinition[];
   maxToolRounds?: number; // Tool-round cap. Unset means no cap.
   toolExecutor?: (call: FunctionCall) => Promise<unknown>; // Function to execute tool calls
-  // Invoked once per round with the provider/model that actually served it, before the
+  // Invoked once per round with the target that actually served it, before the
   // round's tool calls run — lets callers stamp the real model into context for tools
   // that render mid-loop (e.g. send_card footer).
-  onProviderResolved?: (info: { providerName: string; model?: string }) => void;
+  onProviderResolved?: (target: ConcreteLLMTarget) => void;
   /**
    * Invoked with each round's thinking as soon as that round returns, before its
    * tool calls run — so a multi-round turn reports its reasoning incrementally

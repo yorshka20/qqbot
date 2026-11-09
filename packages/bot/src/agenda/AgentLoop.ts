@@ -2,7 +2,7 @@
 // Bot uses the schedule's intent as the "question" to the LLM; the loop runs multi-round (plan → tool calls → message) until the task is done, then sends the final reply.
 // Also supports direct subagent execution (actionType === 'subagent') which bypasses the LLM interpretation loop.
 
-import type { AIProvider, ChatMessage, ToolDefinition } from '@qqbot/llm';
+import type { AIProvider, ChatMessage, ConcreteLLMTarget, ToolDefinition } from '@qqbot/llm';
 import { getCurrentDateTimeForPrompt, logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { SubAgentOrchestrator } from '@/agent/SubAgentOrchestrator';
@@ -11,6 +11,7 @@ import type { PromptManager } from '@/ai';
 import { AIService } from '@/ai/AIService';
 import { LLMService } from '@/ai/services/LLMService';
 import { executeToolCall, formatToolCatalog } from '@/ai/tools/replyTools';
+import { recordActiveTarget, servedTargetOf } from '@/ai/utils/servedTarget';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { getQueuedCard, withTrailingText } from '@/context/HookContextHelpers';
 import { ConversationHistoryService, normalizeGroupId } from '@/conversation/history/ConversationHistoryService';
@@ -34,6 +35,8 @@ import type { AgendaEventContext, AgendaItem } from './types';
  */
 interface GeneratedReply {
   text: string;
+  /** The LLM that wrote `text`; null when none did, so the text is never rendered as a card. */
+  servedBy: ConcreteLLMTarget | null;
   hookContext?: HookContext;
 }
 
@@ -130,19 +133,18 @@ export class AgentLoop {
     };
 
     try {
-      const result = await this.subAgents.run(
+      const { output: resultText, servedBy } = await this.subAgents.run(
         preset.type,
         { description, input: taskInput, parentContext },
         configOverrides,
       );
 
-      const resultText = result;
       if (!resultText.trim()) {
         logger.warn(`[AgentLoop] Item "${item.name}": subagent returned empty result`);
         return;
       }
 
-      await this.deliverReply({ text: resultText }, item.name, groupId, userId, isPrivate, contextId);
+      await this.deliverReply({ text: resultText, servedBy }, item.name, groupId, userId, isPrivate, contextId);
     } catch (err) {
       logger.error(`[AgentLoop] Subagent execution failed for item "${item.name}":`, err);
       throw err;
@@ -188,7 +190,14 @@ export class AgentLoop {
       });
 
       if (result && hasChatTarget) {
-        await this.deliverReply({ text: result }, item.name, groupId, userId, isPrivate, contextId);
+        await this.deliverReply(
+          { text: result, servedBy: this.aiService.defaultCardAttribution() },
+          item.name,
+          groupId,
+          userId,
+          isPrivate,
+          contextId,
+        );
       } else if (result && !hasChatTarget) {
         logger.info(`[AgentLoop] Action "${handlerName}" (${item.name}): ${result}`);
       }
@@ -277,7 +286,7 @@ export class AgentLoop {
       return { message: segments, isCard: true, length: segments.length };
     }
 
-    const cardSegments = skipCard ? null : await this.tryRenderCard(cleanReply, contextId);
+    const cardSegments = skipCard ? null : await this.tryRenderCard(cleanReply, reply.servedBy, contextId);
     if (cardSegments) {
       return { message: cardSegments, isCard: true, length: cardSegments.length };
     }
@@ -292,9 +301,16 @@ export class AgentLoop {
    * Try to render reply text as a card image.
    * Returns segments on success, null on failure or if not suitable for card rendering.
    */
-  private async tryRenderCard(reply: string, sessionId: string): Promise<MessageSegment[] | null> {
+  private async tryRenderCard(
+    reply: string,
+    servedBy: ConcreteLLMTarget | null,
+    sessionId: string,
+  ): Promise<MessageSegment[] | null> {
+    if (!servedBy) {
+      return null;
+    }
     try {
-      const result = await this.aiService.processReplyMaybeCard(reply, sessionId);
+      const result = await this.aiService.processReplyMaybeCard(reply, sessionId, servedBy);
       if (result) {
         logger.info('[AgentLoop] Reply rendered as card image');
         return result.segments;
@@ -384,8 +400,9 @@ export class AgentLoop {
         maxToolRounds: Math.max(1, item.maxSteps ?? 15),
         toolExecutor,
         reasoningEffort: 'low',
+        onProviderResolved: recordActiveTarget(agendaContext),
       });
-      return { text: response.text?.trim() ?? '', hookContext: agendaContext };
+      return { text: response.text?.trim() ?? '', servedBy: servedTargetOf(response), hookContext: agendaContext };
     } catch (err) {
       logger.error(`[AgentLoop] LLM call failed for item "${item.name}":`, err);
       return null;

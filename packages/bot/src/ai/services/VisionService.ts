@@ -32,8 +32,9 @@ export class VisionService {
     @inject(TokenUsageService) private tokenUsage: TokenUsageService,
   ) {}
 
-  /** Vision calls bypass LLMService and its trace, so each response is recorded here. */
+  /** Vision calls bypass LLMService and its trace, so each response is recorded and attributed to its provider here. */
   private recordUsage(provider: NamedVisionProvider, response: AIGenerateResponse): AIGenerateResponse {
+    response.resolvedProviderName = provider.name;
     if (response.usage) {
       void this.tokenUsage.recordSystemLLM({
         provider: provider.name,

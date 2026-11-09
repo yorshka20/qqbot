@@ -71,7 +71,7 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
       await this.httpClient.post(
         '/chat/completions',
         {
-          model: this.config.model || 'Qwen/Qwen2.5-7B-Instruct',
+          model: this.getDefaultModel(),
           messages: [{ role: 'user', content: 'test' }],
           max_tokens: 1,
         },
@@ -89,11 +89,15 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
 
   getConfig(): Record<string, unknown> {
     return {
-      model: this.config.model || 'Qwen/Qwen2.5-7B-Instruct',
+      model: this.getDefaultModel(),
       baseURL: this.baseUrl,
       defaultTemperature: this.config.defaultTemperature || 0.7,
       defaultMaxTokens: this.config.defaultMaxTokens || 2000,
     };
+  }
+
+  override getDefaultModel(): string {
+    return this.config.model ?? 'Qwen/Qwen2.5-7B-Instruct';
   }
 
   getCapabilities(): CapabilityType[] {
@@ -128,7 +132,7 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
   }
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
-    const model = options?.model ?? this.config.model ?? 'Qwen/Qwen2.5-7B-Instruct';
+    const model = options?.model ?? this.getDefaultModel();
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
 
@@ -239,7 +243,7 @@ export class SiliconFlowProvider extends AIProvider implements LLMCapability {
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    const model = options?.model ?? this.config.model ?? 'Qwen/Qwen2.5-7B-Instruct';
+    const model = options?.model ?? this.getDefaultModel();
     const temperature = options?.temperature ?? this.config.defaultTemperature ?? 0.7;
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens);
 

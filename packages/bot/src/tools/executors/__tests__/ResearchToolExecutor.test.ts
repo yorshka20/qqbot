@@ -8,7 +8,7 @@ import { ResearchToolExecutor } from '../ResearchToolExecutor';
 describe('ResearchToolExecutor', () => {
   it('returns the subagent conclusion to the calling model', async () => {
     const orchestrator = {
-      run: async () => '有据可查',
+      run: async () => ({ output: '有据可查', servedBy: null }),
     } as unknown as SubAgentOrchestrator;
     const retrieval = {
       getPageContentFetchService: () => ({ isEnabled: () => false }),

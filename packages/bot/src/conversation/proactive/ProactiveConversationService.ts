@@ -817,8 +817,8 @@ export class ProactiveConversationService {
   ): Promise<void> {
     const reply = await this.aiService.generateProactiveReply(injectContext, this.analysisTarget ?? undefined);
     // Same card rendering as the reply pipeline; history stores the card text, not the image.
-    const outgoing = await resolveProactiveOutgoing(reply, (text) =>
-      this.aiService.processReplyMaybeCard(text, thread.groupId, this.analysisTarget?.provider),
+    const outgoing = await resolveProactiveOutgoing(reply, (text, servedBy) =>
+      this.aiService.processReplyMaybeCard(text, thread.groupId, servedBy),
     );
     if (!outgoing) {
       logger.warn(

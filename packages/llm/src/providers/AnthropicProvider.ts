@@ -338,12 +338,16 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
    * Get capabilities supported by this provider
    * Anthropic Claude 3 supports LLM text generation and Vision (multimodal)
    */
+  override getDefaultModel(): string {
+    return this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
+  }
+
   getCapabilities(): CapabilityType[] {
     return this._capabilities;
   }
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
-    const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
+    const model = options?.model ?? this.getDefaultModel();
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens, PREMIUM_MAX_TOKENS_CEILING);
 
     try {
@@ -426,7 +430,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     handler: StreamingHandler,
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
-    const model = options?.model ?? this.config.model ?? ANTHROPIC_DEFAULT_MODEL;
+    const model = options?.model ?? this.getDefaultModel();
     const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens, PREMIUM_MAX_TOKENS_CEILING);
 
     try {

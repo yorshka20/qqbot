@@ -157,6 +157,14 @@ export class LaozhangProvider
     };
   }
 
+  /** The LLM model lives under `llm`, not at the top level the base class reads. */
+  override getDefaultModel(): string {
+    if (!this.config.llm) {
+      throw new Error('LaozhangProvider: llm not configured');
+    }
+    return this.config.llm.model;
+  }
+
   getCapabilities(): CapabilityType[] {
     return this._capabilities;
   }

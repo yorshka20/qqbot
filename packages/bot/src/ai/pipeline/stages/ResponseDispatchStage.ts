@@ -93,11 +93,9 @@ export class ResponseDispatchStage implements ReplyStage {
     // a card image. The send_card tool is the model's lever for "I want a
     // structured card"; not using it means "ship as prose".
     if (!containsCommand && this.cardHelper.shouldUseCardReply(text)) {
-      if (!skipCard && this.cardHelper.looksLikeMarkdown(text)) {
+      if (!skipCard && ctx.actualTarget && this.cardHelper.looksLikeMarkdown(text)) {
         // Path 2a: markdown → card
-        const mdResult = await this.cardHelper
-          .renderMarkdownDirect(text, ctx.actualTarget?.provider, ctx.actualTarget?.model)
-          .catch(() => null);
+        const mdResult = await this.cardHelper.renderMarkdownDirect(text, ctx.actualTarget).catch(() => null);
         if (mdResult) {
           this.cardHelper.setCardReplyOnContext(hookContext, mdResult.segments, mdResult.textForHistory);
           await this.hookManager.execute('onAIGenerationComplete', hookContext);

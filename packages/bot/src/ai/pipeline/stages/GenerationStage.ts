@@ -3,6 +3,7 @@
 import type {
   AIGenerateResponse,
   ChatMessage,
+  ConcreteLLMTarget,
   FunctionCall,
   LLMTarget,
   ReasoningEffort,
@@ -11,6 +12,7 @@ import type {
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { LLMService } from '@/ai/services/LLMService';
+import { recordActiveTarget, servedTargetOf } from '@/ai/utils/servedTarget';
 import { MessageAPI } from '@/api/methods/MessageAPI';
 import { ConversationConfigService } from '@/conversation/ConversationConfigService';
 import { ConversationMessageSender } from '@/conversation/ConversationMessageSender';
@@ -49,7 +51,7 @@ interface GenerationPipelineParams {
 /** Result of the LLM generation pipeline (attempt / retry). */
 interface GenerationPipelineResult {
   response: AIGenerateResponse;
-  actualTarget: LLMTarget | undefined;
+  actualTarget: ConcreteLLMTarget | null;
   /** True when the model ended the turn via the end_turn tool. */
   endTurnRequested: boolean;
 }
@@ -206,19 +208,9 @@ export class GenerationStage implements ReplyStage {
     context.metadata.delete('cardSendFailedReason');
     context.metadata.delete('replyReasoning');
 
-    // Stamp the active provider so tool executors (notably send_card) can
-    // attribute their output to whoever is actually generating this turn.
-    // Without this, send_card falls back to the global default LLM provider
-    // and the card footer shows the wrong name when the requested provider
-    // was overridden upstream (e.g. `claude:` prefix → anthropic).
-    if (target) {
-      context.metadata.set('activeProvider', target.provider);
-    } else {
-      context.metadata.delete('activeProvider');
-    }
-    // The real model is only known once a round runs (provider fallback); cleared
-    // here and filled by onProviderResolved before any mid-loop tool renders.
-    context.metadata.delete('activeModel');
+    // The serving model is only known once a round runs (a fallback may change it), so the
+    // previous attempt's target is cleared here and re-recorded by onProviderResolved.
+    context.metadata.delete('activeTarget');
 
     const toolExecutor = (call: { name: string; arguments: string }) =>
       executeSkillCall(call, context, this.toolManager, this.hookManager);
@@ -237,10 +229,7 @@ export class GenerationStage implements ReplyStage {
         toolExecutor,
         onReasoning,
         onToolRoundText: (text, calls) => this.deliverToolRoundText(context, text, calls),
-        onProviderResolved: ({ providerName, model }) => {
-          context.metadata.set('activeProvider', providerName);
-          if (model) context.metadata.set('activeModel', model);
-        },
+        onProviderResolved: recordActiveTarget(context),
       },
       target,
     );
@@ -254,10 +243,7 @@ export class GenerationStage implements ReplyStage {
 
     // Stamp per-user usage onto the context so the onAIGenerationComplete hook
     // handler can record it. r.usage is the summed total across all tool rounds.
-    const actualProvider = r.resolvedProviderName ?? target?.provider;
-    const actualTarget = actualProvider
-      ? { provider: actualProvider, model: r.resolvedModel ?? context.metadata.get('activeModel') }
-      : undefined;
+    const actualTarget = servedTargetOf(r);
     if (r.usage && actualTarget) {
       context.metadata.set('aiUsage', {
         type: 'llm',

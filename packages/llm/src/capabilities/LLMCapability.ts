@@ -1,6 +1,7 @@
 // LLM Capability interface - text generation capability
 
 import type { AIProvider } from '../base/AIProvider';
+import type { ConcreteLLMTarget, LLMTarget } from '../config';
 import type { AIGenerateOptions, AIGenerateResponse, StreamingHandler } from '../types';
 
 /**
@@ -24,7 +25,13 @@ export interface LLMCapability {
    */
   generateLite?(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse>;
 
-  getDefaultModel?(): string | undefined;
+  /** The concrete model a call runs on when the caller names none. */
+  getDefaultModel(): string;
+}
+
+/** `target` made concrete on `provider`: an unnamed model is the provider's own default. */
+export function concreteLLMTarget(provider: LLMCapability, target: LLMTarget): ConcreteLLMTarget {
+  return { provider: target.provider, model: target.model ?? provider.getDefaultModel() };
 }
 
 /**

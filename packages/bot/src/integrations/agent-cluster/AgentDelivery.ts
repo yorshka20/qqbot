@@ -8,6 +8,7 @@
 
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { basename, sep } from 'node:path';
+import type { ConcreteLLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import type { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
 import type { FileAPI } from '@/api/methods/FileAPI';
@@ -72,13 +73,9 @@ export class AgentDelivery {
   }
 
   /** Render a card deck to an image and send it; history keeps the deck's text form. */
-  async sendCards(
-    target: DeliveryTarget,
-    cards: CardData[],
-    attribution: { agentName: string; model: string },
-  ): Promise<DeliveryResult> {
+  async sendCards(target: DeliveryTarget, cards: CardData[], attribution: ConcreteLLMTarget): Promise<DeliveryResult> {
     return this.deliver(target, 'coding_agent_card', async (protocol, chatId) => {
-      const rendered = await this.deps.cardRenderer.renderParsedCards(cards, attribution.agentName, attribution.model);
+      const rendered = await this.deps.cardRenderer.renderParsedCards(cards, attribution);
       const messageSeq = await this.sendSegments(target, chatId, rendered.segments, protocol);
       return { messageSeq, messageId: messageSeq, history: rendered.textForHistory };
     });
