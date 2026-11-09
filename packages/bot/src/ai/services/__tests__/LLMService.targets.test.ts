@@ -103,6 +103,20 @@ describe('LLMService targets: a provider and its model travel together', () => {
     expect(res.resolvedModel).toBe('beta-default');
   });
 
+  it('uses the default route again once the provider is healthy', async () => {
+    const alpha = fakeProvider('alpha', 'alpha-default');
+    const beta = fakeProvider('beta', 'beta-default');
+    const state: LLMServiceTestState = { unhealthy: ['alpha'] };
+    const service = serviceWith([alpha, beta], { provider: 'alpha', model: 'alpha-small' }, state, ['beta']);
+
+    await service.generate('hi', { reasoningEffort: 'none' });
+    state.unhealthy = [];
+    await service.generate('hi', { reasoningEffort: 'none' });
+
+    expect(beta.models).toEqual(['beta-default']);
+    expect(alpha.models).toEqual(['alpha-small']);
+  });
+
   it('falls back from an unavailable target to the default LLM without carrying the target’s model', async () => {
     const alpha = fakeProvider('alpha', 'alpha-default');
     const service = serviceWith([alpha], { provider: 'alpha', model: 'alpha-small' });

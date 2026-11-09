@@ -58,6 +58,8 @@ type CompleteServices = {
   globalConfigManager: GlobalConfigManager;
 };
 
+const DEFAULT_RECOVERY_PROBE_INTERVAL_MS = 300_000;
+
 /**
  * Conversation Initializer
  * Startup steps of the conversation system: connect the database, migrate, register the
@@ -78,7 +80,7 @@ export class ConversationInitializer {
     await databaseManager.initialize(config.getDatabaseConfig());
 
     await ConversationInitializer.registerSqliteStores(databaseManager);
-    ConversationInitializer.registerAIHealthChecks();
+    ConversationInitializer.registerAIHealthChecks(config);
 
     // Agenda framework: AgendaService + AgentLoop + InternalEventBus.
     const agendaComponents = await AgendaInitializer.initialize({
@@ -169,17 +171,19 @@ export class ConversationInitializer {
   }
 
   /** AIManager aggregate health plus one check per provider that has not opted out. */
-  private static registerAIHealthChecks(): void {
+  private static registerAIHealthChecks(config: Config): void {
     const container = getContainer();
     // Register AIManager with health check manager (for aggregate health; it checks
     // every provider it manages).
     const healthCheckManager = container.resolve(HealthCheckManager);
     const aiManager = container.resolve<AIManager>(DITokens.AI_MANAGER);
+    const recoveryInterval =
+      config.getAIConfig()?.llmFallback.recoveryProbeIntervalMs ?? DEFAULT_RECOVERY_PROBE_INTERVAL_MS;
     healthCheckManager.registerService(aiManager, {
       cacheDuration: 120000, // AI providers are usually stable
       timeout: 10000,
       retries: 0,
-      checkInterval: 3600000,
+      checkInterval: recoveryInterval,
     });
 
     // Register each AI provider individually with HealthCheckManager
@@ -192,7 +196,7 @@ export class ConversationInitializer {
         continue;
       }
       const adapter = new ProviderHealthAdapter(provider);
-      healthCheckManager.registerService(adapter, { cacheDuration: 60000, timeout: 8000 });
+      healthCheckManager.registerService(adapter, { cacheDuration: 60000, timeout: 8000, recoveryInterval });
     }
 
     // NOTE: Startup health check is deferred to bootstrap.ts AFTER plugins are loaded,

@@ -834,7 +834,7 @@ An LLM is addressed as an `LLMTarget` — `{ provider, model? }` — never as a 
 `LLMService` resolves a call's route in one place (`resolveRoute`): an explicit target, else the session's override (`ProviderSelector.getSessionOverride`, which returns only an override the session set — never the default), else the default LLM (`AIManager.getDefaultLLM`). Where the route ends up on a different provider than the one requested, the requested model is dropped with it:
 
 - **Routing by name** — a provider prefix or color nickname routes to `{ provider }`, the provider on its own model. So the default can be a cheaper model of the same provider (`"llm": { "provider": "anthropic", "model": "claude-haiku-5-5" }`) while `claude,` / `橙色高手` still reach the model configured on `ai.providers.anthropic`.
-- **Health swap** — an unhealthy session/default provider is swapped to the first healthy provider in `fallbackOrder`, on that provider's own model. An explicit target is attempted even when marked unhealthy.
+- **Health swap** — an unhealthy session/default provider is swapped to the first healthy provider in `fallbackOrder`, on that provider's own model. An explicit target is attempted even when marked unhealthy. The swap is temporary: `HealthCheckManager` re-probes every unhealthy provider (with `force`) each `ai.llmFallback.recoveryProbeIntervalMs` (default 5 minutes) until a probe succeeds, and the default route is used again from then on. TTS providers get the same recovery probe.
 - **Unavailable target** — a target whose provider is not registered falls back to the default LLM.
 - **Fallback** — each alternative runs on its own model. In a tool loop, a round served by a fallback provider moves the rest of the loop to it, again on its own model.
 

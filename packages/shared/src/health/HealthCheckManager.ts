@@ -24,6 +24,7 @@ export class HealthCheckManager {
   private configs = new Map<string, ServiceHealthConfig>();
   private cache = new Map<string, CachedHealthCheck>();
   private checkIntervals = new Map<string, NodeJS.Timeout>();
+  private recoveryTimers = new Map<string, NodeJS.Timeout>();
 
   private defaultCacheDuration = 60000; // 60 seconds
   private defaultTimeout = 5000; // 5 seconds
@@ -50,6 +51,7 @@ export class HealthCheckManager {
       timeout: config?.timeout ?? this.defaultTimeout,
       retries: config?.retries ?? this.defaultRetries,
       checkInterval: config?.checkInterval ?? 0,
+      recoveryInterval: config?.recoveryInterval ?? 0,
     };
     this.configs.set(serviceName, serviceConfig);
 
@@ -67,6 +69,7 @@ export class HealthCheckManager {
   unregisterService(serviceName: string): void {
     // Stop auto-check if running
     this.stopAutoCheck(serviceName);
+    this.cancelRecovery(serviceName);
 
     // Remove from all maps
     this.services.delete(serviceName);
@@ -193,6 +196,7 @@ export class HealthCheckManager {
       expiresAt: Date.now() + cacheDuration,
       consecutiveFailures,
     });
+    this.syncRecovery(serviceName, result.status);
   }
 
   /**
@@ -214,6 +218,7 @@ export class HealthCheckManager {
       expiresAt: Date.now() + cacheDuration,
       consecutiveFailures: 0,
     });
+    this.cancelRecovery(serviceName);
   }
 
   /**
@@ -246,6 +251,7 @@ export class HealthCheckManager {
         `[HealthCheckManager] Service ${serviceName} marked UNHEALTHY after ${consecutiveFailures} consecutive failures`,
       );
     }
+    this.syncRecovery(serviceName, status);
   }
 
   /**
@@ -277,6 +283,7 @@ export class HealthCheckManager {
       return false;
     }
     this.cache.delete(serviceName);
+    this.cancelRecovery(serviceName);
     logger.info(`[HealthCheckManager] Reset cached health state for ${serviceName}`);
     return true;
   }
@@ -307,6 +314,39 @@ export class HealthCheckManager {
    */
   peekCachedResult(serviceName: string): HealthCheckResult | null {
     return this.cache.get(serviceName)?.result ?? null;
+  }
+
+  /**
+   * Keep the recovery timer in step with the service status: an UNHEALTHY service has exactly one
+   * pending re-probe, any other status has none. Without it a service that callers route around
+   * is never called again, so nothing would ever mark it healthy.
+   */
+  private syncRecovery(serviceName: string, status: HealthStatus): void {
+    if (status !== HealthStatus.UNHEALTHY) {
+      this.cancelRecovery(serviceName);
+      return;
+    }
+    const interval = this.configs.get(serviceName)?.recoveryInterval ?? 0;
+    if (interval <= 0 || this.recoveryTimers.has(serviceName)) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.recoveryTimers.delete(serviceName);
+      this.checkHealth(serviceName, { force: true }).catch((error) => {
+        logger.error(`[HealthCheckManager] Recovery probe failed for ${serviceName}:`, error);
+      });
+    }, interval);
+    timer.unref?.();
+    this.recoveryTimers.set(serviceName, timer);
+    logger.debug(`[HealthCheckManager] Scheduled recovery probe for ${serviceName} in ${interval}ms`);
+  }
+
+  private cancelRecovery(serviceName: string): void {
+    const timer = this.recoveryTimers.get(serviceName);
+    if (timer) {
+      clearTimeout(timer);
+      this.recoveryTimers.delete(serviceName);
+    }
   }
 
   /**
@@ -400,6 +440,9 @@ export class HealthCheckManager {
     // Stop all auto-check intervals
     for (const serviceName of this.checkIntervals.keys()) {
       this.stopAutoCheck(serviceName);
+    }
+    for (const serviceName of [...this.recoveryTimers.keys()]) {
+      this.cancelRecovery(serviceName);
     }
 
     // Clear all data

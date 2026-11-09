@@ -686,7 +686,10 @@
         "gemini",
         "openai",
         "anthropic"
-      ]
+      ],
+      // How often an unhealthy provider is re-probed (ms). Once a probe succeeds
+      // the provider takes its default route back. Default 300000 (5 minutes)
+      "recoveryProbeIntervalMs": 300000
     },
     // Chat-pipeline reasoning effort (optional). Applies to the main QQ
     // conversation pipeline (NOT the avatar/Live2D path — that has its own

@@ -26,9 +26,10 @@ function formatResultLine(name: string, result: HealthCheckResult | null, failur
 /**
  * Healthcheck command — list / force-refresh health status of registered services.
  *
- * Motivation: when a provider is marked UNHEALTHY after a transient failure, LLMService
- * skips it via isServiceHealthySync until its cache entry expires. Admins need a way to
- * kick the status back to HEALTHY on demand instead of waiting for the cache TTL.
+ * Motivation: when a provider is marked UNHEALTHY, LLMService skips it via isServiceHealthySync.
+ * The status does not expire on its own; HealthCheckManager re-probes an unhealthy provider every
+ * recovery interval (ai.llmFallback.recoveryProbeIntervalMs) and a successful probe restores it.
+ * Admins use this command to restore it on demand instead of waiting for the next probe.
  *
  * Subcommands:
  *   /healthcheck                 — list current cached status of all registered services

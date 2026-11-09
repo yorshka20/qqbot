@@ -229,6 +229,11 @@ export interface AIConfig {
   llmFallback: {
     /** Ordered list of provider names for fallback (by cost, cheapest first) */
     fallbackOrder: string[];
+    /**
+     * How often an unhealthy provider is re-probed, in milliseconds. The provider takes its
+     * default route back as soon as a probe succeeds. Default 300000 (5 minutes).
+     */
+    recoveryProbeIntervalMs?: number;
   };
   /**
    * Per-provider token rate limiting (TPM — tokens per minute).

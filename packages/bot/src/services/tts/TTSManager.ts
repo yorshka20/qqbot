@@ -334,6 +334,7 @@ export class TTSManager {
     this.healthManager.registerService(new TtsProviderHealthAdapter(provider), {
       cacheDuration: 60_000,
       checkInterval: 0,
+      recoveryInterval: 300_000,
     });
     this.healthRegisteredNames.add(provider.name);
   }

@@ -53,4 +53,5 @@ export interface ServiceHealthConfig {
   cacheDuration?: number; // Cache duration in milliseconds
   timeout?: number; // Default timeout for health checks
   retries?: number; // Default number of retries
+  recoveryInterval?: number; // Re-probe interval while UNHEALTHY in milliseconds (0 = never re-probe)
 }
