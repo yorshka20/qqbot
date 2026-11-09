@@ -35,6 +35,7 @@ decomposition_strategy: |
   理由：A 会造成前后端 interface 来回调整，C 需要 serial 跑顺序约束太强，
   B 每个 child 可以独立测试闭环。
 estimated_children: 3                  # 你打算 spawn 几个 child
+workbook: 2026-04-16-my-ticket-slug    # 这个 job 的 kb workbook 条目名 YYYY-MM-DD-<topic>；child 的 commit body 末尾写 `See workbook <它>.`
 ---
 
 # Plan: <一句话 ticket 标题>

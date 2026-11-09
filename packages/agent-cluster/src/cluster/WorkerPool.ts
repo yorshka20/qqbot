@@ -18,6 +18,7 @@ import type { ClusterConfig, WorkerBackendType } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import { LogTail } from './LogTail';
 import {
+  docsDutyPromptName,
   loadClusterPrompt,
   planningPromptName,
   renderPrompt,
@@ -1108,7 +1109,7 @@ export class WorkerPool {
 
   /**
    * The prompt a fresh session starts from: the role prompt (with the executor catalog rendered
-   * for a planner), the workspace note, the planning mode, then the task description. The
+   * for a planner), the workspace note, the planning mode, the executor's documentation duty, then the task description. The
    * persisted `TaskRecord.description` stays the user's original text.
    */
   private async firstPrompt(
@@ -1132,7 +1133,9 @@ export class WorkerPool {
       : '';
     const planningName = workspace && planningPromptName(workspace);
     const planningNote = planningName ? await loadClusterPrompt(planningName, projectPath) : '';
-    return [renderedRolePrompt, workspaceNote, planningNote, task.description].filter(Boolean).join('\n\n');
+    const docsName = docsDutyPromptName(role, Boolean(task.parentTaskId));
+    const docsNote = docsName ? await loadClusterPrompt(docsName, projectPath) : '';
+    return [renderedRolePrompt, workspaceNote, planningNote, docsNote, task.description].filter(Boolean).join('\n\n');
   }
 
   /**

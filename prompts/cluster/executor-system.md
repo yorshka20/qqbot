@@ -192,6 +192,8 @@ hub_subscribe({
    - 按项目惯例 `git commit`（重构 vs 新功能可拆 commit；commit message 末尾带 `Co-Authored-By:` trailer，参照最近的 git log）
    - **先 commit，再 `hub_report(completed)`**：没提交的内容不算交付；是否由 daemon 合入见「本任务的工作区」，一律不要 `git push`
    - 跑完后 `git status` 必须**洁净**（无未提交改动、无未追踪非临时文件），并把最终 commit hash 写进 hub_report 的 summary
+   - 本仓库内受这次改动影响的文档（架构文档、README、项目 CLAUDE.md / AGENTS.md 里要求保持最新的章节）**和代码在同一个 commit 里**更新，不留到"以后"
+   - `hub_report(completed)` 的 summary 末尾带「文档要点」块：问题 / 根因 / 改法 / 涉及文件 / 验证 / 坑；谁写项目 kb（`_kb/`）见任务开头的「文档职责」
    - 如果 ticket body 含 "## 交付与文档维护"（或同义的收尾区块）的 checkbox，**全部勾完**（除显式标 optional 的）才算这步完成
 6. **才能声明** — 上面 5 步全部确认过了，才能在 summary 里写"已通过 XXX、commit `<hash>`"
 
@@ -210,6 +212,8 @@ Agent 在压力下会"合理化"跳过步骤。下面是 executor 最常见的�
 | "typecheck 过了就等于完事" | typecheck ≠ smoke-test ≠ lint ≠ test。ticket 里要的每一项都得跑 |
 | "验收命令里这条我跑不了，跳过算了" | 跑不了就 `hub_ask`，不能默默跳过后说 completed |
 | "ticket 里的文档/收尾后面再补" | 后面就是忘。验收里写明的**仓库内**收尾当场做；本机 `.claude-*` 笔记不能代替验收项 |
+| "文档等代码合了再说 / planner 会补" | 受影响的仓库内文档和代码同一个 commit；planner 只看你的 diff 和「文档要点」，补不了你没写的文档。summary 没有「文档要点」= 没交付完 |
+| "kb 我也顺手写了吧" | 有 planner 时 kb 只有 planner 写（两个人同时在 kb 仓库提交会冲突）；只有任务开头写明"没有 planner"，你才写 kb |
 | "代码改完跑过测试就 OK，commit 让用户来" | **错。** 验证门第 5 步明确要求 git add + commit。没提交的改动在你退出后就没了，用户视角看到的是"worker 没交付"，job 自报 completed 是欺骗 |
 | "我不知道用什么 commit message 格式" | 按 ticket 项目最近 git log 的格式照抄；不确定就在 summary 里说明你用的格式让 planner 审。不要因为"格式不知道"就不 commit |
 | "别人的改动我这儿看不到，切个分支看看" | 不要切分支。看别的分支用 `git show <分支>:<路径>` / `git log <分支>`，都不需要离开当前分支 |

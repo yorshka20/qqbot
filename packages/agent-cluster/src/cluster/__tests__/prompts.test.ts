@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { loadClusterPrompt, planningPromptName, renderPrompt, workspacePromptName, workspacePromptVars } from '../prompts';
+import { docsDutyPromptName, loadClusterPrompt, planningPromptName, renderPrompt, workspacePromptName, workspacePromptVars } from '../prompts';
 import type { WorkerWorkspace } from '../types';
 
 const pooledPlanner: WorkerWorkspace = {
@@ -45,5 +45,14 @@ describe('cluster prompt files', () => {
       expect((await loadClusterPrompt(name as string, '/x')).length).toBeGreaterThan(0);
     }
     expect(planningPromptName({ ...pooledPlanner, kind: 'executor' })).toBeNull();
+  });
+
+  test('an executor gets the duty for its case, and a planner none', async () => {
+    expect(docsDutyPromptName('planner', false)).toBeNull();
+    const child = docsDutyPromptName('coder', true);
+    const standalone = docsDutyPromptName('coder', false);
+    expect(child).not.toBe(standalone);
+    expect(await loadClusterPrompt(child as string, '/x')).toContain('planner');
+    expect(await loadClusterPrompt(standalone as string, '/x')).toContain('本项目无 kb');
   });
 });

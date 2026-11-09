@@ -406,8 +406,10 @@ facts and pitfalls in the matching `_kb/learnings/<scope>.md`, update the task's
 then refresh the generated scope views: `cd _kb && python3 ../_shared/scripts/kb-roadmap.py .`
 (the `## Roadmap（生成视图）` block at the top of each learnings file is generated — never edit it by hand).
 
-**If `_kb` is missing** on this machine or in a fresh worktree, ask the user for the kb root and run
-`<kb>/kb-link.sh qqbot` from the repo root.
+**If `_kb` is missing** on this machine or in a fresh manual checkout, ask the user for the kb root and run
+`<kb>/kb-link.sh qqbot` from the repo root. Cluster worktree slots get the link automatically (the pool copies the
+project checkout's `_kb` symlink into each slot); in a cluster job the planner — or a directly dispatched
+executor — writes the job's kb entry, see `docs/AGENT_CLUSTER_DESIGN.md`.
 
 **What stays in this repo:** the docs under `docs/` that describe the shipped architecture
 (`ARCHITECTURE.md`, `FLOW_DIAGRAMS_EN.md`, `CONTEXT_METADATA.md`, `REPLY_PERSISTENCE.md`,

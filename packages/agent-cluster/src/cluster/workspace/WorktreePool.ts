@@ -20,13 +20,17 @@ import { createHash, randomBytes } from 'node:crypto';
 import {
   closeSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
+  unlinkSync,
 } from 'node:fs';
 import { basename, dirname, join, sep } from 'node:path';
 import { logger } from '@qqbot/shared';
@@ -468,6 +472,11 @@ export class WorktreePool {
   }
 
   private async ensureWorktree(path: string, entry: ProjectEntry): Promise<void> {
+    await this.createWorktreeIfMissing(path, entry);
+    linkKnowledgeBase(entry.path, path);
+  }
+
+  private async createWorktreeIfMissing(path: string, entry: ProjectEntry): Promise<void> {
     if (await this.isWorktreeRoot(path)) {
       return;
     }
@@ -513,6 +522,36 @@ export class WorktreePool {
       .run(lockHash, project, slot);
   }
 }
+
+/**
+ * The project's knowledge base is a git-ignored `_kb` symlink in its checkout; a slot is made by
+ * `git worktree add`, which never carries ignored files, so it is linked here. The link is ignored
+ * too, which keeps it through the `git clean -fd` that resets a slot.
+ */
+function linkKnowledgeBase(projectPath: string, slotPath: string): void {
+  const source = join(projectPath, KNOWLEDGE_BASE_LINK);
+  const target = join(slotPath, KNOWLEDGE_BASE_LINK);
+  let kbTarget: string;
+  try {
+    if (!lstatSync(source).isSymbolicLink()) {
+      return;
+    }
+    kbTarget = readlinkSync(source);
+  } catch {
+    return;
+  }
+  try {
+    if (lstatSync(target).isSymbolicLink() && readlinkSync(target) === kbTarget) {
+      return;
+    }
+    unlinkSync(target);
+  } catch {
+    // no link yet
+  }
+  symlinkSync(kbTarget, target);
+}
+
+const KNOWLEDGE_BASE_LINK = '_kb';
 
 const SLOT_NAME = /^wt-[0-9a-f]{8}$/;
 

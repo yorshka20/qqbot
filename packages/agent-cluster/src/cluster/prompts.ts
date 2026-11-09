@@ -54,6 +54,14 @@ export function planningPromptName(workspace: WorkerWorkspace): string | null {
   return workspace.kind === 'planner' ? `planning-${workspace.planning}.md` : null;
 }
 
+/** Who writes the job's knowledge-base entry: a child's planner does; a standalone executor does itself. */
+export function docsDutyPromptName(role: 'planner' | 'coder', hasParent: boolean): string | null {
+  if (role === 'planner') {
+    return null;
+  }
+  return hasParent ? 'docs-child-executor.md' : 'docs-standalone-executor.md';
+}
+
 export function workspacePromptName(workspace: WorkerWorkspace): string {
   return `workspace-${workspace.mode}-${workspace.kind}.md`;
 }

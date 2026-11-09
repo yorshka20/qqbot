@@ -589,6 +589,13 @@ hub_directive:
   首次使用时 `git worktree add`，之后一直复用，`node_modules` 留在槽里。启动时的 gc 只删根下**名字是 `wt-<8 位 hex>` 且没有槽记录**的目录：
   根被配错时，池不会删掉任何不是它建的东西。
   lockfile 与上次安装时不同才跑安装命令（项目的 `install`，默认按 `type` 取 `bun install` / `npm install`）。
+- **知识库**：项目检出里的 `_kb` 若是符号链接（git-ignored，`info/exclude` 由所有 worktree 共享），每次确保槽时在槽里建同目标的 `_kb` 链接
+  （缺失就建，指向别处就替换；项目检出没有 `_kb` 则什么也不做）。槽重置用 `git clean -fd`（不带 `-x`），ignored 的链接因此保留。
+- **文档属于交付**：executor 把受影响的仓库内文档和代码放进同一个 commit，summary 末尾附「文档要点」。每个 job 只有一个 kb 写入者：
+  有 planner 时是 planner（交付门里的文档门：核对 child 的文档，写 workbook / learnings / roadmap，只 `git add` 自己写过的路径提交 kb 仓库，不 push，
+  commit hash 写进最终 summary）；直接派遣、没有 planner 父任务的 executor 自己写（首轮 prompt 按 `parentTaskId` 选 `prompts/cluster/docs-child-executor.md`
+  或 `docs-standalone-executor.md`）。planner 的 Edit / Write 只限 `_kb/` 内。plan 的 frontmatter `workbook` 字段让 child 的 commit body 能写 `See workbook …`。
+  没有 `_kb` 时写入者在 summary 里写「本项目无 kb」并保留「文档要点」。
 - 大小：项目的 `worktrees`，默认 `min(cluster.maxConcurrentWorkers, projects.<alias>.maxWorkers, 已启用 executor 的 maxConcurrent 之和)`。
   不是 git 仓库或 `worktrees: 0` 的项目没有池，worker 跑在项目目录里。
 - **planner 有自己的槽**，不占 executor 的名额，也不安装依赖。planner 在 `hub_wait` 里一直持有租约，

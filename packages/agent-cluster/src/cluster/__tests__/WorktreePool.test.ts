@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { git } from '../git';
 import { WorktreePool } from '../workspace/WorktreePool';
@@ -58,6 +58,44 @@ describe('WorktreePool', () => {
 
     await pool.release(first);
     expect(leaseOrThrow('executor', 'task-3').path).toBe(first.path);
+  });
+
+  describe('knowledge base link', () => {
+    async function ignoreKb(): Promise<void> {
+      writeFileSync(join(box.repo, '.git/info/exclude'), 'state/\n_kb\n');
+    }
+
+    test('a slot gets the same `_kb` symlink as the project checkout and stays clean', async () => {
+      const kb = join(box.repo, '..', 'kb');
+      mkdirSync(kb);
+      symlinkSync(kb, join(box.repo, '_kb'));
+      await ignoreKb();
+      const lease = leaseOrThrow('executor', 'task-1');
+      await pool.prepare(lease, box.entry, 'cluster/job-task', 'master');
+      expect(lstatSync(join(lease.path, '_kb')).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(join(lease.path, '_kb'))).toBe(kb);
+      expect(await git(lease.path, ['status', '--porcelain'])).toBe('');
+    });
+
+    test('a link that points elsewhere is replaced', async () => {
+      const kb = join(box.repo, '..', 'kb');
+      mkdirSync(kb);
+      symlinkSync(kb, join(box.repo, '_kb'));
+      await ignoreKb();
+      const lease = leaseOrThrow('executor', 'task-1');
+      await pool.prepare(lease, box.entry, 'cluster/job-task', 'master');
+      rmSync(join(lease.path, '_kb'));
+      symlinkSync('/nonexistent', join(lease.path, '_kb'));
+      await pool.release(lease);
+      await pool.prepare(leaseOrThrow('executor', 'task-2'), box.entry, 'cluster/job-task-2', 'master');
+      expect(readlinkSync(join(lease.path, '_kb'))).toBe(kb);
+    });
+
+    test('a project without `_kb` leaves the slot without one', async () => {
+      const lease = leaseOrThrow('executor', 'task-1');
+      await pool.prepare(lease, box.entry, 'cluster/job-task', 'master');
+      expect(existsSync(join(lease.path, '_kb'))).toBe(false);
+    });
   });
 
   test('a planner slot does not use up an executor slot', () => {
