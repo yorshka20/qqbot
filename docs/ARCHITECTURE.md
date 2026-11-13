@@ -861,6 +861,8 @@ A call does not size its own output budget. Reasoning is charged against the sam
 - **Retry on the same provider, then fall back** — a silent empty completion (the provider reported success), 429 / 5xx, and socket-level blips (`isTransientLLMError`).
 - **Fall back directly** — an error the provider stated, such as "no content (finish_reason=length)" or a 4xx. Trying the same request again would fail the same way.
 
+A provider reads its own stop reason, so an empty completion that reaches `LLMService` is one the provider could not explain. Partial content under a length stop is returned. The one exception is Anthropic's `stop_reason=refusal`: a safety classifier halted the output, so whatever text came back is a fragment cut mid-sentence, and the provider fails the call rather than let the fragment be sent as a reply.
+
 Fallback tries the other registered, healthy providers in `ai.llmFallback.fallbackOrder` order (unlisted ones last), each on its own model (see [LLM targets](#llm-targets)). Each tool round is one `generate` call, so a round that fails is re-run alone and the tools from earlier rounds do not run again.
 
 ## Tool System

@@ -193,6 +193,37 @@ function stringifyToolResultContent(content: ChatMessage['content']): string {
   return typeof content === 'string' ? content : contentToPlainString(content);
 }
 
+const ANTHROPIC_FINISHED_STOP_REASONS = new Set(['end_turn', 'tool_use', 'stop_sequence']);
+
+/**
+ * A provider that knows why it produced nothing says so instead of returning an empty
+ * completion (`max_tokens`, `model_context_window_exceeded`, a `pause_turn` past the
+ * continuation limit). `refusal` fails even with text: a safety classifier halted the
+ * output, so the text is a fragment cut mid-sentence, not a shorter answer, and
+ * returned as success it is sent to the chat as if complete.
+ */
+function assertTurnUsable(
+  stopReason: string | null | undefined,
+  content: AnthropicContentBlock[],
+  outputTokens?: number,
+): void {
+  if (stopReason && ANTHROPIC_FINISHED_STOP_REASONS.has(stopReason)) {
+    return;
+  }
+  const textChars = extractAnthropicText(content).length;
+  const hasToolUse = content.some((block) => block.type === 'tool_use');
+  if (stopReason !== 'refusal' && (textChars > 0 || hasToolUse)) {
+    return;
+  }
+  // Counts stay out of the error message: LLMService classifies retries by matching
+  // status-like numbers in it.
+  logger.warn(
+    `[AnthropicProvider] unusable turn: stop_reason=${stopReason ?? 'none'} ` +
+      `output_tokens=${outputTokens ?? 'unknown'} text=${textChars} chars`,
+  );
+  throw new Error(`Anthropic returned no usable content (stop_reason=${stopReason ?? 'none'})`);
+}
+
 function extractAnthropicText(blocks: AnthropicContentBlock[]): string {
   return blocks
     .filter((block): block is AnthropicTextBlock => block.type === 'text')
@@ -358,7 +389,9 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       const tools = this.buildAnthropicTools(options);
       const explicitSystem = this.buildAnthropicSystemPrompt(options);
       let data: AnthropicMessagesResponse | null = null;
-      const reasoningParts: string[] = [];
+      // A pause_turn continuation returns only the blocks written after the pause, so
+      // the turn is every response's content in order.
+      const turnContent: AnthropicContentBlock[] = [];
 
       for (let continuation = 0; continuation <= ANTHROPIC_PAUSE_TURN_MAX_CONTINUATIONS; continuation++) {
         const requestBody: AnthropicMessagesRequestBody = {
@@ -376,10 +409,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         }
 
         data = await this.httpClient.post<AnthropicMessagesResponse>('/messages', requestBody);
-        const reasoning = extractAnthropicReasoning(data.content);
-        if (reasoning) {
-          reasoningParts.push(reasoning);
-        }
+        turnContent.push(...data.content);
         if (data.stop_reason !== 'pause_turn') {
           break;
         }
@@ -390,25 +420,26 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       if (!data) {
         throw new Error('Anthropic response missing');
       }
+      assertTurnUsable(data.stop_reason, turnContent, data.usage?.output_tokens);
 
-      const text = extractAnthropicText(data.content);
+      const text = extractAnthropicText(turnContent);
       const usage = data.usage ? toUsage(data.usage) : undefined;
 
       const result: AIGenerateResponse = {
         text,
         usage,
-        reasoningContent: reasoningParts.length > 0 ? reasoningParts.join('\n\n') : undefined,
+        reasoningContent: extractAnthropicReasoning(turnContent),
         metadata: {
           model: data.model,
         },
       };
 
-      const thinkingBlocks = extractThinkingBlockEchoes(data.content);
+      const thinkingBlocks = extractThinkingBlockEchoes(turnContent);
       if (thinkingBlocks.length > 0) {
         result.thinkingBlocks = thinkingBlocks;
       }
 
-      const toolUseBlocks = data.content.filter((block): block is AnthropicToolUseBlock => block.type === 'tool_use');
+      const toolUseBlocks = turnContent.filter((block): block is AnthropicToolUseBlock => block.type === 'tool_use');
       if (toolUseBlocks.length > 0) {
         result.functionCalls = toolUseBlocks.map((block) => ({
           name: block.name,
@@ -592,6 +623,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       }
 
       const data = await this.httpClient.post<AnthropicMessagesResponse>('/messages', requestBody);
+      assertTurnUsable(data.stop_reason, data.content, data.usage?.output_tokens);
 
       const text = extractAnthropicText(data.content);
       const usage = data.usage ? toUsage(data.usage) : undefined;
