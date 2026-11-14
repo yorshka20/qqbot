@@ -15,7 +15,10 @@ const IMAGE: VisionImage = {
 };
 
 function fakeHttp(provider: object, response: unknown): void {
-  (provider as { httpClient: unknown }).httpClient = { post: async () => response };
+  (provider as { httpClient: unknown }).httpClient = {
+    get: async () => ({ max_tokens: 128_000 }),
+    post: async () => response,
+  };
 }
 
 describe('generateWithVision reports the model it sent', () => {

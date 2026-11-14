@@ -1,7 +1,7 @@
 // Reply generation pipeline orchestrator.
 // Runs the stage-based pipeline for normal reply generation.
 
-import type { ConcreteLLMTarget } from '@qqbot/llm';
+import { type ConcreteLLMTarget, ProviderRefusalError } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { CardRenderingHelper } from '@/ai/pipeline/helpers/CardRenderingHelper';
@@ -104,8 +104,7 @@ export class ReplyPipelineOrchestrator {
       logger.error('[ReplyPipelineOrchestrator] Failed to generate reply from task results:', err);
       await this.hookManager.execute('onAIGenerationComplete', context);
 
-      const errorMessage = `抱歉，AI 回复生成失败：${err.message || '未知错误'}。请稍后再试。`;
-      replaceReply(context, errorMessage, 'ai');
+      replaceReply(context, describeReplyFailure(err), 'ai');
     }
   }
 
@@ -133,4 +132,13 @@ export class ReplyPipelineOrchestrator {
     }
     return this.cardHelper.handleCardReplyWithoutContext(responseText, sessionId, options.attribution);
   }
+}
+
+/** What the chat is told when a reply could not be generated. */
+function describeReplyFailure(err: Error): string {
+  if (err instanceof ProviderRefusalError) {
+    const reason = err.explanation ? `：${err.explanation}` : '';
+    return `${err.model} 拒绝回答这条消息（${err.stopSignal}，category=${err.category ?? '未说明'}）${reason}`;
+  }
+  return `抱歉，AI 回复生成失败：${err.message || '未知错误'}。请稍后再试。`;
 }

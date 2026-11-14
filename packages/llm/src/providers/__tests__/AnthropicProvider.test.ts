@@ -5,23 +5,40 @@
 
 import { describe, expect, it } from 'bun:test';
 import type { ChatMessage } from '../../types';
+import { ProviderRefusalError } from '../../errors';
 import { AnthropicProvider } from '../AnthropicProvider';
 
 interface CapturedBody {
   messages: Array<{ role: string; content: unknown }>;
+  max_tokens: number;
+  fallbacks?: unknown;
 }
 
-/** Stub the HTTP layer: no network, canned response, request bodies captured. */
-function providerReturning(response: unknown): { provider: AnthropicProvider; bodies: CapturedBody[] } {
+const MODEL_OUTPUT_CEILING = 64_000;
+
+/**
+ * Stub the HTTP layer: no network, canned response, request bodies captured. `get` is
+ * the Models API lookup of the model's output ceiling; `modelLookups` counts it.
+ */
+function providerReturning(response: unknown): {
+  provider: AnthropicProvider;
+  bodies: CapturedBody[];
+  modelLookups: string[];
+} {
   const provider = new AnthropicProvider({ apiKey: 'test-key', model: 'claude-sonnet-4-6' });
   const bodies: CapturedBody[] = [];
-  (provider as unknown as { httpClient: { post: (path: string, body: unknown) => Promise<unknown> } }).httpClient = {
+  const modelLookups: string[] = [];
+  (provider as unknown as { httpClient: object }).httpClient = {
+    get: async (path: string) => {
+      modelLookups.push(path);
+      return { max_tokens: MODEL_OUTPUT_CEILING };
+    },
     post: async (_path: string, body: unknown) => {
       bodies.push(body as CapturedBody);
       return response;
     },
   };
-  return { provider, bodies };
+  return { provider, bodies, modelLookups };
 }
 
 const THINKING_BLOCK = { type: 'thinking', thinking: 'need the weather tool', signature: 'sig-abc' } as const;
@@ -133,7 +150,8 @@ describe('AnthropicProvider usage', () => {
 function providerReturningSequence(responses: unknown[]): AnthropicProvider {
   const provider = new AnthropicProvider({ apiKey: 'test-key', model: 'claude-sonnet-4-6' });
   let call = 0;
-  (provider as unknown as { httpClient: { post: () => Promise<unknown> } }).httpClient = {
+  (provider as unknown as { httpClient: object }).httpClient = {
+    get: async () => ({ max_tokens: MODEL_OUTPUT_CEILING }),
     post: async () => responses[call++],
   };
   return provider;
@@ -149,6 +167,23 @@ describe('AnthropicProvider unfinished turns', () => {
     });
 
     await expect(provider.generate('问题')).rejects.toThrow('stop_reason=refusal');
+  });
+
+  it('reports a refusal as a ProviderRefusalError carrying the category and explanation', async () => {
+    const { provider } = providerReturning({
+      content: [],
+      usage: { input_tokens: 10, output_tokens: 0 },
+      model: 'claude-opus-5-5',
+      stop_reason: 'refusal',
+      stop_details: { type: 'refusal', category: 'frontier_llm', explanation: 'could assist model development' },
+    });
+
+    const error = await provider.generate('问题').catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ProviderRefusalError);
+    expect(error).toMatchObject({ provider: 'anthropic', model: 'claude-opus-5-5', category: 'frontier_llm' });
+    expect((error as Error).message).toContain('category=frontier_llm');
+    expect((error as Error).message).toContain('could assist model development');
   });
 
   it('names the stop reason when the turn produced nothing', async () => {
@@ -194,5 +229,69 @@ describe('AnthropicProvider unfinished turns', () => {
     const res = await provider.generate('问题');
 
     expect(res.text).toBe('先查一下。\n查到了。');
+  });
+});
+
+describe('AnthropicProvider refusal fallback', () => {
+  it('asks the API to re-run a declined request on its recommended fallback model', async () => {
+    const { provider, bodies } = providerReturning({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 10, output_tokens: 1 },
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'end_turn',
+    });
+
+    await provider.generate('问题');
+
+    expect(bodies[0].fallbacks).toBe('default');
+  });
+
+  it('returns what the fallback model wrote and names it as the serving model', async () => {
+    const { provider } = providerReturning({
+      content: [
+        { type: 'fallback', from: { model: 'claude-opus-5-5' }, to: { model: 'claude-opus-5' } },
+        THINKING_BLOCK,
+        { type: 'text', text: '换了个模型回答' },
+      ],
+      usage: { input_tokens: 10, output_tokens: 5 },
+      model: 'claude-opus-5',
+      stop_reason: 'end_turn',
+    });
+
+    const res = await provider.generate('问题', { model: 'claude-opus-5-5' });
+
+    expect(res.text).toBe('换了个模型回答');
+    expect(res.resolvedModel).toBe('claude-opus-5');
+    expect(res.thinkingBlocks).toEqual([THINKING_BLOCK]);
+  });
+});
+
+describe('AnthropicProvider output budget', () => {
+  it("requests the model's own output ceiling, looked up once per model", async () => {
+    const { provider, bodies, modelLookups } = providerReturning({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 10, output_tokens: 1 },
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'end_turn',
+    });
+
+    await provider.generate('一');
+    await provider.generate('二');
+
+    expect(bodies.map((body) => body.max_tokens)).toEqual([MODEL_OUTPUT_CEILING, MODEL_OUTPUT_CEILING]);
+    expect(modelLookups).toEqual(['/models/claude-sonnet-4-6']);
+  });
+
+  it('honours a smaller explicit budget', async () => {
+    const { provider, bodies } = providerReturning({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 10, output_tokens: 1 },
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'end_turn',
+    });
+
+    await provider.generate('问题', { maxTokens: 300 });
+
+    expect(bodies[0].max_tokens).toBe(300);
   });
 });

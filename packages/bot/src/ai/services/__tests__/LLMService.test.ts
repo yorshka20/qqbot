@@ -3,7 +3,7 @@ import 'reflect-metadata';
 import { describe, expect, it, jest, spyOn, test } from 'bun:test';
 import type { AIManager } from '@qqbot/llm';
 import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, ToolDefinition } from '@qqbot/llm';
-import { contentToPlainString } from '@qqbot/llm';
+import { contentToPlainString, ProviderRefusalError } from '@qqbot/llm';
 import { HttpClientError } from '@qqbot/shared';
 import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
 import { logger } from '@qqbot/shared';
@@ -264,6 +264,61 @@ describe('LLMService same-provider retry', () => {
     // No same-provider retry, no alternative provider → graceful fallback text.
     expect(getCalls()).toBe(1);
     expect(res.text.length).toBeGreaterThan(0);
+  });
+});
+
+describe('LLMService refusals', () => {
+  function setup() {
+    const calls: string[] = [];
+    const refusing = {
+      name: 'claude',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      getDefaultModel: () => 'claude-model',
+      generate: async () => {
+        calls.push('claude');
+        throw new ProviderRefusalError('claude', 'claude-model', 'stop_reason=refusal', 'frontier_llm', null);
+      },
+    };
+    const other = {
+      name: 'other',
+      getCapabilities: () => ['llm'],
+      isAvailable: () => true,
+      getDefaultModel: () => 'other-model',
+      generate: async () => {
+        calls.push('other');
+        return { text: 'another model answered' };
+      },
+    };
+    const providers = [refusing, other];
+    const aiManager = {
+      getProviderForCapability: (_cap: string, name?: string) => providers.find((p) => p.name === name) ?? null,
+      getProvidersForCapability: () => providers,
+      getDefaultLLM: () => ({ provider: refusing.name }),
+    } as unknown as AIManager;
+    const healthMarks: string[] = [];
+    const service = createLLMService(
+      aiManager,
+      { toolUseProviders: [], fallback: { fallbackOrder: ['other', 'claude'] } },
+      { healthMarks },
+    );
+    return { service, calls, healthMarks };
+  }
+
+  it('is not transient', () => {
+    expect(isTransientLLMError(new ProviderRefusalError('p', 'm', 'stop_reason=refusal', null, '429 503'))).toBe(false);
+  });
+
+  it('surfaces the refusal: no retry, no other provider, and the provider stays healthy', async () => {
+    const { service, calls, healthMarks } = setup();
+
+    const error = await service
+      .generate('hi', { reasoningEffort: 'none' }, { provider: 'claude' })
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ProviderRefusalError);
+    expect(calls).toEqual(['claude']);
+    expect(healthMarks).toEqual(['healthy:claude']);
   });
 });
 

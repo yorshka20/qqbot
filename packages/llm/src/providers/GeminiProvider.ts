@@ -20,6 +20,7 @@ import type {
 import type { VideoAnalysisCapability, VideoAnalysisUploadedFile } from '../capabilities/VideoAnalysisCapability';
 import type { VisionCapability } from '../capabilities/VisionCapability';
 import type { GeminiProviderConfig } from '../config';
+import { ProviderRefusalError } from '../errors';
 import type { AIGenerateOptions, AIGenerateResponse, ChatMessage, StreamingHandler, ToolDefinition } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
 import {
@@ -49,6 +50,12 @@ type GeminiRequestContents = Array<{
 }>;
 
 type GeminiThinkingLevel = 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH';
+
+/**
+ * Finish reasons that are a policy decline of the request (Gemini `FinishReason`), not a
+ * malfunction: the same request is blocked again on any retry.
+ */
+const GEMINI_POLICY_FINISH_REASONS = new Set(['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'IMAGE_SAFETY']);
 
 interface GeminiGenerateContentOptions {
   temperature?: number;
@@ -584,6 +591,9 @@ export class GeminiProvider
       // most often MAX_TOKENS (thinking budget consumed the whole output budget), or SAFETY /
       // RECITATION. Surfacing the reason is what makes this diagnosable downstream.
       const finishReason = candidate?.finishReason ? String(candidate.finishReason) : undefined;
+      if (finishReason && GEMINI_POLICY_FINISH_REASONS.has(finishReason)) {
+        throw new ProviderRefusalError('gemini', model, `finishReason=${finishReason}`, null, null);
+      }
       if (finishReason && finishReason !== 'STOP') {
         throw new Error(`Gemini returned no content (finishReason=${finishReason})`);
       }

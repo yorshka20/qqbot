@@ -14,7 +14,7 @@ import type {
   StreamingHandler,
   ToolDefinition,
 } from '@qqbot/llm';
-import { concreteLLMTarget, contentToPlainString, isLLMCapability } from '@qqbot/llm';
+import { concreteLLMTarget, contentToPlainString, isLLMCapability, ProviderRefusalError } from '@qqbot/llm';
 import { formatLogSections, HttpClientError, type LogSection, logger, randomUUID } from '@qqbot/shared';
 import { HealthCheckManager } from '@qqbot/shared/health';
 import { inject, singleton } from 'tsyringe';
@@ -165,6 +165,10 @@ const TRANSIENT_LLM_ERROR_PATTERNS: RegExp[] = [
 const HARD_TIMEOUT_PATTERN = /hard-timeout|Request timeout/i;
 
 export function isTransientLLMError(err: Error, opts?: { retryOnTimeout?: boolean }): boolean {
+  // A refusal is the provider's answer to this exact request; asking again gets it again.
+  if (err instanceof ProviderRefusalError) {
+    return false;
+  }
   // A silent empty completion is worth another try on the same provider. A provider
   // that says why it produced nothing (e.g. "no content (finish_reason=length)")
   // throws a plain error that matches no pattern below, so it goes straight to fallback.
@@ -544,9 +548,8 @@ export class LLMService {
       this.healthCheckManager.markServiceHealthy(providerName);
       return result;
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      this.healthCheckManager.markServiceUnhealthy(providerName, error.message);
-      throw error;
+      this.recordCallFailure(providerName, err);
+      throw err instanceof Error ? err : new Error(String(err));
     }
   }
 
@@ -654,9 +657,7 @@ export class LLMService {
       this.healthCheckManager.markServiceHealthy(resolvedName);
       return result;
     } catch (err) {
-      // Mark provider as failed
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      this.healthCheckManager.markServiceUnhealthy(resolvedName, errorMessage);
+      this.recordCallFailure(resolvedName, err);
       logger.error(`[LLMService] Provider "${resolvedName}" generate failed:`, err);
       return this.generateWithFallback(
         resolvedName,
@@ -723,8 +724,7 @@ export class LLMService {
       this.healthCheckManager.markServiceHealthy(resolvedName);
       return result;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      this.healthCheckManager.markServiceUnhealthy(resolvedName, errorMessage);
+      this.recordCallFailure(resolvedName, err);
       logger.error(`[LLMService] Provider "${resolvedName}" generateLite failed:`, err);
       return this.generateWithFallback(
         resolvedName,
@@ -807,9 +807,7 @@ export class LLMService {
       this.emitTrace('generateStream', resolvedName, prompt, options, result, startedAt, randomUUID());
       return result;
     } catch (err) {
-      // Mark provider as failed
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      this.healthCheckManager.markServiceUnhealthy(resolvedName, errorMessage);
+      this.recordCallFailure(resolvedName, err);
       logger.error(`[LLMService] Provider "${resolvedName}" generateStream failed:`, err);
       return this.generateWithFallback(
         resolvedName,
@@ -1423,6 +1421,23 @@ export class LLMService {
    */
   async triggerHealthCheck(): Promise<void> {
     await this.aiManager.triggerHealthCheck();
+  }
+
+  /**
+   * Account for a provider call that threw, before any fallback. A refusal is the
+   * provider's answer to this request, not a fault: the provider stays healthy and the
+   * refusal is rethrown, so no caller hands the request to another provider — that
+   * would send a different model's reply in place of the one that was asked, and the
+   * refused provider would be shunned for requests it answers fine. Anything else counts
+   * against the provider's health, and the caller may fail over.
+   */
+  private recordCallFailure(providerName: string, err: unknown): void {
+    if (err instanceof ProviderRefusalError) {
+      this.healthCheckManager.markServiceHealthy(providerName);
+      logger.warn(`[LLMService] ${err.message}; not failing over`);
+      throw err;
+    }
+    this.healthCheckManager.markServiceUnhealthy(providerName, err instanceof Error ? err.message : String(err));
   }
 
   /**

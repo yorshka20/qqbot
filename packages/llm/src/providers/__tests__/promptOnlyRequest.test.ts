@@ -31,8 +31,10 @@ const CAPTURED = new Error('request captured');
 
 function captureHttpPost(provider: AIProvider): unknown[] {
   const bodies: unknown[] = [];
-  (provider as unknown as { httpClient: { post: (path: string, body: unknown) => Promise<unknown> } }).httpClient = {
-    post: async (_path, body) => {
+  // `get` answers the Anthropic Models API lookup of the model's output ceiling.
+  (provider as unknown as { httpClient: object }).httpClient = {
+    get: async () => ({ max_tokens: 128_000 }),
+    post: async (_path: string, body: unknown) => {
       bodies.push(body);
       throw CAPTURED;
     },

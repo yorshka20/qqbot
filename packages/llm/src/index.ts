@@ -11,6 +11,7 @@ export * from './batch';
 export * from './capabilities';
 export * from './capabilities/types';
 export * from './config';
+export * from './errors';
 export * from './ProviderFactory';
 export * from './ProviderRegistry';
 export { AnthropicProvider } from './providers/AnthropicProvider';

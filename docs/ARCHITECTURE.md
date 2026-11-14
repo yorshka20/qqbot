@@ -852,7 +852,7 @@ Every call through `LLMService` states its effort — `LLMCallOptions` / `ToolUs
 
 #### Output budgets
 
-A call does not size its own output budget. Reasoning is charged against the same cap, so a budget sized for the visible answer ends in `finish_reason=length` with no content. `clampMaxTokens` resolves an unset budget to the provider's ceiling: 50k, or 20k (`PREMIUM_MAX_TOKENS_CEILING`) for premium-priced providers. Every provider sends that number, so output is always bounded. A provider whose API or rate makes the default too large passes a lower ceiling, and config `maxTokens` still overrides per provider but is left unset.
+A call does not size its own output budget. Reasoning is charged against the same cap, so a budget sized for the visible answer ends in `finish_reason=length` with no content. `clampMaxTokens` resolves an unset budget to the provider's ceiling: 50k, or 20k (`PREMIUM_MAX_TOKENS_CEILING`) for OpenAI. Every provider sends that number, so output is always bounded. A provider whose API or rate makes the default too large passes a lower ceiling, and config `maxTokens` still overrides per provider but is left unset. Anthropic (messages and batches) has no policy ceiling: it asks for the model's own output limit, read once per model from the Models API (`AnthropicModelLimits`, `GET /v1/models/{id}` → `max_tokens`, 128K on current models).
 
 ### Failed calls: retry or fallback
 
@@ -860,8 +860,11 @@ A call does not size its own output budget. Reasoning is charged against the sam
 
 - **Retry on the same provider, then fall back** — a silent empty completion (the provider reported success), 429 / 5xx, and socket-level blips (`isTransientLLMError`).
 - **Fall back directly** — an error the provider stated, such as "no content (finish_reason=length)" or a 4xx. Trying the same request again would fail the same way.
+- **Neither: a refusal** — `ProviderRefusalError` (`@qqbot/llm`): Anthropic `stop_reason=refusal` with its `stop_details` category and explanation, Gemini `finishReason` `SAFETY` / `PROHIBITED_CONTENT` / `BLOCKLIST` / `SPII` / `IMAGE_SAFETY`. The provider answered; the answer is no. It is not transient, it does not mark the provider unhealthy (it marks it healthy), and neither `LLMService` nor `GenerationStage` hands the request to another provider — that would put a different model's reply under the one the user asked for. The reply pipeline tells the chat which model declined, the category, and the explanation.
 
-A provider reads its own stop reason, so an empty completion that reaches `LLMService` is one the provider could not explain. Partial content under a length stop is returned. The one exception is Anthropic's `stop_reason=refusal`: a safety classifier halted the output, so whatever text came back is a fragment cut mid-sentence, and the provider fails the call rather than let the fragment be sent as a reply.
+A provider reads its own stop reason, so an empty completion that reaches `LLMService` is one the provider could not explain. Partial content under a length stop is returned. A refusal fails even with text: a safety classifier halted the output, so whatever text came back is a fragment cut mid-sentence; the provider logs that fragment, the category and `recommended_model`, and throws rather than let the fragment be sent as a reply.
+
+Anthropic recovers its own classifier declines: every request carries `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`), so the API re-runs a declined request inside the same call on the model it recommends for that category (Opus 5.5 → Opus 5 / Opus 4.8, Sonnet 5.5 → Sonnet 5). The provider returns only what the serving model wrote (blocks after the last `fallback` block), logs the switch, and reports the serving model as `resolvedModel`. Categories with no server-side fallback (`reasoning_extraction`, and `bio` / `general_harms` on Sonnet 5.5) still arrive as a refusal.
 
 Fallback tries the other registered, healthy providers in `ai.llmFallback.fallbackOrder` order (unlisted ones last), each on its own model (see [LLM targets](#llm-targets)). Each tool round is one `generate` call, so a round that fails is re-run alone and the tools from earlier rounds do not run again.
 

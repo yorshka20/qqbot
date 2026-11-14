@@ -10,6 +10,8 @@ const EMPTY_CONFIG: LLMServiceConfig = { toolUseProviders: [], fallback: { fallb
 export interface LLMServiceTestState {
   sessionLLM?: LLMTarget;
   unhealthy?: string[];
+  /** Receives `healthy:<name>` / `unhealthy:<name>` for every health mark the service makes. */
+  healthMarks?: string[];
 }
 
 /**
@@ -26,8 +28,8 @@ export function createLLMService(
   } as unknown as ProviderSelector;
   const healthCheckManager = {
     isServiceHealthySync: (name: string) => !state.unhealthy?.includes(name),
-    markServiceHealthy: () => {},
-    markServiceUnhealthy: () => {},
+    markServiceHealthy: (name: string) => state.healthMarks?.push(`healthy:${name}`),
+    markServiceUnhealthy: (name: string) => state.healthMarks?.push(`unhealthy:${name}`),
   } as unknown as HealthCheckManager;
   const config = {
     getAIConfig: () => ({

@@ -6,6 +6,7 @@ import { AIProvider } from '../base/AIProvider';
 import type { LLMCapability } from '../capabilities/LLMCapability';
 import type { CapabilityType, VisionImage } from '../capabilities/types';
 import type { VisionCapability } from '../capabilities/VisionCapability';
+import { ProviderRefusalError } from '../errors';
 import type {
   AIGenerateOptions,
   AIGenerateResponse,
@@ -17,7 +18,7 @@ import type {
   ToolDefinition,
 } from '../types';
 import { contentToPlainString } from '../utils/contentUtils';
-import { clampMaxTokens, PREMIUM_MAX_TOKENS_CEILING } from './maxTokens';
+import { AnthropicModelLimits } from './anthropicModelLimits';
 
 export interface AnthropicProviderConfig {
   apiKey: string;
@@ -49,6 +50,7 @@ interface AnthropicMessagesRequestBody {
   tool_choice?: { type: 'auto' | 'any' | 'none' | 'tool'; name?: string };
   thinking?: { type: 'adaptive' | 'disabled'; display?: 'summarized' | 'omitted' };
   output_config?: { effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' };
+  fallbacks?: 'default';
 }
 
 interface AnthropicStreamRequestBody extends AnthropicMessagesRequestBody {
@@ -60,6 +62,7 @@ interface AnthropicVisionRequestBody {
   max_tokens: number;
   messages: Array<{ role: 'user'; content: AnthropicMessage['content'] }>;
   system?: AnthropicSystemBlock[];
+  fallbacks?: 'default';
 }
 
 interface AnthropicUsage {
@@ -90,6 +93,12 @@ interface AnthropicMessagesResponse {
   usage?: AnthropicUsage;
   model: string;
   stop_reason?: string | null;
+  /** Set only on `stop_reason: "refusal"`; every field may be null. */
+  stop_details?: {
+    category?: string | null;
+    explanation?: string | null;
+    recommended_model?: string | null;
+  } | null;
 }
 
 interface AnthropicStreamChunk {
@@ -116,7 +125,9 @@ type AnthropicToolResultBlock = {
 };
 type AnthropicThinkingBlock = { type: 'thinking'; thinking: string; signature?: string };
 type AnthropicRedactedThinkingBlock = { type: 'redacted_thinking'; data: string };
+type AnthropicFallbackBlock = { type: 'fallback'; from: { model: string }; to: { model: string } };
 type AnthropicContentBlock =
+  | AnthropicFallbackBlock
   | AnthropicTextBlock
   | AnthropicImageBlock
   | AnthropicToolUseBlock
@@ -176,6 +187,17 @@ const ANTHROPIC_WEB_SEARCH_TOOL_TYPE = 'web_search_20250305';
 const ANTHROPIC_WEB_SEARCH_MAX_USES = 5;
 const ANTHROPIC_PAUSE_TURN_MAX_CONTINUATIONS = 3;
 
+/**
+ * Server-side refusal fallback (beta `server-side-fallback-2026-07-01`): when a safety
+ * classifier declines a request, the API re-runs it inside the same call on the model
+ * Anthropic recommends for that refusal category (e.g. Opus 5.5 → Opus 5 / Opus 4.8), so
+ * a classifier false positive is answered by Claude instead of leaving the bot. Categories
+ * with no fallback (e.g. `reasoning_extraction`) still return the refusal.
+ * Rejected by the Batches API.
+ */
+const ANTHROPIC_FALLBACKS = 'default' as const;
+const ANTHROPIC_FALLBACK_BETA = 'server-side-fallback-2026-07-01';
+
 function toAnthropicTextBlocks(text: string): AnthropicTextBlock[] {
   return [{ type: 'text', text }];
 }
@@ -202,26 +224,56 @@ const ANTHROPIC_FINISHED_STOP_REASONS = new Set(['end_turn', 'tool_use', 'stop_s
  * output, so the text is a fragment cut mid-sentence, not a shorter answer, and
  * returned as success it is sent to the chat as if complete.
  */
-function assertTurnUsable(
-  stopReason: string | null | undefined,
-  content: AnthropicContentBlock[],
-  outputTokens?: number,
-): void {
+function assertTurnUsable(response: AnthropicMessagesResponse, content: AnthropicContentBlock[]): void {
+  const stopReason = response.stop_reason;
   if (stopReason && ANTHROPIC_FINISHED_STOP_REASONS.has(stopReason)) {
     return;
   }
-  const textChars = extractAnthropicText(content).length;
+  const text = extractAnthropicText(content);
   const hasToolUse = content.some((block) => block.type === 'tool_use');
-  if (stopReason !== 'refusal' && (textChars > 0 || hasToolUse)) {
+  if (stopReason === 'refusal') {
+    const details = response.stop_details;
+    logger.warn(
+      `[AnthropicProvider] ${response.model} refused: category=${details?.category ?? 'unspecified'} ` +
+        `explanation=${details?.explanation ?? 'none'} recommended_model=${details?.recommended_model ?? 'none'} ` +
+        `fallbacks=${describeFallbacks(content) || 'none'} output_tokens=${response.usage?.output_tokens ?? 'unknown'} ` +
+        `partial_text=${JSON.stringify(text.slice(0, 300))}`,
+    );
+    throw new ProviderRefusalError(
+      'anthropic',
+      response.model,
+      'stop_reason=refusal',
+      details?.category ?? null,
+      details?.explanation ?? null,
+    );
+  }
+  if (text.length > 0 || hasToolUse) {
     return;
   }
   // Counts stay out of the error message: LLMService classifies retries by matching
   // status-like numbers in it.
   logger.warn(
     `[AnthropicProvider] unusable turn: stop_reason=${stopReason ?? 'none'} ` +
-      `output_tokens=${outputTokens ?? 'unknown'} text=${textChars} chars`,
+      `output_tokens=${response.usage?.output_tokens ?? 'unknown'} text=0 chars`,
   );
   throw new Error(`Anthropic returned no usable content (stop_reason=${stopReason ?? 'none'})`);
+}
+
+function describeFallbacks(content: AnthropicContentBlock[]): string {
+  return content
+    .filter((block): block is AnthropicFallbackBlock => block.type === 'fallback')
+    .map((block) => `${block.from.model}->${block.to.model}`)
+    .join(',');
+}
+
+/**
+ * The part of a turn the serving model wrote. A `fallback` block marks where a declined
+ * model handed over; the thinking and tool_use blocks before it belong to the declined
+ * model and must not be echoed back, so only what follows the last boundary is the turn.
+ */
+function servedContent(content: AnthropicContentBlock[]): AnthropicContentBlock[] {
+  const boundary = content.findLastIndex((block) => block.type === 'fallback');
+  return boundary < 0 ? content : content.slice(boundary + 1);
 }
 
 function extractAnthropicText(blocks: AnthropicContentBlock[]): string {
@@ -295,6 +347,9 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
    */
   private historyCacheAnchors = new Map<string, number>();
   private static readonly MAX_CACHE_ANCHORS = 100;
+  private readonly modelLimits = new AnthropicModelLimits((model) =>
+    this.httpClient.get<{ max_tokens: number }>(`/models/${encodeURIComponent(model)}`),
+  );
 
   constructor(config: AnthropicProviderConfig) {
     super();
@@ -314,7 +369,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         'Content-Type': 'application/json',
         'x-api-key': this.config.apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'prompt-caching-2024-07-31',
+        'anthropic-beta': ['prompt-caching-2024-07-31', ANTHROPIC_FALLBACK_BETA].join(','),
       },
       defaultTimeout: 120000, // 2 minutes default timeout for AI processing
     });
@@ -379,10 +434,10 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
 
   async generate(prompt: string, options?: AIGenerateOptions): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.getDefaultModel();
-    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens, PREMIUM_MAX_TOKENS_CEILING);
 
     try {
       logger.info(`[STATS] [AnthropicProvider] Generating with model: ${model}`);
+      const maxTokens = await this.modelLimits.maxTokens(model, options?.maxTokens ?? this.config.defaultMaxTokens);
 
       let messages = await this.buildAnthropicMessages(prompt, options);
       this.addHistoryCacheBreakpoint(messages, options);
@@ -399,6 +454,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
           max_tokens: maxTokens,
           messages,
           ...mapReasoningEffortToAnthropic(options?.reasoningEffort),
+          fallbacks: ANTHROPIC_FALLBACKS,
         };
         if (explicitSystem?.length) {
           requestBody.system = explicitSystem;
@@ -420,26 +476,36 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
       if (!data) {
         throw new Error('Anthropic response missing');
       }
-      assertTurnUsable(data.stop_reason, turnContent, data.usage?.output_tokens);
+      assertTurnUsable(data, turnContent);
 
-      const text = extractAnthropicText(turnContent);
+      const fallbacks = describeFallbacks(turnContent);
+      if (fallbacks) {
+        logger.warn(`[AnthropicProvider] refused and served by a fallback model: ${fallbacks}`);
+      }
+      const served = servedContent(turnContent);
+      const text = extractAnthropicText(served);
       const usage = data.usage ? toUsage(data.usage) : undefined;
 
       const result: AIGenerateResponse = {
         text,
         usage,
-        reasoningContent: extractAnthropicReasoning(turnContent),
+        reasoningContent: extractAnthropicReasoning(served),
         metadata: {
           model: data.model,
         },
       };
+      // Server-side fallback (and its sticky routing, which leaves no fallback block)
+      // serves the turn on another model; `model` names the one that wrote it.
+      if (data.model && data.model !== model) {
+        result.resolvedModel = data.model;
+      }
 
-      const thinkingBlocks = extractThinkingBlockEchoes(turnContent);
+      const thinkingBlocks = extractThinkingBlockEchoes(served);
       if (thinkingBlocks.length > 0) {
         result.thinkingBlocks = thinkingBlocks;
       }
 
-      const toolUseBlocks = turnContent.filter((block): block is AnthropicToolUseBlock => block.type === 'tool_use');
+      const toolUseBlocks = served.filter((block): block is AnthropicToolUseBlock => block.type === 'tool_use');
       if (toolUseBlocks.length > 0) {
         result.functionCalls = toolUseBlocks.map((block) => ({
           name: block.name,
@@ -462,10 +528,10 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.getDefaultModel();
-    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens, PREMIUM_MAX_TOKENS_CEILING);
 
     try {
       logger.info(`[STATS] [AnthropicProvider] Generating stream with model: ${model}`);
+      const maxTokens = await this.modelLimits.maxTokens(model, options?.maxTokens ?? this.config.defaultMaxTokens);
 
       const messages = await this.buildAnthropicMessages(prompt, options);
       this.addHistoryCacheBreakpoint(messages, options);
@@ -478,6 +544,7 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
         messages,
         stream: true,
         ...mapReasoningEffortToAnthropic(options?.reasoningEffort),
+        fallbacks: ANTHROPIC_FALLBACKS,
       };
       const explicitSystemStream = this.buildAnthropicSystemPrompt(options);
       if (explicitSystemStream?.length) {
@@ -560,10 +627,10 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
     options?: AIGenerateOptions,
   ): Promise<AIGenerateResponse> {
     const model = options?.model ?? this.config.model ?? 'claude-3-opus-20240229';
-    const maxTokens = clampMaxTokens(options?.maxTokens ?? this.config.defaultMaxTokens, PREMIUM_MAX_TOKENS_CEILING);
 
     try {
       logger.info(`[STATS] [AnthropicProvider] Generating with vision, model: ${model}`);
+      const maxTokens = await this.modelLimits.maxTokens(model, options?.maxTokens ?? this.config.defaultMaxTokens);
 
       // Build content array with text and images
       const content: AnthropicContentBlock[] = [{ type: 'text', text: prompt }];
@@ -617,15 +684,16 @@ export class AnthropicProvider extends AIProvider implements LLMCapability, Visi
             content,
           },
         ],
+        fallbacks: ANTHROPIC_FALLBACKS,
       };
       if (options?.systemPrompt?.trim()) {
         requestBody.system = [{ type: 'text', text: options.systemPrompt, cache_control: { type: 'ephemeral' } }];
       }
 
       const data = await this.httpClient.post<AnthropicMessagesResponse>('/messages', requestBody);
-      assertTurnUsable(data.stop_reason, data.content, data.usage?.output_tokens);
+      assertTurnUsable(data, data.content);
 
-      const text = extractAnthropicText(data.content);
+      const text = extractAnthropicText(servedContent(data.content));
       const usage = data.usage ? toUsage(data.usage) : undefined;
 
       return {

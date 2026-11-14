@@ -8,7 +8,7 @@
 // - Processing target: 24 hours (usually < 1 hour)
 
 import { HttpClient, logger } from '@qqbot/shared';
-import { clampMaxTokens, PREMIUM_MAX_TOKENS_CEILING } from '../providers/maxTokens';
+import { AnthropicModelLimits } from '../providers/anthropicModelLimits';
 import type { BatchAdapter, BatchJob, BatchJobStatus, BatchRequest, BatchResult } from './types';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -71,6 +71,9 @@ const DEFAULT_MODEL = 'claude-sonnet-4-6';
 export class AnthropicBatchAdapter implements BatchAdapter {
   readonly providerName = 'anthropic';
   private httpClient: HttpClient;
+  private readonly modelLimits = new AnthropicModelLimits((model) =>
+    this.httpClient.get<{ max_tokens: number }>(`/models/${encodeURIComponent(model)}`),
+  );
 
   constructor(apiKey: string) {
     this.httpClient = new HttpClient({
@@ -87,15 +90,20 @@ export class AnthropicBatchAdapter implements BatchAdapter {
   async submitBatch(requests: BatchRequest[], model?: string): Promise<BatchJob> {
     const resolvedModel = model ?? DEFAULT_MODEL;
 
-    const apiRequests: AnthropicBatchRequest[] = requests.map((req) => ({
-      custom_id: req.customId,
-      params: {
-        model: req.options?.model ?? resolvedModel,
-        max_tokens: clampMaxTokens(req.options?.maxTokens, PREMIUM_MAX_TOKENS_CEILING),
-        temperature: req.options?.temperature,
-        messages: [{ role: 'user', content: req.prompt }],
-      },
-    }));
+    const apiRequests: AnthropicBatchRequest[] = await Promise.all(
+      requests.map(async (req) => {
+        const requestModel = req.options?.model ?? resolvedModel;
+        return {
+          custom_id: req.customId,
+          params: {
+            model: requestModel,
+            max_tokens: await this.modelLimits.maxTokens(requestModel, req.options?.maxTokens),
+            temperature: req.options?.temperature,
+            messages: [{ role: 'user', content: req.prompt }],
+          },
+        };
+      }),
+    );
 
     logger.info(`[AnthropicBatch] Submitting batch of ${requests.length} requests (model: ${resolvedModel})`);
 

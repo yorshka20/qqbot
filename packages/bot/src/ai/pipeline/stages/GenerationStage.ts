@@ -9,6 +9,7 @@ import type {
   ReasoningEffort,
   ToolDefinition,
 } from '@qqbot/llm';
+import { ProviderRefusalError } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { LLMService } from '@/ai/services/LLMService';
@@ -278,6 +279,11 @@ export class GenerationStage implements ReplyStage {
     try {
       return await this.attemptLLMGeneration(context, params);
     } catch (primaryError) {
+      // The provider answered with a refusal: there is nothing to recover from, and
+      // another provider's reply would stand in for the model the user asked.
+      if (primaryError instanceof ProviderRefusalError) {
+        throw primaryError;
+      }
       const primaryProviderLabel = params.target?.provider ?? 'default';
       logger.error(
         `[GenerationStage] Primary provider "${primaryProviderLabel}" failed, triggering health check and attempting fallback`,
