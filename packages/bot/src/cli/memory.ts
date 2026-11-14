@@ -25,7 +25,7 @@
 //   stats
 //       Fact counts per group and status.
 //
-// LLM: --provider / --model; migrate defaults to gemini / gemini-3.8-flash, the rest to the
+// LLM: --provider / --model; migrate defaults to gemini / gemini-4-hydrogen, the rest to the
 // memory plugin's extract LLM.
 
 import 'reflect-metadata';
@@ -237,7 +237,7 @@ function firstSeenFor(db: Database, slot: LegacySlot, facts: NewFactDraft[]): Pl
 }
 
 async function migrateDryRun(): Promise<void> {
-  const llm = llmTarget({ provider: 'gemini', model: 'gemini-3.8-flash' });
+  const llm = llmTarget({ provider: 'gemini', model: 'gemini-4-hydrogen' });
   const slots = legacySlots(listArg('group'));
   const db = rawDb();
   const plan: MigrationPlan = { createdAt: new Date().toISOString(), llm, slots: [], failed: [] };

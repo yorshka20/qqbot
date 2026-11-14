@@ -105,6 +105,7 @@ describe('GeminiProvider reasoning effort → thinkingConfig', () => {
   const perModelCases: Array<[string, NonNullable<AIGenerateOptions['reasoningEffort']>, string]> = [
     ['gemini-3.8-flash', 'minimal', 'LOW'],
     ['gemini-3.8-flash', 'none', 'LOW'],
+    ['gemini-4-hydrogen', 'none', 'LOW'],
     ['gemini-3.5-flash-lite', 'none', 'MINIMAL'],
     ['gemini-3-pro-preview', 'medium', 'HIGH'],
     ['gemini-3.1-flash-lite-image', 'low', 'HIGH'],

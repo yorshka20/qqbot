@@ -271,6 +271,9 @@ export class GeminiProvider
     'gemini-3.6-flash': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
     'gemini-3.7-flash': ['LOW', 'MEDIUM', 'HIGH'],
     'gemini-3.8-flash': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-4-argon': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-4-carbon': ['LOW', 'MEDIUM', 'HIGH'],
+    'gemini-4-hydrogen': ['LOW', 'MEDIUM', 'HIGH'],
     'gemini-robotics-er-2-preview': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
   };
 
