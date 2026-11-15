@@ -596,6 +596,10 @@ hub_directive:
   commit hash 写进最终 summary）；直接派遣、没有 planner 父任务的 executor 自己写（首轮 prompt 按 `parentTaskId` 选 `prompts/cluster/docs-child-executor.md`
   或 `docs-standalone-executor.md`）。planner 的 Edit / Write 只限 `_kb/` 内。plan 的 frontmatter `workbook` 字段让 child 的 commit body 能写 `See workbook …`。
   没有 `_kb` 时写入者在 summary 里写「本项目无 kb」并保留「文档要点」。
+- **kb 同步**：kb 仓库的 push 由 bot 的 agenda action `kb_sync`（或 `bun run kb:sync [路径]`）完成，不经过 LLM（`cluster/kbGitSync.ts`，
+  与 `cluster_tickets_sync` 共用 `cluster/gitRepoSync.ts`）：fetch → 按顶层目录各提交一个 checkpoint（`<project>: sync: checkpoint from <host>`，根文件归 `kb`）
+  → rebase 到上游 → push。rebase 期间 `index.md merge=union` 生效（经 `core.attributesFile` 只作用于这次 rebase，不改 kb 仓库配置），各会话往同一份索引
+  头部加行的冲突因此自动并集合并；其他冲突放弃 rebase、保留本地 commit、报出冲突文件。仓库里有进行中的 rebase / merge / cherry-pick 时什么也不做。
 - 大小：项目的 `worktrees`，默认 `min(cluster.maxConcurrentWorkers, projects.<alias>.maxWorkers, 已启用 executor 的 maxConcurrent 之和)`。
   不是 git 仓库或 `worktrees: 0` 的项目没有池，worker 跑在项目目录里。
 - **planner 有自己的槽**，不占 executor 的名额，也不安装依赖。planner 在 `hub_wait` 里一直持有租约，

@@ -5,6 +5,7 @@
 
 import { ClusterTicketsSyncHandler } from './ClusterTicketsGitHandlers';
 import { FanoutActionHandler } from './FanoutActionHandler';
+import { KbSyncHandler } from './KbSyncHandler';
 import { RepeatingTicketDispatchHandler } from './RepeatingTicketDispatchHandler';
 import { RepeatingTodoWorkerHandler } from './RepeatingTodoWorkerHandler';
 import { TodoWorkerHandler } from './TodoWorkerHandler';
@@ -12,6 +13,7 @@ import { TodoWorkerHandler } from './TodoWorkerHandler';
 export const AGENDA_ACTION_HANDLERS = [
   ClusterTicketsSyncHandler,
   FanoutActionHandler,
+  KbSyncHandler,
   RepeatingTicketDispatchHandler,
   RepeatingTodoWorkerHandler,
   TodoWorkerHandler,

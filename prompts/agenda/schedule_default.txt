@@ -18,6 +18,7 @@
     参数: `{"fanout":"group_day","tasks":{"report":{},"comic":{"presets":["<preset id>"]},"mines":{"count":3},"memory":{}}}`
   - 执行: `action todo_worker`       (直接执行代码，无 LLM 参与)
   - 执行: `action repeating_ticket_dispatch` (凌晨多轮：每隔 N 分钟派发一个 ready ticket，最后私聊汇报 job 结果)
+  - 执行: `action kb_sync`           (双向同步 _kb 背后的知识库仓库：提交本地改动、rebase 到远端、push；index.md 冲突按并集合并，其他冲突放弃 rebase 并报给用户)
   action 处理器在 AgendaInitializer 中注册，跳过 LLM 直接运行业务逻辑
 
 参数（可选，JSON 格式，传递给子代理的任务输入）:

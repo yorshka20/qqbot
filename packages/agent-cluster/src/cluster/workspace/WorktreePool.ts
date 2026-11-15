@@ -37,6 +37,7 @@ import { logger } from '@qqbot/shared';
 import type { ProjectEntry, ProjectRegistry } from '../../codingAgent/ProjectRegistry';
 import type { ClusterConfig } from '../config';
 import { git, runGit } from '../git';
+import { KNOWLEDGE_BASE_LINK } from '../kbGitSync';
 import type { WorkspaceCatchUp, WorktreePoolStatus } from '../types';
 
 export type SlotKind = 'executor' | 'planner';
@@ -550,8 +551,6 @@ function linkKnowledgeBase(projectPath: string, slotPath: string): void {
   }
   symlinkSync(kbTarget, target);
 }
-
-const KNOWLEDGE_BASE_LINK = '_kb';
 
 const SLOT_NAME = /^wt-[0-9a-f]{8}$/;
 
