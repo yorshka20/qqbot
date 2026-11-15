@@ -11,7 +11,7 @@ import { TicketApi } from '../api/ticketApi';
 import { ClusterManager } from '../cluster/ClusterManager';
 import { wireClusterTicketWriteback } from '../cluster/ClusterTicketWriteback';
 import type { ProjectRegistry } from '../codingAgent/ProjectRegistry';
-import type { ClusterDaemonConfig } from './config';
+import { type ClusterDaemonConfig, clusterConsoleDir } from './config';
 import { acquireDaemonLock } from './lock';
 
 /**
@@ -88,7 +88,7 @@ export class ClusterDaemon {
         healthRoute(() => this.health(cluster)),
       ),
     );
-    hub.registerRoute(staticUiRoute(join(this.config.stateDir, 'ui')));
+    hub.registerRoute(staticUiRoute(clusterConsoleDir(this.config)));
   }
 
   private health(cluster: ClusterManager): ClusterDaemonHealthResponse {

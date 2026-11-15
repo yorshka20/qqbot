@@ -1354,7 +1354,8 @@
       //   "install": "bun install",
       //   // Run after each merge, on the integration branch's content, in the worktree
       //   // <stateDir>/work/<alias>/publish. Logs to <stateDir>/assignments/<taskId>.publish.log.
-      //   "publish": "CLUSTER_STATE_DIR=/abs/path/data/cluster bun run build:cluster-ui"
+      //   // This repo's own web UIs are installed by `bun run deploy`, not by a publish.
+      //   "publish": "bun run build"
       // }
     ]
   },

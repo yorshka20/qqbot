@@ -61,7 +61,7 @@ QQ login and this bot are two different processes:
 | Process | What it is | Default port |
 |---|---|---|
 | LLBot WebUI | QQ login and protocol settings, inside Docker | 3080 |
-| This bot | The Bun process, plus its own admin UI | bot has no HTTP port by default; admin UI is separate (`bun run dev` / `bun run ui:start`) |
+| This bot | The Bun process; its StaticServer also serves the built admin UI at `/` | `staticServer.port` (8888) |
 
 Discord-only setups skip the Docker section.
 
@@ -175,8 +175,8 @@ bun run status        # supervisor and bot state, last exit, the tail of the bot
 bun run restart       # restart on the checked-out code, like `/restart` in chat
 bun run stop          # stop the bot, then the supervisor
 bun run logs          # follow the bot's log file under logs/
-bun run deploy        # update: fetch, fast-forward only, bun install, restart (--check to preview; `/deploy` in chat)
-bun run ui:start      # admin UI, separate from the supervisor
+bun run deploy        # update: fetch, fast-forward only, bun install, build the web UIs, restart (--check to preview; `/deploy` in chat)
+bun run deploy --app webui   # one app on the checked-out code: bot, cluster, webui or cluster-ui
 ```
 
 The supervisor is an ordinary background process, the same on every platform: nothing is installed into the operating system, so nothing starts it at boot or login, and nothing brings it back if it dies — the bot shuts down with it, so a later `bun run start` never finds a second bot running. A bot that exits is started again at once, or, when it ran for less than a minute, a minute after its previous start. Stopping it sends a shutdown message over IPC and kills its process tree if it has not exited after 10s. The bot gets the environment of the terminal `bun run start` ran in. Its own log is under `logs/<date>/`; `logs/supervisor/` holds the supervisor's state, `supervisor.log`, `bot-output.log` (only what the logger does not write: output from before it is up, a runtime crash) and `deploy.log`.
@@ -235,7 +235,7 @@ bun run lint:fix
 bun run format
 bun test
 bun run build         # bot bundle
-bun run build:admin   # admin UI
+bun run build:ui      # admin UI and cluster console, installed where the bot and the daemon serve them
 bun run debug         # mock messages, no live protocol
 ```
 

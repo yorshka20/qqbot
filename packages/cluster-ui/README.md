@@ -16,9 +16,11 @@ daemon 读与 bot 相同的配置树，多一个 `clusterDaemon` 块（`stateDir
 bun run packages/agent-cluster/src/daemon/main.ts                  # daemon，默认端口 3200
 bun run --filter @qqbot/cluster-ui dev                             # vite，/api 和 /health 代理到 daemon
 VITE_DEV_PROXY_TARGET=http://127.0.0.1:3210 bun run --filter @qqbot/cluster-ui dev
-CLUSTER_STATE_DIR=<stateDir> bun run build:cluster-ui              # 构建并装进 <stateDir>/ui，daemon 不用重启
+bun run build:cluster-ui                                           # 构建并装进 <clusterDaemon.stateDir>/ui，daemon 不用重启
 bun test packages/cluster-ui
 ```
+
+生产环境不跑 dev server：`bun run deploy` 构建并安装它，`bun run deploy --app cluster-ui` 只更新它。
 
 第一次打开要输入 `clusterDaemon.auth.token`，存在这台设备的 `localStorage`，401 时退回输入框。
 

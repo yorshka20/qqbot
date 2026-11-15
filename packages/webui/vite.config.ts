@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
   const proxyTarget = (env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:8888').replace(/\/$/, '');
 
   return {
-    base: '/files/',
+    base: '/',
     plugins: [react(), tailwindcss()],
     server: {
       host: true, // listen on 0.0.0.0 for LAN access

@@ -19,6 +19,7 @@ export * from './health/BaseHttpHealthCheck';
 export * from './health/types';
 export * from './http/HttpClient';
 export * from './http/ResourceDownloader';
+export * from './http/spaFiles';
 export * from './logFiles';
 export * from './logger';
 export * from './randomUUID';

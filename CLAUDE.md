@@ -18,8 +18,9 @@ bun run cluster:gc
 # Two-way git sync of the knowledge base behind _kb (agenda action kb_sync does the same)
 bun run kb:sync
 
-# Update a running deployment: fetch, fast-forward only, bun install, restart
+# Update a running deployment: fetch, fast-forward only, bun install, build both web UIs, restart
 bun run deploy          # `bun run deploy --check` reports what it would do
+bun run deploy --app <bot|cluster|webui|cluster-ui>   # one app on the checked-out code, no pull
 
 # Type checking
 bun run typecheck
@@ -42,11 +43,11 @@ bun run smoke-test
 # Debug mode with mock message sending
 bun run debug
 
-# Build WebUI separately
-bun run build:admin
+# Build and install the web UIs (both servers pick a new build up without a restart)
+bun run build:ui        # both; build:admin = admin WebUI, build:cluster-ui = cluster console
 ```
 
-**Restarting vs. deploying.** In production the bot runs under its own supervisor (`scripts/supervisor/`, `bun run start`), which restarts it whenever it exits. A restart — `bun run restart`, a crash restart, or `/restart` in chat — runs the code already checked out and never pulls or installs. Updating is `bun run deploy` (or `/deploy`): fetch, fast-forward only, hold the bot stopped, `bun install` while it is stopped (nothing holds `node_modules`, so no bun `EEXIST`), start it. It refuses before stopping the bot when the branch has diverged or a fast-forward would run over uncommitted changes. On macOS start the supervisor from Terminal.app or over SSH: only those reach the local network unconditionally (Apple TN3179), and a launchd agent does not reach it at all. The WebUI is separate (`bun run ui:start`).
+**Restarting vs. deploying.** In production the bot runs under its own supervisor (`scripts/supervisor/`, `bun run start`), which restarts it whenever it exits. A restart — `bun run restart`, a crash restart, or `/restart` in chat — runs the code already checked out and never pulls or installs. Updating is `bun run deploy` (or `/deploy`): fetch, fast-forward only, hold the bot stopped, `bun install` while it is stopped (nothing holds `node_modules`, so no bun `EEXIST`), build both web UIs, start it. It refuses before stopping the bot when the branch has diverged or a fast-forward would run over uncommitted changes. `bun run deploy --app <name>` updates one app on the code already checked out and pulls nothing (pulling and installing need every app stopped): it restarts `bot` or `cluster`, or rebuilds `webui` or `cluster-ui`. On macOS start the supervisor from Terminal.app or over SSH: only those reach the local network unconditionally (Apple TN3179), and a launchd agent does not reach it at all. Neither web UI is a process of its own: the bot's StaticServer serves the built admin WebUI from `data/webui` at `/` (for any path no backend claims), and the cluster daemon serves the console from `<clusterDaemon.stateDir>/ui` on its port. `bun run dev` still runs the WebUI's vite dev server for development.
 
 ## High-Level Architecture
 

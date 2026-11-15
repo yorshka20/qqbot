@@ -8,15 +8,17 @@
  * `OutputStaticHost`). Omit them per-role via `lanRelay.*.disabledStaticBackends` in config.
  *
  * It mounts whatever is in the registry (`./backend`); the routes themselves belong to
- * the modules that register them, listed in `core/staticBackends.ts`.
+ * the modules that register them, listed in `core/staticBackends.ts`. A path none of them
+ * claims is the built admin WebUI's (`webuiDir()`).
  */
 
 import { resolve } from 'node:path';
-import { logger } from '@qqbot/shared';
+import { logger, serveSpaFile } from '@qqbot/shared';
 import { serve } from 'bun';
 import type { Config } from '@/core/config';
 import type { StaticServerConfig } from '@/core/config/types/bot';
 import { type Backend, createRegisteredBackends } from './backend';
+import { webuiDir } from './webuiDir';
 
 export interface StaticServerInitOptions {
   /** Backend ids to exclude — the registry's ids, as `lanRelay.*.disabledStaticBackends` names them. */
@@ -94,7 +96,9 @@ export class StaticServer implements StaticServerInstance {
       }
     }
 
-    return withCors(new Response('Not Found', { status: 404 }));
+    // The WebUI answers last, so no page or asset of it can shadow an API route.
+    const page = serveSpaFile(webuiDir(), pathname, req);
+    return withCors(page ?? new Response('Not Found', { status: 404 }));
   }
 
   async start(): Promise<string> {

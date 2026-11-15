@@ -22,6 +22,11 @@ export interface ClusterDaemonConfig {
 export const DEFAULT_HTTP_HOST = '0.0.0.0';
 export const DEFAULT_HTTP_PORT = 3200;
 
+/** Where the daemon serves the built console from; `bun run build:cluster-ui` installs it here. */
+export function clusterConsoleDir(config: ClusterDaemonConfig): string {
+  return join(config.stateDir, 'ui');
+}
+
 /**
  * The daemon reads the same configuration tree as the bot, resolved the same way:
  * `CONFIG_PATH`, then `<repoRoot>/config.d/`, then `<repoRoot>/config.jsonc`.

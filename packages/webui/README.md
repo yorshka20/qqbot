@@ -71,6 +71,10 @@ VITE_LOCAL_API_BASE=http://192.168.1.100:8888
 
 If only `VITE_STATIC_SERVER_BASE` is set and `VITE_LOCAL_API_BASE` is unset, shared-content requests use the remote base while cluster/tickets/lan/projects use same-origin (the machine serving the WebUI).
 
+## Production
+
+The bot's StaticServer serves the built UI from `data/webui` at `/`, for any path no backend claims; there is no UI process and no extra port. `bun run deploy` builds and installs it, `bun run deploy --app webui` (or `bun run build:admin`) only it, without restarting the bot.
+
 ## Two processes (dev mode)
 
 | Process | Port | Role |

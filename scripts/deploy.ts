@@ -1,5 +1,6 @@
-// Deploy — bring the bot and the cluster daemon up to the latest code: fetch, fast-forward only,
-// install dependencies, restart. This is the only path that changes code or dependencies; a
+// Deploy — bring the bot, the cluster daemon and both web UIs up to the latest code: fetch,
+// fast-forward only, install dependencies, build the UIs, restart. This is the only path that
+// changes code or dependencies; a
 // restart (crash restart, `/restart`, the supervisor's restart) runs whatever is checked out. So
 // a crash restart can never pull unreviewed code, and a branch that has diverged can never stop
 // the bot from starting.
@@ -12,11 +13,19 @@
 //
 // Written in TypeScript rather than shell so it runs on every platform the bot does.
 //
-// Usage: bun run deploy            update and restart
-//        bun run deploy --check    report what a deploy would do; exit 1 if it would be refused
+// `--app <name>` deploys one app on the code already checked out, and pulls nothing: pulling and
+// installing need every supervised app stopped (bun EEXIST), and a pull that restarted one app
+// would leave the others on code they never loaded. A UI is rebuilt and swapped in, a supervised
+// app restarted.
+//
+// Usage: bun run deploy                 update everything and restart
+//        bun run deploy --check         report what a deploy would do; exit 1 if it would be refused
+//        bun run deploy --app <name>    rebuild or restart one app: bot, cluster, cluster-ui, webui
 
 import { fileURLToPath } from 'node:url';
-import { type AppDefinition, BOT_APP, CLUSTER_APP } from './supervisor/app';
+import { parseArgs } from 'node:util';
+import { buildWebUis, isWebUiName, WEB_UI_NAMES } from './build-ui';
+import { APP_NAMES, type AppDefinition, appByName, BOT_APP, CLUSTER_APP } from './supervisor/app';
 import { connectSupervisor, type SupervisorClient } from './supervisor/client';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -35,6 +44,49 @@ function run(cmd: string[]): void {
   const result = Bun.spawnSync(cmd, { cwd: ROOT, stdout: 'inherit', stderr: 'inherit' });
   if (result.exitCode !== 0) {
     throw new Error(`${cmd.join(' ')} exited with ${result.exitCode}`);
+  }
+}
+
+const { values: args } = parseArgs({
+  args: process.argv.slice(2),
+  options: { check: { type: 'boolean', default: false }, app: { type: 'string' } },
+});
+const DEPLOYABLE = [...APP_NAMES, ...WEB_UI_NAMES].sort();
+if (args.app !== undefined && !DEPLOYABLE.includes(args.app)) {
+  console.error(`deploy: --app takes one of ${DEPLOYABLE.join(', ')}, got "${args.app}"`);
+  process.exit(1);
+}
+
+/** One app on the checked-out code: a UI is rebuilt and swapped in, a supervised app restarted. */
+async function deployOne(name: string): Promise<void> {
+  git('fetch', '--quiet');
+  const behind = Number(git('rev-list', '--count', 'HEAD..@{u}'));
+  if (behind > 0) {
+    console.log(`deploy: ${behind} upstream commit(s) are not pulled; \`bun run deploy\` pulls and updates everything`);
+  }
+  if (isWebUiName(name)) {
+    const [dir] = buildWebUis([name]);
+    console.log(`deploy: ${name} installed to ${dir}`);
+    return;
+  }
+  const app = appByName(name);
+  const client = await connectSupervisor(app.files);
+  if (!client) {
+    throw new Error(
+      `${name} is not running under its supervisor; start it with \`bun run ${app === BOT_APP ? 'start' : `${name}:start`}\``,
+    );
+  }
+  await client.restart();
+  console.log(`deploy: ${name} restarted at ${git('rev-parse', '--short', 'HEAD')}`);
+}
+
+if (args.app !== undefined) {
+  try {
+    await deployOne(args.app);
+    process.exit(0);
+  } catch (error) {
+    console.error(`deploy failed: ${(error as Error).message}`);
+    process.exit(1);
   }
 }
 
@@ -92,7 +144,10 @@ function planDeploy(): Plan {
 
 function describe(plan: Plan): string {
   const names = supervised.map(({ app }) => app.name).join(' and ');
-  const install = names ? `install, restart ${names}` : 'install (no supervisor is running, so no restart)';
+  const build = `build ${WEB_UI_NAMES.join(' and ')}`;
+  const install = names
+    ? `install, ${build}, restart ${names}`
+    : `install, ${build} (no supervisor is running, so no restart)`;
   if (plan.pull) {
     return `fast-forward ${plan.upstreamCommits} commit(s) from ${plan.upstream}, ${install}`;
   }
@@ -108,7 +163,7 @@ try {
   process.exit(1);
 }
 console.log(`deploy: ${describe(plan)}`);
-if (process.argv.includes('--check')) {
+if (args.check) {
   process.exit(0);
 }
 
@@ -119,6 +174,7 @@ try {
     run(['git', 'merge', '--ff-only', plan.upstream]);
   }
   run([process.execPath, 'install']);
+  buildWebUis(WEB_UI_NAMES);
 } catch (error) {
   // The tree was clean before the fast-forward (planDeploy checks), so resetting loses nothing.
   if (git('rev-parse', 'HEAD') !== running) {
