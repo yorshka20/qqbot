@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
 import winston from 'winston';
 import { botLogsDir, localDateString, logFilePathAt } from './logFiles';
+import { LogLineRenderer } from './logRender';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -34,16 +35,8 @@ export function formatLogSections(sections: LogSection[]): string {
 
 /** What the logger may know about the entry it is writing. */
 export interface LogEntryContext {
-  /** Short tag written in front of the message. */
+  /** Short tag written in front of the message; the console colours it from the text alone. */
   tag?: string;
-  /** ANSI background code for the tag on the console; carries no foreground colour. */
-  color?: string;
-  /**
-   * True the first time it is asked for one context: that console line takes the
-   * background across its whole width, every later line only on the tag. Calling it
-   * consumes the turn, so only call it when a line will actually use it.
-   */
-  takeWholeLineBackground(): boolean;
 }
 
 /**
@@ -112,65 +105,41 @@ function formatMeta(meta: Record<string, unknown>): string {
   return parts.length > 0 ? `\n${parts.join('\n')}` : '';
 }
 
-// Color codes for console output
-const colors = {
-  reset: '\x1b[0m',
-  bright: '\x1b[1m',
-  dim: '\x1b[2m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  magenta: '\x1b[35m',
-  cyan: '\x1b[36m',
-  white: '\x1b[37m',
-  gray: '\x1b[90m',
-};
-
-const levelColors: Record<string, string> = {
-  error: colors.red + colors.bright,
-  warn: colors.yellow + colors.bright,
-  info: colors.cyan + colors.bright,
-  debug: colors.gray,
-};
-
-/** Console prefix: the tag on its background only (no text colour). */
-function contextPrefixConsole(): string {
-  const ctx = currentContext();
-  if (ctx?.tag && ctx.color) {
-    return `${ctx.color}\x1b[37m[${ctx.tag}]${colors.reset} `;
-  }
-  return '';
-}
-
-/** File prefix: the plain tag. */
-function contextPrefixFile(): string {
-  const ctx = currentContext();
-  return ctx?.tag ? `[${ctx.tag}] ` : '';
-}
-
 /** Called with the path of each log file the process opens: its first one, then one per local day. */
 export type LogFileListener = (path: string) => void;
 
-function fileFormat() {
-  // Suppress format runs first so non-whitelisted entries are dropped before printf (with
-  // [STATS] bypass for daily-stats parsing).
+/**
+ * An entry as text: `[date time] [LEVEL] [tag] message`, then its stack or meta on the lines
+ * after. The file stores exactly this; the console renders the same text (`LogLineRenderer`).
+ */
+function entryLine({ timestamp, level, message, stack, ...meta }: winston.Logform.TransformableInfo): string {
+  let metaStr = '';
+  if (stack) {
+    metaStr = `\n${stack}`;
+  } else if (Object.keys(meta).length) {
+    metaStr = formatMeta(meta);
+  }
+  const tag = currentContext()?.tag;
+  return `[${timestamp}] [${level.toUpperCase()}] ${tag ? `[${tag}] ` : ''}${message}${metaStr}`;
+}
+
+/** The suppress format runs first, so an entry the context source drops never reaches printf. */
+function entryFormat(target: LogTarget, print: (info: winston.Logform.TransformableInfo) => string) {
   return winston.format.combine(
-    buildSuppressFormat('file'),
+    buildSuppressFormat(target),
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
     winston.format.splat(),
-    winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
-      let metaStr = '';
-      if (stack) {
-        metaStr = `\n${stack}`;
-      } else if (Object.keys(meta).length) {
-        metaStr = formatMeta(meta);
-      }
-      const msgPrefix = contextPrefixFile();
-      return `[${timestamp}] [${level.toUpperCase()}] ${msgPrefix}${message}${metaStr}`;
-    }),
+    winston.format.printf(print),
   );
+}
+
+const consoleRenderer = new LogLineRenderer();
+
+function consoleTransport(): winston.transport {
+  return new winston.transports.Console({
+    format: entryFormat('console', (info) => consoleRenderer.render(entryLine(info))),
+  });
 }
 
 /**
@@ -187,55 +156,9 @@ class FileLogger implements Logger {
   private readonly listeners = new Set<LogFileListener>();
 
   constructor(level: LogLevel, consoleOutput: boolean) {
-    // Console format — suppress format runs first; no [STATS] bypass for console
-    // (display-only — daily stats reads from the file transport, not the console).
-    const consoleFormat = winston.format.combine(
-      buildSuppressFormat('console'),
-      winston.format.timestamp({ format: 'HH:mm:ss' }),
-      winston.format.errors({ stack: true }),
-      winston.format.splat(),
-      winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
-        const levelUpper = level.toUpperCase();
-        const color = levelColors[level] || colors.white;
-        const reset = colors.reset;
-        const dim = colors.dim;
-        const gray = colors.gray;
-        const ctx = currentContext();
-
-        let metaStr = '';
-        let metaStrPlain = '';
-        if (stack) {
-          metaStr = `\n${dim}${stack}${reset}`;
-          metaStrPlain = `\n${stack}`;
-        } else if (Object.keys(meta).length) {
-          const formatted = formatMeta(meta);
-          metaStr = formatted
-            .split('\n')
-            .map((line) => `${gray}${line}${reset}`)
-            .join('\n');
-          metaStrPlain = formatted;
-        }
-
-        // First line of a context: whole-line background, then prefix-only for the rest.
-        if (ctx?.color && ctx.takeWholeLineBackground()) {
-          const plainPrefix = ctx.tag ? `[${ctx.tag}] ` : '';
-          const plainLine = `${timestamp} ${levelUpper.padEnd(5)} ${plainPrefix}${message}${metaStrPlain}`;
-          // Background + white text for the whole line (readable on a dark terminal)
-          const bgAndFg = ctx.color.endsWith('m') ? `${ctx.color.slice(0, -1)};37m` : `${ctx.color}\x1b[37m`;
-          return `${bgAndFg}${plainLine}${reset}`;
-        }
-
-        // Subsequent logs: only prefix has background; rest of line normal (no extra text color)
-        const levelStr = `${color}${levelUpper.padEnd(5)}${reset}`;
-        const timeStr = `${dim}${timestamp}${reset}`;
-        const msgPrefix = contextPrefixConsole();
-        return `${timeStr} ${levelStr} ${msgPrefix}${message}${metaStr}`;
-      }),
-    );
-
     this.winstonLogger = winston.createLogger({
       level,
-      transports: consoleOutput ? [new winston.transports.Console({ format: consoleFormat })] : [],
+      transports: consoleOutput ? [consoleTransport()] : [],
     });
   }
 
@@ -268,7 +191,11 @@ class FileLogger implements Logger {
     if (existsSync(path)) {
       unlinkSync(path);
     }
-    this.fileTransport = new winston.transports.File({ filename: path, format: fileFormat(), options: { flags: 'w' } });
+    this.fileTransport = new winston.transports.File({
+      filename: path,
+      format: entryFormat('file', entryLine),
+      options: { flags: 'w' },
+    });
     this.winstonLogger.add(this.fileTransport);
     this.fileDate = today;
     this.filePath = path;
@@ -302,38 +229,7 @@ class ConsoleOnlyLogger implements Logger {
   private winstonLogger: winston.Logger;
 
   constructor(level: LogLevel = 'info') {
-    const consoleFormat = winston.format.combine(
-      buildSuppressFormat('console'),
-      winston.format.timestamp({ format: 'HH:mm:ss' }),
-      winston.format.errors({ stack: true }),
-      winston.format.splat(),
-      winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
-        const levelUpper = level.toUpperCase();
-        const color = levelColors[level] || colors.white;
-        const reset = colors.reset;
-        const dim = colors.dim;
-
-        let metaStr = '';
-        if (stack) {
-          metaStr = `\n${dim}${stack}${reset}`;
-        } else if (Object.keys(meta).length) {
-          const formatted = formatMeta(meta);
-          metaStr = formatted
-            .split('\n')
-            .map((line) => `${colors.gray}${line}${reset}`)
-            .join('\n');
-        }
-
-        const levelStr = `${color}${levelUpper.padEnd(5)}${reset}`;
-        const timeStr = `${dim}${timestamp}${reset}`;
-        return `${timeStr} ${levelStr} ${message}${metaStr}`;
-      }),
-    );
-
-    this.winstonLogger = winston.createLogger({
-      level,
-      transports: [new winston.transports.Console({ format: consoleFormat })],
-    });
+    this.winstonLogger = winston.createLogger({ level, transports: [consoleTransport()] });
   }
 
   setLevel(level: LogLevel): void {

@@ -12,7 +12,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { botLogsDir, followCurrentLog } from '@qqbot/shared';
+import { botLogsDir, followCurrentLog, LogLineRenderer } from '@qqbot/shared';
 import { APP_NAMES, type AppDefinition, appByName, BOT_APP } from './app';
 import { connectSupervisor, launchSupervisor, type SupervisorClient } from './client';
 import { followFile } from './followFile';
@@ -143,7 +143,14 @@ async function followLogs(app: AppDefinition, lines: number): Promise<void> {
   process.once('SIGINT', () => abort.abort());
   if (app === BOT_APP) {
     console.log(`following the bot's current log file, ${botLogsDir()}/current (Ctrl+C to stop)`);
-    await followCurrentLog(botLogsDir(), (line) => console.log(line), { signal: abort.signal, initialLines: lines });
+    // The file is plain text for parsers; a terminal gets the console's colours back, a pipe does not.
+    const renderer = new LogLineRenderer();
+    const render =
+      process.stdout.isTTY && !process.env.NO_COLOR ? (line: string) => renderer.render(line) : (line: string) => line;
+    await followCurrentLog(botLogsDir(), (line) => console.log(render(line)), {
+      signal: abort.signal,
+      initialLines: lines,
+    });
     return;
   }
   console.log(`following ${app.files.botOutput} (Ctrl+C to stop)`);

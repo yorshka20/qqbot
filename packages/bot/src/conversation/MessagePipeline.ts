@@ -17,7 +17,7 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import { cacheMessage } from '@/message/MessageCache';
-import { getLogColorForKey, getLogTag } from '@/utils/messageLogContext';
+import { getLogTag } from '@/utils/messageLogContext';
 import { deriveSourceFromEvent, type MessageSource } from './sources';
 import { getSourceConfig } from './sources/registry';
 import type { MessageProcessingContext, MessageProcessingResult } from './types';
@@ -109,31 +109,26 @@ export class MessagePipeline {
     const messageId = String(event.id ?? event.messageId ?? 'unknown');
     const contextKey = `${context.sessionId}_${messageId}`;
     const logTag = getLogTag(messageId);
-    const logColor = getLogColorForKey(messageId);
 
-    return enterMessageContext(
-      contextKey,
-      { message: hookContext.message, logTag, logColor, logWholeLineBackground: false },
-      async () => {
-        try {
-          cacheMessage(event);
-          logger.debug(
-            `[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId} | source=${resolvedSource}`,
-          );
+    return enterMessageContext(contextKey, { message: hookContext.message, logTag }, async () => {
+      try {
+        cacheMessage(event);
+        logger.debug(
+          `[MessagePipeline] Starting message processing | messageId=${messageId} | userId=${event.userId} | source=${resolvedSource}`,
+        );
 
-          const success = await this.lifecycle.execute(hookContext);
-          // lifecycle will update hookContext, so publish receive after lifecycle.
-          this.publishMessageReceived(event, context, !!hookContext.metadata.get('replyTriggerType'));
-          if (!success) {
-            return { success: false, error: 'Processing interrupted' };
-          }
-
-          return this.buildResult(hookContext, context, event);
-        } catch (error) {
-          return await this.handleError(error, event, context);
+        const success = await this.lifecycle.execute(hookContext);
+        // lifecycle will update hookContext, so publish receive after lifecycle.
+        this.publishMessageReceived(event, context, !!hookContext.metadata.get('replyTriggerType'));
+        if (!success) {
+          return { success: false, error: 'Processing interrupted' };
         }
-      },
-    );
+
+        return this.buildResult(hookContext, context, event);
+      } catch (error) {
+        return await this.handleError(error, event, context);
+      }
+    });
   }
 
   /**
@@ -153,28 +148,23 @@ export class MessagePipeline {
     this.applyProviderPrefix(hookContext, event);
     const contextKey = `${context.sessionId}_${messageId}`;
     const logTag = getLogTag(messageId);
-    const logColor = getLogColorForKey(messageId);
 
-    return enterMessageContext(
-      contextKey,
-      { message: hookContext.message, logTag, logColor, logWholeLineBackground: false },
-      async () => {
-        try {
-          logger.info(`[MessagePipeline] Reply-only | messageId=${messageId} | userId=${event.userId}`);
-          const success = await this.lifecycle.executeProcessAndSend(hookContext);
-          if (!success) {
-            return { success: false, error: 'Processing interrupted' };
-          }
-          const result = this.buildResult(hookContext, context, event);
-          if (result.success) {
-            await this.lifecycle.runCompleteStage(hookContext, messageId);
-          }
-          return result;
-        } catch (error) {
-          return await this.handleError(error, event, context);
+    return enterMessageContext(contextKey, { message: hookContext.message, logTag }, async () => {
+      try {
+        logger.info(`[MessagePipeline] Reply-only | messageId=${messageId} | userId=${event.userId}`);
+        const success = await this.lifecycle.executeProcessAndSend(hookContext);
+        if (!success) {
+          return { success: false, error: 'Processing interrupted' };
         }
-      },
-    );
+        const result = this.buildResult(hookContext, context, event);
+        if (result.success) {
+          await this.lifecycle.runCompleteStage(hookContext, messageId);
+        }
+        return result;
+      } catch (error) {
+        return await this.handleError(error, event, context);
+      }
+    });
   }
 
   /**

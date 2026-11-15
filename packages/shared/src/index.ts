@@ -22,5 +22,6 @@ export * from './http/ResourceDownloader';
 export * from './http/spaFiles';
 export * from './logFiles';
 export * from './logger';
+export * from './logRender';
 export * from './randomUUID';
 export * from './repoRoot';

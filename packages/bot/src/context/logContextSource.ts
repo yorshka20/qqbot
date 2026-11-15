@@ -1,4 +1,4 @@
-// Supplies the logger with the message being handled: the tag and colour its lines carry,
+// Supplies the logger with the message being handled: the tag its lines carry,
 // and which lines to drop. The logger itself knows nothing about messages.
 
 import type { LogContextSource, LogEntryContext, LogLevel, LogTarget } from '@qqbot/shared';
@@ -61,17 +61,7 @@ function shouldSuppress(target: LogTarget, level: LogLevel, message: string): bo
 }
 
 function toEntryContext(value: MessageContextValue): LogEntryContext {
-  return {
-    tag: value.logTag,
-    color: value.logColor,
-    takeWholeLineBackground: () => {
-      if (!value.logWholeLineBackground) {
-        return false;
-      }
-      value.logWholeLineBackground = false;
-      return true;
-    },
-  };
+  return { tag: value.logTag };
 }
 
 /** Called once during bootstrap; until it runs, log lines carry no message tag. */

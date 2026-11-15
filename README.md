@@ -174,7 +174,7 @@ bun run start         # start the supervisor in the background; it starts the bo
 bun run status        # supervisor and bot state, last exit, the tail of the bot's own output
 bun run restart       # restart on the checked-out code, like `/restart` in chat
 bun run stop          # stop the bot, then the supervisor
-bun run logs          # follow the bot's log live, across restarts and day rollovers (--lines N for more history)
+bun run logs          # follow the bot's log live, across restarts and day rollovers, rendered like the console (--lines N; plain when piped or NO_COLOR is set)
 bun run deploy        # update: fetch, fast-forward only, bun install, build the web UIs, restart (--check to preview; `/deploy` in chat)
 bun run deploy --app webui   # one app on the checked-out code: bot, cluster, webui or cluster-ui
 ```

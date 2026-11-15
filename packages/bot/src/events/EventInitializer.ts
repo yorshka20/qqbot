@@ -8,7 +8,7 @@ import type { MessageRecallRecorder } from '@/conversation/MessageRecallRecorder
 import type { Config } from '@/core/config';
 import type { NormalizedMessageEvent, NormalizedNoticeEvent } from '@/events/types';
 import type { HookManager } from '@/hooks/HookManager';
-import { getLogColorForKey, getLogTag } from '@/utils/messageLogContext';
+import { getLogTag } from '@/utils/messageLogContext';
 import { EventRouter } from './EventRouter';
 import { MessageHandler } from './handlers/MessageHandler';
 import { MetaEventHandler } from './handlers/MetaEventHandler';
@@ -55,10 +55,7 @@ export class EventInitializer {
     eventRouter.on('message', async (event: NormalizedMessageEvent) => {
       const messageId = String(event.id ?? event.messageId ?? 'unknown');
       const logTag = getLogTag(messageId);
-      const logColor = getLogColorForKey(messageId);
-      await enterMessageContext(messageId, { message: event, logTag, logColor, logWholeLineBackground: true }, () =>
-        messageHandler.handle(event),
-      );
+      await enterMessageContext(messageId, { message: event, logTag }, () => messageHandler.handle(event));
     });
 
     eventRouter.on('notice', (event: NormalizedNoticeEvent) => {
