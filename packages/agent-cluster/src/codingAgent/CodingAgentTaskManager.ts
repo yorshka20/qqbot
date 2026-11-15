@@ -12,7 +12,6 @@ import type { CodingAgentConfig } from '../config';
 import { CodingAgentTaskStore } from './CodingAgentTaskStore';
 import type { AgentExecutor } from './executors';
 import type { AgentInvocation } from './executors/AgentExecutor';
-import type { TaskRecordEvent } from './taskWorkspace';
 import type { AgentExecutorName, AgentTask, AgentTaskType, ProjectContext, TaskNotification } from './types';
 
 type TaskUpdateCallback = (task: AgentTask) => void;

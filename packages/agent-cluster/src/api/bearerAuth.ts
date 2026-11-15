@@ -17,7 +17,7 @@ export function withBearerToken(token: string, route: HubRoute): HubRoute {
 
 export function hasBearerToken(req: Request, token: string): boolean {
   const header = req.headers.get('authorization');
-  if (!header || !header.startsWith('Bearer ')) {
+  if (!header?.startsWith('Bearer ')) {
     return false;
   }
   const presented = Buffer.from(header.slice('Bearer '.length));
