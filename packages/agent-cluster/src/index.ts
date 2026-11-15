@@ -16,6 +16,7 @@ export type { ClusterConfig, ClusterProjectConfig, WorkerTemplateConfig } from '
 export { parseClusterConfig } from './cluster/config';
 export { ContextHub, type HubRoute } from './cluster/hub/ContextHub';
 export { HubMCPServer } from './cluster/hub/HubMCPServer';
+export { type KbSyncResult, KNOWLEDGE_BASE_LINK, syncKnowledgeBase } from './cluster/kbGitSync';
 export { ALLOWED_STATUSES, parseMarkdownTicket, parsePlanVersion, serializeTicket } from './cluster/tickets/markdown';
 export {
   bucketForProject,

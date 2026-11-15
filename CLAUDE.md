@@ -15,6 +15,9 @@ bun run status | restart | stop | logs
 # Remove cluster worktrees no pool claims (--dry-run lists them)
 bun run cluster:gc
 
+# Two-way git sync of the knowledge base behind _kb (agenda action kb_sync does the same)
+bun run kb:sync
+
 # Update a running deployment: fetch, fast-forward only, bun install, restart
 bun run deploy          # `bun run deploy --check` reports what it would do
 
