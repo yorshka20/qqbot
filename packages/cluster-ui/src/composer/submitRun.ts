@@ -1,7 +1,7 @@
 import type { ClusterTask, ClusterTemplatesResponse, Ticket } from '@qqbot/api-types';
-import { acknowledgeClusterTask, createClusterJob, createTicket, getClusterTask, updateTicket } from '../api';
+import { createClusterJob, createTicket, updateTicket } from '../api';
 import type { PlanningMode } from '../lib/planning';
-import { needsPlannerTicket, plannerTicketDraft, type Run, resolveTemplate } from '../lib/runs';
+import { needsPlannerTicket, plannerTicketDraft, resolveTemplate } from '../lib/runs';
 
 export interface RunInput {
   project: string;
@@ -51,23 +51,6 @@ export async function submitRun(input: RunInput, templates: ClusterTemplatesResp
     }
     throw err;
   }
-}
-
-/** Phase 1 has no real retry: this submits a new run with the same words. List routes truncate them. */
-export async function retryRun(run: Run, templates: ClusterTemplatesResponse | null): Promise<SubmittedRun> {
-  const { description } = await getClusterTask(run.task.id);
-  const next = await submitRun(
-    {
-      project: run.task.project,
-      description,
-      template: run.task.workerTemplate,
-      ticketId: run.ticketId,
-      planning: run.planning,
-    },
-    templates,
-  );
-  await acknowledgeClusterTask(run.task.id);
-  return next;
 }
 
 /** A frontmatter block ahead of the body: the run takes its name from it, a planner its sizing hints. */

@@ -84,6 +84,34 @@ export class ClaudeCliBackend implements WorkerBackend {
     return this.launchWith(config, args, config.sessionId);
   }
 
+  /**
+   * `--fork-session` copies the history of `--resume <id>` into a new session and leaves the
+   * source untouched. The new id is only known from the stream's `system/init` event.
+   */
+  async fork(config: WorkerResumeConfig): Promise<WorkerLaunch> {
+    const args = withoutSessionIdArg(this.commonArgs(config));
+    args.push('--resume', config.sessionId, '--fork-session');
+
+    logger.info(
+      `[ClaudeCliBackend] Forking worker ${config.workerId}: ${config.command} (cwd: ${config.projectPath}, from session: ${config.sessionId})`,
+    );
+
+    return this.launchWith(config, args);
+  }
+
+  /** stream-json names the session on its first event, `{"type":"system","subtype":"init","session_id":…}`. */
+  sessionIdFrom(line: string): string | undefined {
+    if (!line.includes('"session_id"')) return undefined;
+    try {
+      const evt = JSON.parse(line) as { type?: unknown; subtype?: unknown; session_id?: unknown };
+      return evt.type === 'system' && evt.subtype === 'init' && typeof evt.session_id === 'string'
+        ? evt.session_id
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   private commonArgs(config: WorkerSpawnConfig): string[] {
     const args = [...config.args];
     const hasMcpConfig = args.includes('--mcp-config') || args.some((a) => a.startsWith('--mcp-config='));
@@ -103,7 +131,7 @@ export class ClaudeCliBackend implements WorkerBackend {
     return args;
   }
 
-  private launchWith(config: WorkerSpawnConfig, args: string[], sessionId: string): WorkerLaunch {
+  private launchWith(config: WorkerSpawnConfig, args: string[], sessionId?: string): WorkerLaunch {
     return {
       cmd: [config.command, ...args, config.taskPrompt],
       cwd: config.projectPath,

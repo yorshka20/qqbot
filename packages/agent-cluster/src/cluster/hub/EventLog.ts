@@ -194,6 +194,16 @@ export class EventLog {
   /**
    * Get current sequence number (for initial cursor assignment).
    */
+  /** Drop a deleted job's events, in memory and on disk. */
+  forget(jobId: string, taskIds: string[]): void {
+    const tasks = new Set(taskIds);
+    this.events = this.events.filter((e) => e.jobId !== jobId && !(e.taskId && tasks.has(e.taskId)));
+    const marks = taskIds.map(() => '?').join(', ');
+    this.db
+      .query(`DELETE FROM cluster_events WHERE jobId = ?${taskIds.length > 0 ? ` OR taskId IN (${marks})` : ''}`)
+      .run(jobId, ...taskIds);
+  }
+
   getCurrentSeq(): number {
     return this.nextSeq - 1;
   }

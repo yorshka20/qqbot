@@ -67,6 +67,14 @@ export class DeepseekBackend implements WorkerBackend {
     return this.inner.resume({ ...config, env: this.routedEnv(config.env) });
   }
 
+  async fork(config: WorkerResumeConfig): Promise<WorkerLaunch> {
+    return this.inner.fork({ ...config, env: this.routedEnv(config.env) });
+  }
+
+  sessionIdFrom(line: string): string | undefined {
+    return this.inner.sessionIdFrom(line);
+  }
+
   /** DeepSeek routing + model-alias remapping; template-provided env still wins. */
   private routedEnv(env: Record<string, string>): Record<string, string> {
     return {

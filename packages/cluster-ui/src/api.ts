@@ -21,9 +21,11 @@ import type {
   ClusterTask,
   ClusterTaskAcknowledgedResponse,
   ClusterTaskCancelledResponse,
+  ClusterTaskDeletedResponse,
   ClusterTaskDetail,
   ClusterTaskMessagedResponse,
   ClusterTaskOutputResponse,
+  ClusterTaskRetriedResponse,
   ClusterTemplatesResponse,
   ClusterWorkerHistoryResponse,
   ClusterWorkerKilledResponse,
@@ -184,6 +186,21 @@ export function killClusterWorker(workerId: string): Promise<ClusterWorkerKilled
 
 export function killClusterTask(taskId: string, reason?: string): Promise<ClusterTaskCancelledResponse> {
   return post('Kill task', `${CLUSTER}/tasks/${id(taskId)}/kill`, { reason });
+}
+
+/** The same task again: its own session with a retry directive, or afresh when it never got one. */
+export function retryClusterTask(taskId: string): Promise<ClusterTaskRetriedResponse> {
+  return post('Retry task', `${CLUSTER}/tasks/${id(taskId)}/retry`);
+}
+
+/** A new root task whose session starts as a copy of this one's; `text` is its first input. */
+export function forkClusterTask(taskId: string, text: string): Promise<ClusterTask> {
+  return post('Fork task', `${CLUSTER}/tasks/${id(taskId)}/fork`, { text });
+}
+
+/** A root task with its whole job; refused (409) while any of the job's tasks still runs. */
+export function deleteClusterTask(taskId: string): Promise<ClusterTaskDeletedResponse> {
+  return request('Delete task', `${CLUSTER}/tasks/${id(taskId)}`, { method: 'DELETE' });
 }
 
 /** A message to a running task's worker; the route refuses (409) a task that has no live worker. */

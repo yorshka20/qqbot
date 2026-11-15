@@ -1467,6 +1467,30 @@ export class ContextHub {
   }
 
   /** A person marked a task as seen; the console's inbox drops it. */
+  /** Everything the hub keeps about a deleted job and its tasks goes with it. */
+  forgetJob(jobId: string, taskIds: string[]): void {
+    const tasks = new Set(taskIds);
+    for (const [id, request] of this.helpRequests) {
+      if (request.taskId && tasks.has(request.taskId)) {
+        this.helpRequests.delete(id);
+      }
+    }
+    const marks = taskIds.map(() => '?').join(', ');
+    if (taskIds.length > 0) {
+      this.db.query(`DELETE FROM cluster_help_requests WHERE taskId IN (${marks})`).run(...taskIds);
+    }
+    for (const taskId of taskIds) {
+      this.messageBox.discard(taskInbox(taskId));
+      this.subscriptions.dropTask(taskId);
+    }
+    this.eventLog.forget(jobId, taskIds);
+    this.workerRegistry.forgetJob(jobId);
+  }
+
+  taskDeleted(taskId: string, jobId: string): void {
+    this.broadcastSSE('task_deleted', { taskId, jobId });
+  }
+
   taskAcknowledged(taskId: string, acknowledgedAt: string): void {
     this.broadcastSSE('task_acknowledged', { taskId, acknowledgedAt });
   }
@@ -1558,7 +1582,7 @@ export class ContextHub {
     // transport sets its own headers.
     const headers = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, X-Worker-Id',
       'Content-Type': 'application/json',
     };

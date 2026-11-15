@@ -156,6 +156,24 @@ worker 同样按 `waiting` 处理。
 （`previousHead` / `head` / `advanced` / 至多 30 个提交 / 至多 50 个改动文件 / 没移动的 `reason`）放在 `WorkerWorkspace` 上。
 `resume.md` 的 `{{WORKSPACE}}` 渲染它，连同任务上次的结束状态、`error` 和 `diffSummary`（没有补齐信息的 unpooled 任务为空）；
 planner 续跑时 `{{CHILDREN}}` 列出每个 child 的状态、是否已合入、能否续用（`resumeContext.ts`）。
+任务重新打开（`reopenTask`）时清掉 `acknowledgedAt`：新结果没人看过。
+
+**重试、fork、删除（owner 的三个动作）。** 都走调度层，路由只做转发；`/tasks/:id`、`/jobs/:id` 的每个 task 带
+`retry` / `fork`（`{ ok: true }` 或 `{ ok: false, reason }`），由 `retryBlocker` / `forkBlocker` 算出，控制台据此禁用按钮。
+
+- **重试**（`POST /tasks/:id/retry`）是同一个 task 再跑，不复制。有 session 时按 `routeMessage` 走续跑：把
+  `prompts/cluster/retry.md` 作为 owner 的 directive 投进收件箱（`mode: resume`），只对 failed / blocked 有效，cancelled
+  不能续跑。从没拿到 session 的根任务（起进程前就失败）原地重新派发（`mode: restart`，`task_restarted` 事件），同一个
+  task id、同一个 job。completed / waiting 的任务用发消息继续，不叫重试。
+- **fork**（`POST /tasks/:id/fork { text? }`）新建一个 job 和根任务，`forkedFrom` 指向源任务，第一次启动用 backend 的
+  `fork`（claude `--resume <id> --fork-session`，新 session id 从 stream 的 `system/init` 读）：模型看到同一段历史，
+  prompt cache 接着用。为此 fork 跑在源任务用过的同一个 worktree 槽（`TaskWorkspaces.claimAt`；claude 按 cwd 找 session，
+  系统提示里也有 cwd），槽被占时排队，槽没了就失败。代码起点是 `forkPoint`：源分支已并入源集成分支时取集成分支（planner
+  的 child 合在那里），否则取源分支，都没有就是基线分支。`text` 作为 owner 消息进新任务的收件箱，原样就是 fork 后的第一段
+  输入，不套模板：新身份由 hub 保证（`hub_report` 认当前 worker，`hub_continue` / `hub_query_task` 只认自己的 child）。
+  源任务还在跑、还持有槽、没有 session、或 backend 没有 `fork`（codex、gemini）时拒绝。
+- **删除**（`DELETE /tasks/:id`）只接受根任务，整个 job 一起删：`cluster_tasks` / `cluster_jobs` / 事件 / 提问 / worker 行 /
+  订阅 / 收件箱 / 日志文件，广播 `task_deleted`。job 里还有没 settle 的任务时拒绝（先终止）。git 分支和 ticket 不动。
 
 ```
 描述: 上报你的状态。working = 有进展的检查点；waiting = 没事可做，报完结束回合，
@@ -966,7 +984,7 @@ CREATE TABLE cluster_help_requests (
 GET  /api/cluster/status           → 集群总览，含 `worktrees`：每项目的池大小和被租用的槽
 GET  /api/cluster/workers          → worker 列表和状态
 GET  /api/cluster/jobs             → job 列表（分页、过滤）
-GET  /api/cluster/jobs/:id         → 单个 job 详情，含 `integrationBranch`
+GET  /api/cluster/jobs/:id         → 单个 job 详情，含 `integrationBranch`；内存窗口（7 天）外的 job 从数据库读
 GET  /api/cluster/tasks            → task 列表（分页、过滤）
 GET  /api/cluster/tasks/:id        → 单个 task 详情 + 完整日志，含 `branch` / `worktreePath` / `mergedAt`，有活跃订阅时含 `subscriptions`
 GET  /api/cluster/tasks/:id/events → 该 task 的事件流
@@ -980,6 +998,9 @@ POST /api/cluster/resume           → 恢复调度
 POST /api/cluster/workers/:id/kill → 终止指定 worker
 POST /api/cluster/tasks/:id/kill   → 取消指定 task（未派发到 worker 的任务也可取消）
 POST /api/cluster/jobs/:id/kill    → 取消 job 下所有未终态的 task
+POST /api/cluster/tasks/:id/retry  → 同一个 task 再跑：续跑自己的 session，没有 session 时原地重新派发
+POST /api/cluster/tasks/:id/fork   → { text? }，新根任务，session 从这个 task 复制
+DELETE /api/cluster/tasks/:id      → 删除根任务和它的整个 job
 
 POST /api/cluster/help/:id/answer  → 回复 help request（人工介入）
 
@@ -1006,6 +1027,8 @@ data: {"file":"src/X.ts","action":"locked","by":"worker-b1c3"}
 event: task_subscribed
 data: {"taskId":"task-002","jobId":"job-001","subscriptions":{"tasks":["task-001"],"files":[],"branch":false,"dependsOn":["task-001"]}}
 ```
+
+`task_deleted`（`{ taskId, jobId }`）在删除一个根任务后广播。
 
 `task_subscribed` 带变更后的完整订阅集合，客户端直接替换。订阅行随 worker 退出删除，同名事件留在 `/tasks/:id/events`，已结束任务的依赖边从那里读。
 

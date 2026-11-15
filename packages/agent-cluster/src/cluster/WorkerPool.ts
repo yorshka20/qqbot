@@ -11,7 +11,7 @@
 
 import { type ChildProcess, spawn as spawnChild, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve as resolvePath } from 'node:path';
 import { getRepoRoot, logger, randomUUID } from '@qqbot/shared';
 import type { ClusterConfig, WorkerBackendType } from './config';
@@ -64,6 +64,7 @@ export type TaskOpenWorkCallback = (task: TaskRecord) => boolean;
 
 /** Pick a task's session up again instead of starting a fresh one. */
 export interface WorkerResume {
+  kind: 'resume';
   sessionId: string;
   /** What arrived while the task had no worker: the resumed session's first input. */
   updates: HubUpdate[];
@@ -73,7 +74,21 @@ export interface WorkerResume {
   children?: ResumeChild[];
 }
 
+/** Start the task's first session as a copy of another task's session. */
+export interface WorkerFork {
+  kind: 'fork';
+  /** The source task's session. */
+  sessionId: string;
+  sourceTaskId: string;
+  /** What arrived in the new task's inbox before it started: the person's words for the fork. */
+  updates: HubUpdate[];
+}
+
+/** How a worker's session begins when it is not a fresh one. */
+export type WorkerSessionStart = WorkerResume | WorkerFork;
+
 const RESUME_PROMPT = 'resume.md';
+const FORK_CONTINUE = '继续。';
 
 /** The inbox as the resumed session reads it: one JSON line per update, in order. */
 export function renderUpdates(updates: HubUpdate[]): string {
@@ -342,7 +357,7 @@ export class WorkerPool {
     projectPath: string,
     task: TaskRecord,
     prepareWorkspace?: () => Promise<WorkerWorkspace>,
-    resume?: WorkerResume,
+    session?: WorkerSessionStart,
   ): Promise<WorkerInstance | null> {
     if (this.paused) {
       logger.warn('[WorkerPool] Pool is paused, not spawning');
@@ -441,17 +456,32 @@ export class WorkerPool {
         timeout: template.timeout,
       };
       let launch: WorkerLaunch;
-      if (resume) {
+      if (session?.kind === 'resume') {
         if (!backend.resume) {
           throw new Error(`Backend ${backend.name} cannot resume a session`);
         }
         // The session already holds the role prompt and the task; it only needs what happened since.
         const taskPrompt = renderPrompt(await loadClusterPrompt(RESUME_PROMPT, projectPath), {
-          UPDATES: renderUpdates(resume.updates),
-          WORKSPACE: renderWorkspaceChanges(workspace?.catchUp, workspace?.integrationBranch, resume.previous),
-          CHILDREN: renderChildren(resume.children ?? []),
+          UPDATES: renderUpdates(session.updates),
+          WORKSPACE: renderWorkspaceChanges(workspace?.catchUp, workspace?.integrationBranch, session.previous),
+          CHILDREN: renderChildren(session.children ?? []),
         });
-        launch = await backend.resume({ ...spawnConfig, taskPrompt, sessionId: resume.sessionId });
+        launch = await backend.resume({ ...spawnConfig, taskPrompt, sessionId: session.sessionId });
+      } else if (session?.kind === 'fork') {
+        if (!backend.fork) {
+          throw new Error(`Backend ${backend.name} cannot fork a session`);
+        }
+        // The copied session already holds the role prompt, the task and the source's work; the
+        // daemon enforces the new task's identity, so the person's words are the whole input.
+        launch = await backend.fork({
+          ...spawnConfig,
+          taskPrompt:
+            session.updates
+              .map((update) => ('summary' in update ? update.summary : ''))
+              .filter(Boolean)
+              .join('\n\n') || FORK_CONTINUE,
+          sessionId: session.sessionId,
+        });
       } else {
         launch = await backend.launch({
           ...spawnConfig,
@@ -718,6 +748,11 @@ export class WorkerPool {
 
   private get mcpDir(): string {
     return join(this.config.stateDir, 'mcp');
+  }
+
+  /** A deleted task's stdout and stderr logs go with it. */
+  async removeLogs(taskId: string): Promise<void> {
+    await Promise.all([rm(this.outPath(taskId), { force: true }), rm(this.errPath(taskId), { force: true })]);
   }
 
   private outPath(taskId: string): string {

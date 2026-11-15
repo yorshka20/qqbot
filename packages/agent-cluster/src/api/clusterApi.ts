@@ -34,6 +34,9 @@
  *   - POST /api/cluster/jobs/:id/land  land a finished job on its base branch again
  *   - POST /api/cluster/tasks/:id/messages  { text, from? } → a directive to the task's running worker
  *   - POST /api/cluster/tasks/:id/acknowledge  a person saw this task; the inbox drops it
+ *   - POST /api/cluster/tasks/:id/retry    the same task again: its own session, or afresh without one
+ *   - POST /api/cluster/tasks/:id/fork     { text? } → a new root task starting from a copy of its session
+ *   - DELETE /api/cluster/tasks/:id        a root task with its whole job
  *   - GET  /api/cluster/help?status=all      answered requests too
  *   - POST /api/cluster/help/:id/answer
  */
@@ -56,12 +59,16 @@ import type {
   ClusterStatusResponse,
   ClusterTask,
   ClusterTaskAcknowledgedResponse,
+  ClusterTaskAction,
   ClusterTaskCancelledResponse,
   ClusterTaskChild,
+  ClusterTaskDeletedResponse,
   ClusterTaskDetail,
+  ClusterTaskForkBody,
   ClusterTaskMessageBody,
   ClusterTaskMessagedResponse,
   ClusterTaskOutputResponse,
+  ClusterTaskRetriedResponse,
   ClusterTaskSubscriptions,
   ClusterTemplatesResponse,
   ClusterWorkerHistoryResponse,
@@ -72,6 +79,7 @@ import type {
 } from '@qqbot/api-types';
 import { logger } from '@qqbot/shared';
 import type { ClusterManager } from '../cluster/ClusterManager';
+import type { TaskActionResult } from '../cluster/ClusterScheduler';
 import type { HubRoute } from '../cluster/hub/ContextHub';
 import type { ClusterEventType, TaskRecord, WorkerRegistration } from '../cluster/types';
 import { templateModel } from '../cluster/WorkerPool';
@@ -134,9 +142,15 @@ export class ClusterApi implements HubRoute {
    * unbounded worker stdout would be re-sent in full on every tick; `GET
    * /tasks/:id` (the single-task audit view) still returns the full record.
    */
-  /** Whether a message to the task would wake its session rather than reach a running worker. */
-  private withResumable(live: ClusterManager, task: TaskRecord): TaskRecord & { resumable: boolean } {
-    return { ...task, resumable: live.getScheduler().routeMessage(task).kind === 'resume' };
+  /** What a person can do with the task now: wake its session with a message, retry it, fork it. */
+  private withActions(live: ClusterManager, task: TaskRecord): ClusterTask {
+    const scheduler = live.getScheduler();
+    return {
+      ...task,
+      resumable: scheduler.routeMessage(task).kind === 'resume',
+      retry: toAction(scheduler.retryBlocker(task)),
+      fork: toAction(scheduler.forkBlocker(task)),
+    };
   }
 
   /**
@@ -147,12 +161,12 @@ export class ClusterApi implements HubRoute {
     const announced = live.getHub().eventLog.query({ taskId: child.id, type: 'task_subscribed', limit: 1 })[0];
     const fromEvent = (announced?.data.subscriptions as ClusterTaskSubscriptions | undefined)?.dependsOn;
     return {
-      ...this.withResumable(live, child),
+      ...this.withActions(live, child),
       dependsOn: fromEvent ?? live.getHub().subscriptions.of(child.id).dependsOn,
     };
   }
 
-  private capTaskForList(t: TaskRecord): TaskRecord & { outputBytes?: number; outputTruncated?: boolean } {
+  private capTaskForList(t: ClusterTask): ClusterTask {
     const OUT_CAP = 16384;
     const DESC_CAP = 2000;
     const full = t.output ?? '';
@@ -187,6 +201,10 @@ export class ClusterApi implements HubRoute {
 
     if (req.method === 'POST') {
       return this.handlePost(subPath, req);
+    }
+
+    if (req.method === 'DELETE') {
+      return this.handleDelete(subPath);
     }
 
     return errorResponse('Method not allowed', 405);
@@ -273,7 +291,7 @@ export class ClusterApi implements HubRoute {
           live
             .getScheduler()
             .getActiveTasks()
-            .map((t) => this.withResumable(live, t)),
+            .map((t) => this.withActions(live, t)),
         );
 
       case '/events': {
@@ -330,12 +348,12 @@ export class ClusterApi implements HubRoute {
         // /jobs/:id
         const jobMatch = subPath.match(/^\/jobs\/([^/]+)$/);
         if (jobMatch) {
-          const job = live.getScheduler().getJob(jobMatch[1]);
+          const job = live.getScheduler().resolveJob(jobMatch[1]);
           if (!job) return errorResponse('Job not found', 404);
           const tasks = live
             .getScheduler()
             .getJobTasks(jobMatch[1])
-            .map((t) => this.capTaskForList(this.withResumable(live, t)));
+            .map((t) => this.capTaskForList(this.withActions(live, t)));
           const workers = live.getHub().workerRegistry.getWorkersByJobId(jobMatch[1]);
           return jsonResponse<ClusterJobWithDetail>({
             ...job,
@@ -354,7 +372,7 @@ export class ClusterApi implements HubRoute {
           const subscriptions = live.getHub().subscriptions.of(task.id);
           const subscribed = subscriptions.tasks.length > 0 || subscriptions.files.length > 0 || subscriptions.branch;
           return jsonResponse<ClusterTaskDetail>({
-            ...this.withResumable(live, task),
+            ...this.withActions(live, task),
             children: children.length > 0 ? children.map((child) => this.withDependsOn(live, child)) : undefined,
             subscriptions: subscribed ? subscriptions : undefined,
           });
@@ -550,6 +568,24 @@ export class ClusterApi implements HubRoute {
           }
         }
 
+        // /tasks/:id/retry
+        const retryMatch = subPath.match(/^\/tasks\/([^/]+)\/retry$/);
+        if (retryMatch) {
+          const result = await live.getScheduler().retryTask(retryMatch[1]);
+          if (!result.ok) return refusal(result);
+          return jsonResponse<ClusterTaskRetriedResponse>({ taskId: retryMatch[1], mode: result.mode });
+        }
+
+        // /tasks/:id/fork
+        const forkMatch = subPath.match(/^\/tasks\/([^/]+)\/fork$/);
+        if (forkMatch) {
+          const body = (await req.json().catch(() => ({}))) as Partial<ClusterTaskForkBody>;
+          const text = typeof body.text === 'string' ? body.text.trim() : '';
+          const result = await live.getScheduler().forkTask(forkMatch[1], text || undefined);
+          if (!result.ok) return refusal(result);
+          return jsonResponse<ClusterTask>(this.withActions(live, result.task), 201);
+        }
+
         // /tasks/:id/acknowledge
         const ackMatch = subPath.match(/^\/tasks\/([^/]+)\/acknowledge$/);
         if (ackMatch) {
@@ -585,6 +621,20 @@ export class ClusterApi implements HubRoute {
         return errorResponse('Not found', 404);
       }
     }
+  }
+
+  private async handleDelete(subPath: string): Promise<Response> {
+    const gated = this.requireStarted();
+    if (gated instanceof Response) return gated;
+    const taskMatch = subPath.match(/^\/tasks\/([^/]+)$/);
+    if (!taskMatch) return errorResponse('Not found', 404);
+    const result = await gated.getScheduler().deleteTask(taskMatch[1]);
+    if (!result.ok) return refusal(result);
+    return jsonResponse<ClusterTaskDeletedResponse>({
+      taskId: taskMatch[1],
+      jobId: result.jobId,
+      deletedTasks: result.deletedTasks,
+    });
   }
 
   private handleSSEStream(cluster: ClusterManager): Response {
@@ -644,4 +694,12 @@ export class ClusterApi implements HubRoute {
       },
     });
   }
+}
+
+function toAction(blocker: string | null): ClusterTaskAction {
+  return blocker === null ? { ok: true } : { ok: false, reason: blocker };
+}
+
+function refusal(result: Extract<TaskActionResult<object>, { ok: false }>): Response {
+  return result.code === 'not_found' ? errorResponse('Task not found', 404) : errorResponse(result.reason, 409);
 }

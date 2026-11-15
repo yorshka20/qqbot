@@ -41,6 +41,7 @@ const REFRESH_EVENTS = [
   'task_acknowledged',
   'task_message',
   'task_event',
+  'task_deleted',
 ] as const;
 
 export interface ClusterData {

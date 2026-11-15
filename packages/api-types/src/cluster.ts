@@ -43,7 +43,9 @@ export type ClusterEventType =
   | 'message'
   | 'help_request'
   | 'task_waiting'
-  | 'task_resumed';
+  | 'task_resumed'
+  | 'task_restarted'
+  | 'task_forked';
 
 export interface ClusterStatus {
   running: boolean;
@@ -215,6 +217,12 @@ export interface ClusterTask {
    * worker runs it (the message goes to the worker directly), and for a backend without resume.
    */
   resumable?: boolean;
+  /** Set by the task routes: whether `POST /tasks/:id/retry` would go ahead, and why not. */
+  retry?: ClusterTaskAction;
+  /** Set by the task routes: whether `POST /tasks/:id/fork` would go ahead, and why not. */
+  fork?: ClusterTaskAction;
+  /** The task whose session this one was forked from. */
+  forkedFrom?: string;
   /** Length of the whole stdout buffer; set only by the job-detail route. */
   outputBytes?: number;
   /** True when `output` is a tail slice rather than the whole buffer. */
@@ -433,6 +441,30 @@ export interface ClusterTaskCancelledResponse {
   cancelled: boolean;
   taskId: string;
   cascadedChildren: number;
+}
+
+export type ClusterTaskAction = { ok: true } | { ok: false; reason: string };
+
+/**
+ * `POST /api/cluster/tasks/:id/retry`: the same task runs again. `resume` wakes its own session
+ * with a retry directive; `restart` launches it afresh, for a task that never got a session.
+ */
+export interface ClusterTaskRetriedResponse {
+  taskId: string;
+  mode: 'resume' | 'restart';
+}
+
+/** `POST /api/cluster/tasks/:id/fork`; answers the new root task (201). */
+export interface ClusterTaskForkBody {
+  /** What the forked session should do next; unset continues where the source stopped. */
+  text?: string;
+}
+
+/** `DELETE /api/cluster/tasks/:id`: a root task goes with its whole job. */
+export interface ClusterTaskDeletedResponse {
+  taskId: string;
+  jobId: string;
+  deletedTasks: number;
 }
 
 /** `POST /api/cluster/jobs/:id/kill` */

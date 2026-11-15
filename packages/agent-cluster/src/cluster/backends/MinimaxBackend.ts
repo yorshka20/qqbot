@@ -54,6 +54,14 @@ export class MinimaxBackend implements WorkerBackend {
     return this.inner.resume({ ...config, env: this.routedEnv(config.env) });
   }
 
+  async fork(config: WorkerResumeConfig): Promise<WorkerLaunch> {
+    return this.inner.fork({ ...config, env: this.routedEnv(config.env) });
+  }
+
+  sessionIdFrom(line: string): string | undefined {
+    return this.inner.sessionIdFrom(line);
+  }
+
   /**
    * MiniMax CN routing. Template-provided env still wins so users can pin a specific model
    * variant or swap to a different MiniMax key per template without touching this file.

@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronRight, MessageCircleQuestion, RotateCcw, TriangleAlert } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, MessageCircleQuestion, TriangleAlert } from 'lucide-react';
 import { type ReactNode, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { acknowledgeClusterTask } from '../api';
@@ -8,7 +8,7 @@ import { AnswerForm } from '../components/AnswerForm';
 import { Button } from '../components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
 import { Skeleton } from '../components/ui/skeleton';
-import { retryRun } from '../composer/submitRun';
+import { useAction } from '../hooks/use-action';
 import { failureReason } from '../lib/conversation';
 import { type ArchiveItem, buildInbox, buildInboxArchive, groupInboxByDay, type InboxItem } from '../lib/inbox';
 import { taskPath } from '../lib/routes';
@@ -18,6 +18,7 @@ import { pathOfRun } from '../lib/taskList';
 import { formatClock, formatWait } from '../lib/time';
 import { useNow } from '../lib/useNow';
 import { cn } from '../lib/utils';
+import { RetryButton } from '../task/TaskActions';
 
 const ARCHIVE_LABEL: Record<ArchiveItem['kind'], string> = {
   answered: '已回答',
@@ -28,23 +29,6 @@ const ARCHIVE_LABEL: Record<ArchiveItem['kind'], string> = {
 function chatPathOfRun(run: Run, runs: Run[]): string {
   const path = pathOfRun(run, runs);
   return `${path}${path.includes('?') ? '&' : '?'}tab=chat`;
-}
-
-function useAction() {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const run = async (action: () => Promise<void>) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await action();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return { busy, error, run };
 }
 
 function SeenButton({ taskId }: { taskId: string }) {
@@ -64,30 +48,6 @@ function SeenButton({ taskId }: { taskId: string }) {
       >
         <Check />
         标记已看
-      </Button>
-      {error && <p className="text-xs break-words text-failed">{error}</p>}
-    </>
-  );
-}
-
-function RetryButton({ run }: { run: Run }) {
-  const { templates, refresh } = useCluster();
-  const navigate = useNavigate();
-  const { busy, error, run: act } = useAction();
-  return (
-    <>
-      <Button
-        disabled={busy}
-        onClick={() =>
-          act(async () => {
-            const { task } = await retryRun(run, templates);
-            await refresh();
-            navigate(taskPath(task.id));
-          })
-        }
-      >
-        <RotateCcw />
-        重试这条运行
       </Button>
       {error && <p className="text-xs break-words text-failed">{error}</p>}
     </>
@@ -175,7 +135,7 @@ function PendingRow({
         <AnswerForm askId={item.help.id} options={item.help.options} />
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          {item.kind === 'failed' && <RetryButton run={item.run} />}
+          {item.kind === 'failed' && <RetryButton task={item.run.task} />}
           <SeenButton taskId={item.run.task.id} />
         </div>
       )}

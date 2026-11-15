@@ -199,6 +199,17 @@ export class WorkerRegistry {
     }
   }
 
+  /** Drop the registrations of a deleted job's workers, which have all exited. */
+  forgetJob(jobId: string): void {
+    for (const [id, job] of this.workerJobIds) {
+      if (job === jobId) {
+        this.workers.delete(id);
+        this.workerJobIds.delete(id);
+      }
+    }
+    this.db.query('DELETE FROM cluster_workers WHERE jobId = ?').run(jobId);
+  }
+
   /**
    * Get workers for a specific job directly from DB.
    */

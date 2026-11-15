@@ -33,7 +33,7 @@ bun test packages/cluster-ui
 | `src/composer/` | 新任务 composer、ticket 抽屉、`submitRun` |
 | `src/settings/` | 设置的六个分组：workers、templates、projects、concurrency、daemon、console |
 | `src/components/` | 业务组件；`components/ui/` 是 shadcn 生成的基础组件 |
-| `src/lib/` | 纯逻辑，都有单测：`routes`（路由契约）、`taskList`（对话列表分组与钉住）、`taskGraph`（拓扑图）、`home`、`stage`（状态映射）、`inbox`、`runs`（运行聚合、`resolveTemplate`、planner ticket 草稿）、`planning`（规划模式与规划状态）、`conversation` / `transcript`（对话视图）、`runTrace`（把对话折成阶段 / 步骤 / 文件）、`runFlow`（执行流程图布局）、`logs`、`usage` / `model`、`window`、`timeline`、`resume`、`workers`、`daemon`、`slots` |
+| `src/lib/` | 纯逻辑，都有单测：`routes`（路由契约）、`taskList`（对话列表分组与钉住）、`taskGraph`（拓扑图）、`home`、`stage`（状态映射）、`inbox`、`runs`（运行聚合、`resolveTemplate`、planner ticket 草稿）、`templates`（模板按角色分组、backend tag）、`planning`（规划模式与规划状态）、`conversation` / `transcript`（对话视图）、`runTrace`（把对话折成阶段 / 步骤 / 文件）、`runFlow`（执行流程图布局）、`logs`、`usage` / `model`、`window`、`timeline`、`resume`、`workers`、`daemon`、`slots` |
 | `src/api.ts` `src/stream/` `src/auth/` | HTTP、SSE（fetch + ReadableStream，因为 `EventSource` 带不了 Authorization）、token |
 
 全页一条 SSE，事件触发 `ClusterData` 刷新；轮询只在流断开时兜底，切回隐藏的页签时补一次。
@@ -52,6 +52,14 @@ bun test packages/cluster-ui
 
 快捷键：`j` `k` 上下、`Enter` 打开、`n` 新任务、`a` 聚焦回答框、`/` 搜索、`Esc` 返回上一级（浮层打开时只关浮层）。
 钉住的对话记在这台设备的 `localStorage`，显示在对话列表顶部。
+
+对话列表：已钉住在最上面，其余每个 project 一组（按名字排序，可折叠），组内先是活跃的、再是 7 天内结束的，更早的收在组内折叠的「更早」里；
+搜索时所有分组展开。daemon 那边按页给出 job 历史，「加载更早」再取一页。
+
+对话头部的动作：**重试**在同一个 task 上再跑（续跑它自己的 session；从没拿到 session 的根任务原地重新派发），不复制；
+**Fork** 从这条运行此刻的 session 复制出一条新对话（新 job，同一个工作区槽，复用 prompt cache），可附一句指示；
+**删除**只对根任务，连同子运行、提问和日志一起删，job 里还有运行没结束时不可用。按钮不可用时 tooltip 写着 daemon 给的原因。
+新任务的模板下拉按 planner / executor 分组，每项带 backend tag（`claude-cli` 显示为 `claude`）和模型名。
 
 ## 设计 token
 

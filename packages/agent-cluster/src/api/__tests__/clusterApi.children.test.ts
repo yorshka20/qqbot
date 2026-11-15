@@ -30,6 +30,8 @@ function apiWithChild(announced: unknown[], liveDependsOn: string[]): ClusterApi
       findTask: (id: string) => ({ id, jobId: 'job-1', status: 'running' }),
       getChildTasks: () => [childTask('child-1')],
       routeMessage: () => ({ kind: 'refused', reason: 'stub' }),
+      retryBlocker: () => 'stub',
+      forkBlocker: () => null,
     }),
     getHub: () => ({
       eventLog: { query: () => announced },

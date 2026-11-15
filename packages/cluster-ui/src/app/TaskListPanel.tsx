@@ -21,11 +21,10 @@ import { runModelName } from '../lib/model';
 import { parseAppLocation, taskPath, workerPath } from '../lib/routes';
 import type { Run } from '../lib/runs';
 import { STAGE_TONE } from '../lib/stage';
-import { buildTaskList, latestSince, type TaskListItem } from '../lib/taskList';
+import { buildTaskList, groupByProject, latestSince, type TaskListItem } from '../lib/taskList';
 import { formatAgo, formatSpan } from '../lib/time';
 import { useNow } from '../lib/useNow';
 import { cn } from '../lib/utils';
-import type { RunWindow } from '../lib/window';
 import { useCluster } from './ClusterData';
 import { useListCursor } from './keys';
 import { usePinned } from './pins';
@@ -144,29 +143,55 @@ export function TaskListPanel({ keys = true }: { keys?: boolean }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
-  const [historyWindow, setHistoryWindow] = useState<RunWindow>('7d');
+  const [foldedProjects, setFoldedProjects] = useState<ReadonlySet<string>>(new Set());
+  const [olderOpen, setOlderOpen] = useState<ReadonlySet<string>>(new Set());
 
   const pinnedIds = usePinned();
-  const { pinned, active, history } = useMemo(
-    () => buildTaskList(runs, { now, query, historyWindow, pinned: pinnedIds }),
-    [runs, now, query, historyWindow, pinnedIds],
-  );
+  const list = useMemo(() => buildTaskList(runs, { now, query, pinned: pinnedIds }), [runs, now, query, pinnedIds]);
+  const projects = useMemo(() => groupByProject(list), [list]);
+  // A search opens every group: a match must not stay folded away.
+  const searching = query.trim() !== '';
+  const projectOpen = (project: string) => searching || !foldedProjects.has(project);
+  const showOlder = (project: string) => searching || olderOpen.has(project);
   const current = parseAppLocation(location.pathname, location.search);
   const activeTaskId = current.page === 'task' ? current.taskId : null;
   const activeWorkerId = current.page === 'task' ? current.workerId : null;
 
-  const hrefs = useMemo(
-    () => [...pinned, ...active, ...history].map((item) => taskPath(item.root.task.id)),
-    [pinned, active, history],
+  /** Every visible item in screen order: what `j` / `k` walk and what each row's index counts in. */
+  let nextRow = list.pinned.length;
+  const sections = projects.map((group) => {
+    const open = projectOpen(group.project);
+    const recent = open ? [...group.active, ...group.history] : [];
+    const older = open && showOlder(group.project) ? group.older : [];
+    const section = { group, open, recent, older, offset: nextRow };
+    nextRow += recent.length + older.length;
+    return section;
+  });
+  const hrefs = [...list.pinned, ...sections.flatMap((section) => [...section.recent, ...section.older])].map((item) =>
+    taskPath(item.root.task.id),
   );
   const { cursor } = useListCursor(keys ? hrefs : [], navigate);
 
-  const groups = [
-    { label: '已钉住', items: pinned, offset: 0 },
-    { label: '活跃', items: active, offset: pinned.length },
-    { label: '历史', items: history, offset: pinned.length + active.length },
-  ];
-  const empty = pinned.length === 0 && active.length === 0 && history.length === 0;
+  const toggle = (set: ReadonlySet<string>, key: string): Set<string> => {
+    const next = new Set(set);
+    if (!next.delete(key)) {
+      next.add(key);
+    }
+    return next;
+  };
+  const items = (entries: TaskListItem[], offset: number) =>
+    entries.map((item, index) => (
+      <TaskItem
+        key={item.root.task.id}
+        item={item}
+        row={keys ? offset + index : null}
+        now={now}
+        cursor={keys ? cursor : null}
+        activeTaskId={activeTaskId}
+        activeWorkerId={activeWorkerId}
+      />
+    ));
+  const empty = list.pinned.length === 0 && projects.length === 0;
 
   return (
     <>
@@ -196,41 +221,61 @@ export function TaskListPanel({ keys = true }: { keys?: boolean }) {
           {query.trim() ? '没有匹配的对话。' : '还没有对话，点「新任务」开始。'}
         </p>
       )}
+      {loaded && list.pinned.length > 0 && (
+        <SidebarGroup>
+          <SidebarGroupLabel>已钉住</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>{items(list.pinned, 0)}</SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
       {loaded &&
-        groups.map(
-          (group) =>
-            group.items.length > 0 && (
-              <SidebarGroup key={group.label}>
-                <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+        sections.map(({ group, open, recent, older, offset }) => (
+          <Collapsible
+            key={group.project}
+            open={open}
+            onOpenChange={() => setFoldedProjects((set) => toggle(set, group.project))}
+          >
+            <SidebarGroup>
+              <SidebarGroupLabel asChild>
+                <CollapsibleTrigger className="w-full">
+                  <ChevronRight className={cn('transition-transform', open && 'rotate-90')} />
+                  <span className="min-w-0 truncate">{group.project}</span>
+                  <span className="ml-auto tabular-nums">
+                    {group.active.length + group.history.length + group.older.length}
+                  </span>
+                </CollapsibleTrigger>
+              </SidebarGroupLabel>
+              <CollapsibleContent>
                 <SidebarGroupContent>
-                  <SidebarMenu>
-                    {group.items.map((item, index) => (
-                      <TaskItem
-                        key={item.root.task.id}
-                        item={item}
-                        row={keys ? group.offset + index : null}
-                        now={now}
-                        cursor={keys ? cursor : null}
-                        activeTaskId={activeTaskId}
-                        activeWorkerId={activeWorkerId}
-                      />
-                    ))}
-                  </SidebarMenu>
+                  <SidebarMenu>{items(recent, offset)}</SidebarMenu>
+                  {group.older.length > 0 && (
+                    <Collapsible
+                      open={showOlder(group.project)}
+                      onOpenChange={() => setOlderOpen((set) => toggle(set, group.project))}
+                    >
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="xs" className="w-full justify-start text-muted-foreground">
+                          <ChevronRight
+                            className={cn('transition-transform', showOlder(group.project) && 'rotate-90')}
+                          />
+                          更早
+                          <span className="ml-auto tabular-nums">{group.older.length}</span>
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenu>{items(older, offset + recent.length)}</SidebarMenu>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
                 </SidebarGroupContent>
-              </SidebarGroup>
-            ),
-        )}
+              </CollapsibleContent>
+            </SidebarGroup>
+          </Collapsible>
+        ))}
       {loaded && hasMoreHistory && (
         <div className="px-2 pb-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full"
-            onClick={() => {
-              setHistoryWindow('all');
-              loadMoreHistory();
-            }}
-          >
+          <Button variant="ghost" size="sm" className="w-full" onClick={loadMoreHistory}>
             <ChevronsDown />
             加载更早
           </Button>

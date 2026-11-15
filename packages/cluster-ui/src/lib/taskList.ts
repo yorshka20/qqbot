@@ -3,7 +3,7 @@ import { taskPath, workerPath } from './routes';
 import { type Run, stageRankOfRun } from './runs';
 import { isLive } from './stage';
 import { toMs } from './time';
-import { inWindow, type RunWindow } from './window';
+import { inWindow } from './window';
 
 export type TaskAttention = 'asking' | 'failed';
 
@@ -17,7 +17,10 @@ export interface TaskListItem {
 export interface TaskList {
   pinned: TaskListItem[];
   active: TaskListItem[];
+  /** Ended within the last 7 days. */
   history: TaskListItem[];
+  /** Ended before that: listed too, under a group that starts folded. */
+  older: TaskListItem[];
 }
 
 const familyOf = (item: TaskListItem): Run[] => [item.root, ...item.children];
@@ -84,7 +87,7 @@ const rankOf = (item: TaskListItem): number => Math.min(...familyOf(item).map(st
 /** One item per conversation: a root run with everything it spawned. */
 export function buildTaskList(
   runs: Run[],
-  opts: { now: number; query: string; historyWindow: RunWindow; pinned: ReadonlySet<string> },
+  opts: { now: number; query: string; pinned: ReadonlySet<string> },
 ): TaskList {
   const needle = opts.query.trim().toLowerCase();
   const items = buildItems(runs).filter((item) => needle === '' || matches(item, needle));
@@ -92,6 +95,7 @@ export function buildTaskList(
   const pinned: TaskListItem[] = [];
   const active: TaskListItem[] = [];
   const history: TaskListItem[] = [];
+  const older: TaskListItem[] = [];
   for (const item of items) {
     if (opts.pinned.has(item.root.task.id)) {
       pinned.push(item);
@@ -100,15 +104,45 @@ export function buildTaskList(
     const family = familyOf(item);
     if (item.attention !== null || family.some((run) => isLive(run.task))) {
       active.push(item);
-    } else if (family.some((run) => inWindow(run, opts.historyWindow, opts.now))) {
+    } else if (family.some((run) => inWindow(run, '7d', opts.now))) {
       history.push(item);
+    } else {
+      older.push(item);
     }
   }
 
   pinned.sort((a, b) => latestSince(b) - latestSince(a));
   active.sort((a, b) => rankOf(a) - rankOf(b) || latestSince(a) - latestSince(b));
   history.sort((a, b) => latestSince(b) - latestSince(a));
-  return { pinned, active, history };
+  older.sort((a, b) => latestSince(b) - latestSince(a));
+  return { pinned, active, history, older };
+}
+
+export interface ProjectTaskGroup {
+  project: string;
+  active: TaskListItem[];
+  history: TaskListItem[];
+  older: TaskListItem[];
+}
+
+/** The unpinned part of the list, one group per project in alphabetical order, each keeping the list's own order. */
+export function groupByProject(list: TaskList): ProjectTaskGroup[] {
+  const groups = new Map<string, ProjectTaskGroup>();
+  const groupOf = (item: TaskListItem): ProjectTaskGroup => {
+    const project = item.root.task.project;
+    let group = groups.get(project);
+    if (!group) {
+      group = { project, active: [], history: [], older: [] };
+      groups.set(project, group);
+    }
+    return group;
+  };
+  for (const key of ['active', 'history', 'older'] as const) {
+    for (const item of list[key]) {
+      groupOf(item)[key].push(item);
+    }
+  }
+  return [...groups.values()].sort((a, b) => a.project.localeCompare(b.project));
 }
 
 /** Where opening a run goes: a root opens its task, a spawned run opens its place under the root. */

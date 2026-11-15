@@ -1,15 +1,5 @@
 import type { ClusterTaskDetail } from '@qqbot/api-types';
-import {
-  ArrowLeft,
-  Check,
-  ChevronRight,
-  PanelRight,
-  PanelRightClose,
-  Pin,
-  PinOff,
-  RotateCcw,
-  Square,
-} from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, PanelRight, PanelRightClose, Pin, PinOff, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { acknowledgeClusterTask, killClusterTask, landClusterJob } from '../api';
@@ -31,7 +21,6 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
-import { retryRun } from '../composer/submitRun';
 import { useIsMobile } from '../hooks/use-mobile';
 import { deliveryOf } from '../lib/delivery';
 import { readDetailOpen, rememberDetailOpen } from '../lib/memory';
@@ -52,6 +41,7 @@ import { DetailPanel } from './DetailPanel';
 import { LogView } from './LogView';
 import { MessageComposer } from './MessageComposer';
 import { ResultTab } from './ResultTab';
+import { DeleteButton, ForkButton, RetryButton } from './TaskActions';
 import { useTaskDetail } from './useTaskDetail';
 
 const TAB_LABEL: Record<TaskTab, string> = { chat: '对话', topology: '拓扑', result: '结果' };
@@ -183,6 +173,7 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
   const ticketId = run?.ticketId;
   const output = liveOutput || task.output || '';
   const delivery = deliveryOf(run?.job, task);
+  const jobLive = runs.some((candidate) => candidate.task.jobId === task.jobId && isLive(candidate.task));
 
   const chooseTab = (next: TaskTab) => {
     const params = new URLSearchParams(location.search);
@@ -203,15 +194,6 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
   const setLogOverlay = (open: boolean) =>
     navigate({ pathname: location.pathname, search: withOverlay(location.search, { log: open }) });
 
-  const retry = () =>
-    act(async () => {
-      if (!run) {
-        throw new Error('这条运行还没载入，稍后再试。');
-      }
-      const { task: next } = await retryRun(run, templates);
-      await refresh();
-      navigate(taskPath(next.id));
-    });
   const land = () =>
     act(async () => {
       if (!run?.job) {
@@ -287,6 +269,12 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
               父运行 {parentRun?.title ?? task.parentTaskId}
             </Link>
           )}
+          {task.forkedFrom && (
+            <Link to={taskPath(task.forkedFrom)} className="underline underline-offset-2">
+              fork 自{' '}
+              {runs.find((candidate) => candidate.task.id === task.forkedFrom)?.title ?? task.forkedFrom.slice(0, 8)}
+            </Link>
+          )}
           {overlay.created && !ticketId && (
             <Link
               to={{
@@ -309,12 +297,8 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
         </div>
         {delivery && <DeliveryLine delivery={delivery} busy={busy} onLand={land} />}
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          {!live && (
-            <Button disabled={busy || !run} onClick={retry}>
-              <RotateCcw />
-              重试
-            </Button>
-          )}
+          {!live && task.status !== 'completed' && <RetryButton task={task} />}
+          {!live && <ForkButton task={task} />}
           {live && <KillDialog busy={busy} onConfirm={kill} />}
           {workerId === null && (
             <Tooltip>
@@ -332,6 +316,9 @@ function TaskView({ taskId, workerId }: { taskId: string; workerId: string | nul
               <Check />
               标记已看
             </Button>
+          )}
+          {workerId === null && (
+            <DeleteButton task={task} refused={jobLive ? '还有运行没结束：先终止再删除。' : null} />
           )}
         </div>
         {error && <p className="mt-1 text-xs break-words text-failed">{error}</p>}

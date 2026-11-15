@@ -220,6 +220,18 @@ export function buildConversation(input: ConversationInput): ConversationEntry[]
           text: `唤醒 session（第 ${String(event.data.count ?? '?')} 次）· ${String(event.data.reason ?? '')}`,
         });
         break;
+      case 'task_restarted':
+        entries.push({ kind: 'system', id, at, seq: event.seq, text: '重新启动（上次没有留下 session）' });
+        break;
+      case 'task_forked':
+        entries.push({
+          kind: 'system',
+          id,
+          at,
+          seq: event.seq,
+          text: `从 ${String(event.data.from ?? '?').slice(0, 8)} 的 session fork`,
+        });
+        break;
       case 'message':
         entries.push({
           kind: 'system',

@@ -221,6 +221,14 @@ export class WorktreePool {
     return { ...toLease(row), taskId, leasedAt };
   }
 
+  /** Whether the pool still has a slot of this kind at `path`, leased or not. */
+  hasSlotAt(entry: ProjectEntry, kind: SlotKind, path: string): boolean {
+    const row = this.db
+      .query('SELECT * FROM cluster_worktree_slots WHERE project = ? AND path = ? AND kind = ? LIMIT 1')
+      .get(this.directoryName(entry), path, kind) as SlotRow | null;
+    return row !== null && this.inRoot(row.path);
+  }
+
   leaseOf(taskId: string): SlotLease | null {
     const row = this.db
       .query('SELECT * FROM cluster_worktree_slots WHERE taskId = ? LIMIT 1')

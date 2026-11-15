@@ -28,6 +28,7 @@ export function openClusterDb(path = ':memory:'): Database {
     'mergedAt TEXT',
     'resumedAt TEXT',
     'resumeCount INTEGER',
+    'forkedFrom TEXT',
   ]) {
     db.run(`ALTER TABLE cluster_tasks ADD COLUMN ${column}`);
   }

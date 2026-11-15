@@ -529,6 +529,7 @@ export class ClusterManager {
         ['mergedAt', 'TEXT'],
         ['resumedAt', 'TEXT'],
         ['resumeCount', 'INTEGER'],
+        ['forkedFrom', 'TEXT'],
       ];
       for (const [name, type] of wanted) {
         if (have.has(name)) continue;

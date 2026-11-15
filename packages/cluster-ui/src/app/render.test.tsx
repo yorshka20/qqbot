@@ -98,12 +98,25 @@ const failedChild = task(FAILED, {
   startedAt: iso(-9 * MIN),
   completedAt: iso(-5 * MIN),
   error: 'Process exited with code 1',
+  retry: { ok: true },
+  fork: { ok: true },
 });
 const historyRoot = task(HISTORY, {
   description: '已结束的历史任务',
   status: 'completed',
   startedAt: iso(-3 * 60 * MIN),
   completedAt: iso(-2 * 60 * MIN),
+  retry: { ok: false, reason: 'A completed task is continued with a message, not retried' },
+  fork: { ok: false, reason: 'No session id was recorded for this task' },
+});
+const OLD = 'old-root';
+const oldRoot = task(OLD, {
+  description: '三周前结束的任务',
+  status: 'failed',
+  createdAt: iso(-21 * 24 * 60 * MIN),
+  startedAt: iso(-21 * 24 * 60 * MIN),
+  completedAt: iso(-21 * 24 * 60 * MIN),
+  acknowledgedAt: iso(-21 * 24 * 60 * MIN),
 });
 
 const ask: ClusterHelpRequest = {
@@ -117,7 +130,7 @@ const ask: ClusterHelpRequest = {
   createdAt: iso(-4 * MIN),
 };
 
-const TASKS = [root, doneChild, failedChild, historyRoot];
+const TASKS = [root, doneChild, failedChild, historyRoot, oldRoot];
 
 const TICKET_ID = 'T-1';
 const TICKET: Ticket = {
@@ -450,6 +463,32 @@ describe('Shell routes render', () => {
     const option = await screen.findByRole('option', { name: '自动选择' });
     expect(option).not.toBeNull();
     expect(screen.getAllByRole('option').length).toBe(3);
+    expect(screen.getByText('规划（planner）')).not.toBeNull();
+    expect(screen.getByText('执行（executor）')).not.toBeNull();
+  });
+
+  test('a run that ended weeks ago is listed under a folded group that opens', async () => {
+    renderAt('/');
+    const older = await screen.findByRole('button', { name: /更早/ });
+    expect(screen.queryAllByText('三周前结束的任务').length).toBe(0);
+    fireEvent.click(older);
+    expect((await screen.findAllByText('三周前结束的任务')).length).toBeGreaterThan(0);
+  });
+
+  test('a failed run offers retry and fork; a root offers delete', async () => {
+    renderAt(`/t/${ROOT}/w/${FAILED}`);
+    const retry = await screen.findByRole('button', { name: '重试' });
+    expect((retry as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Fork' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole('button', { name: '删除' })).toBeNull();
+  });
+
+  test('a completed root that cannot fork shows fork disabled and delete enabled, and no retry', async () => {
+    renderAt(`/t/${HISTORY}`);
+    const fork = await screen.findByRole('button', { name: 'Fork' });
+    expect((fork as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
+    expect((screen.getByRole('button', { name: '删除' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
 

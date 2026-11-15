@@ -10,6 +10,7 @@ import type { ProjectEntry, ProjectRegistry } from '../codingAgent/ProjectRegist
 import type { ClusterConfig } from './config';
 import type { ContextHub } from './hub/ContextHub';
 import type { MessageType } from './hub/MessageBox';
+import { readClusterPrompt } from './prompts';
 import type { ResumeChild } from './resumeContext';
 import type { TaskSource } from './sources/TaskSource';
 import {
@@ -26,7 +27,7 @@ import {
   type TaskRecord,
   type TaskStatus,
 } from './types';
-import type { WorkerPool, WorkerResume } from './WorkerPool';
+import type { WorkerFork, WorkerPool, WorkerResume } from './WorkerPool';
 import type { TaskWorkspaces } from './workspace/TaskWorkspaces';
 import type { SlotKind, SlotLease } from './workspace/WorktreePool';
 
@@ -38,6 +39,14 @@ export type MessageRoute =
   | { kind: 'worker'; workerId: string }
   | { kind: 'resume' }
   | { kind: 'refused'; reason: string };
+
+/** How a task's worker begins when it does not start a fresh session. */
+type TaskSessionStart = (WorkerResume & { heldSlot: boolean }) | (WorkerFork & { source: TaskRecord });
+
+export type TaskActionResult<T> =
+  | ({ ok: true } & T)
+  | { ok: false; code: 'not_found' }
+  | { ok: false; code: 'refused'; reason: string };
 
 export class ClusterScheduler {
   private running = false;
@@ -549,6 +558,140 @@ export class ClusterScheduler {
   }
 
   /**
+   * Why a person cannot retry this task, or null when they can. A retry runs the same task again:
+   * in its own session when it has one, afresh when it never got one (it failed before starting).
+   */
+  retryBlocker(task: TaskRecord): string | null {
+    if (task.workerId && this.workerPool.isWorkerLive(task.workerId)) return 'The task is running';
+    if (task.status === 'completed' || task.status === 'waiting') {
+      return `A ${task.status} task is continued with a message, not retried`;
+    }
+    if (!isTerminalTaskStatus(task.status)) return 'The task has not started yet';
+    if (task.sessionId) {
+      const route = this.routeMessage(task);
+      return route.kind === 'resume' ? null : route.kind === 'refused' ? route.reason : 'The task is running';
+    }
+    if (task.parentTaskId) return 'A child task that never started is its planner to spawn again';
+    if (!this.isTaskSettled(task.id)) return 'The task is still landing its work';
+    return null;
+  }
+
+  async retryTask(taskId: string): Promise<TaskActionResult<{ mode: 'resume' | 'restart' }>> {
+    const task = this.findTask(taskId);
+    if (!task) return { ok: false, code: 'not_found' };
+    const blocker = this.retryBlocker(task);
+    if (blocker) return { ok: false, code: 'refused', reason: blocker };
+    if (task.sessionId) {
+      this.hub.messageTask(task.id, readClusterPrompt('retry.md').trim(), 'owner');
+      return { ok: true, mode: 'resume' };
+    }
+    const projectInfo = this.projectRegistry.resolve(task.project);
+    if (!projectInfo) return { ok: false, code: 'refused', reason: `Unknown project "${task.project}"` };
+    this.reopenTask(task);
+    task.status = 'pending';
+    task.claimedAt = undefined;
+    task.startedAt = undefined;
+    task.workerId = undefined;
+    task.workerPid = undefined;
+    task.workerStartedAt = undefined;
+    task.diffSummary = undefined;
+    task.filesModified = undefined;
+    this.persistTask(task);
+    this.hub.recordTaskEvent('task_restarted', task, {});
+    await this.tryDispatch(task, projectInfo);
+    return { ok: true, mode: 'restart' };
+  }
+
+  /** Why this task's session cannot be forked into a new task, or null when it can. */
+  forkBlocker(task: TaskRecord): string | null {
+    if (task.workerId && this.workerPool.isWorkerLive(task.workerId)) {
+      return 'The task is running; fork it once its worker has exited';
+    }
+    if (!task.sessionId) return 'No session id was recorded for this task';
+    if (this.workspaces.holdsSlot(task.id)) return 'The task still holds its worktree; fork it once it ends';
+    const template = this.config.workerTemplates[task.workerTemplate ?? ''];
+    if (!template) return `Template "${task.workerTemplate}" is not configured`;
+    if (template.enabled === false) return `Template "${task.workerTemplate}" is disabled`;
+    const backendType = template.type || 'claude-cli';
+    if (!this.workerPool.getBackend(backendType)?.fork) return `Backend ${backendType} cannot fork a session`;
+    return null;
+  }
+
+  /**
+   * A new root task, in a job of its own, whose session starts as a copy of the source's: the
+   * model sees the same history, so its prompt cache is reused. `text` waits in the new task's
+   * inbox and is the copy's first input.
+   */
+  async forkTask(sourceId: string, text: string | undefined): Promise<TaskActionResult<{ task: TaskRecord }>> {
+    const source = this.findTask(sourceId);
+    if (!source) return { ok: false, code: 'not_found' };
+    const blocker = this.forkBlocker(source);
+    if (blocker) return { ok: false, code: 'refused', reason: blocker };
+    const projectInfo = this.projectRegistry.resolve(source.project);
+    if (!projectInfo) return { ok: false, code: 'refused', reason: `Unknown project "${source.project}"` };
+
+    const sourceJob = this.jobOf(source);
+    const job: JobRecord = {
+      id: randomUUID(),
+      project: source.project,
+      description: source.description,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      taskCount: 1,
+      planning: sourceJob?.planning ?? 'interactive',
+      maxChildren: sourceJob?.maxChildren,
+      baseBranch: sourceJob?.baseBranch,
+      tasksCompleted: 0,
+      tasksFailed: 0,
+    };
+    this.jobs.set(job.id, job);
+    this.persistJob(job);
+
+    const task = this.createTask(job.id, source.project, source.description, 'queue');
+    task.workerTemplate = source.workerTemplate;
+    task.forkedFrom = source.id;
+    this.persistTask(task);
+    this.hub.recordTaskEvent('task_forked', task, { from: source.id });
+    if (text) {
+      this.hub.messageTask(task.id, text, 'owner');
+    }
+    await this.tryDispatch(task, projectInfo);
+    return { ok: true, task };
+  }
+
+  /** Why this task cannot be deleted, or null when it can. */
+  deleteBlocker(task: TaskRecord): string | null {
+    if (task.parentTaskId) return 'A child task goes with its root task; delete that instead';
+    const unsettled = this.getJobTasks(task.jobId).filter((t) => !this.isTaskSettled(t.id));
+    if (unsettled.length > 0) return 'The job still has tasks running or landing; stop them first';
+    return null;
+  }
+
+  /**
+   * Forget a root task and its whole job: tasks, events, questions, worker rows and log files.
+   * Branches stay in the repository; git keeps the work whatever the console forgets.
+   */
+  async deleteTask(taskId: string): Promise<TaskActionResult<{ jobId: string; deletedTasks: number }>> {
+    const task = this.findTask(taskId);
+    if (!task) return { ok: false, code: 'not_found' };
+    const blocker = this.deleteBlocker(task);
+    if (blocker) return { ok: false, code: 'refused', reason: blocker };
+
+    const ids = this.getJobTasks(task.jobId).map((t) => t.id);
+    for (const id of ids) {
+      this.activeTasks.delete(id);
+      this.wakeRequested.delete(id);
+    }
+    this.jobs.delete(task.jobId);
+    this.hub.forgetJob(task.jobId, ids);
+    this.db.query('DELETE FROM cluster_tasks WHERE jobId = ?').run(task.jobId);
+    this.db.query('DELETE FROM cluster_jobs WHERE id = ?').run(task.jobId);
+    await Promise.all(ids.map((id) => this.workerPool.removeLogs(id)));
+    this.hub.taskDeleted(task.id, task.jobId);
+    return { ok: true, jobId: task.jobId, deletedTasks: ids.length };
+  }
+
+  /**
    * Stop the scheduling loop.
    */
   async stop(): Promise<void> {
@@ -768,8 +911,22 @@ export class ClusterScheduler {
     if (!this.workerPool.canSpawnMore(templateName)) return false;
     if (!this.childPlaceFree(task)) return false;
 
-    const lease = this.claimWorkspace(task, templateName, projectInfo);
+    const forkSource = this.forkSourceOf(task);
+    if (typeof forkSource === 'string') {
+      this.failBeforeStart(task, forkSource);
+      return false;
+    }
+    const lease = forkSource
+      ? this.claimForkWorkspace(task, forkSource, templateName, projectInfo)
+      : this.claimWorkspace(task, templateName, projectInfo);
     if (lease === 'busy') return false;
+    if (lease === 'gone') {
+      this.failBeforeStart(
+        task,
+        `The worktree slot ${forkSource?.worktreePath} the source task ran in no longer exists`,
+      );
+      return false;
+    }
 
     // Everything up to spawnWorker's registration of the worker runs synchronously, so a
     // concurrent dispatch sees this task as taken and counts its worker.
@@ -778,7 +935,16 @@ export class ClusterScheduler {
     task.workerTemplate = templateName;
     this.persistTask(task);
 
-    const spawned = this.spawnTaskWorker(task, templateName, projectInfo, lease);
+    const session: TaskSessionStart | undefined = forkSource
+      ? {
+          kind: 'fork',
+          sessionId: forkSource.sessionId as string,
+          sourceTaskId: forkSource.id,
+          updates: this.hub.takeInbox(task.id),
+          source: forkSource,
+        }
+      : undefined;
+    const spawned = this.spawnTaskWorker(task, templateName, projectInfo, lease, session);
     if (lease === null) return spawned;
     // Preparing a slot can include an install that takes minutes; hub_spawn and POST /jobs
     // answer now, and a failure reaches the task through the spawn-failure path.
@@ -847,6 +1013,37 @@ export class ClusterScheduler {
     return claim === 'unpooled' ? null : claim;
   }
 
+  /**
+   * The task a not-yet-started fork copies its session from; null for any other task, and the
+   * reason when the source can no longer be forked.
+   */
+  private forkSourceOf(task: TaskRecord): TaskRecord | string | null {
+    if (!task.forkedFrom || task.sessionId) return null;
+    const source = this.findTask(task.forkedFrom);
+    if (!source) return `The source task ${task.forkedFrom} no longer exists`;
+    if (!source.sessionId) return `The source task ${task.forkedFrom} has no session`;
+    return source;
+  }
+
+  /** A fork runs where its source did: the copied session belongs to that cwd. */
+  private claimForkWorkspace(
+    task: TaskRecord,
+    source: TaskRecord,
+    templateName: string,
+    projectInfo: ProjectEntry,
+  ): SlotLease | 'busy' | 'gone' | null {
+    if (!source.worktreePath) return null;
+    return this.workspaces.claimAt(task, projectInfo, this.slotKind(templateName), source.worktreePath);
+  }
+
+  private failBeforeStart(task: TaskRecord, reason: string): void {
+    logger.warn(`[ClusterScheduler] Task ${task.id} cannot start: ${reason}`);
+    task.status = 'failed';
+    task.error = reason;
+    task.completedAt = new Date().toISOString();
+    this.finalizeTask(task);
+  }
+
   private jobOf(task: TaskRecord): JobRecord | undefined {
     return this.jobs.get(task.jobId) ?? this.resolveJob(task.jobId);
   }
@@ -860,8 +1057,9 @@ export class ClusterScheduler {
     templateName: string,
     projectInfo: ProjectEntry,
     lease: SlotLease | null,
-    resume?: WorkerResume & { heldSlot: boolean },
+    session?: TaskSessionStart,
   ): Promise<boolean> {
+    const resume = session?.kind === 'resume' ? session : undefined;
     const worker = await this.workerPool.spawnWorker(
       templateName,
       task.project,
@@ -870,9 +1068,17 @@ export class ClusterScheduler {
       lease
         ? resume
           ? () => this.reopenWorkspace(task, projectInfo, lease, resume.heldSlot)
-          : () => this.prepareWorkspace(task, projectInfo, lease)
+          : async () =>
+              this.prepareWorkspace(
+                task,
+                projectInfo,
+                lease,
+                session?.kind === 'fork'
+                  ? await this.workspaces.forkPoint(session.source, this.jobOf(session.source), projectInfo)
+                  : undefined,
+              )
         : async () => this.workspaces.unpooled(projectInfo, this.slotKind(templateName), this.jobOf(task)),
-      resume,
+      session,
     );
     if (worker) {
       task.status = isTerminalTaskStatus(task.status) ? task.status : 'running';
@@ -933,6 +1139,7 @@ export class ClusterScheduler {
     });
 
     const spawned = this.spawnTaskWorker(task, templateName, projectInfo, lease, {
+      kind: 'resume',
       sessionId: task.sessionId as string,
       updates,
       heldSlot,
@@ -975,6 +1182,8 @@ export class ClusterScheduler {
     }
     task.completedAt = undefined;
     task.error = undefined;
+    // A new outcome is unseen, whatever a person marked about the last one.
+    task.acknowledgedAt = undefined;
   }
 
   private async reopenWorkspace(task: TaskRecord, projectInfo: ProjectEntry, lease: SlotLease, held: boolean) {
@@ -987,12 +1196,12 @@ export class ClusterScheduler {
     return workspace;
   }
 
-  private async prepareWorkspace(task: TaskRecord, projectInfo: ProjectEntry, lease: SlotLease) {
+  private async prepareWorkspace(task: TaskRecord, projectInfo: ProjectEntry, lease: SlotLease, from?: string) {
     const job = this.jobs.get(task.jobId) ?? this.resolveJob(task.jobId);
     if (!job) {
       throw new Error(`Job ${task.jobId} of task ${task.id} not found`);
     }
-    const workspace = await this.workspaces.prepare(task, job, projectInfo, lease);
+    const workspace = await this.workspaces.prepare(task, job, projectInfo, lease, from);
     this.persistJob(job);
     this.persistTask(task);
     return workspace;
@@ -1362,8 +1571,8 @@ export class ClusterScheduler {
          (id, jobId, project, description, status, workerId, workerTemplate, source,
           createdAt, claimedAt, startedAt, completedAt, output, error, filesModified, diffSummary, metadata, parentTaskId,
           workerPid, workerStartedAt, logPath, sessionId, acknowledgedAt, model, usage,
-          branch, worktreePath, mergedAt, resumedAt, resumeCount)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          branch, worktreePath, mergedAt, resumedAt, resumeCount, forkedFrom)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           task.id,
@@ -1396,6 +1605,7 @@ export class ClusterScheduler {
           task.mergedAt ?? null,
           task.resumedAt ?? null,
           task.resumeCount ?? null,
+          task.forkedFrom ?? null,
         );
     } catch (err) {
       logger.error('[ClusterScheduler] Failed to persist task:', err);
@@ -1641,6 +1851,7 @@ export class ClusterScheduler {
       mergedAt: (row.mergedAt as string | null) ?? undefined,
       resumedAt: (row.resumedAt as string | null) ?? undefined,
       resumeCount: (row.resumeCount as number | null) ?? undefined,
+      forkedFrom: (row.forkedFrom as string | null) ?? undefined,
     };
   }
 

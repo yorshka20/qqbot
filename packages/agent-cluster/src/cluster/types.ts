@@ -40,7 +40,9 @@ export type ClusterEventType =
   | 'message'
   | 'help_request'
   | 'task_waiting'
-  | 'task_resumed';
+  | 'task_resumed'
+  | 'task_restarted'
+  | 'task_forked';
 
 // ── Worker types ──
 
@@ -232,6 +234,8 @@ export interface TaskRecord {
   resumedAt?: string;
   /** How many times the session was picked up again. */
   resumeCount?: number;
+  /** The task whose session this one was forked from: its first launch starts as a copy of that session. */
+  forkedFrom?: string;
 }
 
 export interface TaskUsage {
@@ -727,6 +731,13 @@ export interface WorkerBackend {
    * without it cannot be woken after its worker exits.
    */
   resume?(config: WorkerResumeConfig): Promise<WorkerLaunch>;
+  /**
+   * Optional: start a new session that begins as a copy of `config.sessionId`, with
+   * `config.taskPrompt` as its next input, in the cwd the source session was created in. The
+   * source session is left as it was. The new session's id comes from `WorkerLaunch.sessionId`
+   * or `sessionIdFrom`. A backend without it cannot fork.
+   */
+  fork?(config: WorkerResumeConfig): Promise<WorkerLaunch>;
   /**
    * Optional: recognise the backend's session id in one line of its stdout stream, for
    * backends that only reveal it at run time (codex `thread.started`, dsh's first event).

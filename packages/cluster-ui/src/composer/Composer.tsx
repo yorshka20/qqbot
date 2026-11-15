@@ -4,6 +4,7 @@ import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { getTicket, listTickets } from '../api';
 import { useCluster } from '../app/ClusterData';
+import { TemplateSelect } from '../components/TemplateSelect';
 import { Button } from '../components/ui/button';
 import {
   Dialog,
@@ -22,7 +23,6 @@ import { composerDefaults, needsPlannerTicket, resolveTemplate } from '../lib/ru
 import { submitRun, ticketDescription } from './submitRun';
 
 const PLACEHOLDER = '修 proactive 卡片在长回复时丢失的问题：先定位 ReplyGenerationService 里截断的那一段，再补测试';
-const AUTO_TEMPLATE = '__auto__';
 const NO_TICKET = '__none__';
 
 function ComposerForm() {
@@ -164,7 +164,7 @@ function ComposerForm() {
         placeholder={PLACEHOLDER}
         aria-label="要做什么"
       />
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         <Select
           value={chosenProject || undefined}
           onValueChange={(value) => {
@@ -183,22 +183,7 @@ function ComposerForm() {
             ))}
           </SelectContent>
         </Select>
-        <Select
-          value={chosenTemplate || AUTO_TEMPLATE}
-          onValueChange={(value) => setTemplate(value === AUTO_TEMPLATE ? '' : value)}
-        >
-          <SelectTrigger className="w-full" aria-label="模板">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={AUTO_TEMPLATE}>自动选择</SelectItem>
-            {templates?.templates.map((t) => (
-              <SelectItem key={t.name} value={t.name}>
-                {t.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <TemplateSelect value={chosenTemplate} onChange={setTemplate} templates={templates?.templates ?? []} />
       </div>
       {resolvedRole === 'planner' && (
         <fieldset aria-label="规划模式" className="flex flex-wrap gap-2">

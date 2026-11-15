@@ -93,6 +93,16 @@ export class TaskWorkspaces {
     return this.pool.leaseAgain(entry, kind, task.id, task.worktreePath) ?? 'busy';
   }
 
+  /**
+   * The slot a forked task runs in: the one its source ran in, since the copied session belongs
+   * to that cwd. `busy` while another task holds it, `gone` when the pool no longer has it.
+   */
+  claimAt(task: TaskRecord, entry: ProjectEntry, kind: SlotKind, path: string): SlotLease | 'busy' | 'gone' {
+    return (
+      this.pool.leaseAgain(entry, kind, task.id, path) ?? (this.pool.hasSlotAt(entry, kind, path) ? 'busy' : 'gone')
+    );
+  }
+
   leases(): SlotLease[] {
     return this.pool.leases();
   }
@@ -102,8 +112,17 @@ export class TaskWorkspaces {
     return this.pool.release(lease);
   }
 
-  /** Create the job's integration branch if needed and put the task on its own branch in the slot. */
-  async prepare(task: TaskRecord, job: JobRecord, entry: ProjectEntry, lease: SlotLease): Promise<WorkerWorkspace> {
+  /**
+   * Create the job's integration branch if needed and put the task on its own branch in the slot,
+   * cut from `from`: the integration tip unless the task carries on from other work (a fork).
+   */
+  async prepare(
+    task: TaskRecord,
+    job: JobRecord,
+    entry: ProjectEntry,
+    lease: SlotLease,
+    from?: string,
+  ): Promise<WorkerWorkspace> {
     const integrationBranch = integrationBranchName(job.id);
     const baseBranch = job.baseBranch ?? entry.baseBranch ?? (await defaultBranch(entry.path));
     await this.enqueue(integrationBranch, () => this.ensureBranch(entry, integrationBranch, baseBranch));
@@ -111,7 +130,7 @@ export class TaskWorkspaces {
     job.baseBranch = baseBranch;
 
     const branch = taskBranchName(job.id, task.id);
-    await this.pool.prepare(lease, entry, branch, integrationBranch);
+    await this.pool.prepare(lease, entry, branch, from ?? integrationBranch);
     task.branch = branch;
     task.worktreePath = lease.path;
 
@@ -161,6 +180,28 @@ export class TaskWorkspaces {
       planning: job.planning,
       catchUp,
     };
+  }
+
+  /**
+   * Where a fork's code starts: the source's integration branch once the source's own branch is
+   * in it (a planner's children land there, not on its branch), else the source's branch with
+   * its unlanded commits; the base branch when the source left neither.
+   */
+  async forkPoint(source: TaskRecord, sourceJob: JobRecord | undefined, entry: ProjectEntry): Promise<string> {
+    const existing = async (branch: string | undefined): Promise<string | null> => {
+      if (!branch) {
+        return null;
+      }
+      const found = await runGit(entry.path, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
+      return found.code === 0 ? branch : null;
+    };
+    const own = await existing(source.branch);
+    const integration = await existing(sourceJob?.integrationBranch);
+    if (own && integration) {
+      const merged = await runGit(entry.path, ['merge-base', '--is-ancestor', own, integration]);
+      return merged.code === 0 ? integration : own;
+    }
+    return own ?? integration ?? sourceJob?.baseBranch ?? entry.baseBranch ?? (await defaultBranch(entry.path));
   }
 
   /** The workspace of a task that runs in the project checkout itself: no slot, no branch of its own, no merge. */
