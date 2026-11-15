@@ -2,9 +2,13 @@
 // IMPORTANT: reflect-metadata must be imported FIRST before any other imports
 import 'reflect-metadata';
 
-import { logger } from '@qqbot/shared';
+import { botLogsDir, logger, onLogFile, recordCurrentLogFile } from '@qqbot/shared';
 import { type App, startApp } from './core/app';
 import { followSupervisor } from './core/supervisor';
+
+// Any process that logs gets files of its own; this one, the bot, says which are its, for
+// `bun run logs` and the WebUI log page.
+onLogFile((path) => recordCurrentLogFile(botLogsDir(), path));
 
 async function main() {
   logger.info('Starting bot...');

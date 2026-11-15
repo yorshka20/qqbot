@@ -6,7 +6,7 @@
  *                            client connects (no history), following the logger onto each new file
  */
 
-import { botLogsDir, followLatestLog } from '@qqbot/shared';
+import { botLogsDir, followCurrentLog } from '@qqbot/shared';
 import { errorResponse, registerStaticBackend } from '../backend';
 
 const API_PREFIX = '/api/logs';
@@ -44,7 +44,7 @@ export class LogsBackend {
         // Send an initial event so the client knows the connection is alive
         send('connected', { ts: Date.now() });
 
-        followLatestLog(botLogsDir(), (text) => send('log', { text }), { signal, initialLines: 0 }).finally(() => {
+        followCurrentLog(botLogsDir(), (text) => send('log', { text }), { signal, initialLines: 0 }).finally(() => {
           try {
             controller.close();
           } catch {

@@ -1,17 +1,15 @@
 // Layout of the bot's log files, and following them as they grow.
 //
-// The logger writes `logs/<YYYY-MM-DD>/<YYYY-MM-DD>-<HH-MM-SS>.log`: a new file at every process
-// start and at every local midnight, so the names sort chronologically. This module imports
-// nothing with side effects (unlike the logger, which opens a file when imported), so tooling
-// outside the bot process can follow the same files.
+// The logger writes `logs/<YYYY-MM-DD>/<YYYY-MM-DD>-<HH-MM-SS>.log`: a new file at a process's
+// first entry and at its first entry of each local day. Every process that logs gets files of its
+// own, so which one is the bot's is recorded in `logs/current`, not inferred from the names. This
+// module imports nothing with side effects, so tooling outside the bot process can follow it.
 
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { getRepoRoot } from './repoRoot';
 
-const DATE_DIR = /^\d{4}-\d{2}-\d{2}$/;
-const LOG_FILE = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.log$/;
 const POLL_MS = 500;
 
 /**
@@ -37,24 +35,30 @@ export function logFilePathAt(logsDir: string, date: Date): string {
   return join(logsDir, day, `${day}-${time}.log`);
 }
 
-/** The newest log file — the one the most recently started bot process writes to — or null. */
-export function findLatestLogFile(logsDir: string): string | null {
-  if (!existsSync(logsDir)) {
+/**
+ * `<logsDir>/current` holds the path of the file the bot writes to now. The bot keeps it up to
+ * date (`recordCurrentLogFile`); nothing else writes it. Followers read it instead of guessing
+ * from file names, because any process that imports the logger and logs gets a file of its own.
+ */
+export function currentLogPointer(logsDir: string): string {
+  return join(logsDir, 'current');
+}
+
+/** Written whole and renamed into place, so a reader never sees half a path. */
+export function recordCurrentLogFile(logsDir: string, path: string): void {
+  const pointer = currentLogPointer(logsDir);
+  mkdirSync(logsDir, { recursive: true });
+  writeFileSync(`${pointer}.next`, path);
+  renameSync(`${pointer}.next`, pointer);
+}
+
+/** The bot's current log file, or null before any bot has recorded one. */
+export function readCurrentLogFile(logsDir: string): string | null {
+  const pointer = currentLogPointer(logsDir);
+  if (!existsSync(pointer)) {
     return null;
   }
-  const days = readdirSync(logsDir)
-    .filter((name) => DATE_DIR.test(name))
-    .sort()
-    .reverse();
-  for (const day of days) {
-    const files = readdirSync(join(logsDir, day))
-      .filter((name) => LOG_FILE.test(name))
-      .sort();
-    if (files.length > 0) {
-      return join(logsDir, day, files[files.length - 1]);
-    }
-  }
-  return null;
+  return readFileSync(pointer, 'utf8').trim() || null;
 }
 
 export interface FollowLogOptions {
@@ -64,17 +68,17 @@ export interface FollowLogOptions {
 }
 
 /**
- * Emit every line appended to the newest log file until `signal` aborts, moving on to a newer
- * file when one appears (a restart, or the logger's midnight rollover) after draining the old
- * one. `initialLines` lines of the file that is newest at the start are emitted first.
+ * Emit every line appended to the bot's current log file until `signal` aborts, moving on when
+ * the bot records another (a restart, or its first entry of a new day) after draining the old
+ * one. `initialLines` lines of the file that is current at the start are emitted first.
  */
-export async function followLatestLog(
+export async function followCurrentLog(
   logsDir: string,
   onLine: (line: string) => void,
   { signal, initialLines, pollMs = POLL_MS }: FollowLogOptions,
 ): Promise<void> {
   let reader: LogReader | null = null;
-  const first = findLatestLogFile(logsDir);
+  const first = readCurrentLogFile(logsDir);
   if (first) {
     const content = readFileSync(first);
     if (initialLines > 0) {
@@ -87,10 +91,10 @@ export async function followLatestLog(
   while (!signal.aborted) {
     await sleep(pollMs, undefined, { signal }).catch(() => {});
     reader?.drain();
-    const latest = findLatestLogFile(logsDir);
-    if (latest !== (reader?.path ?? null)) {
+    const current = readCurrentLogFile(logsDir);
+    if (current !== (reader?.path ?? null)) {
       reader?.close();
-      reader = openReader(latest, onLine, 0);
+      reader = openReader(current, onLine, 0);
       reader?.drain();
     }
   }

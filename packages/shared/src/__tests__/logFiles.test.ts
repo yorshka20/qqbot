@@ -1,10 +1,10 @@
-// The log-file layout shared with the logger, and following the newest file as it grows and rolls over.
+// The log-file layout shared with the logger, and following the bot's current file as it grows and rolls over.
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { findLatestLogFile, followLatestLog, logFilePathAt } from '../logFiles';
+import { followCurrentLog, logFilePathAt, readCurrentLogFile, recordCurrentLogFile } from '../logFiles';
 
 let logsDir: string;
 
@@ -21,7 +21,7 @@ const POLL_MS = 5;
 async function follow(initialLines: number, steps: Array<() => void>, until: (lines: string[]) => boolean) {
   const lines: string[] = [];
   const abort = new AbortController();
-  const done = followLatestLog(logsDir, (line) => lines.push(line), {
+  const done = followCurrentLog(logsDir, (line) => lines.push(line), {
     signal: abort.signal,
     initialLines,
     pollMs: POLL_MS,
@@ -54,26 +54,19 @@ describe('logFilePathAt', () => {
   });
 });
 
-describe('findLatestLogFile', () => {
-  it('picks the newest file of the newest day, ignoring anything not named like a log', () => {
-    writeLog('2026-01-05', '23-00-00', '');
-    writeLog('2026-01-06', '01-00-00', '');
-    const latest = writeLog('2026-01-06', '09-30-00', '');
-    writeFileSync(join(logsDir, '2026-01-06', 'notes.txt'), '');
-    mkdirSync(join(logsDir, 'archive'));
-    mkdirSync(join(logsDir, '2026-01-07'));
-    expect(findLatestLogFile(logsDir)).toBe(latest);
-  });
-
-  it('is null for a missing or empty directory', () => {
-    expect(findLatestLogFile(join(logsDir, 'missing'))).toBeNull();
-    expect(findLatestLogFile(logsDir)).toBeNull();
+describe('current log pointer', () => {
+  it('reads back the path the bot recorded, and null before one is', () => {
+    expect(readCurrentLogFile(logsDir)).toBeNull();
+    const path = writeLog('2026-01-06', '09-30-00', '');
+    recordCurrentLogFile(logsDir, path);
+    expect(readCurrentLogFile(logsDir)).toBe(path);
   });
 });
 
-describe('followLatestLog', () => {
+describe('followCurrentLog', () => {
   it('emits the requested tail, then whole lines as they are appended', async () => {
     const path = writeLog('2026-01-06', '09-00-00', 'one\ntwo\nthree\n');
+    recordCurrentLogFile(logsDir, path);
     const lines = await follow(
       2,
       [() => appendFileSync(path, 'four\nfi'), () => appendFileSync(path, 've\n')],
@@ -82,14 +75,15 @@ describe('followLatestLog', () => {
     expect(lines).toEqual(['two', 'three', 'four', 'five']);
   });
 
-  it('drains the old file, then moves on to a newer one from its start', async () => {
+  it('drains the old file, then moves on to the one the bot records next, from its start', async () => {
     const first = writeLog('2026-01-06', '09-00-00', 'old\n');
+    recordCurrentLogFile(logsDir, first);
     const lines = await follow(
       0,
       [
         () => {
           appendFileSync(first, 'last of first\n');
-          writeLog('2026-01-07', '00-00-00', 'new day\n');
+          recordCurrentLogFile(logsDir, writeLog('2026-01-07', '00-00-00', 'new day\n'));
         },
       ],
       (seen) => seen.includes('new day'),
@@ -97,9 +91,22 @@ describe('followLatestLog', () => {
     expect(lines).toEqual(['last of first', 'new day']);
   });
 
-  it('waits for the first file when there is none yet', async () => {
-    const lines = await follow(5, [() => writeLog('2026-01-06', '09-00-00', 'first line\n')], (seen) =>
-      seen.includes('first line'),
+  it('stays on the bot file when another process writes a newer one', async () => {
+    const bot = writeLog('2026-01-06', '09-00-00', '');
+    recordCurrentLogFile(logsDir, bot);
+    const lines = await follow(
+      0,
+      [() => writeLog('2026-01-06', '09-05-00', 'a cli logged\n'), () => appendFileSync(bot, 'bot again\n')],
+      (seen) => seen.includes('bot again'),
+    );
+    expect(lines).toEqual(['bot again']);
+  });
+
+  it('waits for the bot to record its first file', async () => {
+    const lines = await follow(
+      5,
+      [() => recordCurrentLogFile(logsDir, writeLog('2026-01-06', '09-00-00', 'first line\n'))],
+      (seen) => seen.includes('first line'),
     );
     expect(lines).toEqual(['first line']);
   });

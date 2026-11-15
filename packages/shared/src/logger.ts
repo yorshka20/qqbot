@@ -1,7 +1,7 @@
 // Logging utility
 
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname } from 'node:path';
 import winston from 'winston';
 import { botLogsDir, localDateString, logFilePathAt } from './logFiles';
 
@@ -149,57 +149,44 @@ function contextPrefixFile(): string {
   return ctx?.tag ? `[${ctx.tag}] ` : '';
 }
 
+/** Called with the path of each log file the process opens: its first one, then one per local day. */
+export type LogFileListener = (path: string) => void;
+
+function fileFormat() {
+  // Suppress format runs first so non-whitelisted entries are dropped before printf (with
+  // [STATS] bypass for daily-stats parsing).
+  return winston.format.combine(
+    buildSuppressFormat('file'),
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.errors({ stack: true }),
+    winston.format.splat(),
+    winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
+      let metaStr = '';
+      if (stack) {
+        metaStr = `\n${stack}`;
+      } else if (Object.keys(meta).length) {
+        metaStr = formatMeta(meta);
+      }
+      const msgPrefix = contextPrefixFile();
+      return `[${timestamp}] [${level.toUpperCase()}] ${msgPrefix}${message}${metaStr}`;
+    }),
+  );
+}
+
+/**
+ * Writes `logs/<date>/<date>-<time>.log`. The file opens with the first entry the level lets
+ * through, not on import: every CLI that imports `@qqbot/shared` gets this logger, and one that
+ * never logs must leave no file behind. A new file opens at the first entry of each local day.
+ */
 class FileLogger implements Logger {
-  private winstonLogger: winston.Logger;
-  private logsDir: string;
-  private currentDate: string;
-  private fileTransport: winston.transports.FileTransportInstance;
+  private readonly winstonLogger: winston.Logger;
+  private readonly logsDir = botLogsDir();
+  private fileTransport: winston.transports.FileTransportInstance | null = null;
+  private filePath: string | null = null;
+  private fileDate = '';
+  private readonly listeners = new Set<LogFileListener>();
 
   constructor(level: LogLevel, consoleOutput: boolean) {
-    // Ensure logs directory exists
-    this.logsDir = botLogsDir();
-    if (!existsSync(this.logsDir)) {
-      mkdirSync(this.logsDir, { recursive: true });
-    }
-
-    this.currentDate = localDateString(new Date());
-
-    // File format — suppress format runs first so non-whitelisted entries are dropped
-    // before printf (with [STATS] bypass for daily-stats parsing).
-    const fileFormat = winston.format.combine(
-      buildSuppressFormat('file'),
-      winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-      winston.format.errors({ stack: true }),
-      winston.format.splat(),
-      winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
-        let metaStr = '';
-        if (stack) {
-          metaStr = `\n${stack}`;
-        } else if (Object.keys(meta).length) {
-          metaStr = formatMeta(meta);
-        }
-        const msgPrefix = contextPrefixFile();
-        return `[${timestamp}] [${level.toUpperCase()}] ${msgPrefix}${message}${metaStr}`;
-      }),
-    );
-
-    // Create file transport with new file on startup
-    const logFilePath = logFilePathAt(this.logsDir, new Date());
-    // Ensure date directory exists
-    const dateDir = join(this.logsDir, this.currentDate);
-    if (!existsSync(dateDir)) {
-      mkdirSync(dateDir, { recursive: true });
-    }
-    // Delete file if exists to create new file instead of appending
-    if (existsSync(logFilePath)) {
-      unlinkSync(logFilePath);
-    }
-    this.fileTransport = new winston.transports.File({
-      filename: logFilePath,
-      format: fileFormat,
-      options: { flags: 'w' }, // Create new file, don't append
-    });
-
     // Console format — suppress format runs first; no [STATS] bypass for console
     // (display-only — daily stats reads from the file transport, not the console).
     const consoleFormat = winston.format.combine(
@@ -246,70 +233,47 @@ class FileLogger implements Logger {
       }),
     );
 
-    // Configure console transport
-    const consoleTransport = new winston.transports.Console({
-      format: consoleFormat,
-    });
-
-    // Create winston logger
     this.winstonLogger = winston.createLogger({
       level,
-      transports: consoleOutput ? [this.fileTransport, consoleTransport] : [this.fileTransport],
+      transports: consoleOutput ? [new winston.transports.Console({ format: consoleFormat })] : [],
     });
-
-    // Check date periodically for long-running processes. The timer must not be what keeps a
-    // process alive: a one-shot CLI that only imported the logger has to exit when its work is done.
-    setInterval(() => {
-      this.checkDateChange();
-    }, 60000).unref();
   }
 
-  private checkDateChange(): void {
+  /** `listener` hears the file open now, if one is, and every one opened after. */
+  onFile(listener: LogFileListener): void {
+    this.listeners.add(listener);
+    if (this.filePath) {
+      listener(this.filePath);
+    }
+  }
+
+  private write(level: LogLevel, message: string, args: unknown[]): void {
+    if (!this.winstonLogger.isLevelEnabled(level)) {
+      return;
+    }
     const today = localDateString(new Date());
-    if (today !== this.currentDate) {
-      // Date changed, create new file transport
-      this.currentDate = today;
-      const newLogFilePath = logFilePathAt(this.logsDir, new Date());
+    if (today !== this.fileDate) {
+      this.openFile(today);
+    }
+    this.winstonLogger.log(level, message, ...args);
+  }
 
-      // Ensure new date directory exists
-      const dateDir = join(this.logsDir, this.currentDate);
-      if (!existsSync(dateDir)) {
-        mkdirSync(dateDir, { recursive: true });
-      }
-
-      // Remove old file transport
+  private openFile(today: string): void {
+    if (this.fileTransport) {
       this.winstonLogger.remove(this.fileTransport);
-
-      // Create new file transport (same suppress-then-format chain as on init)
-      const fileFormat = winston.format.combine(
-        buildSuppressFormat('file'),
-        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-        winston.format.errors({ stack: true }),
-        winston.format.splat(),
-        winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
-          let metaStr = '';
-          if (stack) {
-            metaStr = `\n${stack}`;
-          } else if (Object.keys(meta).length) {
-            metaStr = formatMeta(meta);
-          }
-          const msgPrefix = contextPrefixFile();
-          return `[${timestamp}] [${level.toUpperCase()}] ${msgPrefix}${message}${metaStr}`;
-        }),
-      );
-
-      // Delete file if exists to create new file instead of appending
-      if (existsSync(newLogFilePath)) {
-        unlinkSync(newLogFilePath);
-      }
-      this.fileTransport = new winston.transports.File({
-        filename: newLogFilePath,
-        format: fileFormat,
-        options: { flags: 'w' }, // Create new file, don't append
-      });
-
-      // Add new file transport
-      this.winstonLogger.add(this.fileTransport);
+    }
+    const path = logFilePathAt(this.logsDir, new Date());
+    mkdirSync(dirname(path), { recursive: true });
+    // A process started twice within one second gets the same name; start the file over.
+    if (existsSync(path)) {
+      unlinkSync(path);
+    }
+    this.fileTransport = new winston.transports.File({ filename: path, format: fileFormat(), options: { flags: 'w' } });
+    this.winstonLogger.add(this.fileTransport);
+    this.fileDate = today;
+    this.filePath = path;
+    for (const listener of this.listeners) {
+      listener(path);
     }
   }
 
@@ -318,19 +282,19 @@ class FileLogger implements Logger {
   }
 
   debug(message: string, ...args: unknown[]): void {
-    this.winstonLogger.debug(message, ...args);
+    this.write('debug', message, args);
   }
 
   info(message: string, ...args: unknown[]): void {
-    this.winstonLogger.info(message, ...args);
+    this.write('info', message, args);
   }
 
   warn(message: string, ...args: unknown[]): void {
-    this.winstonLogger.warn(message, ...args);
+    this.write('warn', message, args);
   }
 
   error(message: string, ...args: unknown[]): void {
-    this.winstonLogger.error(message, ...args);
+    this.write('error', message, args);
   }
 }
 
@@ -404,6 +368,13 @@ const defaultLogger = createLogger(defaultLogLevel);
 
 export function setLogLevel(level: LogLevel): void {
   defaultLogger.setLevel(level);
+}
+
+/** Hear which log file this process writes to; never called when file logging is off. */
+export function onLogFile(listener: LogFileListener): void {
+  if (defaultLogger instanceof FileLogger) {
+    defaultLogger.onFile(listener);
+  }
 }
 
 export const logger: Logger = defaultLogger;

@@ -12,7 +12,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { botLogsDir, followLatestLog } from '@qqbot/shared';
+import { botLogsDir, followCurrentLog } from '@qqbot/shared';
 import { APP_NAMES, type AppDefinition, appByName, BOT_APP } from './app';
 import { connectSupervisor, launchSupervisor, type SupervisorClient } from './client';
 import { followFile } from './followFile';
@@ -142,8 +142,8 @@ async function followLogs(app: AppDefinition, lines: number): Promise<void> {
   const abort = new AbortController();
   process.once('SIGINT', () => abort.abort());
   if (app === BOT_APP) {
-    console.log(`following the newest log file under ${botLogsDir()} (Ctrl+C to stop)`);
-    await followLatestLog(botLogsDir(), (line) => console.log(line), { signal: abort.signal, initialLines: lines });
+    console.log(`following the bot's current log file, ${botLogsDir()}/current (Ctrl+C to stop)`);
+    await followCurrentLog(botLogsDir(), (line) => console.log(line), { signal: abort.signal, initialLines: lines });
     return;
   }
   console.log(`following ${app.files.botOutput} (Ctrl+C to stop)`);
