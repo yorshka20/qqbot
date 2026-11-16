@@ -1225,19 +1225,22 @@
     }
   },
   // Video Knowledge Backend integration (optional)
-  // Provides video analysis capabilities for bilibili videos.
-  // The backend analyzes video content (subtitles, danmaku) and generates summaries/highlights.
+  // Provides video analysis capabilities for bilibili videos (/b站 分析, the bilibili tool's analyze).
+  // The bot posts whatever the user pasted to POST /api/v1/analyze (the backend resolves links,
+  // short links and BV / av ids) and waits for the result on the task's SSE stream. Each video is
+  // analyzed once; a repeated link answers with the existing analysis.
   "videoKnowledge": {
     "enabled": false,
     // Base URL of the video-knowledge-backend service
-    "baseURL": "http://localhost:8080",
-    // Local directory where analysis results are stored (only for local deployment)
-    // Path pattern: {dataDir}/kb/{creator_name}/{date}-{sanitized_title}.json
-    "dataDir": "../video-knowledge-backend/data",
-    // Polling interval in milliseconds when waiting for analysis to complete (default: 5000)
-    "pollIntervalMs": 5000,
-    // Polling timeout in milliseconds (default: 300000 = 5 minutes)
-    "pollTimeoutMs": 300000
+    "baseURL": "http://localhost:8090",
+    // Auth — only needed when the backend runs with `authSecret` configured. Same semantics as
+    // vkbContextEngine below: prefer authPassword (tokens minted and renewed automatically);
+    // authToken pins a static token and is ignored when authPassword is set.
+    // "authPassword": "<VKB access_password>",
+    // "authToken": "eyJleHAiOjE3...",
+    // How long to wait for a submitted analysis to finish, reconnecting to the task stream as
+    // needed (default: 3600000 = 1 hour)
+    "waitTimeoutMs": 3600000
   },
   // VKB Context Engine — per-message glossary retrieval for prompt injection.
   //

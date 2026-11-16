@@ -20,6 +20,7 @@ export * from './health/types';
 export * from './http/HttpClient';
 export * from './http/ResourceDownloader';
 export * from './http/spaFiles';
+export * from './http/sse';
 export * from './logFiles';
 export * from './logger';
 export * from './logRender';

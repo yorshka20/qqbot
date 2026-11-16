@@ -1,7 +1,9 @@
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
+import { MessageAPI } from '@/api/methods/MessageAPI';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { BilibiliService } from '@/services/bilibili';
+import type { VideoKnowledgeTaskOutcome } from '@/services/bilibili/types';
 import { VideoKnowledgeClient } from '@/services/bilibili/VideoKnowledgeClient';
 import { Command } from '../decorators';
 import type { CommandContext, CommandHandler, CommandResult } from '../types';
@@ -13,7 +15,7 @@ import type { CommandContext, CommandHandler, CommandResult } from '../types';
  *   /b站 热门       - 热门视频
  *   /b站 搜索 <kw>  - 搜索视频
  *   /b站 视频 <bvid> - 视频详情
- *   /b站 分析 <bvid> - 提交视频分析任务
+ *   /b站 分析 <链接> - 提交视频分析任务，结果完成后另发一条消息
  *   /b站 分析状态 <task_id> - 查询分析任务状态
  */
 @Command({
@@ -32,9 +34,10 @@ export class BilibiliHotCommandHandler implements CommandHandler {
   constructor(
     @inject(BilibiliService) private bilibiliService: BilibiliService,
     @inject(VideoKnowledgeClient) private videoKnowledgeClient: VideoKnowledgeClient,
+    @inject(MessageAPI) private messageAPI: MessageAPI,
   ) {}
 
-  async execute(args: string[], _context: CommandContext): Promise<CommandResult> {
+  async execute(args: string[], context: CommandContext): Promise<CommandResult> {
     const subcommand = args[0] || '热搜';
     const subArgs = args.slice(1);
 
@@ -53,7 +56,7 @@ export class BilibiliHotCommandHandler implements CommandHandler {
         }
         case '分析':
         case 'analyze':
-          return this.handleAnalyze(subArgs[0]);
+          return this.handleAnalyze(subArgs.join(' '), context);
         case '分析状态':
         case 'task':
           return this.handleTaskStatus(subArgs[0]);
@@ -185,60 +188,71 @@ export class BilibiliHotCommandHandler implements CommandHandler {
     return { success: true, segments: builder.build() };
   }
 
-  private async handleAnalyze(input: string | undefined): Promise<CommandResult> {
+  private async handleAnalyze(input: string, context: CommandContext): Promise<CommandResult> {
     if (!this.videoKnowledgeClient.isEnabled()) {
       return { success: false, error: '视频分析服务未启用，请在配置中启用 videoKnowledge' };
     }
 
-    if (!input) {
+    if (!input.trim()) {
       return { success: false, error: '请提供BV号或视频链接，例如: /b站 分析 BV1xx411c7mD' };
     }
 
-    const bvid = BilibiliService.extractBvid(input);
-    if (!bvid) {
-      return { success: false, error: `无法解析视频ID: ${input}` };
-    }
-
-    // Check backend health first
     const healthy = await this.videoKnowledgeClient.healthCheck();
     if (!healthy) {
       return { success: false, error: '视频分析服务暂时不可用，请稍后再试' };
     }
 
-    logger.info(`[BilibiliCommand] Submitting analysis for ${bvid}`);
-
-    // Submit analysis task
-    const { task_id } = await this.videoKnowledgeClient.submitAnalysis(bvid);
-
+    const submitted = await this.videoKnowledgeClient.submitAnalysis(input);
     const builder = new MessageBuilder();
-    builder.text(`🔬 已提交视频分析任务 #${task_id}\n`);
-    builder.text(`视频: ${bvid}\n`);
-    builder.text('正在分析中，请稍候...\n');
 
-    // Poll for result
-    const pollResult = await this.videoKnowledgeClient.pollTaskResult(task_id);
-
-    if (!pollResult.success) {
-      builder.text(`\n❌ ${pollResult.error}`);
-      if (pollResult.task?.status === 'failed') {
-        builder.text(`\n可使用 /b站 分析状态 ${task_id} 查看详情`);
-      } else {
-        builder.text(`\n任务仍在处理中，可使用 /b站 分析状态 ${task_id} 查询进度`);
-      }
-      return { success: true, segments: builder.build() };
+    switch (submitted.status) {
+      case 'unresolvable':
+        return { success: false, error: `无法识别视频链接: ${input}` };
+      case 'analyzed':
+        builder.text('✅ 这个视频已经分析过了\n\n');
+        builder.text(this.videoKnowledgeClient.formatAnalysis(submitted.analysis));
+        return { success: true, segments: builder.build() };
+      case 'held':
+        builder.text(`❌ 视频 ${submitted.video_id} 分析连续失败，已停止自动重试`);
+        if (submitted.error) {
+          builder.text(`\n最后一次失败: ${submitted.error}`);
+        }
+        return { success: true, segments: builder.build() };
+      case 'queued':
+      case 'active':
+        this.replyWhenDone(submitted.task_id, context);
+        builder.text(
+          submitted.status === 'queued'
+            ? `🔬 已提交视频分析任务 #${submitted.task_id}\n`
+            : `🔬 这个视频已在分析中（任务 #${submitted.task_id}）\n`,
+        );
+        builder.text(`视频: ${submitted.video_id}\n`);
+        builder.text('分析完成后会把结果发到这里，请稍候...');
+        return { success: true, segments: builder.build() };
     }
+  }
 
-    // Try to read the result from local filesystem
-    const result = this.videoKnowledgeClient.readResult(bvid);
-    if (result) {
-      builder.text('\n✅ 分析完成\n\n');
-      builder.text(this.videoKnowledgeClient.formatResult(result));
-    } else {
-      builder.text('\n✅ 分析完成，但未找到结果文件');
-      builder.text(`\n任务ID: ${task_id}`);
+  /** Wait for the task in the background and send its outcome to the chat the command came from. */
+  private replyWhenDone(taskId: number, context: CommandContext): void {
+    this.videoKnowledgeClient
+      .waitForTask(taskId)
+      .then((outcome) => this.messageAPI.sendFromContext(this.describeOutcome(taskId, outcome), context, 60_000))
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error(`[BilibiliCommand] Waiting for analysis task ${taskId} failed: ${msg}`);
+        this.messageAPI.sendFromContext(`❌ 视频分析任务 #${taskId} 的结果获取失败: ${msg}`, context).catch(() => {});
+      });
+  }
+
+  private describeOutcome(taskId: number, outcome: VideoKnowledgeTaskOutcome): string {
+    switch (outcome.status) {
+      case 'complete':
+        return `✅ 分析完成\n\n${this.videoKnowledgeClient.formatAnalysis(outcome.analysis)}`;
+      case 'failed':
+        return `❌ 视频分析任务 #${taskId} 失败: ${outcome.error}`;
+      case 'timeout':
+        return `⏳ 视频分析任务 #${taskId} 仍在处理中，可使用 /b站 分析状态 ${taskId} 查询进度`;
     }
-
-    return { success: true, segments: builder.build() };
   }
 
   private async handleTaskStatus(input: string | undefined): Promise<CommandResult> {
@@ -269,6 +283,9 @@ export class BilibiliHotCommandHandler implements CommandHandler {
     builder.text(`📊 任务 #${task.id} 状态\n`);
     builder.text('━━━━━━━━━━━━━━━━\n\n');
     builder.text(`状态: ${statusMap[task.status] || task.status}\n`);
+    if (task.video_id) {
+      builder.text(`视频: ${task.video_id}\n`);
+    }
     builder.text(`类型: ${task.type}\n`);
     builder.text(`优先级: ${task.priority}\n`);
     builder.text(`创建时间: ${task.created_at}\n`);

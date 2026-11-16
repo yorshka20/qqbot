@@ -254,9 +254,10 @@ Config types travel with their package — the package exports its own slice and
 them, so the dependency only ever runs bot → package.
 
 - **`@qqbot/shared`** (`packages/shared/`) — the base layer everything sits on: `logger`, `logFiles`,
-  `repoRoot`, `randomUUID`, `dateTime`, `duration`, the error hierarchy, `HttpClient`,
-  `ResourceDownloader` and `writeFileUnderDirectory`. Image resizing (sharp) is the separate
-  `@qqbot/shared/image` entry so the root barrel never loads a native binding. The logger
+  `repoRoot`, `randomUUID`, `dateTime`, `duration`, the error hierarchy, `HttpClient`, the
+  `text/event-stream` reader (`readSSE` / `SSEParser`), `ResourceDownloader` and
+  `writeFileUnderDirectory`. Image resizing (sharp) is the separate `@qqbot/shared/image` entry so
+  the root barrel never loads a native binding. The logger
   knows nothing about messages: it reads per-entry context through `setLogContextSource`, which the
   bot installs in `bootstrap.ts` from `packages/bot/src/context/logContextSource.ts` (where the
   per-group/user filter rules live). The health-check contract (`HealthCheckable`, `HealthStatus`,

@@ -8,14 +8,18 @@ import { BaseToolExecutor } from '@/tools/executors/BaseToolExecutor';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '@/tools/types';
 import { BilibiliService } from '../BilibiliService';
 
+// How long action=analyze waits for the backend to finish; kept under the tool's timeoutMs so a
+// still-running analysis is reported as pending instead of being cut off by the tool deadline.
+const ANALYZE_WAIT_MS = 300_000;
+
 @Tool({
   name: 'bilibili',
   description:
     '查询B站内容。支持搜索视频、获取视频详情、查看热门视频、热搜榜、以及提交视频分析任务。返回视频标题、UP主、播放量等信息。action=analyze 要等后端跑完分析，通常需要几分钟。',
   executor: 'bilibili',
-  // Sized for analyze, which polls the video-knowledge backend for up to
-  // `videoKnowledge.pollTimeoutMs` (300s by default). search/video/popular/hot are
-  // bounded well below this by their own 8s network deadline.
+  // Sized for analyze, which waits on the video-knowledge backend's task stream for up to
+  // ANALYZE_WAIT_MS. search/video/popular/hot are bounded well below this by their own 8s
+  // network deadline.
   timeoutMs: 360_000,
   visibility: { reply: { sources: ['qq-private', 'qq-group', 'discord'] }, subagent: true },
   parameters: {
@@ -29,7 +33,7 @@ import { BilibiliService } from '../BilibiliService';
       type: 'string',
       required: false,
       description:
-        '搜索关键词(action=search时必填)、BV号/链接(action=video/analyze时必填)、或任务ID(action=task_status时必填)',
+        '搜索关键词(action=search时必填)、BV号/链接(action=video时必填)、用户发的视频链接或分享文本原样传入(action=analyze时必填，短链、av号均可)',
     },
   },
   examples: [
@@ -71,7 +75,7 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
         case 'hot':
           return this.handleHotSearch(context.signal);
         case 'analyze':
-          return this.handleAnalyze(query);
+          return this.handleAnalyze(query, context.signal);
         default:
           return this.error(`未知操作: ${action}`, `Unknown action: ${action}. Use search/video/popular/hot/analyze`);
       }
@@ -147,56 +151,65 @@ export class BilibiliToolExecutor extends BaseToolExecutor {
     return this.success(`B站热搜榜:\n\n${formatted}`, { resultCount: items.length });
   }
 
-  private async handleAnalyze(query: string | undefined): Promise<ToolResult> {
+  private async handleAnalyze(query: string | undefined, signal?: AbortSignal): Promise<ToolResult> {
     if (!this.videoKnowledgeClient.isEnabled()) {
       return this.error('视频分析服务未启用', 'Video knowledge backend is not enabled in config');
     }
 
-    if (!query) {
+    if (!query?.trim()) {
       return this.error('请提供BV号或视频链接', 'Missing required parameter: query for analyze action');
     }
 
-    const bvid = BilibiliService.extractBvid(query);
-    if (!bvid) {
-      return this.error(`无法解析视频ID: ${query}`, `Cannot parse bvid from: ${query}`);
-    }
-
-    // Check backend health
     const healthy = await this.videoKnowledgeClient.healthCheck();
     if (!healthy) {
       return this.error('视频分析服务暂时不可用', 'Video knowledge backend health check failed');
     }
 
-    // Submit analysis task
-    const { task_id } = await this.videoKnowledgeClient.submitAnalysis(bvid);
-
-    // Poll for result
-    const pollResult = await this.videoKnowledgeClient.pollTaskResult(task_id);
-
-    if (!pollResult.success) {
-      return this.success(`视频分析任务 #${task_id} ${pollResult.error}。可稍后查询任务状态。`, {
-        taskId: task_id,
-        bvid,
-        status: pollResult.task?.status || 'unknown',
-      });
+    const submitted = await this.videoKnowledgeClient.submitAnalysis(query);
+    if (submitted.status === 'unresolvable') {
+      return this.error(`无法识别视频链接: ${query}`, submitted.error);
     }
 
-    // Try to read result from filesystem
-    const result = this.videoKnowledgeClient.readResult(bvid);
-    if (result) {
-      const formatted = this.videoKnowledgeClient.formatResult(result);
-      return this.success(`视频分析完成:\n\n${formatted}`, {
-        taskId: task_id,
-        bvid,
-        status: 'done',
-        summary: result.summary,
-      });
+    const meta = { taskId: submitted.task_id, videoId: submitted.video_id };
+    switch (submitted.status) {
+      case 'analyzed':
+        return this.success(`该视频此前已分析过:\n\n${this.videoKnowledgeClient.formatAnalysis(submitted.analysis)}`, {
+          ...meta,
+          status: 'analyzed',
+          summary: submitted.analysis.result?.summary,
+        });
+      case 'held':
+        return this.success(
+          `视频 ${submitted.video_id} 分析连续失败，已停止自动重试${submitted.error ? `。最后一次失败: ${submitted.error}` : ''}`,
+          { ...meta, status: 'held', error: submitted.error },
+        );
+      case 'queued':
+      case 'active':
+        break;
     }
 
-    return this.success(`视频分析任务 #${task_id} 已完成，但未找到结果文件。`, {
-      taskId: task_id,
-      bvid,
-      status: 'done',
+    const outcome = await this.videoKnowledgeClient.waitForTask(submitted.task_id, {
+      timeoutMs: ANALYZE_WAIT_MS,
+      signal,
     });
+    switch (outcome.status) {
+      case 'complete':
+        return this.success(`视频分析完成:\n\n${this.videoKnowledgeClient.formatAnalysis(outcome.analysis)}`, {
+          ...meta,
+          status: 'done',
+          summary: outcome.analysis.result?.summary,
+        });
+      case 'failed':
+        return this.success(`视频分析任务 #${submitted.task_id} 失败: ${outcome.error}`, {
+          ...meta,
+          status: 'failed',
+          error: outcome.error,
+        });
+      case 'timeout':
+        return this.success(`视频分析任务 #${submitted.task_id} 仍在处理中，可稍后查询任务状态。`, {
+          ...meta,
+          status: 'pending',
+        });
+    }
   }
 }

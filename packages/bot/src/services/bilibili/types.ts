@@ -130,16 +130,29 @@ export interface BilibiliCommentData {
 /** Task status from video-knowledge-backend */
 export type VideoKnowledgeTaskStatus = 'queued' | 'claimed' | 'done' | 'failed';
 
-/** POST /api/v1/analyze request body */
+/** POST /api/v1/analyze request body: whatever the user pasted; the backend resolves the video */
 export interface VideoKnowledgeAnalyzeRequest {
-  platform: string;
-  video_id: string;
+  url: string;
 }
 
-/** POST /api/v1/analyze response (202) */
-export interface VideoKnowledgeAnalyzeResponse {
+interface VideoKnowledgeAnalyzeTarget {
+  platform: string;
+  video_id: string;
+  page_num?: number;
   task_id: number;
 }
+
+/**
+ * POST /api/v1/analyze response: 202 for queued / active, 200 for analyzed / held. `task_id` is the
+ * task to follow for queued / active, and the video's last task (0 when none) for analyzed / held.
+ */
+export type VideoKnowledgeAnalyzeResponse =
+  | (VideoKnowledgeAnalyzeTarget & { status: 'queued' | 'active' })
+  | (VideoKnowledgeAnalyzeTarget & { status: 'analyzed'; analysis: VideoKnowledgeAnalysis })
+  | (VideoKnowledgeAnalyzeTarget & { status: 'held'; error?: string });
+
+/** submitAnalysis result: the backend's response, or the 400 it answers when no video can be resolved */
+export type VideoKnowledgeSubmitOutcome = VideoKnowledgeAnalyzeResponse | { status: 'unresolvable'; error: string };
 
 /** POST /api/v1/ingest request body */
 export interface VideoKnowledgeIngestRequest {
@@ -170,6 +183,7 @@ export interface VideoKnowledgeIngestResponse {
   video_id: string;
   accepted: string[];
   task_id: number;
+  status: VideoKnowledgeAnalyzeResponse['status'];
 }
 
 /** GET /api/v1/tasks/{id} response */
@@ -183,9 +197,22 @@ export interface VideoKnowledgeTask {
   created_at: string;
   claimed_at?: string;
   done_at?: string;
+  platform?: string;
+  video_id?: string;
 }
 
-/** Analysis result JSON structure (read from local filesystem) */
+/** GET /api/v1/videos/{bvid}/analysis response; also carried by analyze's `analyzed` and the stream's `complete` */
+export interface VideoKnowledgeAnalysis {
+  status: 'ready' | 'processing' | 'failed' | 'unavailable' | 'not_found';
+  video_id: string;
+  progress?: {
+    task_status: string;
+    error_msg?: string;
+  };
+  result?: VideoKnowledgeResult;
+}
+
+/** The analysis report of a video (`result` of a ready analysis) */
 export interface VideoKnowledgeResult {
   video_info: {
     platform: string;
@@ -225,9 +252,22 @@ export interface VideoKnowledgeResult {
   processed_at?: string;
 }
 
-/** Poll result wrapper */
-export interface VideoKnowledgePollResult {
-  success: boolean;
-  error?: string;
-  task?: VideoKnowledgeTask;
+/** `complete` event data on GET /api/v1/tasks/{id}/stream */
+export interface VideoKnowledgeCompleteEvent {
+  task_id: number;
+  video_id: string;
+  summary?: string;
+  already_analyzed?: boolean;
+  analysis: VideoKnowledgeAnalysis;
 }
+
+/** `fatal_error` event data on GET /api/v1/tasks/{id}/stream */
+export interface VideoKnowledgeFatalErrorEvent {
+  error: string;
+}
+
+/** How waiting on a task ended: its terminal event, or the wait's deadline */
+export type VideoKnowledgeTaskOutcome =
+  | { status: 'complete'; analysis: VideoKnowledgeAnalysis; alreadyAnalyzed: boolean }
+  | { status: 'failed'; error: string }
+  | { status: 'timeout' };

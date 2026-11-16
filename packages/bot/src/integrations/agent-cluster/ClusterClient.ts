@@ -30,7 +30,7 @@ import type {
   TicketsListResponse,
   TicketUpdateBody,
 } from '@qqbot/api-types';
-import { BotError, ConfigError, logger } from '@qqbot/shared';
+import { BotError, ConfigError, logger, readSSE } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
@@ -316,61 +316,23 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /**
- * Parse an SSE body (text/event-stream) into events until it ends or `signal` aborts. Blocks are
- * separated by a blank line; `event:` names the event, `data:` lines are joined with newlines
- * and parsed as JSON (left as the raw string when they are not JSON).
+ * Parse an SSE body (text/event-stream) into events until it ends or `signal` aborts. `data` is
+ * parsed as JSON, and left as the raw string when it is not JSON.
  */
 export async function readEventStream(
   body: ReadableStream<Uint8Array>,
   onEvent: (event: ClusterEvent) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  const cancel = () => void reader.cancel().catch(() => {});
-  signal.addEventListener('abort', cancel, { once: true });
-  try {
-    while (!signal.aborted) {
-      const { value, done } = await reader.read();
-      if (done) {
-        break;
-      }
-      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
-      let end = buffer.indexOf('\n\n');
-      while (end !== -1) {
-        const block = buffer.slice(0, end);
-        buffer = buffer.slice(end + 2);
-        const event = parseEventBlock(block);
-        if (event) {
-          onEvent(event);
-        }
-        end = buffer.indexOf('\n\n');
-      }
-    }
-  } finally {
-    signal.removeEventListener('abort', cancel);
-    reader.releaseLock();
+  for await (const message of readSSE(body, signal)) {
+    onEvent({ event: message.event, data: parseEventData(message.data) });
   }
 }
 
-function parseEventBlock(block: string): ClusterEvent | null {
-  let name = 'message';
-  const data: string[] = [];
-  for (const line of block.split('\n')) {
-    if (line.startsWith('event:')) {
-      name = line.slice(6).trim();
-    } else if (line.startsWith('data:')) {
-      data.push(line.slice(5).replace(/^ /, ''));
-    }
-  }
-  if (data.length === 0) {
-    return null;
-  }
-  const raw = data.join('\n');
+function parseEventData(raw: string): unknown {
   try {
-    return { event: name, data: JSON.parse(raw) };
+    return JSON.parse(raw);
   } catch {
-    return { event: name, data: raw };
+    return raw;
   }
 }
