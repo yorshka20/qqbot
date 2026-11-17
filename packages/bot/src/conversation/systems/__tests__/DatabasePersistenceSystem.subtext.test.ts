@@ -149,3 +149,24 @@ describe('DatabasePersistenceSystem handleMessageSent subtext persist', () => {
     expect(lastCreated.metadata).not.toHaveProperty('replyTags');
   });
 });
+
+describe('DatabasePersistenceSystem handleMessageSent failure notice', () => {
+  it('does not record a failure notice as a bot reply', async () => {
+    let lastCreated: unknown = null;
+    const system = new DatabasePersistenceSystem(
+      fakeDatabaseManager((data) => {
+        lastCreated = data;
+      }),
+    );
+    const ctx = makeContext();
+    ctx.reply = {
+      source: 'ai',
+      segments: [{ type: 'text', data: { text: '模型拒绝回答这条消息' } }],
+      metadata: { failureNotice: true },
+    };
+
+    await system['handleMessageSent'](ctx);
+
+    expect(lastCreated).toBeNull();
+  });
+});

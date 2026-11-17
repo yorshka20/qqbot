@@ -25,12 +25,14 @@ describe('PromptMessageAssembler', () => {
     ];
 
     const first = assembler.buildNormalMessages({
+      replayReasoning: true,
       baseSystem: 'base',
       sceneSystem: 'scene',
       historyEntries: entries,
       finalUserBlocks: { currentQuery: 'what?' },
     });
     const second = assembler.buildNormalMessages({
+      replayReasoning: true,
       baseSystem: 'base',
       sceneSystem: 'scene',
       historyEntries: entries,
@@ -54,6 +56,7 @@ describe('PromptMessageAssembler', () => {
     ];
 
     const messages = assembler.buildNormalMessages({
+      replayReasoning: true,
       baseSystem: 'base',
       sceneSystem: 'scene',
       fewShotExamples: [
@@ -79,6 +82,7 @@ describe('PromptMessageAssembler', () => {
   it('skips empty fewShotExamples entries', () => {
     const assembler = new PromptMessageAssembler();
     const messages = assembler.buildNormalMessages({
+      replayReasoning: true,
       sceneSystem: 'scene',
       fewShotExamples: [
         { role: 'user', content: '   ' },
@@ -107,6 +111,7 @@ describe('PromptMessageAssembler', () => {
     ];
 
     const messages = assembler.buildNormalMessages({
+      replayReasoning: true,
       sceneSystem: 'scene',
       historyEntries: entries,
       finalUserBlocks: { currentQuery: 'q' },
@@ -133,6 +138,7 @@ describe('PromptMessageAssembler', () => {
     ];
 
     const messages = assembler.buildNormalMessages({
+      replayReasoning: true,
       sceneSystem: 'scene',
       historyEntries: entries,
       finalUserBlocks: { currentQuery: 'q' },
@@ -166,6 +172,7 @@ describe('PromptMessageAssembler', () => {
     ];
 
     const messages = assembler.buildNormalMessages({
+      replayReasoning: true,
       sceneSystem: 'scene',
       historyEntries: entries,
       finalUserBlocks: { currentQuery: 'q' },
@@ -202,6 +209,7 @@ describe('PromptMessageAssembler', () => {
     ];
 
     const messages = assembler.buildNormalMessages({
+      replayReasoning: true,
       sceneSystem: 'scene',
       historyEntries: entries,
       finalUserBlocks: { currentQuery: 'q' },
@@ -214,6 +222,29 @@ describe('PromptMessageAssembler', () => {
     // A user entry never carries reasoning, whatever its fields hold.
     const userTurn = messages.find((m) => m.role === 'user' && String(m.content).includes('在吗'));
     expect(userTurn?.reasoning_content).toBeUndefined();
+  });
+
+  it('leaves the reasoning off when the prompt is assembled without replay', () => {
+    const assembler = new PromptMessageAssembler();
+    const messages = assembler.buildNormalMessages({
+      replayReasoning: false,
+      sceneSystem: 'scene',
+      historyEntries: [
+        {
+          messageId: '2',
+          userId: 0,
+          content: '在的',
+          isBotReply: true,
+          reasoning: '甲是在打招呼，轻松回应即可。',
+          createdAt: new Date('2026-01-01T00:00:01.000Z'),
+        },
+      ],
+      finalUserBlocks: { currentQuery: 'q' },
+    });
+
+    const botTurn = messages.find((m) => m.role === 'assistant');
+    expect(botTurn?.content).toBe('在的');
+    expect(botTurn).not.toHaveProperty('reasoning_content');
   });
 
   it('timestamps every turn, but tags only the user turn with a speaker', () => {
@@ -237,6 +268,7 @@ describe('PromptMessageAssembler', () => {
     ];
 
     const messages = assembler.buildNormalMessages({
+      replayReasoning: true,
       sceneSystem: 'scene',
       historyEntries: entries,
       finalUserBlocks: { currentQuery: 'q' },
@@ -274,6 +306,7 @@ describe('PromptMessageAssembler', () => {
     ];
 
     const { messages, historyMessageIndices } = assembler.buildNormalMessagesWithIndex({
+      replayReasoning: true,
       sceneSystem: 'scene',
       historyEntries: entries,
       finalUserBlocks: { currentQuery: 'q' },

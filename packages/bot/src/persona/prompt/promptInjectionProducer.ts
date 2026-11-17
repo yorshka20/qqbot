@@ -78,6 +78,7 @@ export function createPersonaPromptInjectionProducer(deps: {
   const { personaService, config } = deps;
   return {
     name: 'persona',
+    introspective: true,
     layer: 'baseline' as const,
     applicableSources: resolveProducerSources(config),
     priority: PRIORITY_PERSONA_STABLE,
@@ -105,6 +106,7 @@ export function createPersonaStableProducer(deps: {
   const { personaService, config } = deps;
   return {
     name: 'persona-stable',
+    introspective: true,
     layer: 'baseline' as const,
     applicableSources: resolveProducerSources(config),
     priority: PRIORITY_PERSONA_STABLE,
@@ -137,6 +139,7 @@ export function createPersonaSubtextProducer(deps: {
   const { promptManager, personaService, config } = deps;
   return {
     name: 'persona-subtext',
+    introspective: true,
     layer: 'baseline' as const,
     applicableSources: resolveProducerSources(config),
     priority: PRIORITY_PERSONA_SUBTEXT,
@@ -171,6 +174,7 @@ export function createPersonaVolatileProducer(deps: {
   const { personaService, config } = deps;
   return {
     name: 'persona-volatile',
+    introspective: true,
     layer: 'runtime' as const,
     applicableSources: resolveProducerSources(config),
     priority: PRIORITY_PERSONA_VOLATILE,
@@ -199,6 +203,7 @@ export function createPersonaRelationshipProducer(deps: {
   const { personaService, config } = deps;
   return {
     name: 'persona-relationship',
+    introspective: true,
     layer: 'runtime' as const,
     applicableSources: resolveRelationshipSources(config),
     priority: PRIORITY_PERSONA_VOLATILE,

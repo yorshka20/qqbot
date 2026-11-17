@@ -29,7 +29,7 @@ function makeStage(memoryRetrieval: Partial<MemoryRetrievalService>) {
   } as unknown as RetrievalService;
   const promptManager = { render: () => '' } as unknown as PromptManager;
   const vkb = { isEnabled: () => false, fetchGlossary: async () => '' } as unknown as VKBContextEngine;
-  const auditEventStore = { render: () => '' } as unknown as AuditEventStore;
+  const auditEventStore = { getRecent: () => [] } as unknown as AuditEventStore;
   const sessionMemoStore = { render: () => '' } as unknown as SessionMemoStore;
   return new ContextEnrichmentStage(
     memoryRetrieval as MemoryRetrievalService,

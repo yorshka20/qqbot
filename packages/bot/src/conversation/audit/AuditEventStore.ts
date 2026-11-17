@@ -23,6 +23,11 @@ export interface AuditEvent {
   kind: AuditEventKind;
   /** Short first-person factual line, e.g. "回复了 张三 的提问". */
   summary: string;
+  /**
+   * The model's own take on the action (its `[SUBTEXT: …]`), kept apart from the fact: it is
+   * introspection, and a prompt assembled without introspection shows the fact alone.
+   */
+  reaction?: string;
 }
 
 export interface AuditEventStoreOptions {
@@ -56,22 +61,25 @@ export class AuditEventStore {
     return pruned;
   }
 
-  /**
-   * Render a session's recent actions as the inner text of a
-   * `<recent_actions>` block. Returns '' when there is nothing to show so the
-   * caller can skip the block entirely.
-   */
-  render(sessionId: string, now: number = Date.now()): string {
-    const events = this.getRecent(sessionId, now);
-    if (events.length === 0) return '';
-    return events.map((e) => `- ${formatClock(e.ts)} ${e.summary}`).join('\n');
-  }
-
   /** Drop events older than maxAgeMs. */
   private prune(list: AuditEvent[], now: number): AuditEvent[] {
     const cutoff = now - this.options.maxAgeMs;
     return list.filter((e) => e.ts >= cutoff);
   }
+}
+
+/**
+ * Render recent actions as the inner text of a `<recent_actions>` block, with each action's
+ * reaction appended only when `introspection` is on. Returns '' when there is nothing to show
+ * so the caller can skip the block entirely.
+ */
+export function renderAuditEvents(events: readonly AuditEvent[], introspection: boolean): string {
+  return events
+    .map((e) => {
+      const line = `- ${formatClock(e.ts)} ${e.summary}`;
+      return introspection && e.reaction ? `${line} —— ${e.reaction}` : line;
+    })
+    .join('\n');
 }
 
 /** Local HH:MM formatter — avoids coupling the store to history formatting utils. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { AuditEventStore } from '../AuditEventStore';
+import { AuditEventStore, renderAuditEvents } from '../AuditEventStore';
 
 const T0 = 1_800_000_000_000; // fixed base clock for deterministic tests
 
@@ -36,10 +36,18 @@ describe('AuditEventStore', () => {
 
   it('render produces HH:MM lines and empty string when nothing to show', () => {
     const store = new AuditEventStore({ maxAgeMs: 60_000 });
-    expect(store.render('g', T0)).toBe('');
+    expect(renderAuditEvents(store.getRecent('g', T0), true)).toBe('');
     store.record('g', { ts: T0, kind: 'reply', summary: '回复了 张三' });
-    const rendered = store.render('g', T0 + 1000);
+    const rendered = renderAuditEvents(store.getRecent('g', T0 + 1000), true);
     expect(rendered).toMatch(/^- \d{2}:\d{2} 回复了 张三$/);
+  });
+
+  it('render appends the reaction only with introspection', () => {
+    const store = new AuditEventStore({ maxAgeMs: 60_000 });
+    store.record('g', { ts: T0, kind: 'reply', summary: '回复了 甲', reaction: '想逗一下对方' });
+    const events = store.getRecent('g', T0 + 1000);
+    expect(renderAuditEvents(events, true)).toMatch(/回复了 甲 —— 想逗一下对方$/);
+    expect(renderAuditEvents(events, false)).toMatch(/回复了 甲$/);
   });
 
   it('ignores empty sessionId on record', () => {

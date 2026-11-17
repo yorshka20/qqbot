@@ -38,7 +38,8 @@ export interface ToolResult {
  */
 export type LLMCallOptions = Omit<AIGenerateOptions, 'model'> &
   Required<Pick<AIGenerateOptions, 'reasoningEffort'>> &
-  UsageAttributionOptions;
+  UsageAttributionOptions &
+  IntrospectionOptions;
 
 /**
  * Set by a caller that sums the usage of its call itself and records it against a user.
@@ -47,6 +48,16 @@ export type LLMCallOptions = Omit<AIGenerateOptions, 'model'> &
  */
 export interface UsageAttributionOptions {
   usageRecordedByCaller?: boolean;
+}
+
+/**
+ * Set by a caller whose prompt was assembled with the bot's introspective material (persona
+ * and reflection state, inner-monologue instructions, replayed reasoning). LLMService keeps
+ * such a call off every provider that does not accept introspection, fallbacks included, and
+ * replays history reasoning only for it. Never reaches a provider.
+ */
+export interface IntrospectionOptions {
+  introspection?: boolean;
 }
 
 /** Tool Use generation options */
@@ -83,7 +94,8 @@ export interface ToolUseGenerateOptions extends AIGenerateOptions {
 
 export type ToolUseCallOptions = Omit<ToolUseGenerateOptions, 'model'> &
   Required<Pick<AIGenerateOptions, 'reasoningEffort'>> &
-  UsageAttributionOptions;
+  UsageAttributionOptions &
+  IntrospectionOptions;
 
 /** Tool Use generation response */
 export interface ToolUseGenerateResponse extends AIGenerateResponse {

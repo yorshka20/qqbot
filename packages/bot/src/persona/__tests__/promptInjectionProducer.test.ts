@@ -7,6 +7,7 @@ import type { PromptInjectionContext } from '@/conversation/promptInjection/type
 import {
   createPersonaPromptInjectionProducer,
   createPersonaRelationshipProducer,
+  createPersonaStableProducer,
   createPersonaSubtextProducer,
   createPersonaVolatileProducer,
   type PersonaServiceLike,
@@ -24,6 +25,7 @@ function makeCtx(source: PromptInjectionContext['source'], userId?: string): Pro
     source,
     userId,
     hookContext: { source } as any,
+    introspection: true,
   };
 }
 
@@ -184,5 +186,26 @@ describe('createPersonaSubtextProducer', () => {
     const producer = createPersonaSubtextProducer({ promptManager: fakePromptManager, personaService, config });
     const result = await producer.produce(makeCtx('qq-private', 'u1'));
     expect(result).toBeNull();
+  });
+});
+
+describe('persona producers are introspective', () => {
+  it('every persona producer is left out for a provider that does not accept introspection', async () => {
+    const personaService = makePersonaService({ isEnabled: () => true });
+    const config = makeConfig();
+    const promptManager = { render: () => '[SUBTEXT:]' } as any;
+    const producers = [
+      createPersonaPromptInjectionProducer({ personaService, config }),
+      createPersonaStableProducer({ personaService, config }),
+      createPersonaVolatileProducer({ personaService, config }),
+      createPersonaRelationshipProducer({ personaService, config }),
+      createPersonaSubtextProducer({ promptManager, personaService, config }),
+    ];
+    expect(producers.every((p) => p.introspective === true)).toBe(true);
+
+    const registry = new PromptInjectionRegistry();
+    for (const p of producers) registry.register(p);
+    const out = await registry.gatherByLayer({ ...makeCtx('qq-private', 'u1'), introspection: false });
+    expect([...out.baseline, ...out.scene, ...out.runtime, ...out.tool]).toEqual([]);
   });
 });

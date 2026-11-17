@@ -9,6 +9,7 @@ import type {
   ToolDefinition,
   VisionImage,
 } from '@qqbot/llm';
+import type { AuditEvent } from '@/conversation/audit/AuditEventStore';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
@@ -44,7 +45,7 @@ export class ReplyPipelineContext {
   memoryContextText = '';
   retrievedConversationSection = '';
   glossaryText = '';
-  recentActionsText = '';
+  recentActions: AuditEvent[] = [];
   sessionMemoText = '';
 
   // --- ProviderSelectionStage ---
@@ -54,6 +55,11 @@ export class ReplyPipelineContext {
   target: LLMTarget | undefined;
   // User explicitly wake-worded a provider (e.g. `gemini:`); opts into its premium tier.
   usedExplicitProvider = false;
+  /**
+   * Whether this turn's prompt carries the bot's introspection (persona and reflection state,
+   * the subtext instruction, replayed reasoning): only when the answering provider accepts it.
+   */
+  introspection = false;
   providerHasVision = false;
   providerHasFunctionCalling = false;
   effectiveNativeSearchEnabled = false;
@@ -69,6 +75,7 @@ export class ReplyPipelineContext {
     reasoningEffort: ReasoningEffort;
     episodeKey?: string;
     maxToolRounds: number;
+    introspection: boolean;
   } | null = null;
 
   // --- GenerationStage ---

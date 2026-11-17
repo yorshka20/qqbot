@@ -4,7 +4,7 @@ import type { RAGConfig, RAGDocument } from '@qqbot/retrieval';
 import { QdrantClient } from '@qqbot/retrieval';
 import type { RetrievalService } from '@qqbot/retrieval/service';
 import { logger } from '@qqbot/shared';
-import { getReply } from '@/context/HookContextHelpers';
+import { getReply, getReplyContent } from '@/context/HookContextHelpers';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { buildConversationWindowDocument } from '@/conversation/rag/buildConversationWindowDocument';
 import type { System } from '@/core/system';
@@ -88,7 +88,7 @@ export class RAGPersistenceSystem implements System {
     }
 
     const reply = getReply(context);
-    if (reply != null && reply.trim() !== '') {
+    if (reply != null && reply.trim() !== '' && !getReplyContent(context)?.metadata?.failureNotice) {
       currentEntries.push({
         messageId: `${userMsgId}:reply`,
         userId: 0,

@@ -57,6 +57,8 @@ function makeContext(source = 'qq-private'): ReplyPipelineContext {
     episodeKey: 'ep-1',
     memoryContextText: '',
     retrievedConversationSection: '',
+    recentActions: [],
+    introspection: true,
     routedTarget: undefined,
     target: undefined,
     providerHasVision: false,

@@ -335,6 +335,10 @@ function toAnthropicContent(content: ChatMessage['content']): AnthropicContent {
 export class AnthropicProvider extends AIProvider implements LLMCapability, VisionCapability {
   readonly name = 'anthropic';
   override readonly supportsToolUse = true;
+  // The API answers stop_reason=refusal, category=reasoning_extraction when a prompt replays a
+  // model's reasoning or asks for private notes in the reply (Claude API docs, "Refusals and
+  // fallback" → "Keep reasoning in thinking blocks").
+  override readonly acceptsIntrospection = false;
   private config: AnthropicProviderConfig;
   private baseUrl = 'https://api.anthropic.com/v1';
   private _capabilities: CapabilityType[];

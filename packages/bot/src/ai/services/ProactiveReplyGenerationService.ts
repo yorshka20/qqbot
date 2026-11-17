@@ -99,6 +99,7 @@ export class ProactiveReplyGenerationService {
       context,
       toolUsageInstructions,
       tools.some((tool) => tool.name === END_TURN_TOOL_NAME),
+      capabilities.introspection,
     );
     const { historyEntries, finalUserBlocks } = this.getHistoryAndUserBlocks(context, finalUserQuery);
 
@@ -107,6 +108,7 @@ export class ProactiveReplyGenerationService {
       sceneSystem: proactiveSystemPrompt,
       historyEntries,
       finalUserBlocks,
+      replayReasoning: capabilities.introspection,
     });
     const proactiveMessages = useVision
       ? await this.attachVisionImagesToLastUserMessage(messages, context.messageImages ?? [])
@@ -128,6 +130,7 @@ export class ProactiveReplyGenerationService {
     canUseToolUse: boolean;
     nativeWebSearchEnabled: boolean;
     nativeFunctionCalling: boolean;
+    introspection: boolean;
   }> {
     const sessionId = context.sessionId;
     let effectiveTarget = target;
@@ -148,7 +151,8 @@ export class ProactiveReplyGenerationService {
     const resolvedProvider = await this.llmService.getAvailableProvider(effectiveTarget, sessionId);
     const nativeFunctionCalling =
       !!resolvedProvider && (resolvedProvider as unknown as AIProvider).getCapabilities().includes('function_calling');
-    return { effectiveTarget, canUseToolUse, nativeWebSearchEnabled, nativeFunctionCalling };
+    const introspection = !!resolvedProvider && (resolvedProvider as unknown as AIProvider).acceptsIntrospection;
+    return { effectiveTarget, canUseToolUse, nativeWebSearchEnabled, nativeFunctionCalling, introspection };
   }
 
   // ---------------------------------------------------------------------------
@@ -181,6 +185,7 @@ export class ProactiveReplyGenerationService {
     context: ProactiveReplyInjectContext,
     toolUsageInstructions: string,
     endTurnOffered: boolean,
+    introspection: boolean,
   ): { baseSystemPrompt: string; proactiveSystemPrompt: string; finalUserQuery: string } {
     let whitelistFragment = '';
     if (context.sessionId) {
@@ -195,7 +200,8 @@ export class ProactiveReplyGenerationService {
         }
       }
     }
-    const baseSystemPrompt = this.promptManager.renderBasePrompt({ whitelistLimitedFragment: whitelistFragment }) ?? '';
+    const baseSystemPrompt =
+      this.promptManager.renderBasePrompt({ whitelistLimitedFragment: whitelistFragment, introspection }) ?? '';
     const toolInstruct = this.promptManager.render('llm.tool.instruct', { toolUsageInstructions });
     const proactiveSystemPrompt = this.promptManager.render('llm.proactive.system', {
       preferenceText: context.preferenceText,
@@ -243,11 +249,12 @@ export class ProactiveReplyGenerationService {
       effectiveTarget: LLMTarget | undefined;
       canUseToolUse: boolean;
       nativeWebSearchEnabled: boolean;
+      introspection: boolean;
     },
     tools: ReturnType<typeof getReplySkillDefinitions>,
     useVision: boolean,
   ): Promise<ProactiveReply> {
-    const { effectiveTarget, canUseToolUse, nativeWebSearchEnabled } = capabilities;
+    const { effectiveTarget, canUseToolUse, nativeWebSearchEnabled, introspection } = capabilities;
     const genOptions = {
       ...PROACTIVE_GEN_OPTIONS,
       sessionId: context.sessionId,
@@ -268,6 +275,7 @@ export class ProactiveReplyGenerationService {
           nativeWebSearch: nativeWebSearchEnabled,
           toolExecutor,
           reasoningEffort: this.reasoningEfforts.toolReasoningEffort,
+          introspection,
           onProviderResolved: recordActiveTarget(hookContext),
         },
         effectiveTarget,
@@ -290,7 +298,7 @@ export class ProactiveReplyGenerationService {
           },
           effectiveTarget?.provider,
         )
-      : await this.generatePlain(messages, genOptions, effectiveTarget);
+      : await this.generatePlain(messages, genOptions, effectiveTarget, introspection);
     return {
       text: response.text,
       reasoningContent: response.reasoningContent,
@@ -303,12 +311,13 @@ export class ProactiveReplyGenerationService {
     messages: ChatMessage[],
     genOptions: typeof PROACTIVE_GEN_OPTIONS & { sessionId: string | undefined },
     effectiveTarget: LLMTarget | undefined,
+    introspection: boolean,
   ): Promise<AIGenerateResponse> {
     const lastContent = messages[messages.length - 1]?.content;
     const prompt = lastContent !== undefined ? contentToPlainString(lastContent) : '';
     return this.llmService.generate(
       prompt,
-      { ...genOptions, messages, reasoningEffort: this.reasoningEfforts.reasoningEffort },
+      { ...genOptions, messages, reasoningEffort: this.reasoningEfforts.reasoningEffort, introspection },
       effectiveTarget,
     );
   }

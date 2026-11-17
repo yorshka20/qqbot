@@ -241,7 +241,7 @@ export class MemoryExtractService {
     target: LLMTarget | undefined,
   ): Promise<void> {
     const inputText = recentMessagesText || '(no messages)';
-    const baseSystemPrompt = this.promptManager.renderBasePrompt();
+    const baseSystemPrompt = this.promptManager.renderBasePrompt({ introspection: false });
     const targetUserSection = this.promptManager.render('memory.extract_single_user', {
       targetUserId: userId,
     });

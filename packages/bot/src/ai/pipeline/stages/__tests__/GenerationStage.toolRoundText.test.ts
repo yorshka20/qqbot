@@ -72,7 +72,10 @@ async function runStage(rounds: Round[], final: ToolUseGenerateResponse) {
     metadata: new HookMetadataMap(),
   } as unknown as HookContext;
   const ctx = new ReplyPipelineContext(hookContext, new Map());
-  ctx.genOptions = { temperature: 0.7, sessionId: 'group:10000002', reasoningEffort: 'medium', maxToolRounds: 15 };
+  ctx.genOptions = { temperature: 0.7, sessionId: 'group:10000002', reasoningEffort: 'medium',
+    maxToolRounds: 15,
+    introspection: true,
+  };
 
   await stage.execute(ctx);
   return { sent, history, ctx, callOptions };

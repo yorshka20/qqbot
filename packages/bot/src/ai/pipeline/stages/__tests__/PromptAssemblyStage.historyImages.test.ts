@@ -74,6 +74,8 @@ function makeContext(historyEntries: ConversationMessageEntry[]): ReplyPipelineC
     episodeKey: 'ep-1',
     memoryContextText: '',
     retrievedConversationSection: '',
+    recentActions: [],
+    introspection: true,
     providerHasVision: true,
     effectiveNativeSearchEnabled: false,
     toolDefinitions: [],

@@ -70,18 +70,10 @@ export class AuditEventPlugin extends PluginBase {
 
       if (reply && reply.trim().length > 0) {
         const action = gist ? `回复了 ${speaker}：「${gist}」` : `回复了 ${speaker}`;
-        this.store.record(sessionId, {
-          ts,
-          kind: 'reply',
-          summary: reaction ? `${action} —— ${reaction}` : action,
-        });
+        this.store.record(sessionId, { ts, kind: 'reply', summary: action, ...(reaction ? { reaction } : {}) });
       } else {
         const action = gist ? `对 ${speaker} 的「${gist}」选择了不回应` : `对 ${speaker} 选择了不回应`;
-        this.store.record(sessionId, {
-          ts,
-          kind: 'silence',
-          summary: reaction ? `${action} —— ${reaction}` : action,
-        });
+        this.store.record(sessionId, { ts, kind: 'silence', summary: action, ...(reaction ? { reaction } : {}) });
       }
     } catch (err) {
       logger.warn('[AuditEventPlugin] record failed (non-fatal):', err);

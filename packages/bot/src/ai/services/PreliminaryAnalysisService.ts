@@ -80,7 +80,7 @@ export class PreliminaryAnalysisService {
     }
 
     const idleModeInstruction = this.resolveIdleModeInstruction(options?.idleMode);
-    const baseSystemPrompt = this.promptManager.renderBasePrompt();
+    const baseSystemPrompt = this.promptManager.renderBasePrompt({ introspection: false });
     const prompt = this.promptManager.render('analysis.ollama', {
       preferenceText,
       recentMessagesText,
@@ -140,7 +140,7 @@ export class PreliminaryAnalysisService {
 
     const threadsDescription = this.buildThreadsDescription(threads);
     const idleModeInstruction = this.resolveIdleModeInstruction(options?.idleMode);
-    const baseSystemPrompt = this.promptManager.renderBasePrompt();
+    const baseSystemPrompt = this.promptManager.renderBasePrompt({ introspection: false });
     const prompt = this.promptManager.render('analysis.ollama_multi', {
       preferenceText,
       recentMessagesText,

@@ -41,6 +41,7 @@ interface GenerationPipelineParams {
     reasoningEffort: ReasoningEffort;
     episodeKey?: string;
     maxToolRounds: number;
+    introspection: boolean;
   };
   toolDefinitions: ToolDefinition[];
   target: LLMTarget | undefined;
@@ -226,6 +227,7 @@ export class GenerationStage implements ReplyStage {
         sessionId: genOptions.sessionId,
         reasoningEffort: genOptions.reasoningEffort,
         usageRecordedByCaller: true,
+        introspection: genOptions.introspection,
         nativeWebSearch: effectiveNativeSearchEnabled,
         toolExecutor,
         onReasoning,
@@ -296,7 +298,12 @@ export class GenerationStage implements ReplyStage {
           logger.warn('[GenerationStage] Background health check failed:', e instanceof Error ? e.message : e),
         );
 
-      const alternatives = this.llmService.getAlternativeProviderNames(primaryProviderLabel);
+      // The prompt was assembled for the primary provider's introspection policy, so only
+      // providers that can take it are alternatives.
+      const alternatives = this.llmService.getAlternativeProviderNames(
+        primaryProviderLabel,
+        params.genOptions.introspection,
+      );
       let lastError: Error = primaryError instanceof Error ? primaryError : new Error(String(primaryError));
 
       for (let retry = 0; retry < Math.min(MAX_RETRIES, alternatives.length); retry++) {

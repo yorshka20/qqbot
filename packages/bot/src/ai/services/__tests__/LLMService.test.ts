@@ -1241,13 +1241,14 @@ describe('LLMService resolvedModel stamping', () => {
   });
 
   describe('reasoning echo at the provider boundary', () => {
-    function captureProvider(echoesReasoningNatively: boolean) {
+    function captureProvider(echoesReasoningNatively: boolean, acceptsIntrospection = true) {
       const seen: AIGenerateOptions[] = [];
       return {
         seen,
         provider: {
           name: 'mock',
           echoesReasoningNatively,
+          acceptsIntrospection,
           getCapabilities: () => ['llm'],
           isAvailable: () => true,
           getDefaultModel: () => 'test-model',
@@ -1279,7 +1280,7 @@ describe('LLMService resolvedModel stamping', () => {
 
     it('leaves the field alone for a provider that replays it natively', async () => {
       const { seen, provider } = captureProvider(true);
-      await serviceFor(provider).generate('hi', { reasoningEffort: 'none', messages: history });
+      await serviceFor(provider).generate('hi', { reasoningEffort: 'none', messages: history, introspection: true });
 
       expect(seen[0].messages?.[1].content).toBe('在的');
       expect(seen[0].messages?.[1].reasoning_content).toBe('甲是在打招呼，轻松回应即可。');
@@ -1287,10 +1288,63 @@ describe('LLMService resolvedModel stamping', () => {
 
     it('folds the field into the text for a provider that would drop it', async () => {
       const { seen, provider } = captureProvider(false);
-      await serviceFor(provider).generate('hi', { reasoningEffort: 'none', messages: history });
+      await serviceFor(provider).generate('hi', { reasoningEffort: 'none', messages: history, introspection: true });
 
       expect(seen[0].messages?.[1].content).toBe('<thought>\n甲是在打招呼，轻松回应即可。\n</thought>\n在的');
       expect(seen[0].messages?.[1].reasoning_content).toBeUndefined();
+      expect(seen[0]).not.toHaveProperty('introspection');
+    });
+
+    it('drops the reasoning for a provider that does not accept introspection', async () => {
+      const { seen, provider } = captureProvider(false, false);
+      await serviceFor(provider).generate('hi', { reasoningEffort: 'none', messages: history, introspection: true });
+
+      expect(seen[0].messages?.[1].content).toBe('在的');
+      expect(seen[0].messages?.[1]).not.toHaveProperty('reasoning_content');
+    });
+
+    it('drops the reasoning when the prompt was assembled without introspection', async () => {
+      const { seen, provider } = captureProvider(true);
+      await serviceFor(provider).generate('hi', { reasoningEffort: 'none', messages: history });
+
+      expect(seen[0].messages?.[1].content).toBe('在的');
+      expect(seen[0].messages?.[1]).not.toHaveProperty('reasoning_content');
+    });
+
+    it('keeps a tool-calling turn’s reasoning for a provider that does not accept introspection', async () => {
+      const { seen, provider } = captureProvider(false, false);
+      const toolTurn = {
+        role: 'assistant' as const,
+        content: '',
+        reasoning_content: '先查一下',
+        tool_calls: [{ id: 'c1', name: 'search', arguments: '{}' }],
+      };
+      await serviceFor(provider).generate('hi', { reasoningEffort: 'none', messages: [history[0], toolTurn] });
+
+      expect(seen[0].messages?.[1].reasoning_content).toBe('先查一下');
+    });
+  });
+
+  describe('alternatives for an introspective prompt', () => {
+    function serviceWith(providers: Array<{ name: string; acceptsIntrospection: boolean }>) {
+      const full = providers.map((p) => ({ ...p, isAvailable: () => true, getCapabilities: () => ['llm'] }));
+      const aiManager = {
+        getProviderForCapability: () => null,
+        getProvidersForCapability: () => full,
+        getDefaultLLM: () => null,
+      } as unknown as AIManager;
+      return createLLMService(aiManager, { toolUseProviders: [], fallback: { fallbackOrder: ['b', 'c'] } });
+    }
+
+    it('leaves out providers that do not accept introspection only for an introspective prompt', () => {
+      const service = serviceWith([
+        { name: 'a', acceptsIntrospection: true },
+        { name: 'b', acceptsIntrospection: false },
+        { name: 'c', acceptsIntrospection: true },
+      ]);
+
+      expect(service.getAlternativeProviderNames('a', true)).toEqual(['c']);
+      expect(service.getAlternativeProviderNames('a', false)).toEqual(['b', 'c']);
     });
   });
 });

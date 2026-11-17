@@ -331,11 +331,13 @@ export class PromptManager {
    * renderBaseSystemTemplate below should both be deleted.
    *
    * Renders the base system prompt with stable variables only
-   * (currentDate, adminUserId) to avoid cache miss. Optional overrides
-   * (e.g. whitelistLimitedFragment) allow injecting per-request content
-   * when whitelist is not full permissions.
+   * (currentDate, adminUserId) to avoid cache miss. `whitelistLimitedFragment`
+   * injects per-request content when whitelist is not full permissions;
+   * `introspection` keeps the text that describes introspective context
+   * blocks (replayed reasoning, persona state, inner monologue), which only
+   * a prompt that carries those blocks should have.
    */
-  renderBasePrompt(overrides?: Record<string, string>): string | undefined {
+  renderBasePrompt(options: { introspection: boolean; whitelistLimitedFragment?: string }): string | undefined {
     const baseTemplate = this.getTemplate(BASE_SYSTEM_TEMPLATE_NAME) ?? this.getTemplate(BASE_TEMPLATE_NAME);
     if (!baseTemplate) {
       return undefined;
@@ -345,8 +347,8 @@ export class PromptManager {
       adminUserId: this.adminUserId || '（无管理员）',
       botSelfId: this.botSelfId || '（未配置）',
       botNicknameSuffix: this.botNickname ? `，昵称「${this.botNickname}」` : '',
-      whitelistLimitedFragment: '',
-      ...overrides,
+      whitelistLimitedFragment: options.whitelistLimitedFragment ?? '',
+      introspection: options.introspection ? 'true' : '',
     };
     return this.renderTemplateContent(baseTemplate, BASE_TEMPLATE_NAME, baseVars);
   }
@@ -367,7 +369,10 @@ export class PromptManager {
   renderBaseSystemTemplate(templateName: string, overrides?: Record<string, string>): string | undefined {
     const template = this.getTemplate(templateName);
     if (!template) {
-      return this.renderBasePrompt(overrides);
+      return this.renderBasePrompt({
+        introspection: false,
+        whitelistLimitedFragment: overrides?.whitelistLimitedFragment,
+      });
     }
     const baseVars: Record<string, string> = {
       currentDate: getCurrentDateHourForPrompt(),

@@ -9,7 +9,9 @@ import type { PromptManager } from '../PromptManager';
  *
  * Reads `whitelistGroupCapabilities` from `hookContext.metadata` to
  * decide whether to inject `llm.whitelist_limited.system` as
- * `whitelistLimitedFragment` variable.
+ * `whitelistLimitedFragment` variable. The text describing introspective
+ * context blocks renders only for a provider that accepts introspection,
+ * so each provider still gets one fixed base prefix.
  */
 export function createBaselineProducer(deps: { promptManager: PromptManager }): PromptInjectionProducer {
   const { promptManager } = deps;
@@ -23,7 +25,8 @@ export function createBaselineProducer(deps: { promptManager: PromptManager }): 
         Array.isArray(groupCaps) && groupCaps.length > 0
           ? (promptManager.render('llm.whitelist_limited.system') ?? '').trim()
           : '';
-      const fragment = promptManager.renderBasePrompt({ whitelistLimitedFragment }) ?? '';
+      const fragment =
+        promptManager.renderBasePrompt({ whitelistLimitedFragment, introspection: ctx.introspection }) ?? '';
       if (!fragment) return null;
       return { producerName: 'baseline', priority: 0, fragment };
     },

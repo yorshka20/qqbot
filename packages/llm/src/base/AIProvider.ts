@@ -37,6 +37,15 @@ export abstract class AIProvider {
   readonly echoesReasoningNatively: boolean = false;
 
   /**
+   * Whether a prompt may carry the caller's introspective material: a model's reasoning
+   * replayed from earlier turns, instructions to write private notes or an inner monologue
+   * beside the reply, and persona / reflection state. `false` for a vendor whose usage
+   * policy refuses such requests as reasoning extraction; callers then assemble the prompt
+   * without any of it and never hand a prompt that carries it to this provider.
+   */
+  readonly acceptsIntrospection: boolean = true;
+
+  /**
    * Returns the default model this provider is configured with, used for system
    * prompt self-identification. Reads the common `config.model` field that all
    * concrete providers store on `this.config` — relay providers may return

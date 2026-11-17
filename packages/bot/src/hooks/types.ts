@@ -18,6 +18,13 @@ export interface ReplyMetadata {
   cardTextForHistory?: string;
   /** When true, pipeline should send this reply as a forward message (Milky only; one card containing the segments). */
   sendAsForward?: boolean;
+  /**
+   * The bot's notice that no reply could be generated (a refusal, a failed call). The chat
+   * sees it, but it is not something the bot said in the conversation, so it is kept out of
+   * the history and retrieval that later prompts are built from — replayed as an assistant
+   * turn, a refusal's explanation reads as the model's own words and primes the next request.
+   */
+  failureNotice?: boolean;
   // Other flags can be added here in the future
 }
 

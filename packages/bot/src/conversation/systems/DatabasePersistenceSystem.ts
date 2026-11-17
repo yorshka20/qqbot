@@ -56,7 +56,7 @@ export class DatabasePersistenceSystem implements System {
     const replyContent = getReplyContent(context);
     const messageSeq = context.sentMessageResponse?.message_seq;
 
-    if (!reply) {
+    if (!reply || replyContent?.metadata?.failureNotice) {
       return true;
     }
 

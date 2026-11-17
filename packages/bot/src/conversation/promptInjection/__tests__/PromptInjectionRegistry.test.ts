@@ -9,6 +9,7 @@ function makeCtx(source: string): PromptInjectionContext {
   return {
     source: source as PromptInjectionContext['source'],
     hookContext: { source } as any,
+    introspection: true,
   };
 }
 

@@ -66,6 +66,21 @@ export function foldReasoningIntoContent(messages: ChatMessage[]): ChatMessage[]
   });
 }
 
+/**
+ * Drop the reasoning of every assistant turn that has no tool calls, for a provider that does
+ * not accept introspection or a prompt assembled without it. Tool-calling turns keep theirs:
+ * a provider replays that through its own channel within the turn, never as text.
+ */
+export function dropTextReasoning(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((msg) => {
+    if (msg.role !== 'assistant' || msg.tool_calls?.length || msg.reasoning_content === undefined) {
+      return msg;
+    }
+    const { reasoning_content: _reasoning, ...rest } = msg;
+    return rest;
+  });
+}
+
 function normalizeBlockText(value: string): string {
   return value
     .replace(/\r\n/g, '\n')
@@ -142,14 +157,9 @@ export class PromptMessageAssembler {
     fewShotExamples?: FewShotExample[];
     historyEntries: ConversationMessageEntry[];
     finalUserBlocks: FinalUserBlocks;
+    replayReasoning: boolean;
   }): ChatMessage[] {
-    return this.buildMessagesCore(
-      params.baseSystem,
-      params.sceneSystem,
-      params.historyEntries,
-      params.finalUserBlocks,
-      params.fewShotExamples,
-    ).messages;
+    return this.buildMessagesCore(params).messages;
   }
 
   /**
@@ -165,14 +175,9 @@ export class PromptMessageAssembler {
     fewShotExamples?: FewShotExample[];
     historyEntries: ConversationMessageEntry[];
     finalUserBlocks: FinalUserBlocks;
+    replayReasoning: boolean;
   }): { messages: ChatMessage[]; historyMessageIndices: number[] } {
-    return this.buildMessagesCore(
-      params.baseSystem,
-      params.sceneSystem,
-      params.historyEntries,
-      params.finalUserBlocks,
-      params.fewShotExamples,
-    );
+    return this.buildMessagesCore(params);
   }
 
   buildProactiveMessages(params: {
@@ -180,9 +185,9 @@ export class PromptMessageAssembler {
     sceneSystem: string;
     historyEntries: ConversationMessageEntry[];
     finalUserBlocks: FinalUserBlocks;
+    replayReasoning: boolean;
   }): ChatMessage[] {
-    return this.buildMessagesCore(params.baseSystem, params.sceneSystem, params.historyEntries, params.finalUserBlocks)
-      .messages;
+    return this.buildMessagesCore(params).messages;
   }
 
   buildTaskAnalyzeMessages(params: {
@@ -191,8 +196,10 @@ export class PromptMessageAssembler {
     historyEntries: ConversationMessageEntry[];
     currentQuery: string;
   }): ChatMessage[] {
-    return this.buildMessagesCore(params.baseSystem, params.sceneSystem, params.historyEntries, {
-      currentQuery: params.currentQuery,
+    return this.buildMessagesCore({
+      ...params,
+      finalUserBlocks: { currentQuery: params.currentQuery },
+      replayReasoning: false,
     }).messages;
   }
 
@@ -200,13 +207,20 @@ export class PromptMessageAssembler {
     return messages.map((m) => `${m.role}\n${contentToPlainString(m.content)}`).join('\n\n---\n\n');
   }
 
-  private buildMessagesCore(
-    baseSystem: string | undefined,
-    sceneSystem: string,
-    historyEntries: ConversationMessageEntry[],
-    finalUserBlocks: FinalUserBlocks,
-    fewShotExamples?: FewShotExample[],
-  ): { messages: ChatMessage[]; historyMessageIndices: number[] } {
+  /**
+   * `replayReasoning` attaches each bot turn's recorded reasoning. A prompt assembled without
+   * introspection leaves it off, so the prompt stays consistent with a base system that does
+   * not describe the replayed block, whichever provider ends up serving it.
+   */
+  private buildMessagesCore(params: {
+    baseSystem?: string;
+    sceneSystem: string;
+    historyEntries: ConversationMessageEntry[];
+    finalUserBlocks: FinalUserBlocks;
+    fewShotExamples?: FewShotExample[];
+    replayReasoning: boolean;
+  }): { messages: ChatMessage[]; historyMessageIndices: number[] } {
+    const { baseSystem, sceneSystem, historyEntries, finalUserBlocks, fewShotExamples, replayReasoning } = params;
     const messages: ChatMessage[] = [];
     if (baseSystem?.trim()) {
       messages.push({ role: 'system', content: this.normalize(baseSystem) });
@@ -239,7 +253,7 @@ export class PromptMessageAssembler {
         // The reasoning travels as a field, never in the text: an assistant message is read
         // as a demonstration of output format. Providers without a native channel for it get
         // it folded in by {@link foldReasoningIntoContent} at the provider boundary.
-        const reasoning = this.normalize(entry.reasoning ?? '');
+        const reasoning = replayReasoning ? this.normalize(entry.reasoning ?? '') : '';
         messages.push({ role: 'assistant', content, ...(reasoning ? { reasoning_content: reasoning } : {}) });
         continue;
       }

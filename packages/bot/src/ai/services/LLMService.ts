@@ -4,6 +4,7 @@ import type {
   AIGenerateOptions,
   AIGenerateResponse,
   AIManager,
+  AIProvider,
   ChatMessage,
   ChatMessageToolCall,
   ConcreteLLMTarget,
@@ -31,7 +32,7 @@ import { getCurrentMessageContext } from '@/context/MessageContextStorage';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
 import { END_TURN_TOOL_NAME } from '@/tools/executors/EndTurnToolExecutor';
-import { foldReasoningIntoContent } from '../prompt/PromptMessageAssembler';
+import { dropTextReasoning, foldReasoningIntoContent } from '../prompt/PromptMessageAssembler';
 import { TokenRateLimiter, type TokenRateLimiterConfig } from '../rateLimit';
 import { containsTextToolCalls, stripTextToolCalls } from '../utils/textToolCalls';
 
@@ -1357,19 +1358,31 @@ export class LLMService {
    * Reasoning is carried on `reasoning_content` so it never appears in the text a model
    * reads as its own output format. A provider that declares `echoesReasoningNatively`
    * puts the field on its own API channel; for the rest the field would be dropped, so it
-   * is folded into the turn's text here.
+   * is folded into the turn's text here — unless the provider does not accept introspection
+   * or the prompt was assembled without it, in which case the reasoning is dropped: its
+   * text in an assistant turn is exactly what such a provider refuses, and a prompt
+   * assembled without introspection does not explain the folded block. A tool-calling
+   * turn keeps its reasoning either way; the provider replays it through its own mechanism
+   * (Anthropic signed thinking blocks).
    *
    * This has to be decided against the provider that will actually run, not the one the
    * turn was assembled for — `generateWithFallback` hands the call to a different provider
    * after a failure, and its options object is already built by then.
    */
   private optionsForProvider(provider: LLMCapability, options: LLMCallOptions, target: LLMTarget): AIGenerateOptions {
-    const { usageRecordedByCaller: _usageRecordedByCaller, ...forwarded } = options;
+    const { usageRecordedByCaller: _usageRecordedByCaller, introspection, ...forwarded } = options;
     const providerOptions: AIGenerateOptions = { ...forwarded, model: target.model };
     if (!providerOptions.messages?.length) {
       return providerOptions;
     }
-    if ((provider as { echoesReasoningNatively?: boolean }).echoesReasoningNatively) {
+    const { echoesReasoningNatively, acceptsIntrospection } = provider as unknown as Pick<
+      AIProvider,
+      'echoesReasoningNatively' | 'acceptsIntrospection'
+    >;
+    if (!acceptsIntrospection || !introspection) {
+      return { ...providerOptions, messages: dropTextReasoning(providerOptions.messages) };
+    }
+    if (echoesReasoningNatively) {
       return providerOptions;
     }
     return { ...providerOptions, messages: foldReasoningIntoContent(providerOptions.messages) };
@@ -1395,12 +1408,14 @@ export class LLMService {
    * Filters out unhealthy providers when health service is available.
    * Providers not in the fallback order list are appended at the end.
    */
-  getAlternativeProviderNames(excludeProvider?: string): string[] {
+  getAlternativeProviderNames(excludeProvider: string, introspection: boolean): string[] {
     const allProviders = this.aiManager.getProvidersForCapability('llm');
     const available = allProviders
       .filter((p) => {
         if (p.name === excludeProvider) return false;
         if (!p.isAvailable()) return false;
+        // A prompt assembled with introspection is never handed to a provider that refuses it.
+        if (introspection && !p.acceptsIntrospection) return false;
         // Filter out unhealthy providers
         if (!this.healthCheckManager.isServiceHealthySync(p.name)) {
           logger.debug(`[LLMService] Excluding unhealthy provider "${p.name}" from alternatives`);
@@ -1450,7 +1465,7 @@ export class LLMService {
     prompt: string,
     trace: { opLabel: string; options: LLMCallOptions | undefined; startedAt: number; conversationId: string },
   ): Promise<AIGenerateResponse> {
-    const alternatives = this.getAlternativeProviderNames(failedProvider);
+    const alternatives = this.getAlternativeProviderNames(failedProvider, trace.options?.introspection === true);
     for (const altName of alternatives) {
       // An alternative runs on its own model: the failed target's model belongs to the failed provider.
       const alt = this.routeTo({ provider: altName });

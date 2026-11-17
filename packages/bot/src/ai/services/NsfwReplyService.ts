@@ -70,7 +70,7 @@ export class NsfwReplyService {
         userMemoryText: memoryVars.userMemoryText,
         retrievedConversationSection: memoryVars.retrievedConversationSection,
       });
-      const baseSystemPrompt = this.promptManager.renderBasePrompt();
+      const baseSystemPrompt = this.promptManager.renderBasePrompt({ introspection: false });
 
       const response = await this.llmService.generate(
         prompt,

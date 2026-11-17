@@ -90,6 +90,7 @@ export class ProviderSelectionStage implements ReplyStage {
     const resolvedProviderName = ctx.target?.provider ?? 'default';
     ctx.hookContext.metadata.set('promptProviderName', resolvedProviderName);
     if (ctx.target?.model) ctx.hookContext.metadata.set('promptModelName', ctx.target.model);
+    ctx.introspection = resolvedProviderInstance?.acceptsIntrospection ?? false;
 
     // Capabilities of the provider that will actually serve the turn
     const providerCanUseTools = resolvedProviderInstance
@@ -131,7 +132,7 @@ export class ProviderSelectionStage implements ReplyStage {
 
     // Log
     logger.info(
-      `[ProviderSelectionStage] Provider routing | reason=${reason} | confidence=${confidence} | explicitProvider=${usedExplicitProvider} | provider=${providerName ?? 'default'} | resolved=${resolvedProviderName} | model=${ctx.target?.model ?? '-'} | images=${ctx.messageImages.length}`,
+      `[ProviderSelectionStage] Provider routing | reason=${reason} | confidence=${confidence} | explicitProvider=${usedExplicitProvider} | provider=${providerName ?? 'default'} | resolved=${resolvedProviderName} | model=${ctx.target?.model ?? '-'} | introspection=${ctx.introspection} | images=${ctx.messageImages.length}`,
     );
   }
 }

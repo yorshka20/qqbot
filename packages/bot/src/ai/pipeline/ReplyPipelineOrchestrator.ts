@@ -104,7 +104,7 @@ export class ReplyPipelineOrchestrator {
       logger.error('[ReplyPipelineOrchestrator] Failed to generate reply from task results:', err);
       await this.hookManager.execute('onAIGenerationComplete', context);
 
-      replaceReply(context, describeReplyFailure(err), 'ai');
+      replaceReply(context, describeReplyFailure(err), 'ai', { failureNotice: true });
     }
   }
 

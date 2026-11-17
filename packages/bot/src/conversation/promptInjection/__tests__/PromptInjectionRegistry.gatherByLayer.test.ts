@@ -10,7 +10,7 @@ vi.mock('@qqbot/shared', () => ({
 }));
 
 function makeCtx(source: string): PromptInjectionContext {
-  return { source: source as PromptInjectionContext['source'], hookContext: { source } as any };
+  return { source: source as PromptInjectionContext['source'], hookContext: { source } as any, introspection: true };
 }
 
 describe('PromptInjectionRegistry.gatherByLayer', () => {
@@ -86,6 +86,19 @@ describe('PromptInjectionRegistry.gatherByLayer', () => {
     const out = await registry.gatherByLayer(makeCtx('idle-trigger'));
     expect(fn).not.toHaveBeenCalled();
     expect(out.baseline).toEqual([]);
+  });
+
+  it('skips introspective producers when the provider does not accept introspection', async () => {
+    const persona = vi.fn(() => ({ producerName: 'persona', fragment: 'P' }));
+    registry.register({ name: 'persona', layer: 'baseline', introspective: true, produce: persona });
+    registry.register({ name: 'base', layer: 'baseline', produce: () => ({ producerName: 'base', fragment: 'B' }) });
+
+    const without = await registry.gatherByLayer({ ...makeCtx('qq-group'), introspection: false });
+    expect(persona).not.toHaveBeenCalled();
+    expect(without.baseline.map((i) => i.fragment)).toEqual(['B']);
+
+    const withIt = await registry.gatherByLayer(makeCtx('qq-group'));
+    expect(withIt.baseline.map((i) => i.fragment).sort()).toEqual(['B', 'P']);
   });
 
   it('throwing producer does not break other layers', async () => {

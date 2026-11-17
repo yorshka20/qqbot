@@ -18,6 +18,7 @@ function makeCtx(providerName?: string): PromptInjectionContext {
   return {
     source: 'qq-group',
     hookContext: { source: 'qq-group', metadata } as PromptInjectionContext['hookContext'],
+    introspection: true,
   };
 }
 

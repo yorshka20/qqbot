@@ -4,6 +4,7 @@ import type { ChatMessage, ContentPart, ReasoningEffort, VisionImage } from '@qq
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
+import { renderAuditEvents } from '@/conversation/audit/AuditEventStore';
 import type { ConversationMessageEntry } from '@/conversation/history';
 import { NormalEpisodeService } from '@/conversation/history';
 import { PromptInjectionRegistry } from '@/conversation/promptInjection/PromptInjectionRegistry';
@@ -89,6 +90,7 @@ export class PromptAssemblyStage implements ReplyStage {
         userId,
         groupId,
         hookContext,
+        introspection: ctx.introspection,
       });
       baseSystemPrompt = layered.baseline
         .map((i) => i.fragment.trim())
@@ -122,7 +124,7 @@ export class PromptAssemblyStage implements ReplyStage {
       glossary: ctx.glossaryText,
       personaState: personaStateText,
       sessionMemo: ctx.sessionMemoText,
-      recentActions: ctx.recentActionsText,
+      recentActions: renderAuditEvents(ctx.recentActions, ctx.introspection),
       currentQuery: frameCurrentQuery,
     };
 
@@ -131,6 +133,7 @@ export class PromptAssemblyStage implements ReplyStage {
       sceneSystem: sceneSystemPrompt,
       historyEntries: ctx.historyEntries,
       finalUserBlocks,
+      replayReasoning: ctx.introspection,
     });
 
     // When selected provider has vision, replace history entries that contain images with ContentPart[] (text + base64 image_url).
@@ -211,6 +214,7 @@ export class PromptAssemblyStage implements ReplyStage {
       reasoningEffort,
       episodeKey: ctx.episodeKey,
       maxToolRounds: this.maxToolRounds,
+      introspection: ctx.introspection,
     };
 
     // Debug log

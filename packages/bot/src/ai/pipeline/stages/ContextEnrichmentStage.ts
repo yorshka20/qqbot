@@ -63,7 +63,7 @@ export class ContextEnrichmentStage implements ReplyStage {
     // Recent-action ledger (synchronous in-memory read) — uses the same
     // canonical sessionId the write hook records under (metadata 'sessionId').
     const sessionId = ctx.hookContext.metadata.get('sessionId');
-    ctx.recentActionsText = sessionId ? this.auditEventStore.render(sessionId) : '';
+    ctx.recentActions = sessionId ? this.auditEventStore.getRecent(sessionId) : [];
     ctx.sessionMemoText = sessionId ? this.sessionMemoStore.render(sessionId) : '';
   }
 

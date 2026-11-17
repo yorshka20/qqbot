@@ -25,6 +25,7 @@ async function renderScene(source: 'qq-group' | 'qq-private', wakeWords: string[
   const ctx: PromptInjectionContext = {
     source,
     hookContext: { source, metadata: new HookMetadataMap() } as PromptInjectionContext['hookContext'],
+    introspection: true,
   };
   return (await producer.produce(ctx))?.fragment ?? '';
 }

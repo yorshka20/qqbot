@@ -26,6 +26,8 @@ export interface PromptInjectionContext {
   groupId?: string;
   /** Allow producers to read other context (e.g. recent message text). */
   hookContext: HookContext;
+  /** Whether the answering provider accepts introspection; when false, introspective producers are skipped. */
+  introspection: boolean;
 }
 
 export interface PromptInjectionProducer {
@@ -36,6 +38,11 @@ export interface PromptInjectionProducer {
   applicableSources?: readonly MessageSource[];
   /** Intra-layer ordering — lower runs first within the same layer. Default 100. */
   priority?: number;
+  /**
+   * The fragment is the bot's introspection (persona, reflection or mood state, instructions
+   * to write an inner monologue). Left out of every prompt for a provider that does not accept it.
+   */
+  introspective?: boolean;
   /** Called per-message; must be cheap (no heavy I/O on hot path). */
   produce(ctx: PromptInjectionContext): Promise<PromptInjection | null> | PromptInjection | null;
 }
