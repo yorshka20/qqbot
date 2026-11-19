@@ -120,6 +120,11 @@ export abstract class DeepSeekChatProvider extends AIProvider implements LLMCapa
   /** Prompt tokens served from the host's cache, read from wherever its usage reports them. */
   protected abstract cachedPromptTokens(usage: ChatCompletionUsage): number | undefined;
 
+  /** The API root this provider calls; a host's batch endpoints live under the same root. */
+  get apiBaseURL(): string {
+    return this.baseUrl;
+  }
+
   protected get logTag(): string {
     return `[${this.constructor.name}]`;
   }

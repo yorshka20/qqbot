@@ -817,9 +817,13 @@ declares only its host's wire: the output-cap field (`max_tokens`, or Sail's
 hits. The request body and response parsing are public (`buildChatCompletionBody` /
 `parseChatCompletion`) so `DeepInfraBatchAdapter` sends batch lines identical to live requests.
 
-Batch submission is `BatchService` (Anthropic, Gemini, Doubao, DeepInfra). DeepInfra's batch is the
-OpenAI files + batches API: a JSONL file uploaded to `/files`, one model per file, `POST /batches`,
-results read back from the output and error files.
+Batch submission is `BatchService` (Anthropic, Gemini, Doubao, DeepInfra, Sail). For DeepSeek V4.1
+Flash, `cheapestProvider()` picks the first configured host in `CHEAPEST_BATCH_PROVIDERS` (Sail,
+then DeepInfra). Sail batches only the Responses API: requests go inline in `POST /v1/batches`, run
+on the Flex tier, and come back inline — `SailProvider.buildResponsesBody` / `parseResponsesBody`
+handle that shape, single-turn only. DeepInfra's batch is the OpenAI files + batches API: a JSONL
+file uploaded to `/files`, one model per file, `POST /batches`, results read back from the output
+and error files.
 
 Multi-provider support is handled by `AIManager` + `ProviderRouter`:
 

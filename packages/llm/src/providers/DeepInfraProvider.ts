@@ -22,11 +22,6 @@ export class DeepInfraProvider extends DeepSeekChatProvider {
     });
   }
 
-  /** The base URL batch files and jobs live under — the same API root as chat. */
-  get apiBaseURL(): string {
-    return this.baseUrl;
-  }
-
   protected applyGenerationParams(body: Record<string, unknown>, options: AIGenerateOptions | undefined): void {
     body.max_tokens = this.resolveMaxTokens(options);
     body.top_p = options?.topP;

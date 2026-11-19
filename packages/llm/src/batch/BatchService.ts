@@ -1,7 +1,7 @@
 // Batch Service — unified interface for submitting and managing batch LLM jobs.
 //
-// Supports Anthropic, Gemini, Doubao and DeepInfra batch APIs. Each discounts real-time
-// pricing (~50%; DeepInfra 20%), with a target turnaround of 24 hours.
+// Supports Anthropic, Gemini, Doubao, DeepInfra and Sail batch APIs. Each discounts real-time
+// pricing (~50%; DeepInfra 20%; Sail bills its Flex tier), with a target turnaround of 24 hours.
 //
 // Usage:
 //   const batchService = new BatchService(aiManager);
@@ -13,14 +13,23 @@
 import { logger } from '@qqbot/shared';
 import type { AIManager } from '../AIManager';
 import { DeepInfraProvider } from '../providers/DeepInfraProvider';
+import { SailProvider } from '../providers/SailProvider';
 import { AnthropicBatchAdapter } from './AnthropicBatchAdapter';
 import { DeepInfraBatchAdapter } from './DeepInfraBatchAdapter';
 import { DoubaoBatchAdapter, type TOSLocation } from './DoubaoBatchAdapter';
 import { GeminiBatchAdapter } from './GeminiBatchAdapter';
+import { SailBatchAdapter } from './SailBatchAdapter';
 import type { BatchAdapter, BatchJob, BatchRequest, BatchResult } from './types';
 
 /** Providers that support batch API. */
-export type BatchProviderName = 'anthropic' | 'gemini' | 'doubao' | 'deepinfra';
+export type BatchProviderName = 'anthropic' | 'gemini' | 'doubao' | 'deepinfra' | 'sail';
+
+/**
+ * Batch hosts of the same model (DeepSeek V4.1 Flash), cheapest first: Sail Flex 0.05 / 0.15,
+ * DeepInfra batch 0.078 / 0.235 USD per 1M input / output tokens (2026-11-19). The other batch
+ * providers run different models, so they are a caller's choice, not a substitute.
+ */
+export const CHEAPEST_BATCH_PROVIDERS: readonly BatchProviderName[] = ['sail', 'deepinfra'];
 
 export class BatchService {
   private adapters = new Map<string, BatchAdapter>();
@@ -30,7 +39,7 @@ export class BatchService {
   /**
    * Submit a batch of requests to a specific provider.
    *
-   * @param provider  Provider name ('anthropic', 'gemini', 'doubao', 'deepinfra').
+   * @param provider  Provider name ('anthropic', 'gemini', 'doubao', 'deepinfra', 'sail').
    * @param requests  Array of BatchRequest to process.
    * @param model     Optional model override.
    * @param tosConfig Required for Doubao only — TOS input/output locations.
@@ -129,6 +138,11 @@ export class BatchService {
     return { job: currentJob, results };
   }
 
+  /** The cheapest configured host for batch work on DeepSeek V4.1 Flash, or null when none is configured. */
+  cheapestProvider(): BatchProviderName | null {
+    return CHEAPEST_BATCH_PROVIDERS.find((name) => this.aiManager.getProviderForCapability('llm', name)) ?? null;
+  }
+
   // ── Internal ─────────────────────────────────────────────────────────────
 
   private isTerminal(status: string): boolean {
@@ -182,6 +196,15 @@ export class BatchService {
           throw new Error(`[BatchService] DeepInfra provider not configured or missing apiKey`);
         }
         return new DeepInfraBatchAdapter(instance, apiKey);
+      }
+
+      case 'sail': {
+        const instance = this.aiManager.getProviderForCapability('llm', provider);
+        const apiKey = this.getProviderRawConfig(provider)?.apiKey as string | undefined;
+        if (!(instance instanceof SailProvider) || !apiKey) {
+          throw new Error(`[BatchService] Sail provider not configured or missing apiKey`);
+        }
+        return new SailBatchAdapter(instance, apiKey);
       }
 
       default:
