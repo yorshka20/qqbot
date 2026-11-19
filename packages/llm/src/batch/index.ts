@@ -4,6 +4,7 @@
 // - Anthropic: Direct inline batch via POST /v1/messages/batches
 // - Gemini:    Direct inline batch via POST /v1beta/models/{model}:batchGenerateContent
 // - Doubao:    TOS-based batch via Volcengine ARK management API
+// - DeepInfra: OpenAI-compatible JSONL upload to /files, then POST /batches
 //
 // Usage:
 //   import { BatchService } from '@qqbot/llm';
@@ -12,6 +13,7 @@
 
 export { AnthropicBatchAdapter } from './AnthropicBatchAdapter';
 export { type BatchProviderName, BatchService } from './BatchService';
+export { DeepInfraBatchAdapter } from './DeepInfraBatchAdapter';
 export type { TOSLocation } from './DoubaoBatchAdapter';
 export { buildDoubaoJsonlLine, DoubaoBatchAdapter, parseDoubaoBatchOutputLine } from './DoubaoBatchAdapter';
 export { GeminiBatchAdapter } from './GeminiBatchAdapter';

@@ -4,6 +4,7 @@ import { logger } from '@qqbot/shared';
 import type { AIProvider } from './base/AIProvider';
 import type { AIProviderConfig } from './config';
 import { AnthropicProvider } from './providers/AnthropicProvider';
+import { DeepInfraProvider } from './providers/DeepInfraProvider';
 import { DeepSeekProvider } from './providers/DeepSeekProvider';
 import { DoubaoProvider } from './providers/DoubaoProvider';
 import { GeminiProvider } from './providers/GeminiProvider';
@@ -17,6 +18,7 @@ import { OllamaProvider } from './providers/OllamaProvider';
 import { OpenAIProvider } from './providers/OpenAIProvider';
 import { OpenRouterProvider } from './providers/OpenRouterProvider';
 import { RunPodProvider } from './providers/RunPodProvider';
+import { SailProvider } from './providers/SailProvider';
 import { SiliconFlowProvider } from './providers/SiliconFlowProvider';
 
 /**
@@ -182,6 +184,24 @@ export class ProviderFactory {
         }
         case 'siliconflow': {
           return new SiliconFlowProvider({
+            apiKey: config.apiKey,
+            model: config.model,
+            baseURL: config.baseURL,
+            defaultTemperature: config.temperature,
+            defaultMaxTokens: config.maxTokens,
+          });
+        }
+        case 'sail': {
+          return new SailProvider({
+            apiKey: config.apiKey,
+            model: config.model,
+            baseURL: config.baseURL,
+            defaultTemperature: config.temperature,
+            defaultMaxTokens: config.maxTokens,
+          });
+        }
+        case 'deepinfra': {
+          return new DeepInfraProvider({
             apiKey: config.apiKey,
             model: config.model,
             baseURL: config.baseURL,

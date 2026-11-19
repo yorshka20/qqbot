@@ -13,7 +13,7 @@ import { AIManager, ProviderFactory } from '@qqbot/llm';
 import { Config } from '@/core/config';
 
 /** All provider names supported by integration tests. */
-export type IntegrationProviderName = 'doubao' | 'deepseek' | 'gemini' | 'openai' | 'anthropic';
+export type IntegrationProviderName = 'doubao' | 'deepseek' | 'gemini' | 'openai' | 'anthropic' | 'sail' | 'deepinfra';
 
 /**
  * Network/LLM integration tests are skipped by default.

@@ -15,7 +15,9 @@ export type AIProviderType =
   | 'laozhang'
   | 'groq'
   | 'minimax'
-  | 'siliconflow';
+  | 'siliconflow'
+  | 'sail'
+  | 'deepinfra';
 
 /**
  * OpenAI image generation / editing config (gpt-image-2 family).
@@ -247,6 +249,24 @@ export interface SiliconFlowProviderConfig {
   maxTokens?: number;
 }
 
+export interface SailProviderConfig {
+  type: 'sail';
+  apiKey: string;
+  model?: string; // Default: 'deepseek-ai/DeepSeek-V4.1-Flash-1017'
+  baseURL?: string; // Default: 'https://api.sailresearch.com/v1'
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface DeepInfraProviderConfig {
+  type: 'deepinfra';
+  apiKey: string;
+  model?: string; // Default: 'deepseek-ai/DeepSeek-V4.1-Flash-1017'
+  baseURL?: string; // Default: 'https://api.deepinfra.com/v1/openai'
+  temperature?: number;
+  maxTokens?: number;
+}
+
 export type AIProviderConfig =
   | OpenAIProviderConfig
   | AnthropicProviderConfig
@@ -262,7 +282,9 @@ export type AIProviderConfig =
   | GoogleCloudRunProviderConfig
   | GroqProviderConfig
   | MinimaxProviderConfig
-  | SiliconFlowProviderConfig;
+  | SiliconFlowProviderConfig
+  | SailProviderConfig
+  | DeepInfraProviderConfig;
 
 export type AIProviderCapability =
   | 'llm'

@@ -9,6 +9,7 @@ import type { AIProvider } from '../../base/AIProvider';
 import type { LLMCapability } from '../../capabilities/LLMCapability';
 import type { AIGenerateOptions } from '../../types';
 import { AnthropicProvider } from '../AnthropicProvider';
+import { DeepInfraProvider } from '../DeepInfraProvider';
 import { DeepSeekProvider } from '../DeepSeekProvider';
 import { DoubaoProvider } from '../DoubaoProvider';
 import { GeminiProvider } from '../GeminiProvider';
@@ -18,6 +19,7 @@ import { MinimaxProvider } from '../MinimaxProvider';
 import { OllamaProvider } from '../OllamaProvider';
 import { OpenAIProvider } from '../OpenAIProvider';
 import { OpenRouterProvider } from '../OpenRouterProvider';
+import { SailProvider } from '../SailProvider';
 import { SiliconFlowProvider } from '../SiliconFlowProvider';
 
 const SYSTEM = 'You are a test assistant.';
@@ -58,6 +60,8 @@ const systemThenPrompt: Turn[] = [
 describe('bare prompt reaches the wire as system prompt + that prompt only', () => {
   const chatCompletions: Array<[string, () => AIProvider & LLMCapability]> = [
     ['deepseek', () => new DeepSeekProvider({ apiKey: 'k', model: 'deepseek-v4-pro' })],
+    ['sail', () => new SailProvider({ apiKey: 'k' })],
+    ['deepinfra', () => new DeepInfraProvider({ apiKey: 'k' })],
     ['groq', () => new GroqProvider({ apiKey: 'k', model: 'openai/gpt-oss-20b' })],
     ['siliconflow', () => new SiliconFlowProvider({ apiKey: 'k', model: 'Qwen/Qwen3-8B' })],
     [

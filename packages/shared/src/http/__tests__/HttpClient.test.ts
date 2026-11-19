@@ -79,3 +79,37 @@ describe('HttpClient connection reuse', () => {
     expect(connectionCount()).toBe(6);
   });
 });
+
+describe('HttpClient multipart bodies', () => {
+  it('sends FormData as multipart even when the client defaults to JSON', async () => {
+    let received: { contentType: string | null; purpose: unknown; file: string } | undefined;
+    const bunServer = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const form = await req.formData();
+        received = {
+          contentType: req.headers.get('content-type'),
+          purpose: form.get('purpose'),
+          file: await (form.get('file') as Blob).text(),
+        };
+        return Response.json({ id: 'file_1' });
+      },
+    });
+    try {
+      const client = new HttpClient({
+        baseURL: `http://127.0.0.1:${bunServer.port}`,
+        defaultHeaders: { 'Content-Type': 'application/json' },
+      });
+      const form = new FormData();
+      form.append('purpose', 'batch');
+      form.append('file', new Blob(['{"a":1}\n{"b":2}']), 'batch.jsonl');
+
+      expect(await client.post<{ id: string }>('/files', form)).toEqual({ id: 'file_1' });
+      expect(received?.contentType).toStartWith('multipart/form-data; boundary=');
+      expect(received?.purpose).toBe('batch');
+      expect(received?.file).toBe('{"a":1}\n{"b":2}');
+    } finally {
+      bunServer.stop(true);
+    }
+  });
+});

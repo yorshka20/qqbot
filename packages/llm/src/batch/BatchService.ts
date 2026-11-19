@@ -1,7 +1,7 @@
 // Batch Service — unified interface for submitting and managing batch LLM jobs.
 //
-// Supports Anthropic, Gemini, and Doubao batch APIs. Each provider offers ~50%
-// cost savings compared to real-time API calls, with a target turnaround of 24 hours.
+// Supports Anthropic, Gemini, Doubao and DeepInfra batch APIs. Each discounts real-time
+// pricing (~50%; DeepInfra 20%), with a target turnaround of 24 hours.
 //
 // Usage:
 //   const batchService = new BatchService(aiManager);
@@ -12,13 +12,15 @@
 
 import { logger } from '@qqbot/shared';
 import type { AIManager } from '../AIManager';
+import { DeepInfraProvider } from '../providers/DeepInfraProvider';
 import { AnthropicBatchAdapter } from './AnthropicBatchAdapter';
+import { DeepInfraBatchAdapter } from './DeepInfraBatchAdapter';
 import { DoubaoBatchAdapter, type TOSLocation } from './DoubaoBatchAdapter';
 import { GeminiBatchAdapter } from './GeminiBatchAdapter';
 import type { BatchAdapter, BatchJob, BatchRequest, BatchResult } from './types';
 
 /** Providers that support batch API. */
-export type BatchProviderName = 'anthropic' | 'gemini' | 'doubao';
+export type BatchProviderName = 'anthropic' | 'gemini' | 'doubao' | 'deepinfra';
 
 export class BatchService {
   private adapters = new Map<string, BatchAdapter>();
@@ -28,7 +30,7 @@ export class BatchService {
   /**
    * Submit a batch of requests to a specific provider.
    *
-   * @param provider  Provider name ('anthropic', 'gemini', 'doubao').
+   * @param provider  Provider name ('anthropic', 'gemini', 'doubao', 'deepinfra').
    * @param requests  Array of BatchRequest to process.
    * @param model     Optional model override.
    * @param tosConfig Required for Doubao only — TOS input/output locations.
@@ -171,6 +173,15 @@ export class BatchService {
           throw new Error(`[BatchService] Doubao provider not configured or missing apiKey/model`);
         }
         return new DoubaoBatchAdapter(apiKey, model, config?.baseURL as string | undefined);
+      }
+
+      case 'deepinfra': {
+        const instance = this.aiManager.getProviderForCapability('llm', provider);
+        const apiKey = this.getProviderRawConfig(provider)?.apiKey as string | undefined;
+        if (!(instance instanceof DeepInfraProvider) || !apiKey) {
+          throw new Error(`[BatchService] DeepInfra provider not configured or missing apiKey`);
+        }
+        return new DeepInfraBatchAdapter(instance, apiKey);
       }
 
       default:

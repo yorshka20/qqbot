@@ -628,7 +628,7 @@ DeepSeek writes a tool call into `content` as DSML text instead of `tool_calls`:
   <｜DSML｜parameter name="query" string="true">...</｜DSML｜parameter>
   ...
 
-    │  (inside DeepSeekProvider.generate, @qqbot/llm)
+    │  (inside DeepSeekChatProvider.parseChatCompletion, @qqbot/llm)
     ▼
 request offered tools? ── yes → parseDSMLFunctionCall → functionCalls[]
     │                                                   (normal tool loop)

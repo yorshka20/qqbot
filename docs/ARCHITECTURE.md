@@ -803,10 +803,23 @@ The provider layer is the `@qqbot/llm` package (`packages/llm/`): the `AIProvide
 capabilities, every vendor's implementation, `AIManager` / `ProviderRegistry` / `ProviderFactory`,
 batch submission, and the provider config types with `LLMTarget`. A provider sends exactly the
 `messages` (or `systemPrompt` + `prompt`) it is given and normalizes its vendor's wire format —
-DeepSeek's DSML tool-call markup, for one, never leaves `DeepSeekProvider`. Choosing a provider
+DeepSeek's DSML tool-call markup, for one, never leaves the DeepSeek providers. Choosing a provider
 (`ProviderRouter`, `ProviderSelector`, `LLMService` fallback), assembling the prompt and handling the
 reply stay in the bot. The bot builds `AIManager` in `ai/createAIManager.ts` and registers it in
 `core/wiring.ts`.
+
+DeepSeek models are served by three providers: `deepseek` (DeepSeek's own API), `sail` (Sail
+Research) and `deepinfra` (DeepInfra). They share `DeepSeekChatProvider`, which holds the model's
+contract: `reasoning_content` replayed on every assistant turn, DSML tool calls, folding of tool
+rounds another provider served, the reasoning-level mapping and the truncation error. Each subclass
+declares only its host's wire: the output-cap field (`max_tokens`, or Sail's
+`max_completion_tokens`), which sampling fields the host accepts, and where its usage reports cache
+hits. The request body and response parsing are public (`buildChatCompletionBody` /
+`parseChatCompletion`) so `DeepInfraBatchAdapter` sends batch lines identical to live requests.
+
+Batch submission is `BatchService` (Anthropic, Gemini, Doubao, DeepInfra). DeepInfra's batch is the
+OpenAI files + batches API: a JSONL file uploaded to `/files`, one model per file, `POST /batches`,
+results read back from the output and error files.
 
 Multi-provider support is handled by `AIManager` + `ProviderRouter`:
 
@@ -846,7 +859,7 @@ The reply pipeline resolves the answering target once, in `ProviderSelectionStag
 
 ### Reasoning effort
 
-The pipeline speaks one provider-neutral scale (`ReasoningEffort`: `none | minimal | low | medium | high`). Each provider maps it onto the values its own API — and sometimes the target model — accepts, because the sets differ and an unsupported value is a 400. This bites hardest on fallback, where a request built for one provider is replayed on another with the same effort. Gemini and OpenAI keep a per-model table of accepted levels (`GeminiProvider.MODEL_THINKING_LEVELS`, from Google's thinking docs; `OPENAI_MODEL_REASONING_EFFORTS`, checked against the API by a network test — GPT-6.1 Sol and GPT-6 Astra take no `none`) and send the requested level or the nearest accepted one above it (`pickAcceptedReasoningLevel`). A model missing from its table runs at its own default, with a warning. DeepSeek and Groq map to their documented values (Groq per model family: non-reasoning models get no parameter at all), Anthropic maps `minimal` to `low`, and SiliconFlow sends nothing, since its only values are `high` / `max`.
+The pipeline speaks one provider-neutral scale (`ReasoningEffort`: `none | minimal | low | medium | high`). Each provider maps it onto the values its own API — and sometimes the target model — accepts, because the sets differ and an unsupported value is a 400. This bites hardest on fallback, where a request built for one provider is replayed on another with the same effort. Gemini and OpenAI keep a per-model table of accepted levels (`GeminiProvider.MODEL_THINKING_LEVELS`, from Google's thinking docs; `OPENAI_MODEL_REASONING_EFFORTS`, checked against the API by a network test — GPT-6.1 Sol and GPT-6 Astra take no `none`) and send the requested level or the nearest accepted one above it (`pickAcceptedReasoningLevel`). A model missing from its table runs at its own default, with a warning. DeepSeek (all three hosts, since the levels are the model's) and Groq map to their documented values (Groq per model family: non-reasoning models get no parameter at all), Anthropic maps `minimal` to `low`, and SiliconFlow sends nothing, since its only values are `high` / `max`.
 
 Every call through `LLMService` states its effort — `LLMCallOptions` / `ToolUseCallOptions` make `reasoningEffort` required, because a call that leaves it out runs at the vendor's default, the most expensive setting on thinking models (DeepSeek: `high`). Tasks that only transform or classify text (classifiers, search decisions, image prompts, image description) ask for `none`. Summaries, proactive-join analysis, schedule parsing, subagents, agenda runs and the group-day report tasks ask for `low`. Memory extraction and consolidation and persona reflection ask for `medium`. Replies, the reply pipeline and proactive replies alike, take `ai.chat.*` (`Config.getChatReasoningEfforts`). A subagent's effort is part of its config: `low` unless the preset or the spawner sets it.
 

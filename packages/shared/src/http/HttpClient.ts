@@ -36,7 +36,8 @@ export interface RequestOptions {
   headers?: Record<string, string>;
   /**
    * Note: The body is converted to string internally because fetch API requires
-   * body to be string, FormData, Blob, etc. Objects are automatically serialized.
+   * body to be string, FormData, Blob, etc. Objects are automatically serialized;
+   * a FormData body is sent as multipart, replacing any default Content-Type.
    */
   body?: unknown;
   timeout?: number;
@@ -101,9 +102,8 @@ export class HttpClient {
       await this.runTlsPreCheck(fullUrl);
     }
 
-    // Merge headers
-    const headers = this.mergeHeaders(options.headers);
     const body = this.prepareBody(options.body);
+    const headers = this.mergeHeaders(options.headers, body);
 
     // Log request in debug mode
     logger.debug(`[HttpClient] ${method} ${fullUrl}`);
@@ -237,10 +237,10 @@ export class HttpClient {
 
     // Prepare body first to determine if we need to set Content-Type
     const body = this.prepareBody(options.body);
-    const bodyWasObject = options.body !== undefined && options.body !== null && typeof options.body !== 'string';
+    const bodyWasObject = typeof body === 'string' && typeof options.body !== 'string';
 
     // Merge headers and auto-set Content-Type for JSON bodies
-    const headers = this.mergeHeaders(options.headers);
+    const headers = this.mergeHeaders(options.headers, body);
     // Automatically set Content-Type: application/json if body is an object (was JSON.stringify'd)
     // and Content-Type is not already set
     if (bodyWasObject && !headers['Content-Type'] && !headers['content-type']) {
@@ -330,7 +330,7 @@ export class HttpClient {
     options: {
       method: string;
       headers: Record<string, string>;
-      body: string | undefined;
+      body: string | FormData | undefined;
       signal: AbortSignal;
     },
   ): Promise<Response> {
@@ -485,24 +485,30 @@ export class HttpClient {
   }
 
   /**
-   * Merge default headers with request headers
+   * Merge default headers with request headers. A multipart body drops every Content-Type:
+   * fetch must write its own, because only it knows the boundary.
    */
-  private mergeHeaders(requestHeaders?: Record<string, string>): Record<string, string> {
-    return {
-      ...this.defaultHeaders,
-      ...requestHeaders,
-    };
+  private mergeHeaders(requestHeaders: Record<string, string> | undefined, body: unknown): Record<string, string> {
+    const headers = { ...this.defaultHeaders, ...requestHeaders };
+    if (body instanceof FormData) {
+      for (const name of Object.keys(headers)) {
+        if (name.toLowerCase() === 'content-type') {
+          delete headers[name];
+        }
+      }
+    }
+    return headers;
   }
 
   /**
    * Prepare request body (JSON stringify if object)
    */
-  private prepareBody(body: unknown): string | undefined {
+  private prepareBody(body: unknown): string | FormData | undefined {
     if (body === undefined || body === null) {
       return undefined;
     }
 
-    if (typeof body === 'string') {
+    if (typeof body === 'string' || body instanceof FormData) {
       return body;
     }
 

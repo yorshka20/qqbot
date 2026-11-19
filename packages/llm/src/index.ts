@@ -15,6 +15,8 @@ export * from './errors';
 export * from './ProviderFactory';
 export * from './ProviderRegistry';
 export { AnthropicProvider } from './providers/AnthropicProvider';
+export { DeepInfraProvider } from './providers/DeepInfraProvider';
+export { type ChatCompletion, DeepSeekChatProvider } from './providers/DeepSeekChatProvider';
 export { DeepSeekProvider } from './providers/DeepSeekProvider';
 export { DoubaoProvider } from './providers/DoubaoProvider';
 export { GeminiProvider } from './providers/GeminiProvider';
@@ -32,6 +34,7 @@ export {
 } from './providers/OpenAIProvider';
 export { OpenRouterProvider } from './providers/OpenRouterProvider';
 export { RunPodProvider } from './providers/RunPodProvider';
+export { SailProvider } from './providers/SailProvider';
 export { SiliconFlowProvider } from './providers/SiliconFlowProvider';
 export * from './types';
 export * from './utils/contentUtils';
