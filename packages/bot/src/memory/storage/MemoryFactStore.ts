@@ -12,6 +12,8 @@ import type { MemoryFact } from '@/database/models/types';
 import { MemoryIndex } from './MemoryIndex';
 
 export interface NewMemoryFact {
+  /** Minted by the caller from the operation that adds it, so applying that operation twice adds it once. */
+  id: string;
   groupId: string;
   userId: string;
   scope: string;
@@ -70,14 +72,39 @@ export class MemoryFactStore {
     return this.model().findById(id);
   }
 
+  /** Facts whose id already exists are left as they are and returned as stored. */
   async add(facts: NewMemoryFact[]): Promise<MemoryFact[]> {
     const model = this.model();
+    const stored: MemoryFact[] = [];
     const created: MemoryFact[] = [];
     for (const fact of facts) {
-      created.push(await model.create({ ...fact, status: 'active', hitCount: 0 }));
+      const existing = await model.findById(fact.id);
+      if (existing) {
+        stored.push(existing);
+        continue;
+      }
+      const row = await model.create({ ...fact, status: 'active', hitCount: 0 });
+      stored.push(row);
+      created.push(row);
     }
-    await this.syncIndex(() => this.index.upsert(created, 'auto'));
-    return created;
+    if (created.length > 0) {
+      await this.syncIndex(() => this.index.upsert(created, 'auto'));
+    }
+    return stored;
+  }
+
+  /**
+   * The slot's facts at the given ids, in that order; null where a fact is gone, no longer
+   * active, or belongs to another slot.
+   */
+  async activeInSlot(groupId: string, userId: string, ids: string[]): Promise<Array<MemoryFact | null>> {
+    const model = this.model();
+    const facts: Array<MemoryFact | null> = [];
+    for (const id of ids) {
+      const fact = await model.findById(id);
+      facts.push(fact && fact.status === 'active' && fact.groupId === groupId && fact.userId === userId ? fact : null);
+    }
+    return facts;
   }
 
   async confirm(ids: string[], at: number): Promise<void> {

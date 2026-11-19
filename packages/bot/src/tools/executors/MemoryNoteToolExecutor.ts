@@ -1,5 +1,6 @@
 import { inject, injectable } from 'tsyringe';
-import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
+import { MemoryBatchQueue } from '@/memory/batch/MemoryBatchQueue';
+import { formatCandidate } from '@/memory/extraction/MemoryExtractService';
 import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';
 import { Tool } from '../decorators';
 import type { ToolCall, ToolExecutionContext, ToolResult } from '../types';
@@ -8,7 +9,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 @Tool({
   name: 'memory_note',
   description:
-    '当用户明确提出希望 bot 长期遵守的要求、规则或偏好时，调用此工具把它持久化到长期记忆。内容会被缓冲，并在下一次记忆整理时与其它记忆一起合并去重（不会立刻生效）。仅用于"长期、可复用"的诉求；一次性的请求不要记。',
+    '当用户明确提出希望 bot 长期遵守的要求、规则或偏好时，调用此工具把它持久化到长期记忆。内容进入记忆整理队列，稍后与已有记忆合并去重（不会立刻生效）。仅用于"长期、可复用"的诉求；一次性的请求不要记。',
   executor: 'memory_note',
   visibility: {
     reply: { sources: ['qq-group', 'discord', 'avatar-cmd'] },
@@ -42,7 +43,7 @@ import { BaseToolExecutor } from './BaseToolExecutor';
 export class MemoryNoteToolExecutor extends BaseToolExecutor {
   name = 'memory_note';
 
-  constructor(@inject(MemoryExtractService) private memoryExtractService: MemoryExtractService) {
+  constructor(@inject(MemoryBatchQueue) private batchQueue: MemoryBatchQueue) {
     super();
   }
 
@@ -62,11 +63,12 @@ export class MemoryNoteToolExecutor extends BaseToolExecutor {
     const scope = typeof scopeParam === 'string' && scopeParam.trim().length > 0 ? scopeParam.trim() : undefined;
     const userId = target === 'group' ? GROUP_MEMORY_USER_ID : context.userId.toString();
 
-    const saved = await this.memoryExtractService.addNote(groupId, userId, content, scope);
-    if (!saved) {
-      return this.error('记忆服务暂不可用，未能保存', 'note buffer unavailable');
+    try {
+      await this.batchQueue.enqueueConsolidation(groupId, userId, [formatCandidate(content, scope)]);
+    } catch (err) {
+      return this.error('记忆服务暂不可用，未能保存', err instanceof Error ? err.message : String(err));
     }
 
-    return this.success(`已记下，将在下次记忆整理时合并：${content}`, { groupId, target, scope, content });
+    return this.success(`已记下，将在稍后的记忆整理中合并：${content}`, { groupId, target, scope, content });
   }
 }

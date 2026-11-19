@@ -11,7 +11,7 @@ import type { AgendaService } from '@/agenda/AgendaService';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import type { ConversationMessageEntry } from '@/conversation/history/ConversationHistoryService';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
-import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
+import type { FanoutRun, FanoutTaskOutput, LiveFanoutTask } from '@/fanout/core/types';
 import { MessageUtils } from '@/message/MessageUtils';
 import { asObject } from './normalizeReport';
 
@@ -37,7 +37,8 @@ export interface KeywordMinesTaskDeps {
   botSelfId: string;
 }
 
-export class KeywordMinesTask implements FanoutTask<GroupDayContext, KeywordMinesParams> {
+export class KeywordMinesTask implements LiveFanoutTask<GroupDayContext, KeywordMinesParams> {
+  readonly mode = 'live';
   static readonly NAME = 'mines';
   readonly name = KeywordMinesTask.NAME;
   readonly tools = [];

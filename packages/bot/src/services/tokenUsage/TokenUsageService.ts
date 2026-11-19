@@ -32,11 +32,13 @@ export interface TokenUsageEvent {
   completionTokens?: number;
   totalTokens?: number;
   imageCount?: number;
+  /** The call ran through a provider batch API. */
+  batch?: boolean;
 }
 
 type PricedUsage = Pick<
   TokenUsageRecord,
-  'model' | 'promptTokens' | 'cachedPromptTokens' | 'completionTokens' | 'imageCount'
+  'provider' | 'model' | 'batch' | 'promptTokens' | 'cachedPromptTokens' | 'completionTokens' | 'imageCount'
 >;
 
 export interface ProviderUsageAgg {
@@ -102,6 +104,12 @@ export interface DailyUsageAgg {
 
 const UNKNOWN_MODEL = '(unknown)';
 
+export interface SystemLLMCall {
+  provider: string;
+  model?: string;
+  usage: NonNullable<AIGenerateResponse['usage']>;
+}
+
 @singleton()
 export class TokenUsageService {
   private readonly warnedUnpricedModels = new Set<string>();
@@ -122,12 +130,17 @@ export class TokenUsageService {
   }
 
   /** Record a completed LLM call made outside the reply path; it counts against no user or group. */
-  async recordSystemLLM(call: {
-    provider: string;
-    model?: string;
-    usage: NonNullable<AIGenerateResponse['usage']>;
-  }): Promise<number | null> {
-    return this.record({
+  async recordSystemLLM(call: SystemLLMCall): Promise<number | null> {
+    return this.record(this.systemEvent(call, false));
+  }
+
+  /** Record one request of a provider batch job; it is priced with `ai.batchPricing`. */
+  async recordBatchLLM(call: SystemLLMCall): Promise<number | null> {
+    return this.record(this.systemEvent(call, true));
+  }
+
+  private systemEvent(call: SystemLLMCall, batch: boolean): TokenUsageEvent {
+    return {
       userId: SYSTEM_USER_ID,
       nickname: '系统',
       protocol: 'system',
@@ -135,11 +148,12 @@ export class TokenUsageService {
       model: call.model,
       type: 'llm',
       source: 'system',
+      batch,
       promptTokens: call.usage.promptTokens,
       cachedPromptTokens: call.usage.cachedPromptTokens,
       completionTokens: call.usage.completionTokens,
       totalTokens: call.usage.totalTokens,
-    });
+    };
   }
 
   /**
@@ -172,6 +186,7 @@ export class TokenUsageService {
       totalTokens,
       imageCount,
       budgetWaived: false,
+      batch: event.batch ?? false,
     };
 
     try {
@@ -180,10 +195,11 @@ export class TokenUsageService {
       logger.warn('[TokenUsageService] Failed to persist usage record:', err);
       return null;
     }
-    if (!this.getModelPricing(record.model) && !this.warnedUnpricedModels.has(record.model ?? UNKNOWN_MODEL)) {
-      this.warnedUnpricedModels.add(record.model ?? UNKNOWN_MODEL);
+    const priceName = this.priceName(record);
+    if (!this.getPricing(record) && !this.warnedUnpricedModels.has(priceName)) {
+      this.warnedUnpricedModels.add(priceName);
       logger.warn(
-        `[TokenUsageService] No modelPricing entry for model "${record.model ?? UNKNOWN_MODEL}" (provider ${record.provider}); its usage is counted as $0`,
+        `[TokenUsageService] No ${record.batch ? 'batchPricing' : 'modelPricing'} entry for "${priceName}" (provider ${record.provider}); its usage is counted as $0`,
       );
     }
     return this.priceUsage(record);
@@ -302,6 +318,20 @@ export class TokenUsageService {
     return out;
   }
 
+  /** The price of one row: `batchPricing[provider][model]` for a batch call, else `modelPricing`. */
+  private getPricing(usage: PricedUsage): ModelPricingEntry | undefined {
+    if (usage.batch) {
+      return usage.model ? this.config.getAIConfig()?.batchPricing?.[usage.provider]?.[usage.model] : undefined;
+    }
+    return this.getModelPricing(usage.model);
+  }
+
+  /** How a row's price is named in unpriced warnings: the model, marked with the host for a batch call. */
+  private priceName(usage: PricedUsage): string {
+    const model = usage.model || UNKNOWN_MODEL;
+    return usage.batch ? `${model} (${usage.provider} batch)` : model;
+  }
+
   /** Look up pricing for a model name, supporting trailing-wildcard prefix match. */
   private getModelPricing(modelName: string | undefined): ModelPricingEntry | undefined {
     const pricing = this.config.getAIConfig()?.modelPricing;
@@ -323,16 +353,16 @@ export class TokenUsageService {
   private findUnpricedModels(rows: TokenUsageRecord[]): string[] {
     const names = new Set<string>();
     for (const row of rows) {
-      if (!this.getModelPricing(row.model)) {
-        names.add(row.model || UNKNOWN_MODEL);
+      if (!this.getPricing(row)) {
+        names.add(this.priceName(row));
       }
     }
     return [...names].sort();
   }
 
-  /** USD for one call priced with `modelPricing`; 0 when the model has no price. */
+  /** USD for one call priced with `modelPricing` (or `batchPricing`); 0 when it has no price. */
   private priceUsage(usage: PricedUsage): number {
-    const price = this.getModelPricing(usage.model);
+    const price = this.getPricing(usage);
     if (!price) return 0;
     if ('perImage' in price) {
       return usage.imageCount * price.perImage;
@@ -348,7 +378,7 @@ export class TokenUsageService {
 
   /** USD one call counts for against the per-user daily cap: its price scaled by `budgetMultiplier`. */
   private priceForBudget(usage: PricedUsage): number {
-    return this.priceUsage(usage) * (this.getModelPricing(usage.model)?.budgetMultiplier ?? 1);
+    return this.priceUsage(usage) * (this.getPricing(usage)?.budgetMultiplier ?? 1);
   }
 
   private aggregateByProvider(rows: TokenUsageRecord[]): ProviderUsageAgg[] {

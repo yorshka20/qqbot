@@ -13,8 +13,20 @@ import type { NormalizedMessageEvent } from '@/events/types';
 import type { HookContext } from '@/hooks/types';
 import type { ToolSpec } from '@/tools/types';
 import type { FanoutServices } from './FanoutServices';
-import { type FanoutEnvelope, type PreparedTask, runSharedPrefixTasks } from './SharedPrefixRunner';
-import type { FanoutRun, FanoutRunReport, FanoutTarget, FanoutTask } from './types';
+import { type FanoutEnvelope, type PreparedTask, runSharedPrefixTasks, withTaskSuffix } from './SharedPrefixRunner';
+import type {
+  DeferredFanoutTask,
+  FanoutRun,
+  FanoutRunReport,
+  FanoutTarget,
+  FanoutTask,
+  FanoutTaskReport,
+} from './types';
+
+interface PreparedDeferredTask<C> {
+  task: DeferredFanoutTask<C>;
+  params: unknown;
+}
 
 export interface FanoutContext<C> {
   ctx: C;
@@ -58,8 +70,8 @@ export abstract class BaseFanout<C> {
     }
     this.running.add(key);
     try {
-      const prepared = this.prepareTasks(requested);
-      if (prepared.length === 0) {
+      const { live, deferred } = this.prepareTasks(requested);
+      if (live.length === 0 && deferred.length === 0) {
         return { status: 'no_tasks' };
       }
       const context = await this.buildContext(target);
@@ -68,44 +80,82 @@ export abstract class BaseFanout<C> {
         return { status: 'no_context' };
       }
       const run: FanoutRun<C> = { ctx: context.ctx, target };
-      const tasks = await runSharedPrefixTasks(
-        {
-          fanoutName: this.name,
-          envelope: this.buildEnvelope(prepared),
-          prefix: context.prefix,
-          run,
-          tasks: prepared,
-          hookContext: this.buildHookContext(target),
-        },
-        this.services,
-      );
-      return { status: 'ran', tasks };
+      const deferredReports = await this.deferTasks(deferred, context.prefix, run);
+      const liveReports =
+        live.length === 0
+          ? []
+          : await runSharedPrefixTasks(
+              {
+                fanoutName: this.name,
+                envelope: this.buildEnvelope(live),
+                prefix: context.prefix,
+                run,
+                tasks: live,
+                hookContext: this.buildHookContext(target),
+              },
+              this.services,
+            );
+      return { status: 'ran', tasks: [...liveReports, ...deferredReports] };
     } finally {
       this.running.delete(key);
     }
   }
 
   /** Requested tasks that are registered and whose tools exist, in name order. */
-  private prepareTasks(requested: Record<string, unknown>): PreparedTask<C>[] {
-    const prepared: PreparedTask<C>[] = [];
+  private prepareTasks(requested: Record<string, unknown>): {
+    live: PreparedTask<C>[];
+    deferred: PreparedDeferredTask<C>[];
+  } {
+    const live: PreparedTask<C>[] = [];
+    const deferred: PreparedDeferredTask<C>[] = [];
     for (const name of Object.keys(requested).sort()) {
       const task = this.tasks.get(name);
       if (!task) {
         logger.warn(`[Fanout] ${this.name}: task ${name} is not registered, skipped`);
         continue;
       }
-      const missing = task.tools.filter((tool) => !this.services.toolManager.getTool(tool));
-      if (missing.length > 0) {
-        logger.warn(`[Fanout] ${this.name}: task ${name} needs unregistered tool(s) ${missing.join(', ')}, skipped`);
-        continue;
+      if (task.mode === 'live') {
+        const missing = task.tools.filter((tool) => !this.services.toolManager.getTool(tool));
+        if (missing.length > 0) {
+          logger.warn(`[Fanout] ${this.name}: task ${name} needs unregistered tool(s) ${missing.join(', ')}, skipped`);
+          continue;
+        }
       }
       try {
-        prepared.push({ task, params: task.parseParams(requested[name]) });
+        const params = task.parseParams(requested[name]);
+        if (task.mode === 'live') {
+          live.push({ task, params });
+        } else {
+          deferred.push({ task, params });
+        }
       } catch (err) {
         logger.warn(`[Fanout] ${this.name}: task ${name} has unusable params, skipped:`, err);
       }
     }
-    return prepared;
+    return { live, deferred };
+  }
+
+  /** Hand each deferred task the request it would have made in this run. */
+  private async deferTasks(
+    deferred: PreparedDeferredTask<C>[],
+    prefix: string,
+    run: FanoutRun<C>,
+  ): Promise<FanoutTaskReport[]> {
+    if (deferred.length === 0) {
+      return [];
+    }
+    const system = this.services.promptManager.render(this.systemTemplate);
+    const reports: FanoutTaskReport[] = [];
+    for (const { task, params } of deferred) {
+      try {
+        await task.defer({ system, prompt: withTaskSuffix(prefix, task.suffix(run, params)) }, run, params);
+        reports.push({ name: task.name, status: 'deferred', rounds: 0 });
+      } catch (err) {
+        logger.error(`[Fanout] ${this.name}/${task.name} could not be deferred:`, err);
+        reports.push({ name: task.name, status: 'failed', rounds: 0 });
+      }
+    }
+    return reports;
   }
 
   private buildEnvelope(prepared: PreparedTask<C>[]): FanoutEnvelope {

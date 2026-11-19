@@ -52,8 +52,6 @@ export interface AutoSwitchConfig {
  * Each task runs on the default LLM (defaultProviders.llm) if not specified.
  */
 export interface TaskProvidersConfig {
-  /** LLM for memory extraction (MemoryPlugin) */
-  memoryExtract?: LLMTarget;
   /**
    * LLM for the group_day fan-out (daily report, comic, memory extraction). Every task
    * of one run shares it: a different target is a different prefix cache.
@@ -195,6 +193,12 @@ export interface AIConfig {
    * Key = model name (or prefix with trailing `*`); value = USD per 1M tokens.
    */
   modelPricing?: Record<string, ModelPricingEntry>;
+  /**
+   * Token pricing of calls made through a provider's batch API, keyed by provider then model
+   * (exact names). A batch price belongs to the host and the model together and is no fixed
+   * fraction of the realtime one, so it is not derived from `modelPricing`.
+   */
+  batchPricing?: Record<string, Record<string, TokenPricing>>;
   usage?: AIUsageConfig;
   // Session-level provider overrides (key is sessionId)
   sessionProviders?: Record<string, SessionProviderConfig>;

@@ -6,6 +6,7 @@
 // interface token.
 
 import { PROJECT_REGISTRY_OPTIONS } from '@qqbot/agent-cluster';
+import { type AIManager, BatchService } from '@qqbot/llm';
 import { RETRIEVAL_OPTIONS } from '@qqbot/retrieval';
 import { HealthCheckManager } from '@qqbot/shared/health';
 import { createAIManager } from '@/ai/createAIManager';
@@ -31,6 +32,10 @@ export function registerProviders(config: Config, apiClient: APIClient): void {
 
   // Registries whose contents come from config or decorator metadata, assembled on build.
   container.registerSingletonFactory(DITokens.AI_MANAGER, () => createAIManager(config));
+  container.registerSingletonFactory(
+    DITokens.BATCH_SERVICE,
+    () => new BatchService(container.resolve<AIManager>(DITokens.AI_MANAGER)),
+  );
   container.registerSingletonFactory(DITokens.TOOL_MANAGER, createToolManager);
   container.registerSingletonFactory(DITokens.TTS_MANAGER, () =>
     createTTSManager(config, container.resolve(HealthCheckManager)),

@@ -105,12 +105,6 @@ export interface AvatarMemoryExtractionConfig {
    * `Live2DInput.source`.
    */
   allowedSources: string[];
-  /**
-   * LLM provider for the extract + analyze pass. Falls back to
-   * `ai.taskProviders.memoryExtract` → `avatar.llmProvider` →
-   * `ai.defaultProviders.llm` in `Live2DMemoryExtractionCoordinator`.
-   */
-  provider?: string;
 }
 
 /**

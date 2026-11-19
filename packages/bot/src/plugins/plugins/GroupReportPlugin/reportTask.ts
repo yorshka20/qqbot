@@ -7,7 +7,7 @@
 import type { PromptManager } from '@/ai/prompt/PromptManager';
 import { extractJsonFromLlmText } from '@/ai/utils/llmJsonExtract';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
-import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
+import type { FanoutRun, FanoutTaskOutput, LiveFanoutTask } from '@/fanout/core/types';
 import type { GroupReportRenderer } from './GroupReportRenderer';
 import {
   asObject,
@@ -28,7 +28,8 @@ export interface ReportTaskDeps {
   renderer: GroupReportRenderer;
 }
 
-export class ReportTask implements FanoutTask<GroupDayContext, null> {
+export class ReportTask implements LiveFanoutTask<GroupDayContext, null> {
+  readonly mode = 'live';
   static readonly NAME = 'report';
   readonly name = ReportTask.NAME;
   readonly tools = [];

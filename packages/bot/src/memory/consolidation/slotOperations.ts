@@ -15,7 +15,7 @@ export type SlotOperation =
  */
 export function parseSlotOperations(
   answer: Record<string, unknown>,
-  numbered: MemoryFact[],
+  numbered: ReadonlyArray<MemoryFact | null>,
   userId: string,
 ): { operations: SlotOperation[]; rejected: number } {
   const raw = Array.isArray(answer.operations) ? answer.operations : [];

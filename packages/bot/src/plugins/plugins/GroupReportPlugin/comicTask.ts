@@ -9,7 +9,7 @@ import { ImageRequestAssembler } from '@/ai/services/ImageRequestAssembler';
 import type { MessageAPI } from '@/api/methods/MessageAPI';
 import type { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
-import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
+import type { FanoutRun, FanoutTaskOutput, LiveFanoutTask } from '@/fanout/core/types';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import { asArray, asObject } from './normalizeReport';
 
@@ -29,7 +29,8 @@ export interface ComicTaskDeps {
   wakeWords: string[];
 }
 
-export class ComicTask implements FanoutTask<GroupDayContext, ComicTaskParams> {
+export class ComicTask implements LiveFanoutTask<GroupDayContext, ComicTaskParams> {
+  readonly mode = 'live';
   static readonly NAME = 'comic';
   readonly name = ComicTask.NAME;
   readonly tools = ['generate_image'];

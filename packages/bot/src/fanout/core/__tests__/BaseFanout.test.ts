@@ -16,7 +16,7 @@ import type { ToolManager } from '@/tools/ToolManager';
 import type { ToolSpec } from '@/tools/types';
 import { BaseFanout, type FanoutContext } from '../BaseFanout';
 import type { FanoutServices } from '../FanoutServices';
-import type { FanoutTarget, FanoutTask, FanoutTaskOutput } from '../types';
+import type { DeferredFanoutRequest, FanoutTarget, FanoutTaskOutput, LiveFanoutTask } from '../types';
 
 interface Call {
   messages: ChatMessage[];
@@ -87,10 +87,11 @@ class TestFanout extends BaseFanout<{ day: string }> {
 function task(
   name: string,
   tools: string[],
-  overrides: Partial<FanoutTask<{ day: string }>> = {},
-): FanoutTask<{ day: string }> & { outputs: FanoutTaskOutput[] } {
+  overrides: Partial<LiveFanoutTask<{ day: string }>> = {},
+): LiveFanoutTask<{ day: string }> & { outputs: FanoutTaskOutput[] } {
   const outputs: FanoutTaskOutput[] = [];
   return {
+    mode: 'live',
     name,
     tools,
     limits: { reasoningEffort: 'none', timeout: 1000, maxToolRounds: 1 },
@@ -128,6 +129,55 @@ describe('BaseFanout envelope', () => {
       expect(call.messages[0]).toEqual({ role: 'system', content: 'SYSTEM' });
       expect(String(call.messages[1].content).startsWith(`${PREFIX}\n\n`)).toBe(true);
     }
+  });
+});
+
+describe('BaseFanout deferred tasks', () => {
+  it('hands a deferred task the request it would have made, and leaves the live envelope to the live tasks', async () => {
+    const { services, calls } = makeServices(async () => ({}), []);
+    const fanout = new TestFanout(services);
+    const deferred: DeferredFanoutRequest[] = [];
+    fanout.registerTask(task('a', ['draw']));
+    fanout.registerTask({
+      mode: 'deferred',
+      name: 'later',
+      parseParams: () => null,
+      suffix: () => '## 任务 later',
+      defer: async (request) => {
+        deferred.push(request);
+      },
+    });
+
+    const report = await fanout.run(TARGET, { a: {}, later: {} });
+
+    expect(report.status === 'ran' && report.tasks.map((t) => `${t.name}=${t.status}`)).toEqual([
+      'a=ok',
+      'later=deferred',
+    ]);
+    expect(calls.map(taskOf)).toEqual(['a']);
+    expect(deferred).toEqual([{ system: 'SYSTEM', prompt: `${PREFIX}\n\n## 任务 later` }]);
+  });
+
+  it('runs a fan-out of only deferred tasks without calling the model', async () => {
+    const { services, calls } = makeServices(async () => ({}), []);
+    const fanout = new TestFanout(services);
+    let deferredCount = 0;
+    fanout.registerTask({
+      mode: 'deferred',
+      name: 'later',
+      parseParams: () => null,
+      suffix: () => '## 任务 later',
+      defer: async () => {
+        deferredCount++;
+      },
+    });
+
+    expect(await fanout.run(TARGET, { later: {} })).toEqual({
+      status: 'ran',
+      tasks: [{ name: 'later', status: 'deferred', rounds: 0 }],
+    });
+    expect(deferredCount).toBe(1);
+    expect(calls).toHaveLength(0);
   });
 });
 

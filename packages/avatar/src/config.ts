@@ -44,7 +44,6 @@ function mergeMemoryExtraction(patch: unknown): AvatarMemoryExtractionConfig {
     // `enabled: false`); missing/invalid falls back to the safe default
     // so a typo in config doesn't accidentally open the allowlist.
     allowedSources: coerceStringArray(patch.allowedSources) ?? [...base.allowedSources],
-    provider: optionalNonEmptyString(patch.provider),
   };
 }
 

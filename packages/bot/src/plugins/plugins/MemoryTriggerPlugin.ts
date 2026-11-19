@@ -2,7 +2,6 @@
 
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { LLMTarget } from '@qqbot/llm';
 import type { RAGDocument } from '@qqbot/retrieval';
 import { QdrantClient } from '@qqbot/retrieval';
 import { RetrievalService } from '@qqbot/retrieval/service';
@@ -15,11 +14,9 @@ import {
   buildConversationWindowDocument,
   groupEntriesIntoWindows,
 } from '@/conversation/rag/buildConversationWindowDocument';
-import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
-import { DITokens } from '@/core/DITokens';
 import type { HookContext } from '@/hooks/types';
-import { MemoryConsolidationService } from '@/memory/consolidation/MemoryConsolidationService';
+import { MemoryBatchQueue } from '@/memory/batch/MemoryBatchQueue';
 import { Hook, RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
@@ -71,8 +68,7 @@ export class MemoryTriggerPlugin extends PluginBase {
   /** Group IDs currently running cold start (avoid concurrent duplicate run for same group). */
   private pendingColdStartGroupIds = new Set<string>();
 
-  private consolidationService!: MemoryConsolidationService;
-  private config!: Config;
+  private batchQueue!: MemoryBatchQueue;
 
   private messageAPI!: MessageAPI;
   private retrievalService!: RetrievalService | null;
@@ -81,8 +77,7 @@ export class MemoryTriggerPlugin extends PluginBase {
   async onInit(): Promise<void> {
     this.enabled = true;
     const container = getContainer();
-    this.consolidationService = container.resolve(MemoryConsolidationService);
-    this.config = container.resolve<Config>(DITokens.CONFIG);
+    this.batchQueue = container.resolve(MemoryBatchQueue);
     this.messageAPI = container.resolve(MessageAPI);
     this.conversationHistoryService = container.resolve<ConversationHistoryService>(ConversationHistoryService);
     this.retrievalService = container.resolve(RetrievalService);
@@ -315,23 +310,11 @@ export class MemoryTriggerPlugin extends PluginBase {
     }
   }
 
-  /**
-   * Merge new content with existing user memory and upsert.
-   * @returns Promise that resolves when update is done (for sending "记忆已更新" after)
-   */
-  private getExtractTarget(): LLMTarget | undefined {
-    return this.config.getAIConfig()?.taskProviders?.memoryExtract;
-  }
-
-  private consolidateUserMemory(groupId: string, userId: string, content: string): Promise<void> {
-    return this.consolidationService
-      .consolidateSlot(groupId, userId, [content], this.getExtractTarget())
-      .then(() => {
-        logger.debug(`[MemoryTriggerPlugin] Consolidated user memory for group=${groupId} user=${userId}`);
-      })
-      .catch((err) => {
-        logger.warn('[MemoryTriggerPlugin] consolidation failed:', err);
-      });
+  /** Queue the content for the user's memory; resolves true once it has been folded in. */
+  private async consolidateUserMemory(groupId: string, userId: string, content: string): Promise<boolean> {
+    const handle = await this.batchQueue.enqueueConsolidation(groupId, userId, [content]);
+    const { applied } = await handle.settled;
+    return applied > 0;
   }
 
   @Hook({
@@ -372,13 +355,16 @@ export class MemoryTriggerPlugin extends PluginBase {
     logger.info(
       `[MemoryTriggerPlugin] Trigger matched for group=${groupId} user=${userId}, content="${content.slice(0, 50)}..."`,
     );
-    // Quick merge trigger content into user memory and notify
+    // Merge the trigger content into user memory (a batch job) and notify once it is in
     this.consolidateUserMemory(groupId, userId, content)
-      .then(() => {
-        return this.messageAPI.sendFromContext(`用户 ${userId} 的记忆已更新。`, sendContext, 10000);
-      })
-      .then(() => {
-        logger.debug(`[MemoryTriggerPlugin] Sent "记忆已更新" for group=${groupId} user=${userId}`);
+      .then((applied) => {
+        if (!applied) {
+          logger.warn(`[MemoryTriggerPlugin] consolidation dropped for group=${groupId} user=${userId}`);
+          return;
+        }
+        return this.messageAPI
+          .sendFromContext(`用户 ${userId} 的记忆已更新。`, sendContext, 10000)
+          .then(() => logger.debug(`[MemoryTriggerPlugin] Sent "记忆已更新" for group=${groupId} user=${userId}`));
       })
       .catch((err) => {
         logger.warn('[MemoryTriggerPlugin] merge/send failed:', err);

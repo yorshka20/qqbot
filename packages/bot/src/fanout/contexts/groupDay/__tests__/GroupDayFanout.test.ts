@@ -16,8 +16,6 @@ import type {
 import type { Config } from '@/core/config';
 import type { HookManager } from '@/hooks/HookManager';
 import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
-import type { MemoryConsolidationService } from '@/memory/consolidation/MemoryConsolidationService';
-import type { DatabaseManager } from '@/database/DatabaseManager';
 import { ComicTask } from '@/plugins/plugins/GroupReportPlugin/comicTask';
 import { KeywordMinesTask } from '@/plugins/plugins/GroupReportPlugin/keywordMines';
 import type { ToolManager } from '@/tools/ToolManager';
@@ -71,6 +69,7 @@ function makeFanout(messages: ConversationMessageEntry[]) {
 
 function captureTask(name: string, suffix: string, seen: GroupDayContext[]): FanoutTask<GroupDayContext> {
   return {
+    mode: 'live',
     name,
     tools: [],
     limits: { reasoningEffort: 'none', timeout: 1000, maxToolRounds: 1 },
@@ -109,13 +108,7 @@ describe('group_day prefix', () => {
 
   it('gives the report, comic, mines and memory tasks the same prefix and appends each task after it', async () => {
     const { fanout, calls } = makeFanout(MESSAGES);
-    const memorySuffix = new MemoryExtractService(
-      promptManager,
-      {} as LLMService,
-      {} as MemoryConsolidationService,
-      {} as DatabaseManager,
-      {} as Config,
-    ).renderPrefixedExtractTask();
+    const memorySuffix = new MemoryExtractService(promptManager).renderPrefixedExtractTask();
     const comicSuffix = new ComicTask({
       promptManager,
       messageAPI: {} as never,

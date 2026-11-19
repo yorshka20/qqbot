@@ -25,8 +25,15 @@ export function parseDraft(raw: Record<string, unknown>, userId: string): NewFac
   return { scope, content, durability: raw.durability === 'stable' ? 'stable' : 'transient' };
 }
 
-/** The fact at a 1-based `#n` the model named, or null when out of range or already claimed. */
-export function factAtNumber(numbered: MemoryFact[], value: unknown, claimed: Set<string>): MemoryFact | null {
+/**
+ * The fact at a 1-based `#n` the model named, or null when out of range, already claimed, or no
+ * longer there (a null entry: the fact changed after the prompt was written).
+ */
+export function factAtNumber(
+  numbered: ReadonlyArray<MemoryFact | null>,
+  value: unknown,
+  claimed: Set<string>,
+): MemoryFact | null {
   const index = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
   const fact = Number.isInteger(index) ? numbered[index - 1] : undefined;
   return fact && !claimed.has(fact.id) ? fact : null;

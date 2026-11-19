@@ -7,7 +7,7 @@
 //
 // Usage: bun run memory <command> [options]
 //
-//   migrate --dry-run [--group a,b] [--concurrency 4]
+//   migrate --dry-run [--group a,b]
 //       Split each legacy auto.txt into atomic facts with an LLM and write a plan
 //       (data/backup/memory/migrate/plan-<date>.json) plus a readable report next to it.
 //   migrate --apply <plan.json>
@@ -17,16 +17,18 @@
 //       Make every memory_* collection hold exactly the active facts and the manual lines
 //       (drops legacy points).
 //   review [--group a,b]
-//       Review the due facts now, as the daily job does.
+//       Queue a review of every slot with due facts, as the daily job does.
 //   eval --group <id> [--user <id>] <query>
 //       Print the facts a query would retrieve, with similarity and final score.
 //   backfill --group <id> --since <YYYY-MM-DD>
-//       Extract and consolidate a group's messages since a date.
+//       Queue extraction (then consolidation) of a group's messages since a date.
 //   stats
 //       Fact counts per group and status.
 //
-// LLM: --provider / --model; migrate defaults to gemini / gemini-4-hydrogen, the rest to the
-// memory plugin's extract LLM.
+// Every memory LLM call is a batch job. `review` and `backfill` only queue jobs in
+// memory_batch_jobs: the running bot submits and applies them (only one process may, see
+// MemoryBatchQueue), so with the bot stopped they wait for its next start. `migrate --dry-run`
+// is offline and runs its one batch in the foreground on the cheapest batch host.
 
 import 'reflect-metadata';
 
@@ -34,11 +36,10 @@ import type { Database } from 'bun:sqlite';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import type { LLMTarget } from '@qqbot/llm';
+import { type BatchService, CHEAPEST_BATCH_PROVIDERS } from '@qqbot/llm';
 import { RetrievalService } from '@qqbot/retrieval/service';
-import { resolveFromRepoRoot } from '@qqbot/shared';
+import { randomUUID, resolveFromRepoRoot } from '@qqbot/shared';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import { LLMService } from '@/ai/services/LLMService';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import { bootstrapCore } from '@/core/bootstrap';
 import { Config } from '@/core/config';
@@ -46,10 +47,10 @@ import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
 import { SQLiteAdapter } from '@/database/adapters/SQLiteAdapter';
 import { DatabaseManager } from '@/database/DatabaseManager';
+import { MemoryBatchQueue } from '@/memory/batch/MemoryBatchQueue';
 import { chunkLines } from '@/memory/extraction/chunkLines';
-import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
 import { type NewFactDraft, parseDraft } from '@/memory/llm/factDraft';
-import { generateMemoryJson } from '@/memory/llm/memoryLLM';
+import { MEMORY_REQUEST_OPTIONS, parseMemoryJson } from '@/memory/llm/memoryLLM';
 import { listManualFacts, scopeGuide } from '@/memory/llm/promptParts';
 import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';
 import { slotLabel } from '@/memory/model/scopes';
@@ -60,6 +61,7 @@ import { ManualMemoryStore } from '@/memory/storage/ManualMemoryStore';
 import { MemoryFactStore } from '@/memory/storage/MemoryFactStore';
 import { MemoryIndex } from '@/memory/storage/MemoryIndex';
 import { MemoryIndexSync } from '@/memory/storage/MemoryIndexSync';
+import { TokenUsageService } from '@/services/tokenUsage/TokenUsageService';
 
 const MEMORY_DIR = resolveFromRepoRoot('data/memory');
 const MIGRATE_DIR = resolveFromRepoRoot('data/backup/memory/migrate');
@@ -105,23 +107,8 @@ const databaseManager = container.resolve(DatabaseManager);
 await databaseManager.initialize(config.getDatabaseConfig());
 
 const promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
-const llmService = container.resolve(LLMService);
 const store = container.resolve(MemoryFactStore);
 const manualStore = container.resolve(ManualMemoryStore);
-
-/** The LLM from --provider / --model. A provider named here runs on --model or its own model, never the default's. */
-function llmTarget(defaults: LLMTarget): LLMTarget {
-  const provider = arg('provider');
-  return provider ? { provider, model: arg('model') } : { ...defaults, model: arg('model') ?? defaults.model };
-}
-
-function pluginLLMTarget(): LLMTarget {
-  const plugin = config.getPluginConfig('memory') as { extract?: LLMTarget } | undefined;
-  if (!plugin?.extract) {
-    throw new Error('memory plugin has no extract LLM; pass --provider');
-  }
-  return llmTarget(plugin.extract);
-}
 
 function rawDb(): Database {
   const adapter = databaseManager.getAdapter();
@@ -130,16 +117,6 @@ function rawDb(): Database {
     throw new Error('this command needs the SQLite database');
   }
   return db;
-}
-
-async function runPool<T>(items: T[], concurrency: number, work: (item: T) => Promise<void>): Promise<void> {
-  const queue = [...items];
-  const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
-    for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
-      await work(item);
-    }
-  });
-  await Promise.all(workers);
 }
 
 // ── migrate ──
@@ -157,7 +134,7 @@ interface PlannedFact extends NewFactDraft {
 
 interface MigrationPlan {
   createdAt: string;
-  llm: LLMTarget;
+  provider: string;
   slots: Array<{ groupId: string; userId: string; legacyPath: string; legacyChars: number; facts: PlannedFact[] }>;
   failed: Array<{ groupId: string; userId: string }>;
 }
@@ -237,25 +214,45 @@ function firstSeenFor(db: Database, slot: LegacySlot, facts: NewFactDraft[]): Pl
 }
 
 async function migrateDryRun(): Promise<void> {
-  const llm = llmTarget({ provider: 'gemini', model: 'gemini-4-hydrogen' });
+  const batch = container.resolve<BatchService>(DITokens.BATCH_SERVICE);
+  const provider = batch.cheapestProvider();
+  if (!provider) {
+    throw new Error(`migrate needs a batch provider (${CHEAPEST_BATCH_PROVIDERS.join(' / ')}) in ai.providers`);
+  }
+  const usage = container.resolve(TokenUsageService);
   const slots = legacySlots(listArg('group'));
   const db = rawDb();
-  const plan: MigrationPlan = { createdAt: new Date().toISOString(), llm, slots: [], failed: [] };
-  console.log(`Migrating ${slots.length} legacy slots with ${llm.provider}/${llm.model ?? 'default'}`);
-  let done = 0;
-  await runPool(slots, Number(arg('concurrency') ?? '4'), async (slot) => {
-    const prompt = promptManager.render('memory.migrate', {
+  const plan: MigrationPlan = { createdAt: new Date().toISOString(), provider, slots: [], failed: [] };
+  if (slots.length === 0) {
+    console.log('No legacy slots to migrate');
+    return;
+  }
+  const requests = slots.map((slot) => ({
+    customId: randomUUID(),
+    prompt: promptManager.render('memory.migrate', {
       slotLabel: slotLabel(slot.userId),
       scopeGuide: scopeGuide(promptManager, slot.userId),
       manualFacts: listManualFacts(manualStore.getFacts(slot.groupId, slot.userId)),
       legacyMemory: slot.text,
-    });
-    const answer = await generateMemoryJson(llmService, prompt, llm, 'MemoryMigrate');
-    done++;
+    }),
+    options: MEMORY_REQUEST_OPTIONS.migrate,
+  }));
+  console.log(`Migrating ${slots.length} legacy slots in one ${provider} batch; waiting for it to finish`);
+  const { job, results } = await batch.submitAndWait(provider, requests, {
+    onProgress: (progress) =>
+      console.log(`  ${progress.status} ${progress.succeededRequests}/${progress.totalRequests}`),
+  });
+  const byId = new Map(results.map((result) => [result.customId, result]));
+  for (const [i, slot] of slots.entries()) {
+    const response = byId.get(requests[i].customId)?.response;
+    if (response?.usage) {
+      await usage.recordBatchLLM({ provider, model: response.resolvedModel, usage: response.usage });
+    }
+    const answer = response ? parseMemoryJson(response.text ?? '', 'MemoryMigrate') : null;
     if (!answer || !Array.isArray(answer.facts)) {
       plan.failed.push({ groupId: slot.groupId, userId: slot.userId });
-      console.log(`  [${done}/${slots.length}] ${slot.groupId}/${slot.userId}: FAILED`);
-      return;
+      console.log(`  ${slot.groupId}/${slot.userId}: FAILED (batch ${job.id} ${job.status})`);
+      continue;
     }
     const drafts = answer.facts
       .map((f) => (f && typeof f === 'object' ? parseDraft(f as Record<string, unknown>, slot.userId) : null))
@@ -268,10 +265,10 @@ async function migrateDryRun(): Promise<void> {
       facts: firstSeenFor(db, slot, drafts),
     });
     console.log(
-      `  [${done}/${slots.length}] ${slot.groupId}/${slot.userId}: ${slot.text.length} chars → ${drafts.length} facts ` +
+      `  ${slot.groupId}/${slot.userId}: ${slot.text.length} chars → ${drafts.length} facts ` +
         `(${answer.facts.length - drafts.length} rejected)`,
     );
-  });
+  }
   plan.slots.sort((a, b) => `${a.groupId}/${a.userId}`.localeCompare(`${b.groupId}/${b.userId}`));
 
   const base = join(MIGRATE_DIR, `plan-${today()}`);
@@ -285,10 +282,7 @@ async function migrateDryRun(): Promise<void> {
 
 function renderPlanReport(plan: MigrationPlan, slots: LegacySlot[]): string {
   const legacy = new Map(slots.map((s) => [`${s.groupId}/${s.userId}`, s.text]));
-  const parts = [
-    `# Memory migration plan ${plan.createdAt}`,
-    `LLM: ${plan.llm.provider}/${plan.llm.model ?? 'default'}`,
-  ];
+  const parts = [`# Memory migration plan ${plan.createdAt}`, `Batch provider: ${plan.provider}`];
   if (plan.failed.length > 0) {
     parts.push(`Failed: ${plan.failed.map((f) => `${f.groupId}/${f.userId}`).join(', ')}`);
   }
@@ -317,6 +311,7 @@ async function migrateApply(planPath: string): Promise<void> {
     }
     await store.add(
       slot.facts.map((fact) => ({
+        id: randomUUID(),
         groupId: slot.groupId,
         userId: slot.userId,
         scope: fact.scope,
@@ -368,14 +363,17 @@ async function reindex(onlyGroups: string[]): Promise<void> {
 
 async function review(): Promise<void> {
   const reviewService = container.resolve(MemoryReviewService);
-  const target = pluginLLMTarget();
+  const queue = container.resolve(MemoryBatchQueue);
   const groups = listArg('group');
   for (const groupId of groups.length > 0 ? groups : await store.listGroupIds()) {
-    const summary = await reviewService.reviewGroup(groupId, target);
-    console.log(
-      `  ${groupId}: due ${summary.due}, kept ${summary.kept}, retired ${summary.retired}, merged ${summary.merged}`,
-    );
+    const slots = await reviewService.listDueSlots(groupId);
+    for (const userId of slots) {
+      const { id } = await queue.enqueueReview(groupId, userId);
+      console.log(`  ${groupId}/${userId}: review job ${id}`);
+    }
+    console.log(`  ${groupId}: ${slots.length} slots with due facts queued`);
   }
+  console.log('The running bot submits and applies the queued jobs.');
 }
 
 async function evaluate(): Promise<void> {
@@ -426,18 +424,18 @@ async function backfill(): Promise<void> {
     throw new Error('usage: backfill --group <id> --since <YYYY-MM-DD>');
   }
   const history = container.resolve(ConversationHistoryService);
-  const extract = container.resolve(MemoryExtractService);
+  const queue = container.resolve(MemoryBatchQueue);
   const selfId = config.getConfig().bot.selfId;
   const entries = (await history.getMessagesSince(groupId, new Date(since), 100_000)).filter(
     (e) => String(e.userId) !== selfId,
   );
   const chunks = chunkLines(history.formatAsText(entries), BACKFILL_CHUNK_CHARS);
   console.log(`${entries.length} messages since ${since} in ${chunks.length} chunks`);
-  const target = pluginLLMTarget();
   for (let i = 0; i < chunks.length; i++) {
-    await extract.extractAndConsolidate(groupId, chunks[i], target);
-    console.log(`  chunk ${i + 1}/${chunks.length} done`);
+    const { id } = await queue.enqueueExtract(groupId, chunks[i]);
+    console.log(`  chunk ${i + 1}/${chunks.length}: extract job ${id}`);
   }
+  console.log('The running bot submits and applies the queued jobs.');
 }
 
 async function stats(): Promise<void> {

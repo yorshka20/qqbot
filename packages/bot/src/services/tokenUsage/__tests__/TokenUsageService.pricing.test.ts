@@ -16,6 +16,8 @@ const PRICING: Record<string, ModelPricingEntry> = {
   'family-*': { input: 2, output: 2 },
 };
 
+const BATCH_PRICING = { 'batch-host': { 'text-model': { input: 0.5, cachedInput: 0.05, output: 2 } } };
+
 function makeService() {
   const rows: TokenUsageRecord[] = [];
   const model = {
@@ -37,7 +39,9 @@ function makeService() {
     },
   };
   const databaseManager = { getAdapter: () => ({ getModel: () => model }) } as unknown as DatabaseManager;
-  const config = { getAIConfig: () => ({ providers: {}, modelPricing: PRICING }) } as unknown as Config;
+  const config = {
+    getAIConfig: () => ({ providers: {}, modelPricing: PRICING, batchPricing: BATCH_PRICING }),
+  } as unknown as Config;
   return new TokenUsageService(databaseManager, config);
 }
 
@@ -106,6 +110,21 @@ describe('TokenUsageService pricing', () => {
 
     expect(await service.record(event({ model: 'family-large', promptTokens: 500_000 }))).toBeCloseTo(1, 10);
     expect(await service.record(event({ model: 'unpriced', promptTokens: 500_000 }))).toBe(0);
+  });
+
+  it('prices a batch call with the host’s batch price, and an unpriced one as $0 under its own name', async () => {
+    const service = makeService();
+    const usage = { promptTokens: 1_000_000, cachedPromptTokens: 800_000, completionTokens: 100_000, totalTokens: 1_100_000 };
+
+    // 200K × $0.5 + 800K × $0.05 + 100K × $2, not the realtime text-model price
+    expect(await service.recordBatchLLM({ provider: 'batch-host', model: 'text-model', usage })).toBeCloseTo(
+      0.1 + 0.04 + 0.2,
+      10,
+    );
+    expect(await service.recordBatchLLM({ provider: 'other-host', model: 'text-model', usage })).toBe(0);
+
+    const report = await service.getDailyReport(service.getLocalDate(), 10);
+    expect(report.unpricedModels).toEqual(['text-model (other-host batch)']);
   });
 
   it('sums a group’s day by user, highest spender first', async () => {

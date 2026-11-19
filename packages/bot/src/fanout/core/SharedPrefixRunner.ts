@@ -12,7 +12,7 @@ import { executeToolCall } from '@/ai/tools/replyTools';
 import type { HookManager } from '@/hooks/HookManager';
 import type { HookContext } from '@/hooks/types';
 import type { ToolManager } from '@/tools/ToolManager';
-import type { FanoutRun, FanoutTask, FanoutTaskOutput, FanoutTaskReport } from './types';
+import type { FanoutRun, FanoutTaskOutput, FanoutTaskReport, LiveFanoutTask } from './types';
 
 export interface FanoutEnvelope {
   target: LLMTarget;
@@ -21,7 +21,7 @@ export interface FanoutEnvelope {
 }
 
 export interface PreparedTask<C> {
-  task: FanoutTask<C>;
+  task: LiveFanoutTask<C>;
   params: unknown;
 }
 

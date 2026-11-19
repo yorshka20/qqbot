@@ -149,19 +149,38 @@ export interface MemoryFact extends BaseModel {
 }
 
 /**
- * Buffered memory note staged by the `memory_note` tool. The bot persists explicit user
- * rules/requirements here instead of writing memory directly; the memory consolidation pass
- * drains pending notes and folds them into a single merge, then deletes them. This makes the
- * note the sole, once-consumed source of a fact and avoids it being re-processed by extraction.
- * userId === GROUP_MEMORY_USER_ID routes the note to group-level memory; otherwise to that user.
+ * One memory LLM job on its way through a provider batch API. Every memory job (extract,
+ * consolidate, review) runs this way; the row is the job's whole state, so a restart resumes it.
+ * The row id is the request's batch custom_id.
  */
-export interface MemoryNoteBuffer extends BaseModel {
+export interface MemoryBatchJob extends BaseModel {
+  kind: 'extract' | 'consolidate' | 'review';
   groupId: string;
+  /** The slot for consolidate / review; the focused member for a single-member extract, else ''. */
   userId: string;
-  /** Optional memory scope (e.g. 'instruction', 'preference', 'rule'); stored as "[scope] content". */
-  scope?: string;
-  content: string;
-  status: 'pending' | 'merged';
+  /** The extract job that spawned this consolidation, or ''. */
+  parentId: string;
+  /**
+   * `merged`: the job's candidates were folded into the slot's job `mergedInto` at submission,
+   * and that job's fate is this one's.
+   */
+  status: 'queued' | 'submitted' | 'fetched' | 'done' | 'dropped' | 'merged';
+  /** '' unless merged. */
+  mergedInto: string;
+  /** JSON of the kind's input: extract { system?, prompt }, consolidate { candidates }, review {}. */
+  inputJson: string;
+  /** JSON of the request as submitted ({ system?, prompt, factIds, dueIds }); '' until submitted. */
+  requestJson: string;
+  /** '' until submitted. */
+  provider: string;
+  /** '' until submitted. */
+  batchId: string;
+  /** Epoch ms of submission; 0 until submitted. */
+  submittedAt: number;
+  /** The model's raw answer, stored the moment it is fetched. */
+  answer: string;
+  attempts: number;
+  error: string;
 }
 
 /**
@@ -259,6 +278,8 @@ export interface TokenUsageRecord extends BaseModel {
    * budget resets existed, which reads as not waived.
    */
   budgetWaived?: boolean;
+  /** Set when the call ran through a provider batch API, priced with `ai.batchPricing`. Absent reads as a realtime call. */
+  batch?: boolean;
 }
 
 /**
@@ -316,8 +337,8 @@ export interface DatabaseModel {
   conversationConfigs: ModelAccessor<ConversationConfig>;
   proactiveThreads: ModelAccessor<ProactiveThreadRecord>;
   memoryExtractUserCursors: ModelAccessor<MemoryExtractUserCursor>;
-  memoryNotesBuffer: ModelAccessor<MemoryNoteBuffer>;
   memoryFacts: ModelAccessor<MemoryFact>;
+  memoryBatchJobs: ModelAccessor<MemoryBatchJob>;
   agendaItems: ModelAccessor<AgendaItem>;
   bilibiliDanmaku: ModelAccessor<BilibiliDanmakuRecord>;
   userPortraitScore: ModelAccessor<UserPortraitScore>;

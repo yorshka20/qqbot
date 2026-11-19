@@ -1,18 +1,16 @@
-// Memory Plugin - daily memory extraction as a group_day fan-out task, full-history backfills,
-// memory backups, and the daily review of due facts.
+// Memory Plugin - daily memory extraction as a group_day fan-out task, backfills on request,
+// memory backups, the daily review of due facts, and the timer that drives the memory batch queue.
 
 import { existsSync } from 'node:fs';
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import { describeLLMTarget, type LLMTarget } from '@qqbot/llm';
-import { ConfigError, getRepoRoot, logger, resolveFromRepoRoot } from '@qqbot/shared';
+import { getRepoRoot, logger, resolveFromRepoRoot } from '@qqbot/shared';
 import { ConversationHistoryService } from '@/conversation/history/ConversationHistoryService';
 import type { Config } from '@/core/config';
 import { getContainer } from '@/core/DIContainer';
 import { DITokens } from '@/core/DITokens';
-import { DatabaseManager } from '@/database/DatabaseManager';
-import type { MemoryExtractUserCursor } from '@/database/models/types';
 import { GroupDayFanout } from '@/fanout/contexts/groupDay/GroupDayFanout';
+import { MemoryBatchQueue, type MemoryJobHandle } from '@/memory/batch/MemoryBatchQueue';
 import { chunkLines } from '@/memory/extraction/chunkLines';
 import { GroupDayMemoryTask } from '@/memory/extraction/GroupDayMemoryTask';
 import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
@@ -23,12 +21,8 @@ import { RegisterPlugin } from '../decorators';
 import { PluginBase } from '../PluginBase';
 
 export interface MemoryPluginConfig {
-  /** LLM for backfill extracts, consolidation and review (e.g. { "provider": "gemini", "model": "gemini-3.1-flash-lite" }). Required. */
-  extract: LLMTarget;
-  /** Full-history extract (via MemoryTrigger): max character length per extract chunk. Default 15000. */
+  /** Backfill extracts: max character length per extract chunk. Default 15000. */
   fullHistoryMaxLength?: number;
-  /** Full-history progress file path (one line per "groupId:userId"). Default "data/memory_full_history_progress.txt". */
-  fullHistoryProgressFile?: string;
   /** Backup interval in ms. Default 604800000 (7 days). Set to 0 to disable. */
   backupIntervalMs?: number;
   /** Backup directory path (relative to cwd). Default "data/backup/memory". */
@@ -36,36 +30,33 @@ export interface MemoryPluginConfig {
 }
 
 const DEFAULT_FULL_HISTORY_MAX_LENGTH = 15_000;
-const DEFAULT_FULL_HISTORY_PROGRESS_FILE = 'data/memory_full_history_progress.txt';
 const DEFAULT_BACKUP_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const DEFAULT_BACKUP_DIR = 'data/backup/memory';
 const MEMORY_DIR = 'data/memory';
+const BATCH_TICK_INTERVAL_MS = 60_000;
 
 @RegisterPlugin({
   name: 'memory',
   version: '1.0.0',
-  description: 'Memory: daily extract on the group_day prefix, full-history backfills, backups',
+  description: 'Memory: daily extract on the group_day prefix, backfills, review, backups, the memory batch queue',
 })
 export class MemoryPlugin extends PluginBase {
-  /** LLM for extract + analyze (from config); unset runs them on the default LLM. */
-  private extract: LLMTarget | undefined;
-  /** Full-history extract (MemoryTrigger): max character length per extract chunk. */
+  /** Backfill extracts: max character length per extract chunk. */
   private fullHistoryMaxLength = DEFAULT_FULL_HISTORY_MAX_LENGTH;
-  /** Full-history progress file path (one line per "groupId:userId"). */
-  private fullHistoryProgressFile = DEFAULT_FULL_HISTORY_PROGRESS_FILE;
 
   /** Backup interval timer. */
   private backupTimer: ReturnType<typeof setInterval> | null = null;
   private maintenanceStartupTimer: ReturnType<typeof setTimeout> | null = null;
   private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
+  private batchTimer: ReturnType<typeof setInterval> | null = null;
   private backupIntervalMs = DEFAULT_BACKUP_INTERVAL_MS;
   private backupDir = DEFAULT_BACKUP_DIR;
 
-  /** In-memory guard: groupId:userId currently running or queued for full-history extract; avoid duplicate runs. */
+  /** In-memory guard: backfills currently running; avoid duplicate runs. */
   private fullHistoryPendingKeys = new Set<string>();
   private conversationHistoryService!: ConversationHistoryService;
   private memoryExtractService!: MemoryExtractService;
-  private databaseManager!: DatabaseManager;
+  private batchQueue!: MemoryBatchQueue;
   private botSelfId = '';
 
   async onInit(): Promise<void> {
@@ -74,26 +65,16 @@ export class MemoryPlugin extends PluginBase {
     const container = getContainer();
     this.conversationHistoryService = container.resolve<ConversationHistoryService>(ConversationHistoryService);
     this.memoryExtractService = container.resolve(MemoryExtractService);
-    this.databaseManager = container.resolve(DatabaseManager);
+    this.batchQueue = container.resolve(MemoryBatchQueue);
 
     const config = container.resolve<Config>(DITokens.CONFIG);
     this.botSelfId = config.getConfig().bot.selfId;
 
     const pluginConfig = this.pluginConfig?.config as MemoryPluginConfig | undefined;
-
     if (pluginConfig) {
-      if (typeof pluginConfig.extract?.provider !== 'string') {
-        throw new ConfigError(
-          'plugins.memory.extract must be an LLM target { "provider": "...", "model"?: "..." } (it replaces extractProvider / extractModel)',
-        );
-      }
-      // Plugin config takes precedence over AI config
-      this.extract = pluginConfig.extract;
       this.fullHistoryMaxLength = pluginConfig.fullHistoryMaxLength ?? DEFAULT_FULL_HISTORY_MAX_LENGTH;
-      this.fullHistoryProgressFile = pluginConfig.fullHistoryProgressFile ?? DEFAULT_FULL_HISTORY_PROGRESS_FILE;
       this.backupIntervalMs = pluginConfig.backupIntervalMs ?? DEFAULT_BACKUP_INTERVAL_MS;
       this.backupDir = pluginConfig.backupDir ?? DEFAULT_BACKUP_DIR;
-      logger.info(`[MemoryPlugin] Configured | extract=${describeLLMTarget(pluginConfig.extract)}`);
     }
   }
 
@@ -114,6 +95,10 @@ export class MemoryPlugin extends PluginBase {
     const MAINTENANCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
     this.maintenanceStartupTimer = setTimeout(() => void this.runDailyMaintenance(), 60 * 60 * 1000);
     this.maintenanceTimer = setInterval(() => void this.runDailyMaintenance(), MAINTENANCE_INTERVAL_MS);
+
+    // The memory batch queue: resume whatever a previous process left in flight, then keep it moving.
+    void this.batchQueue.tick();
+    this.batchTimer = setInterval(() => void this.batchQueue.tick(), BATCH_TICK_INTERVAL_MS);
   }
 
   onStop(): void {
@@ -129,11 +114,15 @@ export class MemoryPlugin extends PluginBase {
       clearInterval(this.maintenanceTimer);
       this.maintenanceTimer = null;
     }
+    if (this.batchTimer) {
+      clearInterval(this.batchTimer);
+      this.batchTimer = null;
+    }
   }
 
   async onEnable(): Promise<void> {
     await super.onEnable();
-    this.groupDay().registerTask(new GroupDayMemoryTask(this.memoryExtractService, this.extract));
+    this.groupDay().registerTask(new GroupDayMemoryTask(this.memoryExtractService, this.batchQueue));
     logger.info('[MemoryPlugin] Registered group_day task: memory');
   }
 
@@ -148,8 +137,8 @@ export class MemoryPlugin extends PluginBase {
   }
 
   /**
-   * Daily maintenance, per group with memory: review the facts that are due (keep, retire or
-   * merge them), then bring the group's vector index back to its facts and manual lines.
+   * Daily maintenance, per group with memory: queue a review of every slot with due facts, then
+   * bring the group's vector index back to its facts and manual lines.
    */
   private async runDailyMaintenance(): Promise<void> {
     const container = getContainer();
@@ -157,11 +146,14 @@ export class MemoryPlugin extends PluginBase {
     const review = container.resolve(MemoryReviewService);
     try {
       for (const groupId of await indexSync.listGroupIds()) {
-        const reviewed = await review.reviewGroup(groupId, this.extract);
+        const dueSlots = await review.listDueSlots(groupId);
+        for (const userId of dueSlots) {
+          await this.batchQueue.enqueueReview(groupId, userId);
+        }
         const indexed = indexSync.isEnabled() ? await indexSync.reindexGroup(groupId) : { upserted: 0, removed: 0 };
         logger.info(
-          `[MemoryPlugin] Daily maintenance group=${groupId} | review due=${reviewed.due} kept=${reviewed.kept} ` +
-            `retired=${reviewed.retired} merged=${reviewed.merged} | index upserted=${indexed.upserted} removed=${indexed.removed}`,
+          `[MemoryPlugin] Daily maintenance group=${groupId} | review queued for ${dueSlots.length} slots ` +
+            `| index upserted=${indexed.upserted} removed=${indexed.removed}`,
         );
       }
     } catch (err) {
@@ -169,200 +161,19 @@ export class MemoryPlugin extends PluginBase {
     }
   }
 
-  /** Resolve full-history progress file path relative to repo root. */
-  private getFullHistoryProgressPath(): string {
-    return resolveFromRepoRoot(this.fullHistoryProgressFile);
-  }
-
-  /** Load set of "groupId:userId" from full-history progress file. */
-  private async loadFullHistoryProgress(): Promise<Set<string>> {
-    const set = new Set<string>();
-    try {
-      const path = this.getFullHistoryProgressPath();
-      const content = await readFile(path, 'utf-8');
-      for (const line of content.split('\n')) {
-        const key = line.trim();
-        if (key) {
-          set.add(key);
-        }
-      }
-    } catch {
-      // File may not exist yet
+  /** Queue one extract per chunk and resolve once every one of them, with its consolidations, has settled. */
+  private async extractChunks(groupId: string, chunks: string[], focusUserId?: string): Promise<boolean> {
+    const handles: MemoryJobHandle[] = [];
+    for (const chunk of chunks) {
+      handles.push(await this.batchQueue.enqueueExtract(groupId, chunk, focusUserId));
     }
-    return set;
-  }
-
-  /** Append one "groupId:userId" line to full-history progress file (creates data dir if needed). */
-  private async appendFullHistoryProgress(key: string): Promise<void> {
-    const path = this.getFullHistoryProgressPath();
-    await mkdir(dirname(path), { recursive: true });
-    await appendFile(path, `${key}\n`);
-  }
-
-  /** Upsert memory_extract_user_cursors so every run (trigger/skip/complete/error) leaves a record. */
-  private async upsertMemoryExtractCursor(groupId: string, userId: string, lastProcessedAt: string): Promise<void> {
-    const adapter = this.databaseManager.getAdapter();
-    if (!adapter?.isConnected()) {
-      return;
-    }
-    try {
-      const userCursors = adapter.getModel('memoryExtractUserCursors');
-      const existing = (await userCursors.findOne({
-        groupId,
-        userId,
-      } as Partial<MemoryExtractUserCursor>)) as MemoryExtractUserCursor | null;
-      if (existing) {
-        await userCursors.update(existing.id, { lastProcessedAt });
-      } else {
-        await userCursors.create({ groupId, userId, lastProcessedAt } as Omit<
-          MemoryExtractUserCursor,
-          'id' | 'createdAt' | 'updatedAt'
-        >);
-      }
-    } catch (err) {
-      logger.warn('[MemoryPlugin] upsertMemoryExtractCursor failed:', err);
-    }
+    const outcomes = await Promise.all(handles.map((handle) => handle.settled));
+    return outcomes.every((outcome) => outcome.dropped === 0);
   }
 
   /**
-   * Run full-history extract for a single user (e.g. when user triggers via MemoryTrigger).
-   * Loads all messages for that user in the group, chunks by fullHistoryMaxLength, and runs
-   * one extractAndConsolidateUser per chunk. Fire-and-forget; does not block.
-   * Skips if this groupId:userId was already processed (recorded in full-history progress file),
-   * or if a full-history run for this user is already queued/running (in-memory guard to avoid duplicate work).
-   */
-  runFullHistoryExtractForUser(groupId: string, userId: string, onComplete?: (success: boolean) => void): void {
-    if (this.botSelfId && String(userId) === this.botSelfId) {
-      return;
-    }
-    const key = `${groupId}:${userId}`;
-    if (this.fullHistoryPendingKeys.has(key)) {
-      logger.info(
-        `[MemoryPlugin] runFullHistoryExtractForUser: already queued or running, skip groupId=${groupId} userId=${userId}`,
-      );
-      return;
-    }
-    this.fullHistoryPendingKeys.add(key);
-    logger.info(`[MemoryPlugin] runFullHistoryExtractForUser started groupId=${groupId} userId=${userId}`);
-    void this.runFullHistoryExtractForUserInternal(groupId, userId)
-      .then(() => {
-        onComplete?.(true);
-      })
-      .catch((err) => {
-        logger.error(
-          `[MemoryPlugin] runFullHistoryExtractForUser unhandled error groupId=${groupId} userId=${userId}`,
-          err,
-        );
-        onComplete?.(false);
-      })
-      .finally(() => {
-        this.fullHistoryPendingKeys.delete(key);
-      });
-  }
-
-  private async runFullHistoryExtractForUserInternal(groupId: string, userId: string): Promise<void> {
-    // skip bot memory
-    if (this.botSelfId && String(userId) === this.botSelfId) {
-      return;
-    }
-
-    const key = `${groupId}:${userId}`;
-    const progressSet = await this.loadFullHistoryProgress();
-    if (progressSet.has(key)) {
-      logger.info(
-        `[MemoryPlugin] runFullHistoryExtractForUser: already processed, skip groupId=${groupId} userId=${userId}`,
-      );
-      await this.upsertMemoryExtractCursor(groupId, userId, new Date().toISOString());
-      return;
-    }
-
-    const entries = await this.conversationHistoryService.getMessagesForUserInGroup(groupId, userId);
-    if (entries.length === 0) {
-      logger.info(
-        `[MemoryPlugin] runFullHistoryExtractForUser: no messages for groupId=${groupId} userId=${userId}, writing progress to skip next time`,
-      );
-      await this.appendFullHistoryProgress(key);
-      await this.upsertMemoryExtractCursor(groupId, userId, new Date().toISOString());
-      return;
-    }
-    const text = this.conversationHistoryService.formatAsText(entries);
-    const chunks = chunkLines(text, this.fullHistoryMaxLength);
-    logger.info(
-      `[MemoryPlugin] runFullHistoryExtractForUser: processing groupId=${groupId} userId=${userId} messages=${entries.length} chunks=${chunks.length}`,
-    );
-    try {
-      for (let i = 0; i < chunks.length; i++) {
-        logger.info(
-          `[MemoryPlugin] runFullHistoryExtractForUser chunk ${i + 1}/${chunks.length} groupId=${groupId} userId=${userId}`,
-        );
-        await this.memoryExtractService.extractAndConsolidateUser(groupId, userId, chunks[i], this.extract);
-      }
-      const latestEntry = entries[entries.length - 1];
-      const lastProcessedAt = latestEntry?.createdAt
-        ? new Date(latestEntry.createdAt).toISOString()
-        : new Date().toISOString();
-      await this.upsertMemoryExtractCursor(groupId, userId, lastProcessedAt);
-      await this.appendFullHistoryProgress(key);
-      logger.info(
-        `[MemoryPlugin] Full history extract completed for groupId=${groupId} userId=${userId} chunks=${chunks.length} | progress file + user cursor written`,
-      );
-    } catch (err) {
-      logger.error(
-        `[MemoryPlugin] runFullHistoryExtractForUser failed (progress not written): groupId=${groupId} userId=${userId}`,
-        err,
-      );
-      await this.upsertMemoryExtractCursor(groupId, userId, new Date().toISOString());
-    }
-  }
-
-  /**
-   * Run full-history extract for group memory (extractAndConsolidate handles both group + user facts).
-   * Chunks the full conversation history and runs extract on each chunk.
-   * Fire-and-forget; onComplete callback is called when done.
-   */
-  runFullHistoryExtractForGroup(groupId: string, onComplete?: (success: boolean) => void): void {
-    const key = `group:${groupId}`;
-    if (this.fullHistoryPendingKeys.has(key)) {
-      logger.info(`[MemoryPlugin] runFullHistoryExtractForGroup: already running, skip groupId=${groupId}`);
-      return;
-    }
-    this.fullHistoryPendingKeys.add(key);
-    logger.info(`[MemoryPlugin] runFullHistoryExtractForGroup started groupId=${groupId}`);
-    void this.runFullHistoryExtractForGroupInternal(groupId)
-      .then(() => {
-        onComplete?.(true);
-      })
-      .catch((err) => {
-        logger.error(`[MemoryPlugin] runFullHistoryExtractForGroup error groupId=${groupId}`, err);
-        onComplete?.(false);
-      })
-      .finally(() => {
-        this.fullHistoryPendingKeys.delete(key);
-      });
-  }
-
-  private async runFullHistoryExtractForGroupInternal(groupId: string): Promise<void> {
-    const entries = await this.conversationHistoryService.getRecentMessages(groupId, 0);
-    const filtered = this.botSelfId ? entries.filter((e) => String(e.userId) !== this.botSelfId) : entries;
-    if (filtered.length === 0) {
-      logger.info(`[MemoryPlugin] runFullHistoryExtractForGroup: no messages for groupId=${groupId}, skip`);
-      return;
-    }
-    const text = this.conversationHistoryService.formatAsText(filtered);
-    const chunks = chunkLines(text, this.fullHistoryMaxLength);
-    logger.info(
-      `[MemoryPlugin] runFullHistoryExtractForGroup: processing groupId=${groupId} messages=${filtered.length} chunks=${chunks.length}`,
-    );
-    for (let i = 0; i < chunks.length; i++) {
-      logger.info(`[MemoryPlugin] runFullHistoryExtractForGroup chunk ${i + 1}/${chunks.length} groupId=${groupId}`);
-      await this.memoryExtractService.extractAndConsolidate(groupId, chunks[i], this.extract);
-    }
-    logger.info(`[MemoryPlugin] Full history group extract completed for groupId=${groupId} chunks=${chunks.length}`);
-  }
-
-  /**
-   * Run user memory extract for messages since a given date.
-   * Fire-and-forget; onComplete callback is called when done.
+   * Queue user memory extracts for messages since a given date.
+   * Fire-and-forget; onComplete is called once every job has settled (in this process).
    */
   runExtractForUserSince(groupId: string, userId: string, since: Date, onComplete?: (success: boolean) => void): void {
     const key = `user-since:${groupId}:${userId}`;
@@ -375,7 +186,7 @@ export class MemoryPlugin extends PluginBase {
       `[MemoryPlugin] runExtractForUserSince started groupId=${groupId} userId=${userId} since=${since.toISOString()}`,
     );
     void this.runExtractForUserSinceInternal(groupId, userId, since)
-      .then(() => onComplete?.(true))
+      .then((success) => onComplete?.(success))
       .catch((err) => {
         logger.error(`[MemoryPlugin] runExtractForUserSince error groupId=${groupId} userId=${userId}`, err);
         onComplete?.(false);
@@ -385,7 +196,7 @@ export class MemoryPlugin extends PluginBase {
       });
   }
 
-  private async runExtractForUserSinceInternal(groupId: string, userId: string, since: Date): Promise<void> {
+  private async runExtractForUserSinceInternal(groupId: string, userId: string, since: Date): Promise<boolean> {
     const entries = await this.conversationHistoryService.getMessagesSince(groupId, since);
     // Filter to only this user's messages
     const userEntries = entries.filter((e) => String(e.userId) === userId);
@@ -393,27 +204,23 @@ export class MemoryPlugin extends PluginBase {
       logger.info(
         `[MemoryPlugin] runExtractForUserSince: no messages for groupId=${groupId} userId=${userId} since=${since.toISOString()}, skip`,
       );
-      return;
+      return true;
     }
     const text = this.conversationHistoryService.formatAsText(userEntries);
     const chunks = chunkLines(text, this.fullHistoryMaxLength);
     logger.info(
       `[MemoryPlugin] runExtractForUserSince: processing groupId=${groupId} userId=${userId} messages=${userEntries.length} chunks=${chunks.length}`,
     );
-    for (let i = 0; i < chunks.length; i++) {
-      logger.info(
-        `[MemoryPlugin] runExtractForUserSince chunk ${i + 1}/${chunks.length} groupId=${groupId} userId=${userId}`,
-      );
-      await this.memoryExtractService.extractAndConsolidateUser(groupId, userId, chunks[i], this.extract);
-    }
+    const success = await this.extractChunks(groupId, chunks, userId);
     logger.info(
-      `[MemoryPlugin] runExtractForUserSince completed groupId=${groupId} userId=${userId} chunks=${chunks.length}`,
+      `[MemoryPlugin] runExtractForUserSince settled groupId=${groupId} userId=${userId} chunks=${chunks.length} success=${success}`,
     );
+    return success;
   }
 
   /**
-   * Run group memory extract (group + user facts) for messages since a given date.
-   * Fire-and-forget; onComplete callback is called when done.
+   * Queue group memory extracts (group + user facts) for messages since a given date.
+   * Fire-and-forget; onComplete is called once every job has settled (in this process).
    */
   runExtractForGroupSince(groupId: string, since: Date, onComplete?: (success: boolean) => void): void {
     const key = `group-since:${groupId}`;
@@ -424,7 +231,7 @@ export class MemoryPlugin extends PluginBase {
     this.fullHistoryPendingKeys.add(key);
     logger.info(`[MemoryPlugin] runExtractForGroupSince started groupId=${groupId} since=${since.toISOString()}`);
     void this.runExtractForGroupSinceInternal(groupId, since)
-      .then(() => onComplete?.(true))
+      .then((success) => onComplete?.(success))
       .catch((err) => {
         logger.error(`[MemoryPlugin] runExtractForGroupSince error groupId=${groupId}`, err);
         onComplete?.(false);
@@ -434,25 +241,25 @@ export class MemoryPlugin extends PluginBase {
       });
   }
 
-  private async runExtractForGroupSinceInternal(groupId: string, since: Date): Promise<void> {
+  private async runExtractForGroupSinceInternal(groupId: string, since: Date): Promise<boolean> {
     const entries = await this.conversationHistoryService.getMessagesSince(groupId, since);
     const filtered = this.botSelfId ? entries.filter((e) => String(e.userId) !== this.botSelfId) : entries;
     if (filtered.length === 0) {
       logger.info(
         `[MemoryPlugin] runExtractForGroupSince: no messages for groupId=${groupId} since=${since.toISOString()}, skip`,
       );
-      return;
+      return true;
     }
     const text = this.conversationHistoryService.formatAsText(filtered);
     const chunks = chunkLines(text, this.fullHistoryMaxLength);
     logger.info(
       `[MemoryPlugin] runExtractForGroupSince: processing groupId=${groupId} messages=${filtered.length} chunks=${chunks.length}`,
     );
-    for (let i = 0; i < chunks.length; i++) {
-      logger.info(`[MemoryPlugin] runExtractForGroupSince chunk ${i + 1}/${chunks.length} groupId=${groupId}`);
-      await this.memoryExtractService.extractAndConsolidate(groupId, chunks[i], this.extract);
-    }
-    logger.info(`[MemoryPlugin] runExtractForGroupSince completed groupId=${groupId} chunks=${chunks.length}`);
+    const success = await this.extractChunks(groupId, chunks);
+    logger.info(
+      `[MemoryPlugin] runExtractForGroupSince settled groupId=${groupId} chunks=${chunks.length} success=${success}`,
+    );
+    return success;
   }
 
   /**

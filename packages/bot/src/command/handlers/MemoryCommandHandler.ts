@@ -1,12 +1,10 @@
 // Memory command handlers: deep extract and memory edit
 
-import type { LLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, injectable } from 'tsyringe';
 import { MessageAPI } from '@/api/methods/MessageAPI';
-import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
-import { MemoryConsolidationService } from '@/memory/consolidation/MemoryConsolidationService';
+import { MemoryBatchQueue } from '@/memory/batch/MemoryBatchQueue';
 import { GROUP_MEMORY_USER_ID } from '@/memory/model/constants';
 import { MessageBuilder } from '@/message/MessageBuilder';
 import type { PermissionChecker } from '@/permission';
@@ -131,15 +129,9 @@ export class MemoryEditCommand implements CommandHandler {
 
   constructor(
     @inject(MessageAPI) private messageAPI: MessageAPI,
-    @inject(MemoryConsolidationService) private consolidationService: MemoryConsolidationService,
-    @inject(DITokens.CONFIG) private config: Config,
+    @inject(MemoryBatchQueue) private batchQueue: MemoryBatchQueue,
     @inject(DITokens.PERMISSION_CHECKER) private permissionChecker: PermissionChecker,
   ) {}
-
-  /** The LLM for memory operations: taskProviders.memoryExtract, else the default LLM. */
-  private getExtractTarget(): LLMTarget | undefined {
-    return this.config.getAIConfig()?.taskProviders?.memoryExtract;
-  }
 
   execute(args: string[], context: CommandContext): CommandResult {
     if (context.messageType !== 'group' || context.groupId === undefined) {
@@ -176,22 +168,28 @@ export class MemoryEditCommand implements CommandHandler {
       targetUserId = callerUserId;
     }
 
-    // Fire-and-forget: consolidate and notify
+    // Fire-and-forget: queue the consolidation (a batch job) and notify once it settles
     const slotUserId = target === 'group' ? GROUP_MEMORY_USER_ID : targetUserId;
-    const doneLabel = target === 'group' ? '群组' : targetUserId === callerUserId ? '你的' : `用户 ${targetUserId} 的`;
-    this.consolidationService
-      .consolidateSlot(groupId, slotUserId, [content], this.getExtractTarget())
-      .then(() => this.messageAPI.sendFromContext(`${doneLabel}记忆订正完成。`, context, 10000))
+    const targetLabel =
+      target === 'group' ? '群组' : targetUserId === callerUserId ? '你的' : `用户 ${targetUserId} 的`;
+    this.batchQueue
+      .enqueueConsolidation(groupId, slotUserId, [content])
+      .then((handle) => handle.settled)
+      .then(({ applied }) =>
+        this.messageAPI.sendFromContext(
+          applied > 0 ? `${targetLabel}记忆订正完成。` : '记忆订正失败，请查看日志。',
+          context,
+          10000,
+        ),
+      )
       .catch((err: unknown) => {
         logger.warn('[MemoryEditCommand] memory edit failed:', err);
         this.messageAPI.sendFromContext('记忆订正失败，请查看日志。', context, 10000).catch(() => {});
       });
 
-    const targetLabel =
-      target === 'group' ? '群组' : targetUserId === callerUserId ? '你的' : `用户 ${targetUserId} 的`;
     return {
       success: true,
-      segments: new MessageBuilder().text(`收到，正在订正${targetLabel}记忆...`).build(),
+      segments: new MessageBuilder().text(`收到，${targetLabel}记忆订正已排队，整理完成后通知。`).build(),
     };
   }
 }

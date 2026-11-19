@@ -414,7 +414,7 @@
           ]
         }
       },
-      // Memory Plugin - debounced extract from recent messages, merge with existing, inject into replies
+      // Memory Plugin - daily extraction, review and backfills of long-term memory, injected into replies
       // Memory uses hierarchical scopes: [core_scope] or [core_scope:subtag]
       // - User scopes: identity, preference, opinion, relationship, behavior, instruction
       // - Group scopes: topic, rule, event, context
@@ -424,10 +424,10 @@
         "enabled": false,
         "config": {
           // Daily extraction is the `memory` task of the group_day fan-out: add it to the group's
-          // `action fanout` item in data/agenda/schedule.md. It runs on ai.taskProviders.groupDay.
-          // The LLM below drives backfills, consolidation of extracted facts, and the daily review.
+          // `action fanout` item in data/agenda/schedule.md. Every memory LLM job (extraction,
+          // consolidation, review) runs on a batch API: the cheapest configured of the "sail" and
+          // "deepinfra" providers below. With neither configured, memory jobs stay queued.
           // Retrieval, scoring and review thresholds live in the top-level "memory" section.
-          "extract": { "provider": "gemini", "model": "gemini-3.1-flash-lite" }, // model optional; defaults to the provider's configured model
           // Periodic backup: data/memory/ (manual files) as a tar.gz plus every memory_facts row as JSON
           "backupIntervalMs": 604800000 // 7 days (default). Set to 0 to disable.
           // "backupDir": "data/backup/memory" // Override backup directory (default)
@@ -732,10 +732,8 @@
     // Task-specific LLM overrides (optional). Each is an LLM target { "provider", "model"? }.
     // Falls back to defaultProviders.llm if not specified
     "taskProviders": {
-      // LLM for memory extraction (MemoryPlugin)
-      // "memoryExtract": { "provider": "deepseek" },
-      // LLM for the group_day fan-out: daily report, comic and memory extraction share one
-      // chat-log prefix, so they must share one target to hit its prompt cache.
+      // LLM for the group_day fan-out: the daily report and comic share one chat-log prefix, so
+      // they must share one target to hit its prompt cache (memory extraction runs as a batch job).
       // "groupDay": { "provider": "deepseek" },
       // LLM for thread summarization (context compression)
       // "summarize": { "provider": "deepseek" },
@@ -898,7 +896,8 @@
       //   "baseURL": "https://api.siliconflow.com/v1",
       //   "temperature": 0.7
       // },
-      // Sail Research: DeepSeek V4.1 Flash on an OpenAI-compatible host, realtime "asap" tier.
+      // Sail Research: DeepSeek V4.1 Flash on an OpenAI-compatible host, realtime "asap" tier; its
+      // batch API (Flex tier, the cheapest) runs the memory jobs.
       // Base URL: https://api.sailresearch.com/v1 (docs.sailresearch.com)
       // "sail": {
       //   "type": "sail",
@@ -906,7 +905,7 @@
       //   "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
       //   "temperature": 0.7
       // },
-      // DeepInfra: DeepSeek V4.1 Flash, plus the batch API BatchService('deepinfra') uses.
+      // DeepInfra: DeepSeek V4.1 Flash, plus its batch API (memory jobs fall back to it without sail).
       // Base URL: https://api.deepinfra.com/v1/openai (docs.deepinfra.com)
       // "deepinfra": {
       //   "type": "deepinfra",
@@ -935,6 +934,12 @@
     //   "gemini-3.7-flash": { "input": 0.75, "output": 3.75 },
     //   "gpt-image-2": { "input": 8.0, "cachedInput": 2.0, "output": 30.0 },
     //   "gemini-3.1-flash-image": { "perImage": 0.067 }
+    // },
+    // Pricing of batch API calls (memory jobs), by provider then exact model name, USD per 1M
+    // tokens. Without an entry a batch call is recorded but counted as $0 (and warned about).
+    // "batchPricing": {
+    //   "sail": { "deepseek-ai/DeepSeek-V4.1-Flash-1017": { "input": 0.05, "cachedInput": 0.004, "output": 0.15 } },
+    //   "deepinfra": { "deepseek-ai/DeepSeek-V4.1-Flash-1017": { "input": 0.0784, "cachedInput": 0.0024, "output": 0.2352 } }
     // },
     // Spend controls, priced with modelPricing over recorded usage. Only the per-user
     // cap applies budgetMultiplier; everything else uses the numbers /usage shows. Each

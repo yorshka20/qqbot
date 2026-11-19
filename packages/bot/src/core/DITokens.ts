@@ -53,6 +53,8 @@ export const DITokens = {
 
   // ── AI / LLM (required) ──
   AI_MANAGER: defineToken('AIManager', { required: true }),
+  /** Batch API jobs over the providers AIManager holds. */
+  BATCH_SERVICE: defineToken('BatchService', { required: true }),
   PROMPT_MANAGER: defineToken('PromptManager', { required: true }),
 
   // ── Conversation pipeline (required) ──

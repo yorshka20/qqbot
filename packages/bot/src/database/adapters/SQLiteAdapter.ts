@@ -12,9 +12,9 @@ import type {
   Conversation,
   ConversationConfig,
   DatabaseModel,
+  MemoryBatchJob,
   MemoryExtractUserCursor,
   MemoryFact,
-  MemoryNoteBuffer,
   Message,
   ModelAccessor,
   ProactiveThreadRecord,
@@ -384,16 +384,6 @@ export class SQLiteAdapter implements DatabaseAdapter {
         updatedAt TEXT NOT NULL,
         UNIQUE(groupId, userId)
       )`,
-      `CREATE TABLE IF NOT EXISTS memory_notes_buffer (
-        id TEXT PRIMARY KEY,
-        groupId TEXT NOT NULL,
-        userId TEXT NOT NULL,
-        scope TEXT,
-        content TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending',
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
-      )`,
       `CREATE TABLE IF NOT EXISTS agenda_items (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -473,6 +463,26 @@ export class SQLiteAdapter implements DatabaseAdapter {
         totalTokens INTEGER NOT NULL DEFAULT 0,
         imageCount INTEGER NOT NULL DEFAULT 0,
         budgetWaived INTEGER NOT NULL DEFAULT 0,
+        batch INTEGER NOT NULL DEFAULT 0,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS memory_batch_jobs (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK(kind IN ('extract', 'consolidate', 'review')),
+        groupId TEXT NOT NULL,
+        userId TEXT NOT NULL,
+        parentId TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('queued', 'submitted', 'fetched', 'done', 'dropped', 'merged')),
+        mergedInto TEXT NOT NULL,
+        inputJson TEXT NOT NULL,
+        requestJson TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        batchId TEXT NOT NULL,
+        submittedAt INTEGER NOT NULL,
+        answer TEXT NOT NULL,
+        attempts INTEGER NOT NULL,
+        error TEXT NOT NULL,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`,
@@ -621,6 +631,10 @@ export class SQLiteAdapter implements DatabaseAdapter {
         this.db.run(`ALTER TABLE token_usage ADD COLUMN budgetWaived INTEGER NOT NULL DEFAULT 0`);
         logger.info('[SQLiteAdapter] Added budgetWaived column to token_usage');
       }
+      if (Array.isArray(usageInfo) && !usageInfo.some((col) => col.name === 'batch')) {
+        this.db.run(`ALTER TABLE token_usage ADD COLUMN batch INTEGER NOT NULL DEFAULT 0`);
+        logger.info('[SQLiteAdapter] Added batch column to token_usage');
+      }
     } catch (error) {
       logger.warn(`[SQLiteAdapter] Failed to add token_usage columns: ${error}`);
     }
@@ -739,11 +753,12 @@ export class SQLiteAdapter implements DatabaseAdapter {
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_groupId ON proactive_threads(groupId)`,
       `CREATE INDEX IF NOT EXISTS idx_proactive_threads_threadId ON proactive_threads(threadId)`,
       `CREATE INDEX IF NOT EXISTS idx_memory_extract_user_cursors_groupId_userId ON memory_extract_user_cursors(groupId, userId)`,
-      `CREATE INDEX IF NOT EXISTS idx_memory_notes_buffer_group_status ON memory_notes_buffer(groupId, status)`,
       `CREATE INDEX IF NOT EXISTS idx_agenda_items_enabled ON agenda_items(enabled)`,
       `CREATE INDEX IF NOT EXISTS idx_agenda_items_triggerType ON agenda_items(triggerType)`,
       `CREATE INDEX IF NOT EXISTS idx_agenda_items_eventType ON agenda_items(eventType)`,
       `CREATE INDEX IF NOT EXISTS idx_memory_facts_slot ON memory_facts(groupId, userId, status)`,
+      `CREATE INDEX IF NOT EXISTS idx_memory_batch_jobs_status ON memory_batch_jobs(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_memory_batch_jobs_parent ON memory_batch_jobs(parentId)`,
       `CREATE INDEX IF NOT EXISTS idx_messages_createdAt ON messages(createdAt)`,
       `CREATE INDEX IF NOT EXISTS idx_messages_conversationId_createdAt ON messages(conversationId, createdAt)`,
       `CREATE INDEX IF NOT EXISTS idx_bilibili_danmaku_room_received ON bilibili_danmaku(roomId, receivedAt)`,
@@ -821,14 +836,14 @@ export class SQLiteAdapter implements DatabaseAdapter {
         this.db,
         'memory_extract_user_cursors',
       ),
-      memoryNotesBuffer: new SQLiteModelAccessor<MemoryNoteBuffer>(this.db, 'memory_notes_buffer'),
       memoryFacts: new SQLiteModelAccessor<MemoryFact>(this.db, 'memory_facts'),
+      memoryBatchJobs: new SQLiteModelAccessor<MemoryBatchJob>(this.db, 'memory_batch_jobs'),
       agendaItems: new SQLiteModelAccessor<AgendaItem>(this.db, 'agenda_items', ['enabled']),
       bilibiliDanmaku: new SQLiteModelAccessor<BilibiliDanmakuRecord>(this.db, 'bilibili_danmaku', [
         'mentionsStreamer',
       ]),
       userPortraitScore: new SQLiteModelAccessor<UserPortraitScore>(this.db, 'user_portrait_score'),
-      tokenUsage: new SQLiteModelAccessor<TokenUsageRecord>(this.db, 'token_usage', ['budgetWaived']),
+      tokenUsage: new SQLiteModelAccessor<TokenUsageRecord>(this.db, 'token_usage', ['budgetWaived', 'batch']),
     };
   }
 }

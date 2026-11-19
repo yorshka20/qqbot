@@ -5,18 +5,20 @@
 // facts marked and decides, per due fact: keep it (it is long-lived), retire it (it only held
 // at the time), or merge it with a fact saying the same thing. Retiring changes the status;
 // the row stays. A fact the model leaves out counts as kept.
+//
+// Like consolidation, the request is written at submission and the answer applied later;
+// decisions naming a fact that changed in between are rejected.
 
-import type { LLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import type { PromptManager } from '@/ai/prompt/PromptManager';
-import { LLMService } from '@/ai/services/LLMService';
 import type { Config } from '@/core/config';
 import type { MemoryReviewConfig } from '@/core/config/types/memory';
 import { DITokens } from '@/core/DITokens';
 import type { MemoryFact } from '@/database/models/types';
-import { generateMemoryJson } from '../llm/memoryLLM';
+import type { MemoryRequest } from '../llm/memoryLLM';
 import { listManualFacts, scopeGuide } from '../llm/promptParts';
+import { operationFactId } from '../model/jobIds';
 import { slotLabel } from '../model/scopes';
 import { ManualMemoryStore } from '../storage/ManualMemoryStore';
 import { MemoryFactStore } from '../storage/MemoryFactStore';
@@ -41,39 +43,24 @@ export class MemoryReviewService {
   constructor(
     @inject(DITokens.CONFIG) config: Config,
     @inject(DITokens.PROMPT_MANAGER) private readonly promptManager: PromptManager,
-    @inject(LLMService) private readonly llmService: LLMService,
     @inject(MemoryFactStore) private readonly store: MemoryFactStore,
     @inject(ManualMemoryStore) private readonly manualStore: ManualMemoryStore,
   ) {
     this.review = { ...DEFAULT_REVIEW, ...config.getMemoryConfig().review };
   }
 
-  /** Review every slot of a group that has a due fact. */
-  async reviewGroup(groupId: string, target: LLMTarget | undefined, now = Date.now()): Promise<ReviewSummary> {
-    const total: ReviewSummary = { due: 0, kept: 0, retired: 0, merged: 0 };
+  /** The slots of a group that hold at least one due fact. */
+  async listDueSlots(groupId: string, now = Date.now()): Promise<string[]> {
     const active = await this.store.listGroup(groupId, 'active');
-    const slots = [...new Set(active.filter((fact) => isDue(fact, this.review, now)).map((fact) => fact.userId))];
-    for (const userId of slots) {
-      const summary = await this.reviewSlot(groupId, userId, target, now);
-      total.due += summary.due;
-      total.kept += summary.kept;
-      total.retired += summary.retired;
-      total.merged += summary.merged;
-    }
-    return total;
+    return [...new Set(active.filter((fact) => isDue(fact, this.review, now)).map((fact) => fact.userId))];
   }
 
-  async reviewSlot(
-    groupId: string,
-    userId: string,
-    target: LLMTarget | undefined,
-    now = Date.now(),
-  ): Promise<ReviewSummary> {
+  /** The review request for the slot as it is now; null when nothing in it is due. */
+  async prepareSlotReview(groupId: string, userId: string, now = Date.now()): Promise<MemoryRequest | null> {
     const facts = await this.store.listSlot(groupId, userId, 'active');
     const due = new Set(facts.filter((fact) => isDue(fact, this.review, now)).map((fact) => fact.id));
-    const summary: ReviewSummary = { due: due.size, kept: 0, retired: 0, merged: 0 };
     if (due.size === 0) {
-      return summary;
+      return null;
     }
     const prompt = this.promptManager.render('memory.review', {
       slotLabel: slotLabel(userId),
@@ -82,14 +69,26 @@ export class MemoryReviewService {
       facts: numberFactsForReview(facts, due),
       today: formatDate(now),
     });
-    const answer = await generateMemoryJson(this.llmService, prompt, target, 'MemoryReview');
-    if (!answer) {
-      return summary;
-    }
-    const { decisions, rejected } = parseReviewDecisions(answer, facts, due, userId);
-    const byId = new Map(facts.map((fact) => [fact.id, fact]));
+    return { prompt, factIds: facts.map((fact) => fact.id), dueIds: [...due] };
+  }
+
+  /** Apply a review answer; `jobId` keys the merged facts it adds, so applying it again adds nothing. */
+  async applyReviewAnswer(
+    groupId: string,
+    userId: string,
+    request: MemoryRequest,
+    answer: Record<string, unknown>,
+    jobId: string,
+    now = Date.now(),
+  ): Promise<ReviewSummary> {
+    const numbered = await this.store.activeInSlot(groupId, userId, request.factIds);
+    const present = new Set(numbered.filter((f): f is MemoryFact => f !== null).map((fact) => fact.id));
+    const due = new Set(request.dueIds.filter((id) => present.has(id)));
+    const summary: ReviewSummary = { due: due.size, kept: 0, retired: 0, merged: 0 };
+    const { decisions, rejected } = parseReviewDecisions(answer, numbered, due, userId);
+    const byId = new Map(numbered.filter((f): f is MemoryFact => f !== null).map((fact) => [fact.id, fact]));
     const removed = new Set<string>();
-    for (const decision of decisions) {
+    for (const [index, decision] of decisions.entries()) {
       if (decision.op === 'keep') {
         if (decision.durability && decision.durability !== byId.get(decision.id)?.durability) {
           await this.store.patch(decision.id, { durability: decision.durability });
@@ -102,6 +101,7 @@ export class MemoryReviewService {
         const merged = decision.ids.map((id) => byId.get(id)).filter((f): f is MemoryFact => f !== undefined);
         const [created] = await this.store.add([
           {
+            id: operationFactId(jobId, index),
             groupId,
             userId,
             ...decision.fact,

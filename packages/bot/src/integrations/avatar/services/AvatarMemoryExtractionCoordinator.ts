@@ -1,6 +1,6 @@
 // Live2DMemoryExtractionCoordinator — debounced memory extraction for Live2D
 // threads. Mirrors MemoryPlugin's flow (debounce per scope → read recent
-// entries → format → MemoryExtractService.extractAndConsolidate) but sources its
+// entries → format → MemoryBatchQueue.enqueueExtract) but sources its
 // history from Live2DSessionService and its scope from the synthetic
 // Live2D groupId convention (`live2d:<source>[:<scope>]`).
 //
@@ -20,20 +20,19 @@
 //   - On fire: read thread entries via Live2DSessionService → filter out
 //     bot replies → enforce `minUserEntries` → format as text (same format
 //     ConversationHistoryService uses, so the extract LLM sees familiar
-//     input) → MemoryExtractService.extractAndConsolidate (itself internally
-//     queued, so backpressure is handled).
+//     input) → MemoryBatchQueue.enqueueExtract (a batch job; consolidation
+//     follows when it returns).
 //
 // Failure modes are logged and swallowed: memory extraction is strictly
 // best-effort background work, never blocks the reply path.
 
 import { mergeAvatarConfig } from '@qqbot/avatar';
-import type { LLMTarget } from '@qqbot/llm';
 import { logger } from '@qqbot/shared';
 import { inject, singleton } from 'tsyringe';
 import { formatConversationEntriesToText } from '@/conversation/history/format';
 import type { Config } from '@/core/config';
 import { DITokens } from '@/core/DITokens';
-import { MemoryExtractService } from '@/memory/extraction/MemoryExtractService';
+import { MemoryBatchQueue } from '@/memory/batch/MemoryBatchQueue';
 import type { AvatarSource } from '../types';
 import { AvatarSessionService } from './AvatarSessionService';
 
@@ -59,8 +58,6 @@ interface ResolvedConfig {
    * `avatar-cmd` and `livemode-private-batch` (both are dev/test inputs).
    */
   allowedSources: ReadonlySet<string>;
-  /** Provider override from avatar.memoryExtraction.provider, else undefined. */
-  providerOverride: string | undefined;
 }
 
 @singleton()
@@ -70,7 +67,7 @@ export class AvatarMemoryExtractionCoordinator {
   constructor(
     @inject(DITokens.CONFIG) private readonly config: Config,
     @inject(AvatarSessionService) private readonly sessionService: AvatarSessionService,
-    @inject(MemoryExtractService) private readonly extractService: MemoryExtractService,
+    @inject(MemoryBatchQueue) private readonly batchQueue: MemoryBatchQueue,
   ) {}
 
   /**
@@ -192,15 +189,14 @@ export class AvatarMemoryExtractionCoordinator {
     const recentMessagesText = formatConversationEntriesToText(cappedEntries);
     if (!recentMessagesText.trim()) return;
 
-    const target = this.resolveTarget(resolved);
     logger.info(
-      `[Live2DMemoryExtraction] run | thread=${threadId} group=${groupId} provider=${target?.provider ?? 'default'} entries=${cappedEntries.length} userEntries=${userOnly.length}`,
+      `[Live2DMemoryExtraction] run | thread=${threadId} group=${groupId} entries=${cappedEntries.length} userEntries=${userOnly.length}`,
     );
 
     try {
-      await this.extractService.extractAndConsolidate(groupId, recentMessagesText, target);
+      await this.batchQueue.enqueueExtract(groupId, recentMessagesText);
     } catch (err) {
-      logger.warn(`[Live2DMemoryExtraction] extractAndConsolidate failed (thread=${threadId} group=${groupId}):`, err);
+      logger.warn(`[Live2DMemoryExtraction] enqueueExtract failed (thread=${threadId} group=${groupId}):`, err);
     }
   }
 
@@ -219,31 +215,6 @@ export class AvatarMemoryExtractionCoordinator {
       maxEntries: cfg.maxEntries,
       minUserEntries: cfg.minUserEntries,
       allowedSources: new Set(cfg.allowedSources),
-      providerOverride: cfg.provider,
     };
-  }
-
-  /**
-   * LLM precedence (most specific first); an avatar provider runs on its own configured model:
-   *   1. `avatar.memoryExtraction.provider` (explicit opt-in, scope-specific)
-   *   2. `ai.taskProviders.memoryExtract` (system-wide extract LLM)
-   *   3. `avatar.llmProvider` (whatever the avatar uses for its own replies)
-   *   4. the default LLM (undefined)
-   */
-  private resolveTarget(resolved: ResolvedConfig): LLMTarget | undefined {
-    if (resolved.providerOverride) return { provider: resolved.providerOverride };
-
-    const taskTarget = this.config.getAIConfig()?.taskProviders?.memoryExtract;
-    if (taskTarget) {
-      return taskTarget;
-    }
-
-    const rawAvatar = this.config.getAvatarConfig() as Record<string, unknown> | undefined;
-    const avatarProvider = rawAvatar?.llmProvider;
-    if (typeof avatarProvider === 'string' && avatarProvider.trim().length > 0) {
-      return { provider: avatarProvider.trim() };
-    }
-
-    return undefined;
   }
 }

@@ -41,7 +41,7 @@ export function numberFactsForReview(facts: MemoryFact[], due: Set<string>): str
  */
 export function parseReviewDecisions(
   answer: Record<string, unknown>,
-  numbered: MemoryFact[],
+  numbered: ReadonlyArray<MemoryFact | null>,
   due: Set<string>,
   userId: string,
 ): { decisions: ReviewDecision[]; rejected: number } {

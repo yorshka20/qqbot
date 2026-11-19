@@ -1,24 +1,21 @@
-// Memory extraction as a group_day task: the extract runs on the shared day prefix,
-// then consolidation into stored memory goes through MemoryExtractService like any extract.
-//
-// Only the extract call shares the prefix. Consolidation (memory.consolidate) reads stored
-// memory and the new facts, not the chat, so it keeps memory's own provider and model.
+// Memory extraction as a group_day task. It reads the same day log as the other tasks, but
+// runs as a memory batch job instead of in the fan-out: its request (the group_day system
+// prompt; the day log followed by the extraction task) is queued, and the answer is
+// consolidated when the batch returns.
 
-import type { LLMTarget } from '@qqbot/llm';
 import type { GroupDayContext } from '@/fanout/contexts/groupDay/GroupDayFanout';
-import type { FanoutRun, FanoutTask, FanoutTaskOutput } from '@/fanout/core/types';
-import { MEMORY_JOB_TIMEOUT_MS } from '../llm/memoryLLM';
+import type { DeferredFanoutRequest, DeferredFanoutTask, FanoutRun } from '@/fanout/core/types';
+import type { MemoryBatchQueue } from '../batch/MemoryBatchQueue';
 import type { MemoryExtractService } from './MemoryExtractService';
 
-export class GroupDayMemoryTask implements FanoutTask<GroupDayContext, null> {
+export class GroupDayMemoryTask implements DeferredFanoutTask<GroupDayContext, null> {
   static readonly NAME = 'memory';
+  readonly mode = 'deferred';
   readonly name = GroupDayMemoryTask.NAME;
-  readonly tools = [];
-  readonly limits = { reasoningEffort: 'medium', timeout: MEMORY_JOB_TIMEOUT_MS, maxToolRounds: 1 } as const;
 
   constructor(
     private readonly extractService: MemoryExtractService,
-    private readonly mergeTarget: LLMTarget | undefined,
+    private readonly queue: MemoryBatchQueue,
   ) {}
 
   parseParams(): null {
@@ -29,7 +26,7 @@ export class GroupDayMemoryTask implements FanoutTask<GroupDayContext, null> {
     return this.extractService.renderPrefixedExtractTask();
   }
 
-  async handle(output: FanoutTaskOutput, run: FanoutRun<GroupDayContext>): Promise<void> {
-    await this.extractService.consolidateExtractOutput(run.ctx.groupId, output.text, this.mergeTarget);
+  async defer(request: DeferredFanoutRequest, run: FanoutRun<GroupDayContext>): Promise<void> {
+    await this.queue.enqueuePrompt(run.ctx.groupId, request);
   }
 }

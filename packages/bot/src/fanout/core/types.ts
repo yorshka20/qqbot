@@ -38,11 +38,19 @@ export interface FanoutTaskOutput {
 /**
  * One task appended after a fanout's shared prefix.
  *
- * A task names the tools it may call, but it does not choose the tool list the model
- * sees: that is the union across the run, so the envelope stays identical for every
- * task. Calls outside `tools` are refused at execution time.
+ * A live task runs in the run itself. It names the tools it may call, but it does not choose
+ * the tool list the model sees: that is the union across the run's live tasks, so the
+ * envelope stays identical for every one of them. Calls outside `tools` are refused at
+ * execution time.
+ *
+ * A deferred task does not run in the run: it receives the single-turn request it would have
+ * made (the run's system prompt; the prefix followed by its suffix) and runs it its own way,
+ * e.g. on a batch API. It has no tools and does not affect the envelope.
  */
-export interface FanoutTask<C, P = unknown> {
+export type FanoutTask<C, P = unknown> = LiveFanoutTask<C, P> | DeferredFanoutTask<C, P>;
+
+export interface LiveFanoutTask<C, P = unknown> {
+  readonly mode: 'live';
   readonly name: string;
   readonly tools: readonly string[];
   readonly limits: FanoutTaskLimits;
@@ -51,9 +59,23 @@ export interface FanoutTask<C, P = unknown> {
   handle(output: FanoutTaskOutput, run: FanoutRun<C>, params: P): Promise<void>;
 }
 
+export interface DeferredFanoutRequest {
+  system: string;
+  prompt: string;
+}
+
+export interface DeferredFanoutTask<C, P = unknown> {
+  readonly mode: 'deferred';
+  readonly name: string;
+  parseParams(raw: unknown): P;
+  suffix(run: FanoutRun<C>, params: P): string;
+  defer(request: DeferredFanoutRequest, run: FanoutRun<C>, params: P): Promise<void>;
+}
+
 export interface FanoutTaskReport {
   name: string;
-  status: 'ok' | 'failed';
+  /** `deferred`: handed its request to run elsewhere. */
+  status: 'ok' | 'failed' | 'deferred';
   rounds: number;
   usage?: AIGenerateResponse['usage'];
 }

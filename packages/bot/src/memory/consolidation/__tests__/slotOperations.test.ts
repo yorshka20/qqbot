@@ -110,4 +110,20 @@ describe('parseSlotOperations', () => {
     expect(operations).toEqual([]);
     expect(rejected).toBe(4);
   });
+
+  it('rejects operations on a fact that changed after the prompt was written', () => {
+    const { operations, rejected } = parseSlotOperations(
+      {
+        operations: [
+          { op: 'confirm', id: 2 },
+          { op: 'update', ids: [1, 2], scope: 'identity:work', content: '做运营商与精益生产' },
+          { op: 'delete', id: 3, reason: '不玩了' },
+        ],
+      },
+      [existing[0], null, existing[2]],
+      USER,
+    );
+    expect(operations).toEqual([{ op: 'delete', id: 'c', reason: '不玩了' }]);
+    expect(rejected).toBe(2);
+  });
 });

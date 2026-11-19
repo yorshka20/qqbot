@@ -10,9 +10,9 @@ import type {
   Conversation,
   ConversationConfig,
   DatabaseModel,
+  MemoryBatchJob,
   MemoryExtractUserCursor,
   MemoryFact,
-  MemoryNoteBuffer,
   Message,
   ModelAccessor,
   ProactiveThreadRecord,
@@ -226,6 +226,7 @@ export class MongoDBAdapter implements DatabaseAdapter {
       bilibiliDanmaku: this.db.collection('bilibili_danmaku'),
       userPortraitScore: this.db.collection('user_portrait_score'),
       tokenUsage: this.db.collection('token_usage'),
+      memoryBatchJobs: this.db.collection('memory_batch_jobs'),
     };
 
     // Create indexes
@@ -242,6 +243,8 @@ export class MongoDBAdapter implements DatabaseAdapter {
     await collections.bilibiliDanmaku.createIndex({ roomId: 1, receivedAt: -1 });
     await collections.bilibiliDanmaku.createIndex({ mentionsStreamer: 1, receivedAt: -1 });
     await collections.bilibiliDanmaku.createIndex({ batchId: 1 });
+    await collections.memoryBatchJobs.createIndex({ status: 1 });
+    await collections.memoryBatchJobs.createIndex({ parentId: 1 });
 
     await collections.userPortraitScore.createIndex({ groupId: 1, userId: 1, dimensionId: 1 }, { unique: true });
     await collections.userPortraitScore.createIndex({ groupId: 1, dimensionId: 1, score: -1 });
@@ -298,8 +301,8 @@ export class MongoDBAdapter implements DatabaseAdapter {
       memoryExtractUserCursors: new MongoModelAccessor<MemoryExtractUserCursor>(
         this.db.collection('memory_extract_user_cursors'),
       ),
-      memoryNotesBuffer: new MongoModelAccessor<MemoryNoteBuffer>(this.db.collection('memory_notes_buffer')),
       memoryFacts: new MongoModelAccessor<MemoryFact>(this.db.collection('memory_facts')),
+      memoryBatchJobs: new MongoModelAccessor<MemoryBatchJob>(this.db.collection('memory_batch_jobs')),
       agendaItems: new MongoModelAccessor<AgendaItem>(this.db.collection('agenda_items')),
       bilibiliDanmaku: new MongoModelAccessor<BilibiliDanmakuRecord>(this.db.collection('bilibili_danmaku')),
       userPortraitScore: new MongoModelAccessor<UserPortraitScore>(this.db.collection('user_portrait_score')),
