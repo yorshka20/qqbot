@@ -43,7 +43,6 @@ export class LightAppPlugin extends PluginBase {
   private allowedGroupIds = new Set<string>();
 
   async onInit(): Promise<void> {
-    this.enabled = true;
     this.messageAPI = getContainer().resolve(MessageAPI);
     const pluginConfig = this.pluginConfig?.config as LightAppPluginConfig | undefined;
     if (pluginConfig?.prefix !== undefined) {
@@ -57,7 +56,7 @@ export class LightAppPlugin extends PluginBase {
     }
     this.config = getContainer().resolve<Config>(DITokens.CONFIG);
     logger.info(
-      `[LightAppPlugin] Enabled | prefix="${this.prefix}" | groupOnly=${this.groupOnly} | groupIds=${this.allowedGroupIds.size > 0 ? Array.from(this.allowedGroupIds).join(',') : 'all'}`,
+      `[LightAppPlugin] Initialized | prefix="${this.prefix}" | groupOnly=${this.groupOnly} | groupIds=${this.allowedGroupIds.size > 0 ? Array.from(this.allowedGroupIds).join(',') : 'all'}`,
     );
   }
 
