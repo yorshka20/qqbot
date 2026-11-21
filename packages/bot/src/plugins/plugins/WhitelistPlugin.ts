@@ -38,8 +38,6 @@ export class WhitelistPlugin extends PluginBase {
   private dynamicDenySet: Set<string> = new Set();
 
   async onInit(): Promise<void> {
-    this.enabled = true;
-
     try {
       const pluginConfig = this.pluginConfig?.config as WhitelistPluginConfig;
       if (!pluginConfig) {

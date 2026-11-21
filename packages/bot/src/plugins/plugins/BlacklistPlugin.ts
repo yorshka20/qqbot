@@ -30,8 +30,6 @@ export class BlacklistPlugin extends PluginBase {
   private groupBlacklist: Map<string, Set<string>> = new Map();
 
   async onInit(): Promise<void> {
-    this.enabled = true;
-
     try {
       const pluginConfig = this.pluginConfig?.config as BlacklistPluginConfig | undefined;
       if (!pluginConfig) {

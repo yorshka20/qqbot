@@ -60,8 +60,6 @@ export class MemoryPlugin extends PluginBase {
   private botSelfId = '';
 
   async onInit(): Promise<void> {
-    this.enabled = true;
-
     const container = getContainer();
     this.conversationHistoryService = container.resolve<ConversationHistoryService>(ConversationHistoryService);
     this.memoryExtractService = container.resolve(MemoryExtractService);

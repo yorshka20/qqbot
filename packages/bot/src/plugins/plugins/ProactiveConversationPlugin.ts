@@ -102,8 +102,6 @@ export class ProactiveConversationPlugin extends PluginBase {
   }
 
   async onInit(): Promise<void> {
-    this.enabled = true;
-
     // Get dependencies from DI container
     const container = getContainer();
     this.threadService = container.resolve(ThreadService);

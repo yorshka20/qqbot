@@ -75,7 +75,6 @@ export class MemoryTriggerPlugin extends PluginBase {
   private conversationHistoryService!: ConversationHistoryService;
 
   async onInit(): Promise<void> {
-    this.enabled = true;
     const container = getContainer();
     this.batchQueue = container.resolve(MemoryBatchQueue);
     this.messageAPI = container.resolve(MessageAPI);

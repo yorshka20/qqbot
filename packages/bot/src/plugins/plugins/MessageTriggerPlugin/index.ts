@@ -51,7 +51,6 @@ export class MessageTriggerPlugin extends PluginBase {
   private cancelReactionId: number | null = null;
 
   async onInit(): Promise<void> {
-    this.enabled = true;
     const container = getContainer();
     this.llmService = container.resolve(LLMService);
     this.promptManager = container.resolve<PromptManager>(DITokens.PROMPT_MANAGER);
